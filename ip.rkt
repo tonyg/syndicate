@@ -1,6 +1,9 @@
 #lang racket/base
 
-(provide ;; (struct-out ip-packet)
+(provide (struct-out ip-packet)
+	 (struct-out ip-interface)
+	 ip-address->hostname
+	 broadcast-ip-address
 	 spawn-ip-driver)
 
 (require racket/set)
@@ -15,7 +18,8 @@
 (require "ethernet.rkt")
 (require "arp.rkt")
 
-(struct ip-packet (source destination ttl protocol options body) #:prefab) ;; TODO: more fields
+(struct ip-packet (source destination protocol options body) #:prefab) ;; TODO: more fields
+(struct ip-interface (address ethernet) #:prefab)
 
 (define IPv4-ethertype #x0800)
 
@@ -27,6 +31,10 @@
 ;; (define PROTOCOL-UDP 17)
 
 (define default-ttl 64)
+
+(define (ip-address->hostname bs)
+  (bit-string-case bs
+    ([ a b c d ] (format "~a.~a.~a.~a" a b c d))))
 
 (define broadcast-ip-address (bytes 255 255 255 255))
 
@@ -57,13 +65,12 @@
 		  (or (equal? destination-ip my-address)
 		      (equal? destination-ip broadcast-ip-address))
 		  (>= header-length 5)
-		  (>= (bit-string-length body) (* header-length 4)))
+		  (>= (bit-string-byte-count body) (* header-length 4)))
 	     (bit-string-case rest
 	       ([ (opts :: binary bytes options-length)
 		  (data :: binary) ]
 		(transition s (send (ip-packet (bit-string->bytes source-ip)
 					       (bit-string->bytes destination-ip)
-					       ttl
 					       protocol
 					       (bit-string->bytes opts)
 					       (bit-string->bytes data))))))
@@ -73,56 +80,63 @@
   (define (analyze-gestalt g s)
     (define hwaddr (gestalt->hwaddr g interface-name))
     (define new-s (struct-copy state s [hwaddr hwaddr]))
-    (transition new-s '()))
+    (transition new-s (routing-update (compute-gestalt new-s))))
+
+  (define (compute-gestalt s)
+    (gestalt-union
+     (pub (arp-assertion IPv4-ethertype my-address))
+     (sub (ethernet-packet-pattern interface-name #t IPv4-ethertype))
+     (sub (ethernet-packet-pattern interface-name #t IPv4-ethertype) #:level 1)
+     (pub (ethernet-packet-pattern interface-name #f IPv4-ethertype))
+     (sub (ip-packet my-address ? ? ? ?))
+     (pub (ip-packet ? my-address ? ? ?))
+     (if (state-hwaddr s)
+	 (pub (ip-interface my-address (ethernet-interface interface-name (state-hwaddr s))))
+	 (gestalt-empty))))
 
   (list
    (spawn-icmp-driver my-address)
-   (spawn (lambda (e s)
-	    (match e
-	      [(routing-update g)
-	       (analyze-gestalt g s)]
-	      [(message (ethernet-packet _ _ _ _ _ body) _ _)
-	       (analyze-incoming-packet body s)]
-	      [(message (ip-packet _ peer-address ttl protocol options body) _ _)
-	       (define header-length ;; TODO: ensure options is a multiple of 4 bytes
-		 (+ IP-MINIMUM-HEADER-LENGTH (quotient (bit-string-length options) 32)))
-	       (define header0
-		 (bit-string (IP-VERSION :: bits 4)
-			     (header-length :: bits 4)
-			     0 ;; TODO: service type
-			     ((+ (* header-length 4)
-				 (/ (bit-string-length body) 8))
-			      :: bits 16)
-			     (0 :: bits 16) ;; TODO: identifier
-			     (0 :: bits 3)  ;; TODO: flags
-			     (0 :: bits 13) ;; TODO: fragments
-			     ttl
-			     protocol
-			     (0 :: bits 16)
-			     (my-address :: binary bits 32)
-			     (peer-address :: binary bits 32)
-			     (options :: binary)))
-	       (transition s (send (ethernet-packet (ethernet-interface interface-name
-									(state-hwaddr s))
-						    #f
-						    (state-hwaddr s)
-						    broadcast-ethernet-address
-						    IPv4-ethertype
-						    (bit-string ((ip-checksum 10 header0) :: binary)
-								(body :: binary)))))]
-	      [_ #f]))
-	  (state #f)
-	  (gestalt-union
-	   (pub (arp-assertion IPv4-ethertype my-address))
-	   (sub (ethernet-packet-pattern interface-name #t IPv4-ethertype))
-	   (sub (ethernet-packet-pattern interface-name #t IPv4-ethertype) #:level 1)
-	   (pub (ethernet-packet-pattern interface-name #f IPv4-ethertype))
-	   (sub (ip-packet my-address ? ? ? ? ?))))))
+   (let ((state0 (state #f)))
+     (spawn (lambda (e s)
+	      (match e
+		[(routing-update g)
+		 (analyze-gestalt g s)]
+		[(message (ethernet-packet _ _ _ _ _ body) _ _)
+		 (analyze-incoming-packet body s)]
+		[(message (ip-packet _ peer-address protocol options body) _ _)
+		 (define header-length ;; TODO: ensure options is a multiple of 4 bytes
+		   (+ IP-MINIMUM-HEADER-LENGTH (quotient (bit-string-byte-count options) 4)))
+		 (define header0
+		   (bit-string (IP-VERSION :: bits 4)
+			       (header-length :: bits 4)
+			       0 ;; TODO: service type
+			       ((+ (* header-length 4) (bit-string-byte-count body))
+				:: bits 16)
+			       (0 :: bits 16) ;; TODO: identifier
+			       (0 :: bits 3)  ;; TODO: flags
+			       (0 :: bits 13) ;; TODO: fragments
+			       default-ttl
+			       protocol
+			       (0 :: bits 16)
+			       (my-address :: binary bits 32)
+			       (peer-address :: binary bits 32)
+			       (options :: binary)))
+		 (transition s (send (ethernet-packet (ethernet-interface interface-name
+									  (state-hwaddr s))
+						      #f
+						      (state-hwaddr s)
+						      broadcast-ethernet-address
+						      IPv4-ethertype
+						      (bit-string ((ip-checksum 10 header0) :: binary)
+								  (body :: binary)))))]
+		[_ #f]))
+	    state0
+	    (compute-gestalt state0)))))
 
 (define (spawn-icmp-driver my-address)
   (spawn (lambda (e s)
 	   (match e
-	     [(message (ip-packet peer-address _ _ _ _ body) _ _)
+	     [(message (ip-packet peer-address _ _ _ body) _ _)
 	      (bit-string-case body
 		([ type code (checksum :: integer bytes 2) (rest :: binary) ] ;; TODO: check cksum
 		 (case type
@@ -136,7 +150,6 @@
 						    (rest :: binary)))
 		    (transition s (send (ip-packet my-address
 						   peer-address
-						   default-ttl
 						   PROTOCOL-ICMP
 						   #""
 						   (ip-checksum 2 reply-data0))))]
@@ -152,5 +165,5 @@
 		(else #f))]
 	     [_ #f]))
 	 (void)
-	 (gestalt-union (pub (ip-packet my-address ? ? PROTOCOL-ICMP ? ?))
-			(sub (ip-packet ? my-address ? PROTOCOL-ICMP ? ?)))))
+	 (gestalt-union (pub (ip-packet my-address ? PROTOCOL-ICMP ? ?))
+			(sub (ip-packet ? my-address PROTOCOL-ICMP ? ?)))))
