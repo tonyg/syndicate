@@ -22,14 +22,16 @@
   (define r (bitwise-and #xffff (bitwise-not x)))
   (if (= r 0) #xffff r))
 
-(define (ip-checksum offset blob)
+(define (ip-checksum offset blob #:pseudo-header [pseudo-header #""])
   (bit-string-case blob
     ([ (prefix :: binary bytes offset)
        (:: binary bytes 2)
        (suffix :: binary) ]
      (log-info "Packet pre checksum:\n~a" (dump-bytes->string blob))
-     (define result (ones-complement-+16 (ones-complement-sum16 prefix)
-					 (ones-complement-sum16 suffix)))
+     (define result (ones-complement-+16
+		     (ones-complement-sum16 pseudo-header)
+		     (ones-complement-+16 (ones-complement-sum16 prefix)
+					  (ones-complement-sum16 suffix))))
      (log-info "result: ~a" (number->string result 16))
      (define checksum (ones-complement-negate16-safely result))
      (log-info "Checksum ~a" (number->string checksum 16))
