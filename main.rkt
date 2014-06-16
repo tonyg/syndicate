@@ -4,6 +4,7 @@
 (require "ethernet.rkt")
 (require "arp.rkt")
 (require "ip.rkt")
+(require "tcp.rkt")
 
 (define interface "wlan0")
 
@@ -12,7 +13,8 @@
 (spawn-timer-driver)
 (spawn-ethernet-driver)
 (spawn-arp-driver interface)
-(spawn-ip-driver interface (bytes 192 168 1 222))
+(spawn-ip-driver interface (bytes 192 168 56 222))
+(spawn-tcp-driver)
 
 (spawn (lambda (e s)
 	 ;; (log-info "SPY: ~v" e)

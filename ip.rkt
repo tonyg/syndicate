@@ -125,7 +125,14 @@
 									  (state-hwaddr s))
 						      #f
 						      (state-hwaddr s)
+
+						      ;; N.B. to get TCP to work against
+						      ;; linux, this HAS to be the specific
+						      ;; MAC of the target! Broadcast
+						      ;; won't work.
 						      broadcast-ethernet-address
+
+
 						      IPv4-ethertype
 						      (bit-string ((ip-checksum 10 header0) :: binary)
 								  (body :: binary)))))]
