@@ -46,7 +46,7 @@
 	 (fragment-offset :: bits 13)
 	 ttl
 	 protocol
-	 (header-checksum :: bits 16)
+	 (header-checksum :: bits 16) ;; TODO: check checksum
 	 (source-ip0 :: binary bits 32)
 	 (destination-ip0 :: binary bits 32)
 	 (rest :: binary) ]
@@ -124,7 +124,7 @@
 	   (match e
 	     [(message (ip-packet peer-address _ _ _ _ body) _ _)
 	      (bit-string-case body
-		([ type code (checksum :: integer bytes 2) (rest :: binary) ]
+		([ type code (checksum :: integer bytes 2) (rest :: binary) ] ;; TODO: check cksum
 		 (case type
 		   [(8) ;; ECHO (0 is ECHO-REPLY)
 		    (log-info "Ping of ~a from ~a"
