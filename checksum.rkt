@@ -27,18 +27,18 @@
     ([ (prefix :: binary bytes offset)
        (:: binary bytes 2)
        (suffix :: binary) ]
-     (log-info "Packet pre checksum:\n~a" (dump-bytes->string blob))
+     ;; (log-info "Packet pre checksum:\n~a" (dump-bytes->string blob))
      (define result (ones-complement-+16
 		     (ones-complement-sum16 pseudo-header)
 		     (ones-complement-+16 (ones-complement-sum16 prefix)
 					  (ones-complement-sum16 suffix))))
-     (log-info "result: ~a" (number->string result 16))
+     ;; (log-info "result: ~a" (number->string result 16))
      (define checksum (ones-complement-negate16-safely result))
-     (log-info "Checksum ~a" (number->string checksum 16))
+     ;; (log-info "Checksum ~a" (number->string checksum 16))
      (define final-packet (bit-string (prefix :: binary)
 				      (checksum :: integer bytes 2)
 				      (suffix :: binary)))
-     (log-info "Packet with checksum:\n~a" (dump-bytes->string final-packet))
+     ;; (log-info "Packet with checksum:\n~a" (dump-bytes->string final-packet))
      final-packet)))
 
 (module+ test
