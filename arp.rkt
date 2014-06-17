@@ -117,7 +117,7 @@
 
   (define queries-projection (compile-gestalt-projection (arp-query (?!) (?!) ?)))
   (define (gestalt->queries g)
-    (for/set [(e (in-set (matcher-key-set (gestalt-project g 0 0 #f queries-projection))))]
+    (for/set [(e (in-set (matcher-key-set (gestalt-project g 0 1 #f queries-projection))))]
       (match-define (list ptype pa) e)
       (cache-key ptype pa)))
 
