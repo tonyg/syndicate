@@ -122,15 +122,14 @@
   (compile-gestalt-projection (ethernet-packet (ethernet-interface interface-name (?!)) ? ? ? ? ?)))
 
 (define (gestalt->hwaddr g interface-name)
-  (define hwaddrs (matcher-key-set (gestalt-project g 0 0 #t (hwaddr-projection interface-name))))
-  (match (set->list hwaddrs)
-    ['() #f]
-    [(list (list h)) h]
-    [(and hs (list* (list h) _))
-     (log-warning "gestalt->hwaddr: multiple addresses for interface ~a: ~v"
-		  interface-name
-		  hs)
-     h]))
+  (define hwaddrs
+    (matcher-key-set/single (gestalt-project g 0 0 #t (hwaddr-projection interface-name))))
+  (case (set-count hwaddrs)
+    [(0) #f]
+    [(1) (set-first hwaddrs)]
+    [else
+     (log-warning "gestalt->hwaddr: multiple addresses for interface ~a: ~v" interface-name hwaddrs)
+     (set-first hwaddrs)]))
 
 (define (ethernet-packet-pattern interface-name from-wire? ethertype)
   (ethernet-packet (ethernet-interface interface-name ?) from-wire? ? ? ethertype ?))

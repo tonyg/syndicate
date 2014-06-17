@@ -141,13 +141,13 @@
 	    (match e
 	      [(routing-update g)
 	       (define all-results
-		 (set->list (matcher-key-set (gestalt-project g 0 0 #t arp-result-projection))))
+		 (matcher-key-set/single (gestalt-project g 0 0 #t arp-result-projection)))
 	       (match all-results
 		 [#f (error 'ip "Someone has published a wildcard arp result")]
-		 ['() ;; no results yet, keep waiting
-		  #f]
-		 [(list* (list remote-hwaddr) rest)
-		  (unless (null? rest)
+		 [(? set-empty?) #f] ;; no results yet, keep waiting
+		 [_
+		  (define remote-hwaddr (set-first all-results))
+		  (unless (= 1 (set-count all-results))
 		    (log-warning "Ambiguous arp result for ~a: ~v"
 				 (ip-address->hostname remote-ip)
 				 all-results))
