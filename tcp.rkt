@@ -375,14 +375,20 @@
 
   ;; ConnState -> Gestalt
   (define (compute-gestalt s)
+    (define worldward-facing-gestalt
+      (gestalt-union (sub (tcp-packet #t src-ip src-port dst-ip dst-port ? ? ? ? ? ?))
+		     (pub (tcp-packet #f dst-ip dst-port src-ip src-port ? ? ? ? ? ?))))
+    (define appward-facing-gestalt
+      (if (conn-state-syn-acked? s)
+	  (gestalt-union (if (not (buffer-finished? (conn-state-inbound s)))
+			     (pub (tcp-channel src dst ?))
+			     (gestalt-empty))
+			 (sub (tcp-channel dst src ?))
+			 (pub (tcp-channel src dst ?) #:level 1))
+	  (gestalt-empty)))
     (gestalt-union (sub (timer-expired (timer-name ?) ?))
-		   (sub (tcp-packet #t src-ip src-port dst-ip dst-port ? ? ? ? ? ?))
-		   (pub (tcp-packet #f dst-ip dst-port src-ip src-port ? ? ? ? ? ?))
-		   (sub (tcp-channel dst src ?))
-		   (if (not (buffer-finished? (conn-state-inbound s)))
-		       (pub (tcp-channel src dst ?))
-		       (gestalt-empty))
-		   (pub (tcp-channel src dst ?) #:level 1)))
+		   worldward-facing-gestalt
+		   appward-facing-gestalt))
 
   ;; ConnState -> Transition
   (define (deliver-inbound-locally s)
@@ -411,19 +417,20 @@
 
   ;; Boolean SeqNum -> ConnState -> Transition
   (define ((discard-acknowledged-outbound ack? ackn) s)
-    (transition
-     (if (not ack?)
-	 s
-	 (let* ((b (conn-state-outbound s))
-		(limit (seq+ (buffer-seqn b) (bit-string-byte-count (buffer-data b))))
-		(ackn (if (seq> ackn limit) limit ackn))
-		(dist (seq- ackn (buffer-seqn b))))
-	   (define remaining-data (bit-string-drop (buffer-data b) (* dist 8))) ;; bit offset!
-	   (struct-copy conn-state s
-	     [outbound (struct-copy buffer b [data remaining-data] [seqn ackn])]
-	     [syn-acked? (or (conn-state-syn-acked? s)
-			     (positive? dist))])))
-     '()))
+    (if (not ack?)
+	(transition s '())
+	(let* ((b (conn-state-outbound s))
+	       (limit (seq+ (buffer-seqn b) (bit-string-byte-count (buffer-data b))))
+	       (ackn (if (seq> ackn limit) limit ackn))
+	       (dist (seq- ackn (buffer-seqn b))))
+	  (define remaining-data (bit-string-drop (buffer-data b) (* dist 8))) ;; bit offset!
+	  (define new-s (struct-copy conn-state s
+			  [outbound (struct-copy buffer b [data remaining-data] [seqn ackn])]
+			  [syn-acked? (or (conn-state-syn-acked? s)
+					  (positive? dist))]))
+	  (transition new-s
+		      (when (and (not (conn-state-syn-acked? s)) (positive? dist))
+			(routing-update (compute-gestalt new-s)))))))
 
   ;; Nat -> ConnState -> Transition
   (define ((update-outbound-window peer-window) s)
