@@ -56,20 +56,20 @@
 		    (begin (async-channel-put control-ch 'unblock)
 			   #f))]
 	       [(message (? ethernet-packet? p) 1 #f) ;; from metalevel 1
-		(log-info "Interface ~a inbound packet ~a -> ~a (type 0x~a)"
-			  (ethernet-interface-name (ethernet-packet-interface p))
-			  (pretty-bytes (ethernet-packet-source p))
-			  (pretty-bytes (ethernet-packet-destination p))
-			  (number->string (ethernet-packet-ethertype p) 16))
-		(log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
+		;; (log-info "Interface ~a inbound packet ~a -> ~a (type 0x~a)"
+		;; 	  (ethernet-interface-name (ethernet-packet-interface p))
+		;; 	  (pretty-bytes (ethernet-packet-source p))
+		;; 	  (pretty-bytes (ethernet-packet-destination p))
+		;; 	  (number->string (ethernet-packet-ethertype p) 16))
+		;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
 		(transition h (send p))]
 	       [(message (? ethernet-packet? p) 0 #f) ;; from metalevel 0
-		(log-info "Interface ~a OUTBOUND packet ~a -> ~a (type 0x~a)"
-			  (ethernet-interface-name (ethernet-packet-interface p))
-			  (pretty-bytes (ethernet-packet-source p))
-			  (pretty-bytes (ethernet-packet-destination p))
-			  (number->string (ethernet-packet-ethertype p) 16))
-		(log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
+		;; (log-info "Interface ~a OUTBOUND packet ~a -> ~a (type 0x~a)"
+		;; 	  (ethernet-interface-name (ethernet-packet-interface p))
+		;; 	  (pretty-bytes (ethernet-packet-source p))
+		;; 	  (pretty-bytes (ethernet-packet-destination p))
+		;; 	  (number->string (ethernet-packet-ethertype p) 16))
+		;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
 		(raw-interface-write h (encode-ethernet-packet p))
 		#f]
 	       [_ #f]))
