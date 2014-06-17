@@ -20,7 +20,7 @@
 (struct arp-assertion (protocol protocol-address) #:prefab)
 
 (define ARP-ethertype #x0806)
-(define cache-entry-lifetime-msec 1000) ;; (* 14400 1000)
+(define cache-entry-lifetime-msec (* 14400 1000))
 (define wakeup-interval 5000)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
