@@ -418,8 +418,7 @@
 		(limit (seq+ (buffer-seqn b) (bit-string-byte-count (buffer-data b))))
 		(ackn (if (seq> ackn limit) limit ackn))
 		(dist (seq- ackn (buffer-seqn b))))
-	   (define-values (discarded-acknowledged-data remaining-data)
-	     (bit-string-split-at (buffer-data b) (* dist 8))) ;; bit offset!
+	   (define remaining-data (bit-string-drop (buffer-data b) (* dist 8))) ;; bit offset!
 	   (struct-copy conn-state s
 	     [outbound (struct-copy buffer b [data remaining-data] [seqn ackn])]
 	     [syn-acked? (or (conn-state-syn-acked? s)
@@ -448,10 +447,8 @@
 			      ;; ^ can only send SYN until SYN is acked
 			      pending-byte-count))
     (define segment-offset (if (conn-state-syn-acked? s) 0 1))
-    (define-values (chunk0 remaining-data)
-      (bit-string-split-at (buffer-data b) (* segment-size 8))) ;; bit offset!
-    (define-values (discarded-dummy-syn-data chunk)
-      (bit-string-split-at chunk0 (* segment-offset 8))) ;; bit offset!
+    (define chunk0 (bit-string-take (buffer-data b) (* segment-size 8))) ;; bit offset!
+    (define chunk (bit-string-drop chunk0 (* segment-offset 8))) ;; bit offset!
     (define ackn (next-expected-seqn s))
     (define flags (set))
     (when ackn
