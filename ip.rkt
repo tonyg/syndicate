@@ -121,24 +121,53 @@
 			       (my-address :: binary bits 32)
 			       (peer-address :: binary bits 32)
 			       (options :: binary)))
-		 (transition s (send (ethernet-packet (ethernet-interface interface-name
-									  (state-hwaddr s))
-						      #f
-						      (state-hwaddr s)
-
-						      ;; N.B. to get TCP to work against
-						      ;; linux, this HAS to be the specific
-						      ;; MAC of the target! Broadcast
-						      ;; won't work.
-						      broadcast-ethernet-address
-
-
-						      IPv4-ethertype
-						      (bit-string ((ip-checksum 10 header0) :: binary)
-								  (body :: binary)))))]
+		 (define full-packet (bit-string ((ip-checksum 10 header0) :: binary)
+						 (body :: binary)))
+		 (transition s (spawn-packet-sender interface-name
+						    (state-hwaddr s)
+						    peer-address
+						    full-packet))]
 		[_ #f]))
 	    state0
 	    (compute-gestalt state0)))))
+
+(define arp-result-projection (compile-gestalt-projection (arp-query ? ? (?!))))
+
+(define (spawn-packet-sender interface-name local-hwaddr remote-ip full-packet)
+  (define timer-id (list (gensym 'packet) remote-ip))
+  (list
+   (send (set-timer timer-id 5000 'relative))
+   (spawn (lambda (e s)
+	    (match e
+	      [(routing-update g)
+	       (define all-results
+		 (set->list (matcher-key-set (gestalt-project g 0 0 #t arp-result-projection))))
+	       (match all-results
+		 [#f (error 'ip "Someone has published a wildcard arp result")]
+		 ['() ;; no results yet, keep waiting
+		  #f]
+		 [(list* (list remote-hwaddr) rest)
+		  (unless (null? rest)
+		    (log-warning "Ambiguous arp result for ~a: ~v"
+				 (ip-address->hostname remote-ip)
+				 all-results))
+		  (transition s
+			      (list
+			       (send (ethernet-packet (ethernet-interface interface-name
+									  local-hwaddr)
+						      #f
+						      local-hwaddr
+						      remote-hwaddr
+						      IPv4-ethertype
+						      full-packet))
+			       (quit)))])]
+	      [(message (timer-expired _ _) _ _)
+	       (log-warning "ARP lookup failed, packet dropped")
+	       (transition s (quit))]
+	      [_ #f]))
+	  (void)
+	  (gestalt-union (sub (timer-expired timer-id ?))
+			 (sub (arp-query IPv4-ethertype remote-ip ?) #:level 1)))))
 
 (define (spawn-icmp-driver my-address)
   (spawn (lambda (e s)
