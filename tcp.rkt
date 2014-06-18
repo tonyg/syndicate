@@ -70,10 +70,10 @@
 (struct port-allocator-state (used-ports local-ips) #:transparent)
 
 (define (spawn-port-allocator)
-  (define port-projector
-    (compile-gestalt-projection (tcp-channel (tcp-address (?!) (?!)) (tcp-address (?!) (?!)) ?)))
-  (define ip-projector
-    (compile-gestalt-projection (ip-interface (?!) ?)))
+  (define port-projection (tcp-channel (tcp-address (?!) (?!)) (tcp-address (?!) (?!)) ?))
+  (define port-compproj (compile-gestalt-projection port-projection))
+  (define ip-projection (ip-interface (?!) ?))
+  (define ip-compproj (compile-gestalt-projection ip-projection))
 
   ;; TODO: Choose a sensible IP address for the outbound connection.
   ;; We don't have enough information to do this well at the moment,
@@ -90,8 +90,8 @@
   (spawn (lambda (e s)
 	   (match e
 	     [(routing-update g)
-	      (define extracted-ips (matcher-key-set (gestalt-project g 0 0 #t ip-projector)))
-	      (define extracted-ports (matcher-key-set (gestalt-project g 0 0 #f port-projector)))
+	      (define extracted-ips (matcher-key-set (gestalt-project g 0 0 #t ip-compproj)))
+	      (define extracted-ports (matcher-key-set (gestalt-project g 0 0 #f port-compproj)))
 	      (if (or (not extracted-ports) (not extracted-ips))
 		  (error 'tcp "Someone has published a wildcard TCP address or IP interface")
 		  (transition (let ((local-ips (for/set [(e (in-set extracted-ips))] (car e))))
@@ -117,8 +117,8 @@
 	     [_ #f]))
 	 (port-allocator-state (set) (set))
 	 (gestalt-union (sub (tcp-port-allocation-request ? ?))
-			(sub (projection->pattern ip-projector) #:level 1)
-			(pub (projection->pattern port-projector) #:level 1))))
+			(sub (projection->pattern ip-projection) #:level 1)
+			(pub (projection->pattern port-projection) #:level 1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Relay between kernel-level and user-level
