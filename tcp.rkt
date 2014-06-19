@@ -291,7 +291,6 @@
 				   (ip-checksum 16 payload #:pseudo-header pseudo-header)))))
 
   (spawn (lambda (e s)
-	   (log-info "xxxxx TCP ~v" e)
 	   (match e
 	     [(routing-update g)
 	      (analyze-gestalt g s)]
