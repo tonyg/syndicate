@@ -183,11 +183,6 @@
   (spawn (lambda (e s)
 	   (match e
 	     [(routing-update g)
-	      (log-info "normal-ip route ~v/~v/~v quitting:\n~a"
-			network
-			netmask
-			interface-name
-			(gestalt->pretty-string g))
 	      (transition s (when (gestalt-empty? g) (quit)))]
 	     [(message (ethernet-packet _ _ _ _ _ body) _ _)
 	      (define p (parse-ip-packet interface-name body))
