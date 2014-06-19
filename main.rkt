@@ -7,6 +7,7 @@
 (require "arp.rkt")
 (require "ip.rkt")
 (require "tcp.rkt")
+(require "udp.rkt")
 
 ;;(log-events-and-actions? #t)
 
@@ -15,6 +16,7 @@
 (spawn-arp-driver)
 (spawn-ip-driver)
 (spawn-tcp-driver)
+(spawn-udp-driver)
 
 (spawn (lambda (e s) #f)
        (void)
@@ -68,6 +70,18 @@
 			 spawn-session))
 
   )
+
+(let ()
+  (spawn (lambda (e s)
+	   (match e
+	     [(message (udp-packet src dst body) _ _)
+	      (log-info "Got packet from ~v: ~v" src body)
+	      (transition s (send (udp-packet dst
+					      src
+					      (string->bytes/utf-8 (format "You said: ~a" body)))))]
+	     [_ #f]))
+	 (void)
+	 (gestalt-union (sub (udp-packet ? (udp-listener 6667) ?)))))
 
 (spawn (lambda (e s)
 	 (local-require racket/pretty)

@@ -2,6 +2,7 @@
 
 (provide (struct-out ip-packet)
 	 ip-address->hostname
+	 ip-string->ip-address
 	 apply-netmask
 	 ip-address-in-subnet?
 	 gestalt->local-ip-addresses
@@ -11,6 +12,7 @@
 
 (require racket/set)
 (require racket/match)
+(require (only-in racket/string string-split))
 (require minimart)
 (require minimart/drivers/timer)
 (require minimart/demand-matcher)
@@ -35,6 +37,9 @@
 (define (ip-address->hostname bs)
   (bit-string-case bs
     ([ a b c d ] (format "~a.~a.~a.~a" a b c d))))
+
+(define (ip-string->ip-address str)
+  (list->bytes (map string->number (string-split str "."))))
 
 (define (apply-netmask addr netmask)
   (bit-string-case addr
@@ -221,8 +226,6 @@
 (define IP-MINIMUM-HEADER-LENGTH 5)
 
 (define PROTOCOL-ICMP 1)
-;; (define PROTOCOL-TCP 6)
-;; (define PROTOCOL-UDP 17)
 
 (define default-ttl 64)
 

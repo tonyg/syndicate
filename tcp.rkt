@@ -16,6 +16,7 @@
 (require "dump-bytes.rkt")
 (require "checksum.rkt")
 (require "ip.rkt")
+(require "port-allocator.rkt")
 
 ;; tcp-address/tcp-address : "kernel" tcp connection state machines
 ;; tcp-handle/tcp-address : "user" outbound connections
@@ -57,65 +58,31 @@
 				 (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-address ? port)) ?)
 				 (spawn-relay server-addr))))
 	(spawn-demand-matcher (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?)
-			      (lambda (local-addr remote-addr)
-				(send (tcp-port-allocation-request local-addr remote-addr))))
-	(spawn-port-allocator)
+			      allocate-port-and-spawn-socket)
+	(spawn-port-allocator 'tcp
+			      (list (project-subs (tcp-channel (tcp-address (?!) (?!)) ? ?))
+				    (project-subs (tcp-channel ? (tcp-address (?!) (?!)) ?))))
 	(spawn-kernel-tcp-driver)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Port allocator
+;; Port allocation
 
-(struct tcp-port-allocation-request (local-addr remote-addr) #:prefab)
-
-(struct port-allocator-state (used-ports local-ips) #:transparent)
-
-(define (spawn-port-allocator)
-  (define port-projection
-    (project-subs (tcp-channel (tcp-address (?!) (?!)) (tcp-address (?!) (?!)) ?)))
-
-  ;; TODO: Choose a sensible IP address for the outbound connection.
-  ;; We don't have enough information to do this well at the moment,
-  ;; so just pick some available local IP address.
-  ;;
-  ;; Interesting note: In some sense, the right answer is "?". This
-  ;; would give us a form of mobility, where IP addresses only route
-  ;; to a given bucket-of-state and ONLY the port number selects a
-  ;; substate therein. That's not how TCP is defined however so we
-  ;; can't do that.
-  (define (appropriate-ip s)
-    (set-first (port-allocator-state-local-ips s)))
-
-  (spawn (lambda (e s)
-	   (match e
-	     [(routing-update g)
-	      (define local-ips (gestalt->local-ip-addresses g))
-	      (define extracted-ports (gestalt-project/keys g port-projection))
-	      (if (or (not extracted-ports) (not local-ips))
-		  (error 'tcp "Someone has published a wildcard TCP address or IP interface")
-		  (transition (port-allocator-state
-			       (for/fold [(s (set))] [(e (in-set extracted-ports))]
-				 (match-define (list si sp di dp) e)
-				 (let* ((s (if (set-member? local-ips si) (set-add s sp) s))
-					(s (if (set-member? local-ips di) (set-add s dp) s)))
-				   s))
-			       local-ips)
-			      '()))]
-	     [(message (tcp-port-allocation-request local-addr remote-addr) _ _)
-	      (define currently-used-ports (port-allocator-state-used-ports s))
-	      (let randomly-allocate-until-unused ()
-		(define p (+ 1024 (random 64512)))
-		(if (set-member? currently-used-ports p)
-		    (randomly-allocate-until-unused)
-		    (transition (struct-copy port-allocator-state s
-				  [used-ports (set-add currently-used-ports p)])
-				((spawn-relay local-addr)
-				 remote-addr
-				 (tcp-channel (appropriate-ip s) p)))))]
-	     [_ #f]))
-	 (port-allocator-state (set) (set))
-	 (gestalt-union (sub (tcp-port-allocation-request ? ?))
-			observe-local-ip-addresses-gestalt
-			(pub (tcp-channel (tcp-address ? ?) (tcp-address ? ?) ?) #:level 1))))
+(define (allocate-port-and-spawn-socket local-addr remote-addr)
+  (send (port-allocation-request
+	 'tcp
+	 (lambda (port local-ips)
+	   ;; TODO: Choose a sensible IP address for the outbound
+	   ;; connection. We don't have enough information to do this
+	   ;; well at the moment, so just pick some available local IP
+	   ;; address.
+	   ;;
+	   ;; Interesting note: In some sense, the right answer is
+	   ;; "?". This would give us a form of mobility, where IP
+	   ;; addresses only route to a given bucket-of-state and ONLY
+	   ;; the port number selects a substate therein. That's not
+	   ;; how TCP is defined however so we can't do that.
+	   (define appropriate-ip (set-first local-ips))
+	   ((spawn-relay local-addr) remote-addr (tcp-channel appropriate-ip port))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Relay between kernel-level and user-level
