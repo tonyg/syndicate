@@ -109,9 +109,10 @@
 	 (sender-protocol-address0 :: binary bytes plen)
 	 (target-hardware-address0 :: binary bytes hlen)
 	 (target-protocol-address0 :: binary bytes plen)
-	 (:: binary) ;; TODO: are the extra zeros coming from the
-		     ;; router real, or an artifact of my
-		     ;; packet-capture implementation?
+	 (:: binary) ;; The extra zeros exist because ethernet packets
+		     ;; have a minimum size. This is, in part, why
+		     ;; IPv4 headers have a total-length field, so
+		     ;; that the zero padding can be removed.
 	 ]
        (let ()
 	 (define sender-protocol-address (bit-string->bytes sender-protocol-address0))

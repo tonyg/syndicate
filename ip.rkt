@@ -247,14 +247,16 @@
        (source-ip0 :: binary bits 32)
        (destination-ip0 :: binary bits 32)
        (rest :: binary) ]
-     (let ((source-ip (bit-string->bytes source-ip0))
-	   (destination-ip (bit-string->bytes destination-ip0))
-	   (options-length (* 4 (- header-length IP-MINIMUM-HEADER-LENGTH))))
+     (let* ((source-ip (bit-string->bytes source-ip0))
+	    (destination-ip (bit-string->bytes destination-ip0))
+	    (options-length (* 4 (- header-length IP-MINIMUM-HEADER-LENGTH)))
+	    (data-length (- total-length (* 4 header-length))))
        (if (and (>= header-length 5)
 		(>= (bit-string-byte-count body) (* header-length 4)))
 	   (bit-string-case rest
 	     ([ (opts :: binary bytes options-length)
-		(data :: binary) ]
+		(data :: binary bytes data-length)
+		(:: binary) ] ;; Very short ethernet packets have a trailer of zeros
 	      (ip-packet interface-name
 			 (bit-string->bytes source-ip)
 			 (bit-string->bytes destination-ip)
