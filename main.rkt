@@ -63,7 +63,7 @@
 				(pub (tcp-channel us them ?) #:meta-level 1)))))
 
   (spawn-world
-   (spawn-demand-matcher (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 5999)) ?)
+   (spawn-demand-matcher (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 6667)) ?)
 			 #:meta-level 1
 			 spawn-session))
 
