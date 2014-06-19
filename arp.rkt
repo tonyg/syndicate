@@ -4,6 +4,7 @@
 
 (provide (struct-out arp-query)
 	 (struct-out arp-assertion)
+	 (struct-out arp-interface)
 	 spawn-arp-driver)
 
 (require racket/set)
@@ -14,10 +15,12 @@
 (require bitsyntax)
 
 (require "dump-bytes.rkt")
+(require "configuration.rkt")
 (require "ethernet.rkt")
 
-(struct arp-query (protocol protocol-address hardware-address) #:prefab)
-(struct arp-assertion (protocol protocol-address) #:prefab)
+(struct arp-query (protocol protocol-address interface link-address) #:prefab)
+(struct arp-assertion (protocol protocol-address interface-name) #:prefab)
+(struct arp-interface (interface-name) #:prefab)
 
 (define ARP-ethertype #x0806)
 (define cache-entry-lifetime-msec (* 14400 1000))
@@ -25,12 +28,31 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define (spawn-arp-driver)
+  (spawn-demand-matcher (arp-interface (?!))
+			#:supply-level 1
+			spawn-arp-interface))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (struct cache-key (protocol address) #:transparent)
-(struct cache-value (expiry address) #:transparent)
+(struct cache-value (expiry interface address) #:transparent)
 
-(struct state (hwaddr cache queries assertions) #:transparent)
+(struct state (cache queries assertions) #:transparent)
 
-(define (spawn-arp-driver interface-name)
+(define (spawn-arp-interface interface-name)
+  (log-info "spawn-arp-interface ~v" interface-name)
+  (lookup-ethernet-hwaddr (gestalt-for-supply interface-name)
+			  interface-name
+			  (lambda (hwaddr) (spawn-arp-interface* interface-name hwaddr))))
+
+(define (gestalt-for-supply interface-name)
+  (sub (arp-interface interface-name) #:level 1))
+
+(define (spawn-arp-interface* interface-name hwaddr)
+  (log-info "spawn-arp-interface* ~v ~v" interface-name hwaddr)
+  (define interface (ethernet-interface interface-name hwaddr))
+
   (define (expire-cache cache)
     (define now (current-inexact-milliseconds))
     (define (not-expired? v) (< now (cache-value-expiry v)))
@@ -47,11 +69,13 @@
 		   (sub (ethernet-packet-pattern interface-name #t ARP-ethertype))
 		   (sub (ethernet-packet-pattern interface-name #t ARP-ethertype) #:level 1)
 		   (pub (ethernet-packet-pattern interface-name #f ARP-ethertype))
-		   (sub (arp-assertion ? ?) #:level 1)
-		   (pub (arp-query ? ? ?) #:level 2)
+		   (gestalt-for-supply interface-name)
+		   (sub (arp-assertion ? ? interface-name) #:level 1)
+		   (pub (arp-query ? ? interface ?) #:level 2)
 		   (for/fold [(g (gestalt-empty))] [((k v) (in-hash cache))]
 		     (gestalt-union g (pub (arp-query (cache-key-protocol k)
 						      (cache-key-address k)
+						      (cache-value-interface v)
 						      (cache-value-address v)))))))
 
   (define (build-packet s dest-mac ptype oper sender-ha sender-pa target-ha target-pa)
@@ -67,9 +91,9 @@
 				(sender-pa :: binary bytes plen)
 				(target-ha :: binary bytes hlen)
 				(target-pa :: binary bytes plen))))
-    (ethernet-packet (ethernet-interface interface-name (state-hwaddr s))
+    (ethernet-packet interface
 		     #f
-		     (state-hwaddr s)
+		     hwaddr
 		     dest-mac
 		     ARP-ethertype
 		     packet))
@@ -84,15 +108,24 @@
 	 (sender-hardware-address0 :: binary bytes hlen)
 	 (sender-protocol-address0 :: binary bytes plen)
 	 (target-hardware-address0 :: binary bytes hlen)
-	 (target-protocol-address0 :: binary bytes plen) ]
+	 (target-protocol-address0 :: binary bytes plen)
+	 (:: binary) ;; TODO: are the extra zeros coming from the
+		     ;; router real, or an artifact of my
+		     ;; packet-capture implementation?
+	 ]
        (let ()
 	 (define sender-protocol-address (bit-string->bytes sender-protocol-address0))
 	 (define sender-hardware-address (bit-string->bytes sender-hardware-address0))
 	 (define target-protocol-address (bit-string->bytes target-protocol-address0))
+	 ;; (log-info "~a ARP Adding ~a = ~a to cache"
+	 ;; 	   interface-name
+	 ;; 	   (pretty-bytes sender-protocol-address)
+	 ;; 	   (pretty-bytes sender-hardware-address))
 	 (define cache (hash-set (expire-cache (state-cache s))
 				 (cache-key ptype sender-protocol-address)
 				 (cache-value (+ (current-inexact-milliseconds)
 						 cache-entry-lifetime-msec)
+					      interface
 					      sender-hardware-address)))
 	 (transition (struct-copy state s
 		       [cache cache])
@@ -105,7 +138,7 @@
 						 sender-hardware-address
 						 ptype
 						 2 ;; reply
-						 (state-hwaddr s)
+						 hwaddr
 						 target-protocol-address
 						 sender-hardware-address
 						 sender-protocol-address))
@@ -115,29 +148,25 @@
 		      (routing-update (compute-gestalt cache))))))
       (else #f)))
 
-  (define queries-projection (compile-gestalt-projection (arp-query (?!) (?!) ?)))
+  (define queries-projection (project-subs #:level 1 (arp-query (?!) (?!) ? ?)))
   (define (gestalt->queries g)
-    (for/set [(e (in-set (matcher-key-set (gestalt-project g 0 1 #f queries-projection))))]
+    (for/set [(e (in-set (gestalt-project/keys g queries-projection)))]
       (match-define (list ptype pa) e)
       (cache-key ptype pa)))
 
-  (define assertions-projection (compile-gestalt-projection (arp-assertion (?!) (?!))))
+  (define assertions-projection (project-pubs (arp-assertion (?!) (?!) ?)))
   (define (gestalt->assertions g)
-    (for/set [(e (matcher-key-set (gestalt-project g 0 0 #t assertions-projection)))]
+    (for/set [(e (in-set (gestalt-project/keys g assertions-projection)))]
       (match-define (list ptype pa) e)
       (cache-key ptype pa)))
 
   (define (analyze-gestalt g s)
-    (define hwaddr (gestalt->hwaddr g interface-name))
     (define new-queries (gestalt->queries g))
     (define new-assertions (gestalt->assertions g))
     (define added-queries (set-subtract new-queries (state-queries s)))
     (define added-assertions (set-subtract new-assertions (state-assertions s)))
     (define unanswered-queries (set-subtract added-queries (list->set (hash-keys (state-cache s)))))
-    (define new-s (struct-copy state s
-		    [hwaddr hwaddr]
-		    [queries new-queries]
-		    [assertions (if hwaddr new-assertions (state-assertions s))]))
+    (define new-s (struct-copy state s [queries new-queries] [assertions new-assertions]))
     (define (some-asserted-pa ptype)
       (match (filter (lambda (k) (equal? (cache-key-protocol k) ptype))
 		     (set->list new-assertions))
@@ -152,9 +181,12 @@
     ;; (log-info "analyze-gestalt: new-s ~v" new-s)
     (transition new-s
 		(list
+		 (when (gestalt-empty? (gestalt-filter g (gestalt-for-supply interface-name)))
+		   (quit))
 		 (for/list [(q (in-set unanswered-queries))]
 		   (define pa (some-asserted-pa (cache-key-protocol q)))
-		   (log-info "Asking for ~a from ~a"
+		   (log-info "~a ARP Asking for ~a from ~a"
+			     interface-name
 			     (pretty-bytes (cache-key-address q))
 			     (and pa (pretty-bytes pa)))
 		   (if pa
@@ -167,23 +199,23 @@
 					   zero-ethernet-address
 					   (cache-key-address q)))
 		       '()))
-		 (when hwaddr ;; don't announce until we know our own hwaddr
-		   (for/list [(a (in-set added-assertions))]
-		     (log-info "Announcing ~a as ~a"
-			       (pretty-bytes (cache-key-address a))
-			       (pretty-bytes hwaddr))
-		     (send (build-packet new-s
-					 broadcast-ethernet-address
-					 (cache-key-protocol a)
-					 2 ;; reply -- gratuitous announcement
-					 hwaddr
-					 (cache-key-address a)
-					 hwaddr
-					 (cache-key-address a))))))))
+		 (for/list [(a (in-set added-assertions))]
+		   (log-info "~a ARP Announcing ~a as ~a"
+			     interface-name
+			     (pretty-bytes (cache-key-address a))
+			     (pretty-bytes hwaddr))
+		   (send (build-packet new-s
+				       broadcast-ethernet-address
+				       (cache-key-protocol a)
+				       2 ;; reply -- gratuitous announcement
+				       hwaddr
+				       (cache-key-address a)
+				       hwaddr
+				       (cache-key-address a)))))))
 
   (list (set-wakeup-alarm)
 	(spawn (lambda (e s)
-		 ;; (log-info "ARP: ~v // ~v" e s)
+		 ;; (log-info "ARP ~a ~a: ~v // ~v" interface-name (pretty-bytes hwaddr) e s)
 		 (match e
 		   [(routing-update g)
 		    (analyze-gestalt g s)]
@@ -196,5 +228,5 @@
 				(list (set-wakeup-alarm)
 				      (routing-update (compute-gestalt (state-cache new-s)))))]
 		   [_ #f]))
-	       (state #f (hash) (set) (set))
+	       (state (hash) (set) (set))
 	       (compute-gestalt (hash)))))

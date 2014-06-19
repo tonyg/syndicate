@@ -2,28 +2,35 @@
 
 (require minimart/demand-matcher)
 (require minimart/drivers/timer)
+(require "configuration.rkt")
 (require "ethernet.rkt")
 (require "arp.rkt")
 (require "ip.rkt")
 (require "tcp.rkt")
 
-(define interface "vboxnet0")
-
 ;;(log-events-and-actions? #t)
 
 (spawn-timer-driver)
 (spawn-ethernet-driver)
-(spawn-arp-driver interface)
-(spawn-ip-driver interface (bytes 192 168 56 222))
+(spawn-arp-driver)
+(spawn-ip-driver)
 (spawn-tcp-driver)
+
+(spawn (lambda (e s) #f)
+       (void)
+       (gestalt-union (pub (host-route (bytes 129 10 115 94) 24 "eth0"))
+		      (pub (host-route (bytes 192 168 56 222) 24 "vboxnet0"))
+		      (pub (net-route (bytes 0 0 0 0) 0 (bytes 129 10 115 1)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (let ()
   (local-require racket/set racket/string)
 
   (define (spawn-session them us)
     (define user (gensym 'user))
-    (define remote-detector (compile-gestalt-projection (?!)))
-    (define peer-detector (compile-gestalt-projection `(,(?!) says ,?)))
+    (define remote-detector (project-pubs #:meta-level 1 (?!)))
+    (define peer-detector (project-pubs `(,(?!) says ,?)))
     (define (send-to-remote fmt . vs)
       (send #:meta-level 1 (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs)))))
     (define (say who fmt . vs)
@@ -38,12 +45,10 @@
 		     [(message `(,who says ,what) 0 #f)
 		      (transition old-peers (say who "says: ~a" what))]
 		     [(routing-update g)
-		      (define new-peers
-			(matcher-key-set/single (gestalt-project g 0 0 #t peer-detector)))
+		      (define new-peers (gestalt-project/single g peer-detector))
 		      (transition
 		       new-peers
-		       (list (when (matcher-empty? (gestalt-project g 1 0 #t remote-detector))
-			       (quit))
+		       (list (when (matcher-empty? (gestalt-project g remote-detector)) (quit))
 			     (for/list [(who (set-subtract new-peers old-peers))]
 			       (say who "arrived."))
 			     (for/list [(who (set-subtract old-peers new-peers))]
@@ -68,15 +73,18 @@
 	 (local-require racket/pretty)
 	 (match e
 	   [(message m _ _)
-	    (pretty-write `(MAIN ,m))]
+	    ;; (pretty-write `(MAIN ,m))
+	    (void)]
 	   [(routing-update g)
-	    (printf "MAIN gestalt:\n")
-	    (pretty-print-gestalt g)]
+	    ;; (printf "MAIN gestalt:\n")
+	    ;; (pretty-print-gestalt g)
+	    (void)]
 	   [_ (void)])
 	 (flush-output)
 	 #f)
        (void)
        (gestalt-union
-	;;(sub ? #:level 5)
-	(sub (tcp-channel ? ? ?) #:level 5)
+	(sub ? #:level 5)
+	(pub ? #:level 5)
+	;;(sub (tcp-channel ? ? ?) #:level 5)
 	))

@@ -1,14 +1,15 @@
 #lang racket/base
 ;; Ethernet driver
 
-(provide (struct-out ethernet-interface)
-	 (struct-out ethernet-packet)
+(provide (struct-out ethernet-packet)
 	 zero-ethernet-address
 	 broadcast-ethernet-address
 	 interface-names
 	 spawn-ethernet-driver
+	 ethernet-hwaddr-projection
 	 gestalt->hwaddr
-	 ethernet-packet-pattern)
+	 ethernet-packet-pattern
+	 lookup-ethernet-hwaddr)
 
 (require racket/set)
 (require racket/match)
@@ -20,9 +21,9 @@
 (require packet-socket)
 (require bitsyntax)
 
+(require "configuration.rkt")
 (require "dump-bytes.rkt")
 
-(struct ethernet-interface (name hwaddr) #:prefab)
 (struct ethernet-packet (interface from-wire? source destination ethertype body) #:prefab)
 
 (define zero-ethernet-address (bytes 0 0 0 0 0 0))
@@ -50,6 +51,7 @@
     (spawn (lambda (e h)
 	     (match e
 	       [(routing-update g)
+
 		(if (gestalt-empty? g)
 		    (begin (async-channel-put control-ch 'quit)
 			   (transition #f (quit)))
@@ -118,12 +120,11 @@
 	       (ethertype :: integer bytes 2)
 	       (body :: binary))))
 
-(define (hwaddr-projection interface-name)
-  (compile-gestalt-projection (ethernet-packet (ethernet-interface interface-name (?!)) ? ? ? ? ?)))
+(define (ethernet-hwaddr-projection interface-name)
+  (project-pubs (ethernet-packet (ethernet-interface interface-name (?!)) #t ? ? ? ?)))
 
 (define (gestalt->hwaddr g interface-name)
-  (define hwaddrs
-    (matcher-key-set/single (gestalt-project g 0 0 #t (hwaddr-projection interface-name))))
+  (define hwaddrs (gestalt-project/single g (ethernet-hwaddr-projection interface-name)))
   (case (set-count hwaddrs)
     [(0) #f]
     [(1) (set-first hwaddrs)]
@@ -133,3 +134,15 @@
 
 (define (ethernet-packet-pattern interface-name from-wire? ethertype)
   (ethernet-packet (ethernet-interface interface-name ?) from-wire? ? ? ethertype ?))
+
+(define (lookup-ethernet-hwaddr base-gestalt interface-name k)
+  (on-gestalt #:timeout-msec 5000
+	      #:on-timeout (lambda ()
+			     (log-info "Lookup of ethernet interface ~v failed" interface-name)
+			     '())
+	      (lambda (_g hwaddrss)
+		(and (not (set-empty? hwaddrss))
+		     (let ((hwaddr (car (set-first hwaddrss))))
+		       (k hwaddr))))
+	      base-gestalt
+	      (ethernet-hwaddr-projection interface-name)))

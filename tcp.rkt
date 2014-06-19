@@ -70,10 +70,8 @@
 (struct port-allocator-state (used-ports local-ips) #:transparent)
 
 (define (spawn-port-allocator)
-  (define port-projection (tcp-channel (tcp-address (?!) (?!)) (tcp-address (?!) (?!)) ?))
-  (define port-compproj (compile-gestalt-projection port-projection))
-  (define ip-projection (ip-interface (?!) ?))
-  (define ip-compproj (compile-gestalt-projection ip-projection))
+  (define port-projection
+    (project-subs (tcp-channel (tcp-address (?!) (?!)) (tcp-address (?!) (?!)) ?)))
 
   ;; TODO: Choose a sensible IP address for the outbound connection.
   ;; We don't have enough information to do this well at the moment,
@@ -90,18 +88,17 @@
   (spawn (lambda (e s)
 	   (match e
 	     [(routing-update g)
-	      (define extracted-ips (matcher-key-set (gestalt-project g 0 0 #t ip-compproj)))
-	      (define extracted-ports (matcher-key-set (gestalt-project g 0 0 #f port-compproj)))
-	      (if (or (not extracted-ports) (not extracted-ips))
+	      (define local-ips (gestalt->local-ip-addresses g))
+	      (define extracted-ports (gestalt-project/keys g port-projection))
+	      (if (or (not extracted-ports) (not local-ips))
 		  (error 'tcp "Someone has published a wildcard TCP address or IP interface")
-		  (transition (let ((local-ips (for/set [(e (in-set extracted-ips))] (car e))))
-				(port-allocator-state
-				 (for/fold [(s (set))] [(e (in-set extracted-ports))]
-				   (match-define (list si sp di dp) e)
-				   (let* ((s (if (set-member? local-ips si) (set-add s sp) s))
-					  (s (if (set-member? local-ips di) (set-add s dp) s)))
-				     s))
-				 local-ips))
+		  (transition (port-allocator-state
+			       (for/fold [(s (set))] [(e (in-set extracted-ports))]
+				 (match-define (list si sp di dp) e)
+				 (let* ((s (if (set-member? local-ips si) (set-add s sp) s))
+					(s (if (set-member? local-ips di) (set-add s dp) s)))
+				   s))
+			       local-ips)
 			      '()))]
 	     [(message (tcp-port-allocation-request local-addr remote-addr) _ _)
 	      (define currently-used-ports (port-allocator-state-used-ports s))
@@ -117,8 +114,8 @@
 	     [_ #f]))
 	 (port-allocator-state (set) (set))
 	 (gestalt-union (sub (tcp-port-allocation-request ? ?))
-			(sub (projection->pattern ip-projection) #:level 1)
-			(pub (projection->pattern port-projection) #:level 1))))
+			observe-local-ip-addresses-gestalt
+			(pub (tcp-channel (tcp-address ? ?) (tcp-address ? ?) ?) #:level 1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Relay between kernel-level and user-level
@@ -159,17 +156,12 @@
 
 (define PROTOCOL-TCP 6)
 
-(struct codec-state (active-state-vectors) #:transparent)
+(struct codec-state (local-ips active-state-vectors) #:transparent)
 
 (define (spawn-kernel-tcp-driver)
 
-  (define (flip-statevec statevec)
-    (match-define (list si sp di dp) statevec)
-    (list di dp si sp))
-
   (define (state-vector-active? statevec s)
-    (or (set-member? (codec-state-active-state-vectors s) statevec)
-	(set-member? (codec-state-active-state-vectors s) (flip-statevec statevec))))
+    (set-member? (codec-state-active-state-vectors s) statevec))
 
   (define (analyze-incoming-packet src-ip dst-ip body s)
     (bit-string-case body
@@ -237,14 +229,15 @@
 	   (else #f))))
       (else #f)))
 
-  (define statevec-projection
-    (compile-gestalt-projection
-     (tcp-packet ? (?!) (?!) (?!) (?!) ? ? ? ? ? ?)))
+  (define statevec-projection (project-subs (tcp-packet ? (?!) (?!) (?!) (?!) ? ? ? ? ? ?)))
 
   (define (analyze-gestalt g s)
-    (define statevecs (matcher-key-set (gestalt-project g 0 0 #f statevec-projection)))
-    (log-info "gestalt yielded statevecs ~v" statevecs)
-    (transition (struct-copy codec-state s [active-state-vectors statevecs]) '()))
+    (define local-ips (gestalt->local-ip-addresses g))
+    (define statevecs (gestalt-project/keys g statevec-projection))
+    (log-info "gestalt yielded statevecs ~v and local-ips ~v" statevecs local-ips)
+    (transition (struct-copy codec-state s
+		  [local-ips local-ips]
+		  [active-state-vectors statevecs]) '()))
 
   (define (deliver-outbound-packet p s)
     (match-define (tcp-packet #f
@@ -294,26 +287,29 @@
 				      0
 				      PROTOCOL-TCP
 				      ((bit-string-byte-count payload) :: integer bytes 2)))
-    (transition s (send (ip-packet src-ip dst-ip PROTOCOL-TCP #""
+    (transition s (send (ip-packet #f src-ip dst-ip PROTOCOL-TCP #""
 				   (ip-checksum 16 payload #:pseudo-header pseudo-header)))))
 
   (spawn (lambda (e s)
+	   (log-info "xxxxx TCP ~v" e)
 	   (match e
 	     [(routing-update g)
 	      (analyze-gestalt g s)]
-	     [(message (ip-packet src dst _ _ body) _ _)
+	     [(message (ip-packet source-if src dst _ _ body) _ _)
+	      #:when (and source-if ;; source-if == #f iff packet originates locally
+			  (set-member? (codec-state-local-ips s) dst))
 	      (analyze-incoming-packet src dst body s)]
 	     [(message (? tcp-packet? p) _ _)
 	      #:when (not (tcp-packet-from-wire? p))
 	      (deliver-outbound-packet p s)]
 	     [_ #f]))
-	 (codec-state (set))
-	 (gestalt-union (pub (ip-packet ? ? PROTOCOL-TCP ? ?))
-			(sub (ip-packet ? ? PROTOCOL-TCP ? ?))
+	 (codec-state (set) (set))
+	 (gestalt-union (pub (ip-packet #f ? ? PROTOCOL-TCP ? ?))
+			(sub (ip-packet ? ? ? PROTOCOL-TCP ? ?))
 			(sub (tcp-packet #f ? ? ? ? ? ? ? ? ? ?))
 			(pub (tcp-packet #t ? ? ? ? ? ? ? ? ? ?))
-			(pub (tcp-packet #t ? ? ? ? ? ? ? ? ? ?)
-			     #:level 1))))
+			(pub (tcp-packet #t ? ? ? ? ? ? ? ? ? ?) #:level 1)
+			observe-local-ip-addresses-gestalt)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Per-connection state vector process
