@@ -490,8 +490,8 @@
 		     transmit-check-interval-msec
 		     'relative)))
 
-  ;; ConnState -> Transition
-  (define (reset seqn ackn is-fin? s)
+  ;; SeqNum SeqNum ConnState -> Transition
+  (define (reset seqn ackn s)
     (log-warning "Sending RST from ~a:~a to ~a:~a"
 		 (ip-address->hostname dst-ip)
 		 dst-port
@@ -501,7 +501,7 @@
 		(list
 		 (send (tcp-packet #f dst-ip dst-port src-ip src-port
 				   seqn
-				   (seq+ ackn (if is-fin? 1 0))
+				   ackn
 				   (set 'ack 'rst)
 				   0
 				   #""
@@ -536,12 +536,14 @@
 	[else (transition new-s '())])]
       [(message (tcp-packet #t _ _ _ _ seqn ackn flags window options data) _ _)
        (define expected (next-expected-seqn s))
+       (define is-syn? (set-member? flags 'syn))
+       (define is-fin? (set-member? flags 'fin))
        (if (and (not expected) ;; no syn yet
-		(or (not (set-member? flags 'syn)) ;; and this isn't it
+		(or (not is-syn?) ;; and this isn't it
 		    (not (conn-state-listener-listening? s)))) ;; or it is, but no-one local cares
 	   (reset ackn ;; this is *our* seqn
-		  seqn ;; this is what we should acknowledge...
-		  (set-member? flags 'fin) ;; ... +1, if fin is set
+		  (seq+ seqn (+ (if is-syn? 1 0) (if is-fin? 1 0)))
+		  ;; ^^ this is what we should acknowledge...
 		  s)
 	   (sequence-transitions (cond
 				  [(not expected) ;; haven't seen syn yet, but we know this is it
