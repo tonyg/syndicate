@@ -103,13 +103,6 @@
   (define local-peer-traffic (pub (tcp-channel remote-addr local-user-addr ?) #:level 1))
   (define remote-peer-traffic (sub (tcp-channel remote-addr local-tcp-addr ?) #:level 1))
   (spawn (lambda (e seen-local-peer?)
-	   (local-require racket/pretty)
-	   (pretty-write `(RELAY (local-user-addr ,local-user-addr)
-				 (remote-addr ,remote-addr)
-				 (local-tcp-addr ,local-tcp-addr)
-				 (seen-local-peer? ,seen-local-peer?)
-				 (e ,e)))
-	   (flush-output)
 	   (match e
 	     [(routing-update g)
 	      (define local-peer-absent? (gestalt-empty? (gestalt-filter g local-peer-traffic)))
