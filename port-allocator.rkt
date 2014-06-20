@@ -13,20 +13,12 @@
 
 (struct port-allocator-state (used-ports local-ips) #:transparent)
 
-(define (spawn-port-allocator allocator-type port-projections)
+(define (spawn-port-allocator allocator-type projections compute-used-ports)
   (spawn (lambda (e s)
 	   (match e
 	     [(routing-update g)
 	      (define local-ips (or (gestalt->local-ip-addresses g) (set)))
-	      (define extracted-ips+ports
-		(apply set-union
-		       (set)
-		       (map (lambda (p) (or (gestalt-project/keys g p) (set))) port-projections)))
-	      (define new-used-ports (for/fold [(s (set))] [(e (in-set extracted-ips+ports))]
-				       (match-define (list hostname port) e)
-				       (if (set-member? local-ips (ip-string->ip-address hostname))
-					   (set-add s port)
-					   s)))
+	      (define new-used-ports (compute-used-ports g local-ips))
 	      (log-info "port-allocator ~v used ports: ~v" allocator-type new-used-ports)
 	      (transition (port-allocator-state new-used-ports local-ips) '())]
 	     [(message (port-allocation-request _ k) _ _)
@@ -43,4 +35,4 @@
 	 (apply gestalt-union
 		(sub (port-allocation-request allocator-type ?))
 		observe-local-ip-addresses-gestalt
-		(map projection->gestalt port-projections))))
+		(map projection->gestalt projections))))

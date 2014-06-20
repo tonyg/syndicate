@@ -54,18 +54,30 @@
 			      #:supply-level 2
 			      (lambda (server-addr)
 				(match-define (tcp-listener port) server-addr)
+				;; TODO: have listener shut down once user-level listener does
 				(spawn-demand-matcher
 				 (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-address ? port)) ?)
 				 (spawn-relay server-addr))))
 	(spawn-demand-matcher (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?)
 			      allocate-port-and-spawn-socket)
-	(spawn-port-allocator 'tcp
-			      (list (project-subs (tcp-channel (tcp-address (?!) (?!)) ? ?))
-				    (project-subs (tcp-channel ? (tcp-address (?!) (?!)) ?))))
+	(spawn-tcp-port-allocator)
 	(spawn-kernel-tcp-driver)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Port allocation
+
+(define (spawn-tcp-port-allocator)
+  (define project-active-connections (project-pubs (tcp-packet #f (?!) (?!) ? ? ? ? ? ? ? ?)))
+  (define project-listeners (project-subs #:level 1 (tcp-channel ? (tcp-listener (?!)) ?)))
+  (spawn-port-allocator 'tcp
+			(list project-active-connections project-listeners)
+			(lambda (g local-ips)
+			  (define listener-ports (gestalt-project/single g project-listeners))
+			  (define active-connection-ports
+			    (for/set [(e (gestalt-project/keys g project-active-connections))
+				      #:when (set-member? local-ips (car e))]
+			      (cadr e)))
+			  (set-union listener-ports active-connection-ports))))
 
 (define (allocate-port-and-spawn-socket local-addr remote-addr)
   (send (port-allocation-request
@@ -273,7 +285,6 @@
 	 (gestalt-union (pub (ip-packet #f ? ? PROTOCOL-TCP ? ?))
 			(sub (ip-packet ? ? ? PROTOCOL-TCP ? ?))
 			(sub (tcp-packet #f ? ? ? ? ? ? ? ? ? ?))
-			(pub (tcp-packet #t ? ? ? ? ? ? ? ? ? ?))
 			(pub (tcp-packet #t ? ? ? ? ? ? ? ? ? ?) #:level 1)
 			observe-local-ip-addresses-gestalt)))
 
