@@ -142,13 +142,18 @@
 			[(1) ;; request
 			 (if (set-member? (state-assertions s)
 					  (cache-key ptype target-protocol-address))
-			     (send (build-packet sender-hardware-address
-						 ptype
-						 2 ;; reply
-						 hwaddr
-						 target-protocol-address
-						 sender-hardware-address
-						 sender-protocol-address))
+			     (begin
+			       (log-info "~a ARP answering request for ~a/~a"
+					 interface-name
+					 ptype
+					 (pretty-bytes target-protocol-address))
+			       (send (build-packet sender-hardware-address
+						   ptype
+						   2 ;; reply
+						   hwaddr
+						   target-protocol-address
+						   sender-hardware-address
+						   sender-protocol-address)))
 			     '())]
 			[(2) '()] ;; reply
 			[else '()])

@@ -174,9 +174,8 @@
 	     [(message (? ip-packet? p) _ _)
 	      (define gw-if (gateway-route-state-gateway-interface s))
 	      (when (not gw-if)
-		(log-warning "Gateway hwaddr for ~a not known, packet dropped: ~v"
-			     (ip-address->hostname gateway-addr)
-			     p))
+		(log-warning "Gateway hwaddr for ~a not known, packet dropped."
+			     (ip-address->hostname gateway-addr)))
 	      (and gw-if
 		   (not (equal? (ip-packet-source-interface p) (ethernet-interface-name gw-if)))
 		   (not (covered-by-some-other-route? (ip-packet-destination p)
