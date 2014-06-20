@@ -13,7 +13,7 @@
 
 (struct port-allocator-state (used-ports local-ips) #:transparent)
 
-(define (spawn-port-allocator allocator-type projections compute-used-ports)
+(define (spawn-port-allocator allocator-type observer-gestalt compute-used-ports)
   (spawn (lambda (e s)
 	   (match e
 	     [(routing-update g)
@@ -35,4 +35,4 @@
 	 (apply gestalt-union
 		(sub (port-allocation-request allocator-type ?))
 		observe-local-ip-addresses-gestalt
-		(map projection->gestalt projections))))
+		observer-gestalt)))

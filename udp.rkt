@@ -66,7 +66,7 @@
 (define (spawn-udp-port-allocator)
   (define udp-projector (project-pubs (udp-datagram (?!) (?!) ? ? ?)))
   (spawn-port-allocator 'udp
-			(list udp-projector)
+			(list (projection->gestalt udp-projector))
 			(lambda (g local-ips)
 			  (for/set [(e (gestalt-project/keys g udp-projector))
 				    #:when (set-member? local-ips (car e))]

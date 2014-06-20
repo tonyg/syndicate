@@ -68,11 +68,16 @@
 
 (define (spawn-tcp-port-allocator)
   (define project-active-connections (project-pubs (tcp-packet #f (?!) (?!) ? ? ? ? ? ? ? ?)))
-  (define project-listeners (project-subs #:level 1 (tcp-channel ? (tcp-listener (?!)) ?)))
+  ;; We have to have gestalt observing listeners at level 3 so that
+  ;; we're not mistaken for listener supply! We still project out at
+  ;; level 1 (instead of level 2, as would be natural for a level 3
+  ;; observer gestalt) though.
+  (define listeners-p (project-subs #:level 1 (tcp-channel ? (tcp-listener (?!)) ?)))
+  (define listeners-g (pub #:level 3 (tcp-channel ? (tcp-listener ?) ?)))
   (spawn-port-allocator 'tcp
-			(list project-active-connections project-listeners)
+			(list (projection->gestalt project-active-connections) listeners-g)
 			(lambda (g local-ips)
-			  (define listener-ports (gestalt-project/single g project-listeners))
+			  (define listener-ports (gestalt-project/single g listeners-p))
 			  (define active-connection-ports
 			    (for/set [(e (gestalt-project/keys g project-active-connections))
 				      #:when (set-member? local-ips (car e))]
