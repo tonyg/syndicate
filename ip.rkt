@@ -64,12 +64,18 @@
    (spawn-demand-matcher (host-route (?!) (?!) (?!))
 			 #:supply-level 1
 			 spawn-host-route)
+   (spawn-demand-matcher (gateway-route (?!) (?!) (?!) (?!))
+			 #:supply-level 1
+			 spawn-gateway-route)
    (spawn-demand-matcher (net-route (?!) (?!) (?!))
 			 #:supply-level 1
 			 spawn-net-route)))
 
 (define (host-route-supply ip-addr netmask interface-name)
   (sub (host-route ip-addr netmask interface-name) #:level 1))
+
+(define (gateway-route-supply network-addr netmask gateway-addr interface-name)
+  (sub (gateway-route network-addr netmask gateway-addr interface-name) #:level 1))
 
 (define (net-route-supply network-addr netmask link)
   (sub (net-route network-addr netmask link) #:level 1))
@@ -124,26 +130,20 @@
 			 (host-route-supply my-address netmask interface-name)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; General net route
-
-(define (spawn-net-route network-addr netmask link)
-  (cond
-   [(bytes? link) (spawn-gateway-ip-route network-addr netmask link)]
-   [(string? link) (spawn-normal-ip-route (net-route-supply network-addr netmask link)
-					  network-addr
-					  netmask
-					  link)]
-   [else (error 'ip "Invalid net-route: ~v ~v ~v" network-addr netmask link)]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Gateway IP route
 
 (struct gateway-route-state (routes gateway-interface gateway-hwaddr) #:transparent)
 
-(define (spawn-gateway-ip-route network netmask gateway-addr)
+(define (spawn-gateway-route network netmask gateway-addr interface-name)
+  (define gestalt-for-supply (gateway-route-supply network netmask gateway-addr interface-name))
+
   (define host-route-projector (project-subs (host-route (?!) ? ?)))
+  (define gateway-route-projector (project-subs (gateway-route (?!) (?!) ? ?)))
   (define net-route-projector (project-subs (net-route (?!) (?!) ?)))
-  (define gateway-arp-projector (project-pubs (arp-query IPv4-ethertype gateway-addr (?!) (?!))))
+  (define gateway-arp-projector (project-pubs (arp-query IPv4-ethertype
+							 gateway-addr
+							 (?! (ethernet-interface interface-name ?))
+							 (?!))))
 
   (define (covered-by-some-other-route? addr routes)
     (for/or ([r (in-set routes)])
@@ -155,22 +155,28 @@
 	   (match e
 	     [(routing-update g)
 	      (define host-ips (gestalt-project/single g host-route-projector))
-	      (define net-ips+netmasks (gestalt-project/keys g net-route-projector))
+	      (define gw-nets+netmasks (gestalt-project/keys g gateway-route-projector))
+	      (define net-nets+netmasks (gestalt-project/keys g net-route-projector))
 	      (define gw-ip+hwaddr (let ((vs (gestalt-project/keys g gateway-arp-projector)))
 				     (and vs (not (set-empty? vs)) (set-first vs))))
+	      (when (and gw-ip+hwaddr (not (gateway-route-state-gateway-hwaddr s)))
+		(log-info "Discovered gateway ~a at ~a on interface ~a."
+			  (ip-address->hostname gateway-addr)
+			  (ethernet-interface-name (car gw-ip+hwaddr))
+			  (pretty-bytes (cadr gw-ip+hwaddr))))
 	      (transition (gateway-route-state
-			   (set-union (for/set ([ip host-ips]) (list ip 32)) net-ips+netmasks)
+			   (set-union (for/set ([ip host-ips]) (list ip 32))
+				      gw-nets+netmasks
+				      net-nets+netmasks)
 			   (and gw-ip+hwaddr (car gw-ip+hwaddr))
 			   (and gw-ip+hwaddr (cadr gw-ip+hwaddr)))
-			  (when (gestalt-empty? (gestalt-filter g (net-route-supply network
-										    netmask
-										    gateway-addr)))
-			    (quit)))]
+			  (when (gestalt-empty? (gestalt-filter g gestalt-for-supply)) (quit)))]
 	     [(message (? ip-packet? p) _ _)
 	      (define gw-if (gateway-route-state-gateway-interface s))
 	      (when (not gw-if)
-		(log-warning "Gateway hwaddr for ~a not known, packet dropped"
-			     (ip-address->hostname gateway-addr)))
+		(log-warning "Gateway hwaddr for ~a not known, packet dropped: ~v"
+			     (ip-address->hostname gateway-addr)
+			     p))
 	      (and gw-if
 		   (not (equal? (ip-packet-source-interface p) (ethernet-interface-name gw-if)))
 		   (not (covered-by-some-other-route? (ip-packet-destination p)
@@ -184,16 +190,21 @@
 						      (format-ip-packet p)))))]
 	     [_ #f]))
 	 (gateway-route-state (set) #f #f)
-	 (gestalt-union (if (zero? netmask)
-			    (net-route-supply network netmask gateway-addr)
-			    (gestalt-empty))
+	 (gestalt-union gestalt-for-supply
 
 			(sub (ip-packet ? ? ? ? ? ?))
 			(pub (ip-packet ? ? ? ? ? ?))
 
 			observe-local-ip-addresses-gestalt
 			(sub (net-route ? ? ?) #:level 2)
+			(sub (gateway-route ? ? ? ?) #:level 2)
 			(projection->gestalt gateway-arp-projector))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; General net route
+
+(define (spawn-net-route network-addr netmask link)
+  (spawn-normal-ip-route (net-route-supply network-addr netmask link) network-addr netmask link))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Normal IP route
