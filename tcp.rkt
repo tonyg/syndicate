@@ -299,7 +299,8 @@
 		    inbound ;; buffer
 		    syn-acked? ;; boolean
 		    latest-activity-time ;; from current-inexact-milliseconds
-		    local-peer-seen?) ;; boolean
+		    local-peer-seen? ;; boolean
+		    listener-listening?) ;; boolean
 	#:transparent)
 
 (define transmit-check-interval-msec 100)
@@ -344,19 +345,25 @@
   (define (seq> a b)
     (< (seq- a b) #x80000000))
 
+  (define local-peer-detector (pub (tcp-channel src dst ?) #:level 1))
+  (define listener-detector (pub (tcp-channel ? (tcp-listener dst-port) ?) #:level 3))
+  ;; ^ see comment in spawn-tcp-port-allocator for why level 3 instead of level 2
+
   ;; ConnState -> Gestalt
   (define (compute-gestalt s)
     (define worldward-facing-gestalt
       (gestalt-union (sub (tcp-packet #t src-ip src-port dst-ip dst-port ? ? ? ? ? ?))
 		     (pub (tcp-packet #f dst-ip dst-port src-ip src-port ? ? ? ? ? ?))))
     (define appward-facing-gestalt
-      (if (conn-state-syn-acked? s)
-	  (gestalt-union (if (not (buffer-finished? (conn-state-inbound s)))
-			     (pub (tcp-channel src dst ?))
-			     (gestalt-empty))
-			 (sub (tcp-channel dst src ?))
-			 (pub (tcp-channel src dst ?) #:level 1))
-	  (gestalt-empty)))
+      (gestalt-union
+       local-peer-detector
+       listener-detector
+       (if (conn-state-syn-acked? s)
+	   (gestalt-union (sub (tcp-channel dst src ?))
+			  (if (not (buffer-finished? (conn-state-inbound s)))
+			      (pub (tcp-channel src dst ?))
+			      (gestalt-empty)))
+	   (gestalt-empty))))
     (gestalt-union (sub (timer-expired (timer-name ?) ?))
 		   worldward-facing-gestalt
 		   appward-facing-gestalt))
@@ -501,7 +508,7 @@
 				   #""))
 		 (quit))))
 
-  ;; ConnState -> ConnState
+  ;; ConnState -> Transition
   (define (close-outbound-stream s)
     (transition
      (struct-copy conn-state s
@@ -514,21 +521,24 @@
     (match e
       [(routing-update g)
        (log-info "State vector routing-update:\n~a" (gestalt->pretty-string g))
-       (define local-peer-present? (not (gestalt-empty? g)))
+       (define local-peer-present? (not (gestalt-empty? (gestalt-filter g local-peer-detector))))
+       (define listening? (not (gestalt-empty? (gestalt-filter g listener-detector))))
+       (define new-s (struct-copy conn-state s [listener-listening? listening?]))
        (cond
 	[(and local-peer-present? (not (conn-state-local-peer-seen? s)))
-	 (transition (struct-copy conn-state s [local-peer-seen? #t]) '())]
+	 (transition (struct-copy conn-state new-s [local-peer-seen? #t]) '())]
 	[(and (not local-peer-present?) (conn-state-local-peer-seen? s))
 	 (log-info "Closing outbound stream.")
-	 (sequence-transitions (close-outbound-stream s)
+	 (sequence-transitions (close-outbound-stream new-s)
 			       (send-outbound old-ackn)
 			       bump-activity-time
 			       quit-when-done)]
-	[else #f])]
+	[else (transition new-s '())])]
       [(message (tcp-packet #t _ _ _ _ seqn ackn flags window options data) _ _)
        (define expected (next-expected-seqn s))
        (if (and (not expected) ;; no syn yet
-		(not (set-member? flags 'syn))) ;; and this isn't it
+		(or (not (set-member? flags 'syn)) ;; and this isn't it
+		    (not (conn-state-listener-listening? s)))) ;; or it is, but no-one local cares
 	   (reset ackn ;; this is *our* seqn
 		  seqn ;; this is what we should acknowledge...
 		  (set-member? flags 'fin) ;; ... +1, if fin is set
@@ -575,6 +585,7 @@
 			     (buffer #"" #f inbound-buffer-limit #f)
 			     #f
 			     (current-inexact-milliseconds)
+			     #f
 			     #f)))
      (spawn state-vector-behavior
 	    state0
