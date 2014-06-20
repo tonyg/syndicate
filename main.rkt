@@ -2,6 +2,7 @@
 
 (require minimart/demand-matcher)
 (require minimart/drivers/timer)
+(require (only-in mzlib/os gethostname))
 (require "configuration.rkt")
 (require "ethernet.rkt")
 (require "arp.rkt")
@@ -20,9 +21,16 @@
 
 (spawn (lambda (e s) #f)
        (void)
-       (gestalt-union (pub (host-route (bytes 129 10 115 94) 24 "eth0"))
-		      (pub (host-route (bytes 192 168 56 222) 24 "vboxnet0"))
-		      (pub (net-route (bytes 0 0 0 0) 0 (bytes 129 10 115 1)))))
+       (match (gethostname)
+	 ["hop"
+	  (gestalt-union (pub (net-route (bytes 0 0 0 0) 0 (bytes 192 168 1 1)))
+			 (pub (host-route (bytes 192 168 1 222) 24 "wlan0")))]
+	 ["stockholm.ccs.neu.edu"
+	  (gestalt-union (pub (host-route (bytes 129 10 115 94) 24 "eth0"))
+			 (pub (host-route (bytes 192 168 56 222) 24 "vboxnet0"))
+			 (pub (net-route (bytes 0 0 0 0) 0 (bytes 129 10 115 1))))]
+	 [else
+	  (error 'stack-configuration "No setup for hostname ~a" (gethostname))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
