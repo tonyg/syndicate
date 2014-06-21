@@ -118,13 +118,10 @@
 	      (define local-peer-absent? (gestalt-empty? (gestalt-filter g local-peer-traffic)))
 	      (define remote-peer-absent? (gestalt-empty? (gestalt-filter g remote-peer-traffic)))
 	      (define new-state (+ (if local-peer-absent? 0 1) (if remote-peer-absent? 0 1)))
-	      (log-info "RELAY OLD ~v NEW ~v" state new-state)
 	      (transition new-state (when (< new-state state) (quit)))]
 	     [(message (tcp-channel (== local-user-addr) (== remote-addr) bs) _ _)
-	      (log-info "RELAYING ~v" (tcp-channel local-tcp-addr remote-addr bs))
 	      (transition state (send (tcp-channel local-tcp-addr remote-addr bs)))]
 	     [(message (tcp-channel (== remote-addr) (== local-tcp-addr) bs) _ _)
-	      (log-info "BACKRELAYING ~v" (tcp-channel remote-addr local-user-addr bs))
 	      (transition state (send (tcp-channel remote-addr local-user-addr bs)))]
 	     [_ #f]))
 	 0
@@ -335,7 +332,7 @@
 
   ;; Bitstring ConnState -> Transition
   (define (incorporate-segment data s)
-    (log-info "GOT INBOUND STUFF TO DELIVER ~v" data)
+    ;; (log-info "GOT INBOUND STUFF TO DELIVER ~v" data)
     (transition
      (if (buffer-finished? (conn-state-inbound s))
 	 s
@@ -397,6 +394,7 @@
 		       [inbound (struct-copy buffer b
 				  [seqn (seq+ (buffer-seqn b) 1)] ;; reliable: count fin as a byte
 				  [finished? #t])])))
+	  (log-info "Closing inbound stream.")
 	  (transition new-s (routing-update (compute-gestalt new-s))))
 	(transition s '())))
 
@@ -568,7 +566,7 @@
 				 bump-activity-time
 				 quit-when-done))]
       [(message (tcp-channel _ _ bs) _ _)
-       (log-info "GOT MORE STUFF TO DELIVER ~v" bs)
+       ;; (log-info "GOT MORE STUFF TO DELIVER ~v" bs)
        (sequence-transitions (transition (struct-copy conn-state s
 					   [outbound (buffer-push (conn-state-outbound s) bs)])
 					 '())
