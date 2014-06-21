@@ -365,11 +365,10 @@
       (gestalt-union
        local-peer-detector
        listener-detector
-       (if (conn-state-syn-acked? s)
-	   (gestalt-union (sub (tcp-channel dst src ?))
-			  (if (not (buffer-finished? (conn-state-inbound s)))
-			      (pub (tcp-channel src dst ?))
-			      (gestalt-empty)))
+       (sub (tcp-channel dst src ?))
+       (if (and (conn-state-syn-acked? s)
+		(not (buffer-finished? (conn-state-inbound s))))
+	   (pub (tcp-channel src dst ?))
 	   (gestalt-empty))))
     (gestalt-union (sub (timer-expired (timer-name ?) ?))
 		   worldward-facing-gestalt
@@ -547,7 +546,8 @@
        (define is-fin? (set-member? flags 'fin))
        (if (and (not expected) ;; no syn yet
 		(or (not is-syn?) ;; and this isn't it
-		    (not (conn-state-listener-listening? s)))) ;; or it is, but no-one local cares
+		    (and (not (conn-state-listener-listening? s)) ;; or it is, but no listener...
+			 (not (conn-state-local-peer-seen? s))))) ;; ...and no outbound client
 	   (reset ackn ;; this is *our* seqn
 		  (seq+ seqn (+ (if is-syn? 1 0) (if is-fin? 1 0)))
 		  ;; ^^ this is what we should acknowledge...
