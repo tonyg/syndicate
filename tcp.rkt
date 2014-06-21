@@ -335,6 +335,7 @@
 
   ;; Bitstring ConnState -> Transition
   (define (incorporate-segment data s)
+    (log-info "GOT INBOUND STUFF TO DELIVER ~v" data)
     (transition
      (if (buffer-finished? (conn-state-inbound s))
 	 s
@@ -567,6 +568,7 @@
 				 bump-activity-time
 				 quit-when-done))]
       [(message (tcp-channel _ _ bs) _ _)
+       (log-info "GOT MORE STUFF TO DELIVER ~v" bs)
        (sequence-transitions (transition (struct-copy conn-state s
 					   [outbound (buffer-push (conn-state-outbound s) bs)])
 					 '())
