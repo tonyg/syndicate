@@ -112,20 +112,22 @@
 (define ((spawn-relay local-user-addr) remote-addr local-tcp-addr)
   (define local-peer-traffic (pub (tcp-channel remote-addr local-user-addr ?) #:level 1))
   (define remote-peer-traffic (sub (tcp-channel remote-addr local-tcp-addr ?) #:level 1))
-  (spawn (lambda (e seen-local-peer?)
+  (spawn (lambda (e state)
 	   (match e
 	     [(routing-update g)
 	      (define local-peer-absent? (gestalt-empty? (gestalt-filter g local-peer-traffic)))
-	      (transition (or seen-local-peer? (not local-peer-absent?))
-			  (when (or (and seen-local-peer? local-peer-absent?)
-				    (gestalt-empty? (gestalt-filter g remote-peer-traffic)))
-			    (quit)))]
+	      (define remote-peer-absent? (gestalt-empty? (gestalt-filter g remote-peer-traffic)))
+	      (define new-state (+ (if local-peer-absent? 0 1) (if remote-peer-absent? 0 1)))
+	      (log-info "RELAY OLD ~v NEW ~v" state new-state)
+	      (transition new-state (when (< new-state state) (quit)))]
 	     [(message (tcp-channel (== local-user-addr) (== remote-addr) bs) _ _)
-	      (transition seen-local-peer? (send (tcp-channel local-tcp-addr remote-addr bs)))]
+	      (log-info "RELAYING ~v" (tcp-channel local-tcp-addr remote-addr bs))
+	      (transition state (send (tcp-channel local-tcp-addr remote-addr bs)))]
 	     [(message (tcp-channel (== remote-addr) (== local-tcp-addr) bs) _ _)
-	      (transition seen-local-peer? (send (tcp-channel remote-addr local-user-addr bs)))]
+	      (log-info "BACKRELAYING ~v" (tcp-channel remote-addr local-user-addr bs))
+	      (transition state (send (tcp-channel remote-addr local-user-addr bs)))]
 	     [_ #f]))
-	 #f
+	 0
 	 (gestalt-union local-peer-traffic
 			remote-peer-traffic
 			(sub (tcp-channel remote-addr local-tcp-addr ?))
