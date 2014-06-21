@@ -41,19 +41,23 @@
   (define local-handle (tcp-handle 'httpclient))
   (define remote-handle (tcp-address "129.10.115.92" 80))
 
-  (spawn (lambda (e s)
-	   (log-info "CLIENT: ~v" e)
+  (spawn (lambda (e seen-peer?)
 	   (match e
 	     [(routing-update g)
-	      #:when (not (gestalt-empty? g))
-	      (transition s (send (tcp-channel
-				   local-handle
-				   remote-handle
-				   #"GET / HTTP/1.0\r\nHost: stockholm.ccs.neu.edu\r\n\r\n")))]
-	     [(message m _ _)
+	      (define peer-present? (not (gestalt-empty? g)))
+	      (transition (or seen-peer? peer-present?)
+			  (if (and (not peer-present?) seen-peer?)
+			      (quit)
+			      (send (tcp-channel
+				     local-handle
+				     remote-handle
+				     #"GET / HTTP/1.0\r\nHost: stockholm.ccs.neu.edu\r\n\r\n"))))]
+	     [(message (tcp-channel _ _ bs) _ _)
+	      (printf "----------------------------------------\n~a\n" bs)
+	      (printf "----------------------------------------\n")
 	      #f]
 	     [_ #f]))
-	 (void)
+	 #f
 	 (gestalt-union (pub (tcp-channel local-handle remote-handle ?))
 			(sub (tcp-channel remote-handle local-handle ?))
 			(sub (tcp-channel remote-handle local-handle ?) #:level 1))))
