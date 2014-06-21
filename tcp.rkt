@@ -99,7 +99,12 @@
 	   ;; the port number selects a substate therein. That's not
 	   ;; how TCP is defined however so we can't do that.
 	   (define appropriate-ip (set-first local-ips))
-	   ((spawn-relay local-addr) remote-addr (tcp-channel appropriate-ip port))))))
+	   (define appropriate-host (ip-address->hostname appropriate-ip))
+	   (match-define (tcp-address remote-host remote-port) remote-addr)
+	   (define remote-ip (ip-string->ip-address remote-host))
+	   (list
+	    ((spawn-relay local-addr) remote-addr (tcp-address appropriate-host port))
+	    (spawn-state-vector remote-ip remote-port appropriate-ip port))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Relay between kernel-level and user-level
