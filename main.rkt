@@ -97,24 +97,38 @@
 (let ()
   (define (spawn-session them us)
     (list
-     (send #:meta-level 1
-	   (tcp-channel us them
-			(bytes-append
-			 #"HTTP/1.0 200 OK\r\n\r\n"
-			 #"<h1>Hello world from minimart-netstack!</h1>\n"
-			 #"<p>This is running on minimart's own\n"
-			 #"<a href='https://github.com/tonyg/minimart-netstack/'>\n"
-			 #"TCP/IP stack</a>.</p>")))
+     (send 'bump)
      (spawn (lambda (e s)
 	      (match e
-		[(routing-update g) (transition s (quit))]
+		[(message `(counter ,counter) _ _)
+		 (define response
+		   (string->bytes/utf-8
+		    (format (string-append
+			     "HTTP/1.0 200 OK\r\n\r\n"
+			     "<h1>Hello world from minimart-netstack!</h1>\n"
+			     "<p>This is running on minimart's own\n"
+			     "<a href='https://github.com/tonyg/minimart-netstack/'>\n"
+			     "TCP/IP stack</a>.</p>\n"
+			     "<p>There have been ~a requests prior to this one.</p>")
+			    counter)))
+		 (transition s (list (send #:meta-level 1 (tcp-channel us them response))
+				     (quit)))]
 		[_ #f]))
 	    (void)
-	    (gestalt-union (sub (tcp-channel them us ?) #:meta-level 1)
+	    (gestalt-union (sub `(counter ,?))
+			   (sub (tcp-channel them us ?) #:meta-level 1)
 			   (sub (tcp-channel them us ?) #:meta-level 1 #:level 1)
 			   (pub (tcp-channel us them ?) #:meta-level 1)))))
 
   (spawn-world
+   (spawn (lambda (e counter)
+	    (match e
+	      [(message 'bump _ _)
+	       (transition (+ counter 1) (send `(counter ,counter)))]
+	      [_ #f]))
+	  0
+	  (gestalt-union (sub 'bump)
+			 (pub `(counter ,?))))
    (spawn-demand-matcher (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 80)) ?)
 			 #:meta-level 1
 			 spawn-session))
