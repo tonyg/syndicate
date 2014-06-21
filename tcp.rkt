@@ -109,28 +109,36 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Relay between kernel-level and user-level
 
+(define relay-peer-wait-time-msec 5000)
+
 (define ((spawn-relay local-user-addr) remote-addr local-tcp-addr)
+  (define timer-name (list 'spawn-relay local-tcp-addr remote-addr))
   (define local-peer-traffic (pub (tcp-channel remote-addr local-user-addr ?) #:level 1))
   (define remote-peer-traffic (sub (tcp-channel remote-addr local-tcp-addr ?) #:level 1))
-  (spawn (lambda (e state)
-	   (match e
-	     [(routing-update g)
-	      (define local-peer-absent? (gestalt-empty? (gestalt-filter g local-peer-traffic)))
-	      (define remote-peer-absent? (gestalt-empty? (gestalt-filter g remote-peer-traffic)))
-	      (define new-state (+ (if local-peer-absent? 0 1) (if remote-peer-absent? 0 1)))
-	      (transition new-state (when (< new-state state) (quit)))]
-	     [(message (tcp-channel (== local-user-addr) (== remote-addr) bs) _ _)
-	      (transition state (send (tcp-channel local-tcp-addr remote-addr bs)))]
-	     [(message (tcp-channel (== remote-addr) (== local-tcp-addr) bs) _ _)
-	      (transition state (send (tcp-channel remote-addr local-user-addr bs)))]
-	     [_ #f]))
-	 0
-	 (gestalt-union local-peer-traffic
-			remote-peer-traffic
-			(sub (tcp-channel remote-addr local-tcp-addr ?))
-			(sub (tcp-channel local-user-addr remote-addr ?))
-			(pub (tcp-channel remote-addr local-user-addr ?))
-			(pub (tcp-channel local-tcp-addr remote-addr ?)))))
+  (list
+   (send (set-timer timer-name relay-peer-wait-time-msec 'relative))
+   (spawn (lambda (e state)
+	    (match e
+	      [(routing-update g)
+	       (define local-peer-absent? (gestalt-empty? (gestalt-filter g local-peer-traffic)))
+	       (define remote-peer-absent? (gestalt-empty? (gestalt-filter g remote-peer-traffic)))
+	       (define new-state (+ (if local-peer-absent? 0 1) (if remote-peer-absent? 0 1)))
+	       (transition new-state (when (< new-state state) (quit)))]
+	      [(message (tcp-channel (== local-user-addr) (== remote-addr) bs) _ _)
+	       (transition state (send (tcp-channel local-tcp-addr remote-addr bs)))]
+	      [(message (tcp-channel (== remote-addr) (== local-tcp-addr) bs) _ _)
+	       (transition state (send (tcp-channel remote-addr local-user-addr bs)))]
+	      [(message (timer-expired _ _) _ _)
+	       (error 'spawn-relay "TCP relay process timed out waiting for peer")]
+	      [_ #f]))
+	  0
+	  (gestalt-union local-peer-traffic
+			 remote-peer-traffic
+			 (sub (tcp-channel remote-addr local-tcp-addr ?))
+			 (sub (tcp-channel local-user-addr remote-addr ?))
+			 (pub (tcp-channel remote-addr local-user-addr ?))
+			 (pub (tcp-channel local-tcp-addr remote-addr ?))
+			 (sub (timer-expired timer-name ?))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Codec & kernel-level driver
