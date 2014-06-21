@@ -94,6 +94,28 @@
 	 (void)
 	 (gestalt-union (sub (udp-packet ? (udp-listener 6667) ?)))))
 
+(let ()
+  (define (spawn-session them us)
+    (list
+     (send #:meta-level 1
+	   (tcp-channel us them
+			#"HTTP/1.0 200 OK\r\n\r\n<h1>Hello world from minimart-netstack!</h1>"))
+     (spawn (lambda (e s)
+	      (match e
+		[(routing-update g) (transition s (quit))]
+		[_ #f]))
+	    (void)
+	    (gestalt-union (sub (tcp-channel them us ?) #:meta-level 1)
+			   (sub (tcp-channel them us ?) #:meta-level 1 #:level 1)
+			   (pub (tcp-channel us them ?) #:meta-level 1)))))
+
+  (spawn-world
+   (spawn-demand-matcher (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 80)) ?)
+			 #:meta-level 1
+			 spawn-session))
+
+  )
+
 (spawn (lambda (e s)
 	 (local-require racket/pretty)
 	 (match e
