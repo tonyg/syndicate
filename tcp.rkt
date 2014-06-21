@@ -551,28 +551,32 @@
        (define expected (next-expected-seqn s))
        (define is-syn? (set-member? flags 'syn))
        (define is-fin? (set-member? flags 'fin))
-       (if (and (not expected) ;; no syn yet
-		(or (not is-syn?) ;; and this isn't it
-		    (and (not (conn-state-listener-listening? s)) ;; or it is, but no listener...
-			 (not (conn-state-local-peer-seen? s))))) ;; ...and no outbound client
-	   (reset ackn ;; this is *our* seqn
-		  (seq+ seqn (+ (if is-syn? 1 0) (if is-fin? 1 0)))
-		  ;; ^^ this is what we should acknowledge...
-		  s)
-	   (sequence-transitions (cond
-				  [(not expected) ;; haven't seen syn yet, but we know this is it
-				   (incorporate-segment data (set-inbound-seqn (seq+ seqn 1) s))]
-				  [(= expected seqn)
-				   (incorporate-segment data s)]
-				  [else
-				   (transition s '())])
-				 deliver-inbound-locally
-				 (check-fin flags)
-				 (discard-acknowledged-outbound (set-member? flags 'ack) ackn)
-				 (update-outbound-window window)
-				 (send-outbound old-ackn)
-				 bump-activity-time
-				 quit-when-done))]
+       (cond
+	[(set-member? flags 'rst)
+	 (transition s (quit))]
+	[(and (not expected)	 ;; no syn yet
+	      (or (not is-syn?)	 ;; and this isn't it
+		  (and (not (conn-state-listener-listening? s)) ;; or it is, but no listener...
+		       (not (conn-state-local-peer-seen? s))))) ;; ...and no outbound client
+	 (reset ackn ;; this is *our* seqn
+		(seq+ seqn (+ (if is-syn? 1 0) (if is-fin? 1 0)))
+		;; ^^ this is what we should acknowledge...
+		s)]
+	[else
+	 (sequence-transitions (cond
+				[(not expected) ;; haven't seen syn yet, but we know this is it
+				 (incorporate-segment data (set-inbound-seqn (seq+ seqn 1) s))]
+				[(= expected seqn)
+				 (incorporate-segment data s)]
+				[else
+				 (transition s '())])
+			       deliver-inbound-locally
+			       (check-fin flags)
+			       (discard-acknowledged-outbound (set-member? flags 'ack) ackn)
+			       (update-outbound-window window)
+			       (send-outbound old-ackn)
+			       bump-activity-time
+			       quit-when-done)])]
       [(message (tcp-channel _ _ bs) _ _)
        ;; (log-info "GOT MORE STUFF TO DELIVER ~v" bs)
        (sequence-transitions (transition (struct-copy conn-state s
