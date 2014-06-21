@@ -99,7 +99,12 @@
     (list
      (send #:meta-level 1
 	   (tcp-channel us them
-			#"HTTP/1.0 200 OK\r\n\r\n<h1>Hello world from minimart-netstack!</h1>"))
+			(bytes-append
+			 #"HTTP/1.0 200 OK\r\n\r\n"
+			 #"<h1>Hello world from minimart-netstack!</h1>\n"
+			 #"<p>This is running on minimart's own\n"
+			 #"<a href='https://github.com/tonyg/minimart-netstack/'>\n"
+			 #"TCP/IP stack</a>.</p>")))
      (spawn (lambda (e s)
 	      (match e
 		[(routing-update g) (transition s (quit))]
