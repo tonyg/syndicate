@@ -25,7 +25,7 @@
 	 ["skip"
 	  (gestalt-union (pub (gateway-route (bytes 0 0 0 0) 0 (bytes 192 168 1 1) "en0"))
 			 (pub (host-route (bytes 192 168 1 222) 24 "en0")))]
-	 ["hop"
+	 [(or "hop" "walk")
 	  (gestalt-union (pub (gateway-route (bytes 0 0 0 0) 0 (bytes 192 168 1 1) "wlan0"))
 			 (pub (host-route (bytes 192 168 1 222) 24 "wlan0")))]
 	 ["stockholm.ccs.neu.edu"
