@@ -129,6 +129,7 @@
 	      [(message (tcp-channel (== remote-addr) (== local-tcp-addr) bs) _ _)
 	       (transition state (send (tcp-channel remote-addr local-user-addr bs)))]
 	      [(message (timer-expired _ _) _ _)
+	       #:when (< state 2) ;; we only care if we're not fully connected
 	       (error 'spawn-relay "TCP relay process timed out waiting for peer")]
 	      [_ #f]))
 	  0
