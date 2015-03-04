@@ -6,16 +6,21 @@
          (struct-out at-meta)
          lift-patch
          drop-patch
+         strip-interests
+         label-interests
+         label-patch
          limit-patch
+         compute-aggregate-patch
          apply-patch
          compute-patch
+         biased-intersection
+         view-patch
 
          pretty-print-patch)
 
 (require racket/set)
 (require racket/match)
 (require "route.rkt")
-
 (module+ test (require rackunit))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -29,12 +34,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define at-meta-proj (compile-projection (at-meta (?!))))
+(define observe-proj (compile-projection (observe (?!))))
+
 (define (lift-patch p)
   (match-define (patch in out) p)
   (patch (pattern->matcher #t (at-meta (embedded-matcher in)))
          (pattern->matcher #t (at-meta (embedded-matcher out)))))
-
-(define at-meta-proj (compile-projection (at-meta (?!))))
 
 (define (drop-interests pi)
   (matcher-project pi at-meta-proj
@@ -61,6 +67,11 @@
   (patch (matcher-subtract in bound #:combiner (lambda (v1 v2) #f))
          (matcher-intersect out bound #:combiner (lambda (v1 v2) v1))))
 
+(define (compute-aggregate-patch p label base)
+  (define (combiner v1 v2) (matcher-subtract-combiner v1 (set-remove v2 label)))
+  (patch (matcher-subtract (patch-added p) base #:combiner combiner)
+         (matcher-subtract (patch-removed p) base #:combiner combiner)))
+
 (define (apply-patch base p)
   (match-define (patch in out) p)
   (matcher-union (matcher-subtract base out) in))
@@ -77,6 +88,18 @@
 (define (compute-patch old-base new-base)
   (patch (matcher-subtract new-base old-base)
          (matcher-subtract old-base new-base)))
+
+(define (biased-intersection object subject)
+  (matcher-project (matcher-intersect (observe (embedded-matcher object))
+                                      subject
+                                      #:combiner (lambda (v1 v2) #t))
+                   observe-proj
+                   #:project-success (lambda (v) #t)
+                   #:combiner (lambda (v1 v2) #t)))
+
+(define (view-patch p interests)
+  (patch (biased-intersection (patch-added p) interests)
+         (biased-intersection (patch-removed p) interests)))
 
 (define (pretty-print-patch p)
   (match-define (patch in out) p)
@@ -121,6 +144,30 @@
 
   (printf "\nlimit mc/mab ma:\n")
   (void (pretty-print-patch (limit-patch (patch mc mab) ma)))
+
+  (printf "\ncompute-aggregate-patch m*/m0 Q mab:\n")
+  (void (pretty-print-patch (compute-aggregate-patch (patch m* m0) 'Q mab)))
+
+  (printf "\ncompute-aggregate-patch m0/m* Q mab:\n")
+  (void (pretty-print-patch (compute-aggregate-patch (patch m0 m*) 'Q mab)))
+
+  (printf "\ncompute-aggregate-patch m*/m0 P mab:\n")
+  (void (pretty-print-patch (compute-aggregate-patch (patch m* m0) 'P mab)))
+
+  (printf "\ncompute-aggregate-patch m0/m* P mab:\n")
+  (void (pretty-print-patch (compute-aggregate-patch (patch m0 m*) 'P mab)))
+
+  (printf "\ncompute-aggregate-patch m*/m0 Q m*:\n")
+  (void (pretty-print-patch (compute-aggregate-patch (patch m* m0) 'Q m*)))
+
+  (printf "\ncompute-aggregate-patch m0/m* Q m*:\n")
+  (void (pretty-print-patch (compute-aggregate-patch (patch m0 m*) 'Q m*)))
+
+  (printf "\ncompute-aggregate-patch m*/m0 P m*:\n")
+  (void (pretty-print-patch (compute-aggregate-patch (patch m* m0) 'P m*)))
+
+  (printf "\ncompute-aggregate-patch m0/m* P m*:\n")
+  (void (pretty-print-patch (compute-aggregate-patch (patch m0 m*) 'P m*)))
 
   (printf "\nlift mc/mab:\n")
   (void (pretty-print-patch (lift-patch (patch mc mab))))

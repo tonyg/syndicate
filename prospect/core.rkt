@@ -9,6 +9,7 @@
 (require "functional-queue.rkt")
 (require "route.rkt")
 (require "patch.rkt")
+(module+ test (require rackunit))
 
 ;; Events ⊃ Patches
 ;; Actions ⊃ Events
@@ -63,11 +64,25 @@
 (define (clean-actions actions)
   (filter action? (flatten actions)))
 
-(define (deliver-event e pid p w)
-  (invoke-process pid
-                  (lambda () ((process-behavior p) e (process-state p)))
-                  (lambda (t) (apply-transition pid t w))
-                  (lambda (exn) (kill-process pid exn w))))
+(define (send-event e pid w)
+  (match (hash-ref (world-process-table w) pid #f)
+    [#f w]
+    [(and p (process _ behavior old-state))
+     (invoke-process pid
+                     (lambda () (behavior e old-state))
+                     (match-lambda
+                       [#f w]
+                       [(transition new-state new-actions)
+                        (update-process pid
+                                        (struct-copy process p [state new-state])
+                                        new-actions
+                                        w)])
+                     (lambda (exn) (kill-process pid exn w)))]))
+
+(define (update-process pid p actions w)
+  (let* ((w (struct-copy world w [process-table (hash-set (world-process-table w) pid p)]))
+         (w (mark-pid-runnable w pid)))
+    (enqueue-actions w pid actions)))
 
 (define (invoke-process pid thunk k-ok k-exn)
   (define-values (ok? result)
@@ -91,34 +106,26 @@
 (define (mark-pid-runnable w pid)
   (struct-copy world w [runnable-pids (set-add (world-runnable-pids w) pid)]))
 
-(define (apply-transition pid t w)
-  (match t
-    [#f w]
-    [(transition new-state new-actions)
-     (let* ((w (transform-process pid w (lambda (p) (struct-copy process p [state new-state])))))
-       (enqueue-actions (mark-pid-runnable w pid) pid new-actions))]))
-
-(define (transform-process pid w fp)
-  (define pt (world-process-table w))
-  (match (hash-ref pt pid)
-    [#f w]
-    [p (struct-copy world w [process-table (hash-set pt pid (fp p))])]))
-
 (define (enqueue-actions w label actions)
   (struct-copy world w
     [pending-action-queue
      (queue-append-list (world-pending-action-queue w)
                         (for/list [(a actions)] (cons label a)))]))
 
-(define (spawn-world . boot-actions)
+(define-syntax-rule (spawn-world boot-action ...)
+  (make-spawn-world (lambda () (list boot-action ...))))
+
+(define (make-world boot-actions)
+  (world 0
+         (list->queue (for/list ((a (in-list boot-actions))) (cons 'meta a)))
+         (set)
+         (matcher-empty)
+         (hash)
+         (matcher-empty)))
+
+(define (make-spawn-world boot-actions-thunk)
   (spawn world-handle-event
-         (lambda () (transition (world 0
-                                       (make-queue)
-                                       (set)
-                                       (matcher-empty)
-                                       (hash)
-                                       (matcher-empty))
-                                '()))))
+         (lambda () (transition (make-world (boot-actions-thunk)) '()))))
 
 (define (transition-bind k t0)
   (match-define (transition state0 actions0) t0)
@@ -156,39 +163,87 @@
 (define ((perform-action label a) w)
   (match a
     [(spawn behavior boot)
-     (define new-pid (world-next-pid w))
-     (invoke-process new-pid
+     (invoke-process 'booting
                      boot
-                     (lambda (initial-t)
-                       (match-define (transition initial-state initial-actions) initial-t)
-                       (define new-p (process (matcher-empty) behavior initial-state))
-                       (define new-w
-                         (struct-copy world w
-                                      [next-pid (+ new-pid 1)]
-                                      [process-table
-                                       (hash-set (world-process-table w) new-pid new-p)]))
-                       (mark-pid-runnable (enqueue-actions new-w new-pid initial-actions)
-                                          new-pid))
-                     (lambda (exn) (kill-process new-pid exn w)))]
+                     (match-lambda
+                       [(transition initial-state initial-actions)
+                        (define new-p (process (matcher-empty) behavior initial-state))
+                        (define new-pid (world-next-pid w))
+                        (update-process new-pid
+                                        new-p
+                                        initial-actions
+                                        (struct-copy world w [next-pid (+ new-pid 1)]))])
+                     (lambda (exn) (kill-process 'booting exn w)))]
     [(quit) (kill-process label #f w)]
     [(? patch? delta-orig)
      (define p (hash-ref (world-process-table w) label))
-     (define old-interests (cond
-                             [p (process-interests p)]
-                             [(meta-label? label) (world-environment-interests w)]
-                             [else (matcher-empty)]))
-     (define old-routing-table (world-routing-table w))
-     (define delta (limit-patch (label-patch delta-orig label) old-interests))
-     (define delta-aggregate (compute-patch-aggregate delta label old-routing-table))
-     (define new-routing-table (apply-patch label old-routing-table delta))
-     (define affected-pids (compute-affected-pids ...
+     (if (not (or p (meta-label? label)))
+         (transition w '()) ;; ignore actions for nonexistent processes
+         (let ()
+           (define old-interests (if (meta-label? label)
+                                     (world-environment-interests w)
+                                     (process-interests p)))
+           (define delta (limit-patch (label-patch delta-orig label) old-interests))
+           (define new-interests (apply-patch old-interests delta))
+
+           (define old-routing-table (world-routing-table w))
+           (define new-routing-table (apply-patch old-routing-table delta))
+           (define delta-aggregate (compute-aggregate-patch delta label old-routing-table))
+
+           (define new-w
+             (if (meta-label? label)
+                 (struct-copy world w
+                              [routing-table new-routing-table]
+                              [environment-interests new-interests])
+                 (let ((new-p (struct-copy process p [interests new-interests])))
+                   (struct-copy world w
+                                [routing-table new-routing-table]
+                                [process-table
+                                 (hash-set (world-process-table w) label new-p)]))))
+
+           (define affected-pids
+             (let ((pids (compute-affected-pids old-routing-table delta)))
+               (if (meta-label? label) pids (set-add pids label))))
+
+           (transition (for/fold [(w new-w)] [(pid affected-pids)]
+                         (if (equal? pid label)
+                             (let* ((feedback (patch (biased-intersection new-routing-table
+                                                                          (patch-added delta))
+                                                     (biased-intersection old-routing-table
+                                                                          (patch-removed delta)))))
+                               (send-event feedback label w))
+                             (let* ((p (hash-ref (world-process-table w) pid))
+                                    (event (view-patch delta-aggregate (process-interests p))))
+                               (send-event event pid w))))
+                       (and (meta-label? label)
+                            (drop-patch delta-aggregate)))))]))
+
+(define (compute-affected-pids routing-table delta)
+  (define cover (matcher-union (patch-added delta) (patch-removed delta)))
+  (matcher-match-matcher cover routing-table
+                         #:seed (set)
+                         #:combiner (lambda (v1 v2 acc) (set-union v2 acc))))
 
 (define (step-children w)
   (define runnable-pids (world-runnable-pids w))
   (if (set-empty? runnable-pids)
       #f ;; world is inert.
-      (transition (for/fold ([w (struct-copy world w [runnable-pids (set)])])
-		      [(pid (in-set runnable-pids))]
-		    (define p (hash-ref (world-process-table w) pid (lambda () #f)))
-		    (if (not p) w (deliver-event #f pid p w)))
+      (transition (for/fold [(w (struct-copy world w [runnable-pids (set)]))]
+                            [(pid (in-set runnable-pids))]
+                    (send-event #f pid w))
 		  '())))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(module+ test
+  (require racket/pretty)
+
+  (define (step* w)
+    (let loop ((w w) (actions '()))
+      (pretty-print w)
+      (match (world-handle-event #f w)
+        [#f (values w (flatten actions))]
+        [(transition new-w new-actions) (loop new-w (cons actions new-actions))])))
+
+  (step* (make-world '()))
+  )

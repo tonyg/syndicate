@@ -24,6 +24,7 @@
 	 pattern->matcher*
 	 matcher-union
 	 matcher-intersect
+         matcher-subtract-combiner
 	 matcher-subtract
 	 matcher-match-value
 	 matcher-match-matcher
@@ -336,12 +337,14 @@
 		   (lambda (h) #f)
 		   (lambda (h) #f)))
 
+(define (matcher-subtract-combiner s1 s2)
+  (define r (set-subtract s1 s2))
+  (if (set-empty? r) #f r))
+
 ;; Matcher Matcher -> Matcher
 ;; Removes re2's mappings from re1.
 ;; The combine-successes function should return #f to signal "no remaining success values".
-(define (matcher-subtract re1 re2 #:combiner [combiner (lambda (s1 s2)
-                                                         (define r (set-subtract s1 s2))
-                                                         (if (set-empty? r) #f r))])
+(define (matcher-subtract re1 re2 #:combiner [combiner matcher-subtract-combiner])
   (matcher-recurse re1
 		   re2
                    combiner
