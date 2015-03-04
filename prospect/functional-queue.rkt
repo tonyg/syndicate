@@ -12,7 +12,8 @@
 	 queue-empty?
 	 queue-append
 	 queue-append-list
-	 queue-extract)
+	 queue-extract
+         queue-filter)
 
 (struct queue (head tail) #:transparent)
 
@@ -79,3 +80,7 @@
 						    (cdr head))
 					    (queue-tail q))))
      (else (search-head (cdr head) (cons (car head) rejected-head-rev))))))
+
+(define (queue-filter pred q)
+  (queue (filter pred (queue-head q))
+         (filter pred (queue-tail q))))

@@ -9,9 +9,12 @@
 (require "functional-queue.rkt")
 (require "route.rkt")
 (require "patch.rkt")
+(require "trace.rkt")
 (module+ test (require rackunit))
 
-;; Events ⊃ Patches
+;; Events = Patches ∪ Messages
+(struct message (body) #:prefab)
+
 ;; Actions ⊃ Events
 (struct quit () #:prefab)
 (struct spawn (behavior boot) #:prefab)
@@ -45,7 +48,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (event? x) (or (patch? x)))
+(define (event? x) (or (patch? x) (message? x)))
 (define (action? x) (or (event? x) (spawn? x) (quit? x)))
 
 (define (meta-label? x) (eq? x 'meta))
@@ -72,12 +75,15 @@
                      (lambda () (behavior e old-state))
                      (match-lambda
                        [#f w]
-                       [(transition new-state new-actions)
+                       [(and t (transition new-state new-actions))
+                        (trace-process-step e pid p #f t)
                         (update-process pid
                                         (struct-copy process p [state new-state])
                                         new-actions
                                         w)])
-                     (lambda (exn) (kill-process pid exn w)))]))
+                     (lambda (exn)
+                       (trace-process-step e pid p exn #f)
+                       (enqueue-actions w pid (list (quit)))))]))
 
 (define (update-process pid p actions w)
   (let* ((w (struct-copy world w [process-table (hash-set (world-process-table w) pid p)]))
@@ -86,22 +92,16 @@
 
 (define (invoke-process pid thunk k-ok k-exn)
   (define-values (ok? result)
-    (with-handlers ([(lambda (exn) #t) (lambda (exn) (values #f exn))])
-      (values #t (clean-transition
-                  (ensure-transition
-                   (with-continuation-mark 'minimart-process pid (thunk)))))))
+    (call-in-trace-context
+     pid
+     (lambda ()
+       (with-handlers ([(lambda (exn) #t) (lambda (exn) (values #f exn))])
+         (values #t (clean-transition
+                     (ensure-transition
+                      (with-continuation-mark 'minimart-process pid (thunk)))))))))
   (if ok?
       (k-ok result)
       (k-exn result)))
-
-(define (kill-process pid maybe-exn w)
-  (define pt (world-process-table w))
-  (match (hash-ref pt pid)
-    [#f w]
-    [(process interests _ _)
-     (enqueue-actions (struct-copy world w [process-table (hash-remove pt pid)])
-                      pid
-                      (list (patch (matcher-empty) interests)))]))
 
 (define (mark-pid-runnable w pid)
   (struct-copy world w [runnable-pids (set-add (world-runnable-pids w) pid)]))
@@ -144,79 +144,108 @@
   (if (or e (not (inert? w)))
       (sequence-transitions (transition w '())
                             (inject-event e)
-                            perform-actions
+                            perform-actions ;; to process queued actions and the new "e"
+                            perform-actions ;; to process responses to "e"
+                            ;; ^ Double perform-actions makes it possible for children's
+                            ;; responses to the incoming "e" be acted upon in the same
+                            ;; event-handling cycle of the world.
                             step-children)
       (step-children w)))
 
 (define ((inject-event e) w)
   (match e
     [#f w]
-    [(? patch? delta)
-     (enqueue-actions w 'meta (list (lift-patch delta)))]))
+    [(? patch? delta) (enqueue-actions w 'meta (list (lift-patch delta)))]
+    [(message body) (enqueue-actions w 'meta (list (message (at-meta body))))]))
 
 (define (perform-actions w)
   (for/fold ([wt (transition (struct-copy world w [pending-action-queue (make-queue)]) '())])
       ((entry (in-list (queue->list (world-pending-action-queue w)))))
     (match-define [cons label a] entry)
-    (transition-bind (perform-action label a) wt)))
+    (define wt1 (transition-bind (perform-action label a) wt))
+    (trace-internal-step label a (transition-state wt) wt1)
+    wt1))
 
 (define ((perform-action label a) w)
   (match a
     [(spawn behavior boot)
-     (invoke-process 'booting
-                     boot
-                     (match-lambda
-                       [(transition initial-state initial-actions)
-                        (define new-p (process (matcher-empty) behavior initial-state))
-                        (define new-pid (world-next-pid w))
-                        (update-process new-pid
-                                        new-p
-                                        initial-actions
-                                        (struct-copy world w [next-pid (+ new-pid 1)]))])
-                     (lambda (exn) (kill-process 'booting exn w)))]
-    [(quit) (kill-process label #f w)]
+     (transition
+      (invoke-process 'booting
+                      boot
+                      (match-lambda
+                        [(transition initial-state initial-actions)
+                         (define new-p (process (matcher-empty) behavior initial-state))
+                         (define new-pid (world-next-pid w))
+                         (update-process new-pid
+                                         new-p
+                                         initial-actions
+                                         (struct-copy world w [next-pid (+ new-pid 1)]))])
+                      (lambda (exn)
+                        (log-error "Spawned process in world ~a died with exception:\n~a"
+                                   (trace-pid-stack)
+                                   (exn->string exn))
+                        w))
+      '())]
+    [(quit)
+     (define pt (world-process-table w))
+     (match (hash-ref pt label)
+       [#f (transition w '())]
+       [(process interests _ _)
+        (define delta (patch (matcher-empty) interests))
+        (define new-w (struct-copy world w [process-table (hash-remove pt label)]))
+        (apply-patch-in-world label delta new-w)])]
     [(? patch? delta-orig)
      (define p (hash-ref (world-process-table w) label))
-     (if (not (or p (meta-label? label)))
-         (transition w '()) ;; ignore actions for nonexistent processes
-         (let ()
-           (define old-interests (if (meta-label? label)
-                                     (world-environment-interests w)
-                                     (process-interests p)))
-           (define delta (limit-patch (label-patch delta-orig label) old-interests))
-           (define new-interests (apply-patch old-interests delta))
+     (cond
+       [(or p (meta-label? label))
+        (define old-interests (if (meta-label? label)
+                                  (world-environment-interests w)
+                                  (process-interests p)))
+        (define delta (limit-patch (label-patch delta-orig label) old-interests))
+        (define new-interests (apply-patch old-interests delta))
+        (define new-w
+          (if (meta-label? label)
+              (struct-copy world w [environment-interests new-interests])
+              (let* ((p (struct-copy process p [interests new-interests])))
+                (struct-copy world w [process-table (hash-set (world-process-table w) label p)]))))
+        (apply-patch-in-world label delta new-w)]
+       [else ;; ignore actions for nonexistent processes
+        (transition w '())])]
+    [(and m (message body))
+     (when (observe? body)
+       (log-warning "Process ~a sent message containing query ~v"
+                    (cons label (trace-pid-stack))
+                    body))
+     (cond
+       [(matcher-match-value (world-routing-table w) body #f) ;; some other process has declared m
+        (transition w '())]
+       [else
+        (define affected-pids (matcher-match-value (world-routing-table w) (observe body)))
+        (transition (for/fold [(w w)] [(pid (in-set affected-pids))]
+                      (send-event m pid w))
+                    (and (not (meta-label? label))
+                         (at-meta? body)
+                         (message (at-meta-claim body))))])]))
 
-           (define old-routing-table (world-routing-table w))
-           (define new-routing-table (apply-patch old-routing-table delta))
-           (define delta-aggregate (compute-aggregate-patch delta label old-routing-table))
-
-           (define new-w
-             (if (meta-label? label)
-                 (struct-copy world w
-                              [routing-table new-routing-table]
-                              [environment-interests new-interests])
-                 (let ((new-p (struct-copy process p [interests new-interests])))
-                   (struct-copy world w
-                                [routing-table new-routing-table]
-                                [process-table
-                                 (hash-set (world-process-table w) label new-p)]))))
-
-           (define affected-pids
-             (let ((pids (compute-affected-pids old-routing-table delta)))
-               (if (meta-label? label) pids (set-add pids label))))
-
-           (transition (for/fold [(w new-w)] [(pid affected-pids)]
-                         (if (equal? pid label)
-                             (let* ((feedback (patch (biased-intersection new-routing-table
-                                                                          (patch-added delta))
-                                                     (biased-intersection old-routing-table
-                                                                          (patch-removed delta)))))
-                               (send-event feedback label w))
-                             (let* ((p (hash-ref (world-process-table w) pid))
-                                    (event (view-patch delta-aggregate (process-interests p))))
-                               (send-event event pid w))))
-                       (and (meta-label? label)
-                            (drop-patch delta-aggregate)))))]))
+(define (apply-patch-in-world label delta w)
+  (define old-routing-table (world-routing-table w))
+  (define new-routing-table (apply-patch old-routing-table delta))
+  (define delta-aggregate (compute-aggregate-patch delta label old-routing-table))
+  (define affected-pids (let ((pids (compute-affected-pids old-routing-table delta)))
+                          (if (meta-label? label) pids (set-add pids label))))
+  (transition (for/fold [(w (struct-copy world w [routing-table new-routing-table]))]
+                        [(pid affected-pids)]
+                (cond [(equal? pid label)
+                       (define feedback
+                         (patch (biased-intersection new-routing-table (patch-added delta))
+                                (biased-intersection old-routing-table (patch-removed delta))))
+                       (send-event feedback label w)]
+                      [else
+                       (define p (hash-ref (world-process-table w) pid))
+                       (define event (view-patch delta-aggregate (process-interests p)))
+                       (send-event event pid w)]))
+              (and (not (meta-label? label))
+                   (drop-patch delta-aggregate))))
 
 (define (compute-affected-pids routing-table delta)
   (define cover (matcher-union (patch-added delta) (patch-removed delta)))
