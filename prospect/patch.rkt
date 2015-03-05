@@ -25,7 +25,8 @@
          biased-intersection
          view-patch
 
-         pretty-print-patch)
+         pretty-print-patch
+         patch->pretty-string)
 
 (require racket/set)
 (require racket/match)
@@ -141,12 +142,13 @@
          (biased-intersection (patch-removed p) interests)))
 
 (define (pretty-print-patch p [port (current-output-port)])
+  (display (patch->pretty-string p) port))
+
+(define (patch->pretty-string p)
   (match-define (patch in out) p)
-  (fprintf port "<<<<<<<< Removed:\n")
-  (pretty-print-matcher out port)
-  (fprintf port "======== Added:\n")
-  (pretty-print-matcher in port)
-  (fprintf port ">>>>>>>>\n"))
+  (format "<<<<<<<< Removed:\n~a======== Added:\n~a>>>>>>>>\n"
+          (matcher->pretty-string out)
+          (matcher->pretty-string in)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
