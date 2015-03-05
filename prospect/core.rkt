@@ -350,7 +350,8 @@
 
 (define (compute-affected-pids routing-table delta)
   (define cover (matcher-union (patch-added delta) (patch-removed delta)))
-  (matcher-match-matcher cover routing-table
+  (matcher-match-matcher (pattern->matcher #t (observe (embedded-matcher cover)))
+                         routing-table
                          #:seed (set)
                          #:combiner (lambda (v1 v2 acc) (set-union v2 acc))))
 
