@@ -16,6 +16,7 @@
          limit-patch
          compute-aggregate-patch
          apply-patch
+         update-interests
          unapply-patch
          compose-patch
          patch-seq
@@ -92,9 +93,16 @@
   (patch (matcher-subtract (patch-added p) base #:combiner combiner)
          (matcher-subtract (patch-removed p) base #:combiner combiner)))
 
+;; For use by Matchers leading to (Setof Label).
 (define (apply-patch base p)
   (match-define (patch in out) p)
   (matcher-union (matcher-subtract base out) in))
+
+;; Like apply-patch, but for use by Matchers leading to True.
+(define (update-interests base p)
+  (match-define (patch in out) p)
+  (matcher-union (matcher-subtract base out #:combiner (lambda (v1 v2) #f)) in
+                 #:combiner (lambda (v1 v2) #t)))
 
 (define (unapply-patch base p)
   (match-define (patch in out) p)
@@ -105,8 +113,7 @@
   ;; except for problems arising from use of set-subtract by default in {un,}apply-patch
   (match-define (patch in1 out1) p1)
   (match-define (patch in2 out2) p2)
-  (patch (matcher-union (matcher-subtract in1 out2 #:combiner (lambda (v1 v2) #f)) in2
-                        #:combiner (lambda (v1 v2) #t))
+  (patch (update-interests in1 p2)
          (matcher-union (matcher-subtract out1 in2 #:combiner (lambda (v1 v2) #f)) out2
                         #:combiner (lambda (v1 v2) #t))))
 
