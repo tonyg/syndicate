@@ -770,7 +770,7 @@
   (define (walk i m)
     (match m
       [#f
-       (d "::: no further matches possible")]
+       (d "::: nothing")]
       [(wildcard-sequence k)
        (d " ...>")
        (walk (+ i 5) k)]

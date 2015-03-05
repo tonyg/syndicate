@@ -4,14 +4,22 @@
 (provide (struct-out patch)
          (struct-out observe)
          (struct-out at-meta)
+         (struct-out advertise)
+         empty-patch
+         patch-empty?
          lift-patch
          drop-patch
          strip-interests
          label-interests
+         strip-patch
          label-patch
          limit-patch
          compute-aggregate-patch
          apply-patch
+         unapply-patch
+         compose-patch
+         patch-seq
+         patch-seq*
          compute-patch
          biased-intersection
          view-patch
@@ -28,14 +36,22 @@
 ;; Patches
 (struct patch (added removed) #:prefab)
 
-;; Claims, Interests, and Locations
-(struct observe (pattern) #:prefab)
+;; Claims, Interests, Locations, and Advertisements
+(struct observe (claim) #:prefab)
 (struct at-meta (claim) #:prefab)
+(struct advertise (claim) #:prefab)
+
+(define empty-patch (patch (matcher-empty) (matcher-empty)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define at-meta-proj (compile-projection (at-meta (?!))))
 (define observe-proj (compile-projection (observe (?!))))
+
+(define (patch-empty? p)
+  (and (patch? p)
+       (matcher-empty? (patch-added p))
+       (matcher-empty? (patch-removed p))))
 
 (define (lift-patch p)
   (match-define (patch in out) p)
@@ -57,6 +73,10 @@
 
 (define (label-interests g label)
   (matcher-relabel g (lambda (v) label)))
+
+(define (strip-patch p)
+  (patch (strip-interests (patch-added p))
+         (strip-interests (patch-removed p))))
 
 (define (label-patch p label)
   (patch (label-interests (patch-added p) label)
@@ -81,16 +101,28 @@
   (matcher-union (matcher-subtract base in) out))
 
 (define (compose-patch p2 p1) ;; p2 after p1
+  ;; Can be defined as (patch (apply-patch in1 p2) (unapply-patch out1 p2)),
+  ;; except for problems arising from use of set-subtract by default in {un,}apply-patch
   (match-define (patch in1 out1) p1)
-  (patch (apply-patch in1 p2)
-         (unapply-patch out1 p2)))
+  (match-define (patch in2 out2) p2)
+  (patch (matcher-union (matcher-subtract in1 out2 #:combiner (lambda (v1 v2) #f)) in2
+                        #:combiner (lambda (v1 v2) #t))
+         (matcher-union (matcher-subtract out1 in2 #:combiner (lambda (v1 v2) #f)) out2
+                        #:combiner (lambda (v1 v2) #t))))
+
+(define (patch-seq . patches) (patch-seq* patches))
+
+(define (patch-seq* patches)
+  (match patches
+    ['() empty-patch]
+    [(cons p rest) (compose-patch (patch-seq* rest) p)]))
 
 (define (compute-patch old-base new-base)
   (patch (matcher-subtract new-base old-base)
          (matcher-subtract old-base new-base)))
 
 (define (biased-intersection object subject)
-  (matcher-project (matcher-intersect (observe (embedded-matcher object))
+  (matcher-project (matcher-intersect (pattern->matcher #t (observe (embedded-matcher object)))
                                       subject
                                       #:combiner (lambda (v1 v2) #t))
                    observe-proj
@@ -101,13 +133,13 @@
   (patch (biased-intersection (patch-added p) interests)
          (biased-intersection (patch-removed p) interests)))
 
-(define (pretty-print-patch p)
+(define (pretty-print-patch p [port (current-output-port)])
   (match-define (patch in out) p)
-  (printf "<<<<<<<< Removed:\n")
-  (pretty-print-matcher out)
-  (printf "======== Added:\n")
-  (pretty-print-matcher in)
-  (printf ">>>>>>>>\n"))
+  (fprintf port "<<<<<<<< Removed:\n")
+  (pretty-print-matcher out port)
+  (fprintf port "======== Added:\n")
+  (pretty-print-matcher in port)
+  (fprintf port ">>>>>>>>\n"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -175,6 +207,18 @@
   (printf "\ndrop after lift mc/mab:\n")
   (void (pretty-print-patch (drop-patch (lift-patch (patch mc mab)))))
 
+  (printf "\ncompose mbc/m0 after mc/mab:\n")
+  (void (pretty-print-patch (compose-patch (patch mbc m0) (patch mc mab))))
+
+  (printf "\ncompose mc/mab after mbc/m0:\n")
+  (void (pretty-print-patch (compose-patch (patch mc mab) (patch mbc m0))))
+
+  (printf "\ncompose mc/m* (not disjoint) after mbc/m0:\n")
+  (void (pretty-print-patch (compose-patch (patch mc m*) (patch mbc m0))))
+
+  (printf "\ncompose mbc/m0 after mc/m* (not disjoint):\n")
+  (void (pretty-print-patch (compose-patch (patch mbc m0) (patch mc m*))))
+
   (printf "\ncompose mbc/m0 after lift mc/mab:\n")
   (void (pretty-print-patch (compose-patch (patch mbc m0)
                                            (lift-patch (patch mc mab)))))
@@ -182,4 +226,8 @@
   (printf "\ndrop (compose mbc/m0 after lift mc/mab):\n")
   (void (pretty-print-patch (drop-patch (compose-patch (patch mbc m0)
                                                        (lift-patch (patch mc mab))))))
+
+  (printf "\nstripped compose mc/m* (not disjoint) after mbc/m0:\n")
+  (void (pretty-print-patch (compose-patch (strip-patch (patch mc m*))
+                                           (strip-patch (patch mbc m0)))))
   )
