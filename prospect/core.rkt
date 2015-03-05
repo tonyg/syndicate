@@ -28,6 +28,7 @@
 
          meta-label?
 
+         prepend-at-meta
          assert
          retract
          sub
