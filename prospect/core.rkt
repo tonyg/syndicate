@@ -42,8 +42,7 @@
          make-spawn-world
 
          world-handle-event
-         clean-transition
-)
+         clean-transition)
 
 (require racket/set)
 (require racket/match)
