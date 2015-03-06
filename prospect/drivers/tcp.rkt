@@ -39,8 +39,8 @@
   (list (spawn-demand-matcher (advertise (observe (tcp-channel ? (?! (tcp-listener ?)) ?)))
                               (advertise (advertise (tcp-channel ? (?! (tcp-listener ?)) ?)))
 			      spawn-tcp-listener)
-	(spawn-demand-matcher (observe (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
-                              (advertise (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
+	(spawn-demand-matcher (advertise (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
+                              (observe (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
 			      spawn-tcp-connection)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
