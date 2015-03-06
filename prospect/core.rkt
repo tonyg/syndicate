@@ -19,10 +19,14 @@
 	 (struct-out capture)
 	 pretty-print-matcher
 	 matcher->pretty-string
+	 matcher-non-empty?
 	 matcher-empty?
          matcher-empty
 	 projection->pattern
          compile-projection
+         matcher-project
+         matcher-project/set
+         matcher-project/set/single
 
          event?
          action?
