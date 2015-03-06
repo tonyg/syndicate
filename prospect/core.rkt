@@ -329,9 +329,12 @@
                 (struct-copy world w [process-table (hash-set (world-process-table w) label p)]))))
         (apply-patch-in-world label delta new-w)]
        [else ;; we can still apply actions for nonexistent processes,
-             ;; but we can't limit the patches, making their zombie
-             ;; patch actions potentially less efficient.
-        (apply-patch-in-world label delta-orig w)])]
+             ;; but we have to limit the patches by consulting the
+             ;; whole routing table, making their zombie patch actions
+             ;; potentially less efficient.
+        (define delta (limit-patch/routing-table (label-patch delta-orig (set label))
+                                                 (world-routing-table w)))
+        (apply-patch-in-world label delta w)])]
     [(and m (message body))
      (when (observe? body)
        (log-warning "Process ~a sent message containing query ~v"
@@ -351,6 +354,8 @@
                     (and local-to-meta?
                          (message (at-meta-claim body))))])]))
 
+;; PRECONDITION: delta has been limited to be minimal with respect to
+;; existing interests of its label in w's routing table.
 (define (apply-patch-in-world label delta w)
   (define old-routing-table (world-routing-table w))
   (define new-routing-table (apply-patch old-routing-table delta))
