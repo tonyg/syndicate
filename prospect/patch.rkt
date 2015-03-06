@@ -7,6 +7,8 @@
          (struct-out advertise)
          empty-patch
          patch-empty?
+         patch-non-empty?
+         patch/removed?
          lift-patch
          drop-patch
          strip-interests
@@ -54,6 +56,14 @@
   (and (patch? p)
        (matcher-empty? (patch-added p))
        (matcher-empty? (patch-removed p))))
+
+(define (patch-non-empty? p)
+  (and (patch? p)
+       (or (matcher-non-empty? (patch-added p))
+           (matcher-non-empty? (patch-removed p)))))
+
+(define (patch/removed? p)
+  (and (patch? p) (matcher-non-empty? (patch-removed p))))
 
 (define (lift-patch p)
   (match-define (patch in out) p)

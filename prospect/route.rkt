@@ -20,10 +20,12 @@
 	 matcher? ;; expensive; see implementation
 	 matcher-empty
 	 matcher-empty?
+	 matcher-non-empty?
 	 pattern->matcher
 	 pattern->matcher*
 	 matcher-union
 	 matcher-intersect
+         empty-set-guard
          matcher-subtract-combiner
 	 matcher-subtract
 	 matcher-match-value
@@ -143,6 +145,10 @@
 ;; Matcher -> Boolean
 ;; True iff the argument is the empty matcher
 (define (matcher-empty? r) (not r))
+
+;; Matcher -> Boolean
+;; True iff the argument is NOT the empty matcher
+(define (matcher-non-empty? r) (not (matcher-empty? r)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Smart constructors & accessors
@@ -337,9 +343,11 @@
 		   (lambda (h) #f)
 		   (lambda (h) #f)))
 
+(define (empty-set-guard s)
+  (if (set-empty? s) #f s))
+
 (define (matcher-subtract-combiner s1 s2)
-  (define r (set-subtract s1 s2))
-  (if (set-empty? r) #f r))
+  (empty-set-guard (set-subtract s1 s2)))
 
 ;; Matcher Matcher -> Matcher
 ;; Removes re2's mappings from re1.

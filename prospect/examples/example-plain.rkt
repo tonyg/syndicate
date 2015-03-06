@@ -31,7 +31,7 @@
 (define (echoer e s)
   (match e
     [(message (at-meta (external-event _ (list (? eof-object?)))))
-     (transition s (quit))]
+     (quit)]
     [(message (at-meta (external-event _ (list line))))
      (transition s (message `(print (got-line ,line))))]
     [_ #f]))
@@ -44,9 +44,9 @@
      #f]
     [(message (timer-expired 'tick now))
      (printf "TICK ~v\n" now)
-     (transition (+ s 1) (if (< s 3)
-			     (message (set-timer 'tick 1000 'relative))
-			     (quit)))]
+     (if (< s 3)
+         (transition (+ s 1) (message (set-timer 'tick 1000 'relative)))
+         (quit))]
     [_ #f]))
 
 (define (printer e s)

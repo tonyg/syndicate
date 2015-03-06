@@ -122,8 +122,11 @@
 		       (output "Process ~a died with exception:\n~a\n"
 			       pidstr
 			       (exn->string exn))))
+         (when (quit? t)
+           (with-color BRIGHT-RED
+             (output "Process ~a exited normally.\n" pidstr)))
 	 (when (or relevant-exn? show-process-states-post?)
-	   (when t
+	   (when (transition? t)
 	     (unless (boring-state? (transition-state t))
 	       (when (not (equal? (process-state p) (transition-state t)))
 		 (with-color YELLOW
@@ -132,7 +135,7 @@
 	[('internal-step (list pids a old-w t))
 	 (when t ;; inert worlds don't change interestingly
 	   (define pidstr (format-pids pids))
-	   (define new-w (transition-state t))
+	   (define new-w (if (transition? t) (transition-state t) old-w))
 	   (define old-processes (world-process-table old-w))
 	   (define new-processes (world-process-table new-w))
 	   (define newcount (hash-count new-processes))
@@ -155,7 +158,7 @@
 		(unless (matcher-empty? interests)
 		  (output "~a's initial interests:\n" newpidstr)
 		  (pretty-print-matcher interests (current-error-port))))]
-	     [(quit)
+	     ['quit
 	      (when (or show-process-lifecycle? show-actions?)
 		(match (hash-ref old-processes (car pids) (lambda () #f))
 		  [#f (void)]

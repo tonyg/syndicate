@@ -134,9 +134,11 @@
 	       (define maybe-spawn (apply check-and-maybe-spawn-fn
 					  new-aggregate
 					  projection-results))
-	       (transition new-aggregate (when maybe-spawn (list maybe-spawn (quit))))]
+               (if maybe-spawn
+                   (quit maybe-spawn)
+                   (transition new-aggregate '()))]
 	      [(message (timer-expired (== timer-id) _))
-	       (transition current-aggregate (list (timeout-handler) (quit)))]
+               (quit (timeout-handler))]
 	      [_ #f]))
           (matcher-empty)
           (patch base-interests (matcher-empty))

@@ -61,7 +61,7 @@
              [(? patch? p)
               (cond [(matcher-empty? (patch-removed p)) #f] ;; peer hasn't quit yet: do nothing.
                     [else (channel-put control-ch 'quit)
-                          (transition s (quit))])]
+                          (quit)])]
 	     [(message (at-meta (? udp-packet? p)))
 	      (transition s (message p))]
 	     [(message (udp-packet _ (udp-remote-address host port) body))

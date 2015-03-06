@@ -2,7 +2,8 @@
 ;; Core implementation of Incremental Network Calculus.
 
 (provide (struct-out message)
-         (struct-out quit)
+         (except-out (struct-out quit) quit)
+         (rename-out [quit <quit>])
          (except-out (struct-out spawn) spawn)
          (rename-out [spawn <spawn>])
          (struct-out process)
@@ -36,6 +37,7 @@
          pub
          unpub
 
+         (rename-out [make-quit quit])
          make-world
          spawn-world
          (rename-out [spawn-process spawn])
@@ -57,7 +59,6 @@
 (struct message (body) #:prefab)
 
 ;; Actions ⊃ Events
-(struct quit () #:prefab)
 (struct spawn (boot) #:prefab)
 
 ;; Processes (machine states): (process Matcher (Option Behavior) Any)
@@ -73,14 +74,19 @@
 ;;  - a (transition Any (Constreeof Action)), a new Process state to
 ;;        be held by its World and a sequence of Actions for the World
 ;;        to take on the transitioning Process's behalf.
+;;  - a (quit (Constreeof Action)), signalling that the Process should
+;;        never again be handed an event, and that any queued actions
+;;        should be performed, followed by the sequence of Actions given,
+;;        and then the process should be garbage-collected.
 (struct transition (state actions) #:transparent)
+(struct quit (actions) #:prefab)
 
 ;; A PID is a Nat.
 ;; A Label is a PID or 'meta.
 
 ;; VM private states
 (struct world (next-pid ;; PID
-               pending-action-queue ;; (Queueof (Cons Label Action))
+               pending-action-queue ;; (Queueof (Cons Label (U Action 'quit)))
                runnable-pids ;; (Setof PID)
                routing-table ;; (Matcherof (Setof Label))
                process-table ;; (HashTable PID Process)
@@ -90,7 +96,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (event? x) (or (patch? x) (message? x)))
-(define (action? x) (or (event? x) (spawn? x) (quit? x)))
+(define (action? x) (or (event? x) (spawn? x)))
 
 (define (meta-label? x) (eq? x 'meta))
 
@@ -122,13 +128,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (ensure-transition v)
-  (if (or (not v) (transition? v))
+  (if (or (not v) (transition? v) (quit? v))
       v
-      (raise (exn:fail:contract (format "Expected transition (or #f); got ~v" v)
+      (raise (exn:fail:contract (format "Expected transition, quit or #f; got ~v" v)
 				(current-continuation-marks)))))
 
 (define (clean-transition t)
-  (and t (transition (transition-state t) (clean-actions (transition-actions t)))))
+  (match t
+    [#f #f]
+    [(quit actions) (quit (clean-actions actions))]
+    [(transition state actions) (transition state (clean-actions actions))]))
 
 (define (clean-actions actions)
   (filter (lambda (x) (and (action? x) (not (patch-empty? x)))) (flatten actions)))
@@ -142,6 +151,10 @@
                      (lambda () (clean-transition (ensure-transition (behavior e old-state))))
                      (match-lambda
                        [#f w]
+                       [(and q (quit final-actions))
+                        (trace-process-step e pid p #f q)
+                        (enqueue-actions (disable-process pid #f w) pid (append final-actions
+                                                                                (list 'quit)))]
                        [(and t (transition new-state new-actions))
                         (trace-process-step e pid p #f t)
                         (update-process pid
@@ -150,7 +163,7 @@
                                         w)])
                      (lambda (exn)
                        (trace-process-step e pid p exn #f)
-                       (enqueue-actions (disable-process pid exn w) pid (list (quit)))))]))
+                       (enqueue-actions (disable-process pid exn w) pid (list 'quit))))]))
 
 (define (send-event/guard delta pid w)
   (if (patch-empty? delta)
@@ -158,7 +171,10 @@
       (send-event delta pid w)))
 
 (define (disable-process pid exn w)
-  (log-error "Process ~a died with exception:\n~a" (cons pid (trace-pid-stack)) (exn->string exn))
+  (when exn
+    (log-error "Process ~a died with exception:\n~a"
+               (cons pid (trace-pid-stack))
+               (exn->string exn)))
   (match (hash-ref (world-process-table w) pid #f)
     [#f w]
     [old-p
@@ -190,6 +206,9 @@
      (queue-append-list (world-pending-action-queue w)
                         (for/list [(a actions)] (cons label a)))]))
 
+(define (make-quit . actions)
+  (quit actions))
+
 (define-syntax-rule (spawn-process behavior-exp initial-state-exp initial-patch-exp ...)
   (spawn (lambda (pid)
            (process (apply-patch (matcher-empty)
@@ -215,10 +234,14 @@
                     (make-world (boot-actions-thunk))))))
 
 (define (transition-bind k t0)
-  (match-define (transition state0 actions0) t0)
-  (match (k state0)
-    [#f t0]
-    [(transition state1 actions1) (transition state1 (cons actions0 actions1))]))
+  (match t0
+    [#f (error 'transition-bind "Cannot bind from transition #f with continuation ~v" k)]
+    [(quit _) t0]
+    [(transition state0 actions0)
+     (match (k state0)
+       [#f t0]
+       [(quit actions1) (quit (cons actions0 actions1))]
+       [(transition state1 actions1) (transition state1 (cons actions0 actions1))])]))
 
 (define (sequence-transitions t0 . steps)
   (foldl transition-bind t0 steps))
@@ -274,7 +297,7 @@
                                   (trace-pid-stack)
                                   (exn->string exn))
                        (transition w '())))]
-    [(quit)
+    ['quit
      (define pt (world-process-table w))
      (match (hash-ref pt label #f)
        [#f (transition w '())]
@@ -374,6 +397,7 @@
       (pretty-print w)
       (match (world-handle-event #f w)
         [#f (values w (flatten actions))]
+        [(quit new-actions) (values w (flatten (cons actions new-actions)))]
         [(transition new-w new-actions) (loop new-w (cons actions new-actions))])))
 
   (step* (make-world '()))
