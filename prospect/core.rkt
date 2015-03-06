@@ -48,6 +48,9 @@
          spawn/stateless
          make-spawn-world
 
+         transition-bind
+         sequence-transitions
+
          world-handle-event
          clean-transition)
 
