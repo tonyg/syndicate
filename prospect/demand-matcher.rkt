@@ -49,19 +49,15 @@
 ;; to increased unsatisfied demand and decreased demanded supply.
 (define (demand-matcher-update d s p)
   (match-define (demand-matcher demand-spec supply-spec inc-h dec-h demand supply) d)
-  (define added-demand (matcher-project/set (patch-added p) demand-spec))
-  (define removed-demand (matcher-project/set (patch-removed p) demand-spec))
-  (define added-supply (matcher-project/set (patch-added p) supply-spec))
-  (define removed-supply (matcher-project/set (patch-removed p) supply-spec))
+  (define-values (added-demand removed-demand) (patch-project/set p demand-spec))
+  (define-values (added-supply removed-supply) (patch-project/set p supply-spec))
 
-  (when (not added-demand)
-    (error 'demand-matcher "Wildcard demand of ~v:\n~a"
-           demand-spec
-           (matcher->pretty-string (patch-added p))))
-  (when (not added-supply)
-    (error 'demand-matcher "Wildcard supply of ~v:\n~a"
-           supply-spec
-	   (matcher->pretty-string (patch-added p))))
+  (when (not added-demand) (error 'demand-matcher "Wildcard demand of ~v:\n~a"
+                                  demand-spec
+                                  (matcher->pretty-string (patch-added p))))
+  (when (not added-supply) (error 'demand-matcher "Wildcard supply of ~v:\n~a"
+                                  supply-spec
+                                  (matcher->pretty-string (patch-added p))))
 
   (set! supply (set-union supply added-supply))
   (set! demand (set-subtract demand removed-demand))
