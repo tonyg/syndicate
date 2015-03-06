@@ -40,6 +40,8 @@
 	 matcher-project
 	 matcher-key-set
 	 matcher-key-set/single
+         matcher-project/set
+         matcher-project/set/single
 
 	 ;; Printing and Serialization
 	 pretty-print-matcher
@@ -763,6 +765,14 @@
 (define (matcher-key-set/single m)
   (define vss (matcher-key-set m))
   (and vss (for/set [(vs (in-set vss))] (car vs))))
+
+;; Convenience forms for the common operation of projecting a Matcher
+;; followed by converting the result to a Racket set (possibly
+;; containing just the first captured subvalue).
+(define-syntax-rule (matcher-project/set arg ...)
+  (matcher-key-set (matcher-project arg ...)))
+(define-syntax-rule (matcher-project/set/single arg ...)
+  (matcher-key-set/single (matcher-project arg ...)))
 
 ;; struct-type -> Symbol
 ;; Extract just the name of the given struct-type.
