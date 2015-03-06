@@ -6,7 +6,6 @@
 (require racket/match)
 (require racket/list)
 (require "core.rkt")
-(require "route.rkt")
 (require "trace/stderr.rkt")
 
 (provide (struct-out external-event)
@@ -48,7 +47,7 @@
 ;; Interests -> (Listof RacketEvent)
 ;; Projects out the active event subscriptions from the given interests.
 (define (extract-active-events interests)
-  (define es (matcher-key-set/single (matcher-project interests event-projection)))
+  (define es (matcher-project/set/single interests event-projection))
   ;; TODO: how should the following error be handled, ideally?
   ;; In principle, security restrictions should make it impossible.
   ;; But absent those, what should be done? Should an offending

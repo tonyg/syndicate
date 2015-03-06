@@ -4,7 +4,6 @@
 (require racket/set)
 (require racket/match)
 (require "core.rkt")
-(require (only-in "route.rkt" matcher-project matcher-key-set))
 (require "drivers/timer.rkt")
 
 (provide (except-out (struct-out demand-matcher) demand-matcher)
@@ -50,10 +49,10 @@
 ;; to increased unsatisfied demand and decreased demanded supply.
 (define (demand-matcher-update d s p)
   (match-define (demand-matcher demand-spec supply-spec inc-h dec-h demand supply) d)
-  (define added-demand (matcher-key-set (matcher-project (patch-added p) demand-spec)))
-  (define removed-demand (matcher-key-set (matcher-project (patch-removed p) demand-spec)))
-  (define added-supply (matcher-key-set (matcher-project (patch-added p) supply-spec)))
-  (define removed-supply (matcher-key-set (matcher-project (patch-removed p) supply-spec)))
+  (define added-demand (matcher-project/set (patch-added p) demand-spec))
+  (define removed-demand (matcher-project/set (patch-removed p) demand-spec))
+  (define added-supply (matcher-project/set (patch-added p) supply-spec))
+  (define removed-supply (matcher-project/set (patch-removed p) supply-spec))
 
   (when (not added-demand)
     (error 'demand-matcher "Wildcard demand of ~v:\n~a"
@@ -123,23 +122,24 @@
                   base-interests
                   . projections)
   (define timer-id (gensym 'on-claim))
+  (define (on-claim-handler e current-aggregate)
+    (match e
+      [(? patch? p)
+       (define new-aggregate (update-interests current-aggregate p))
+       (define projection-results
+         (map (lambda (p) (matcher-project/set new-aggregate p)) projections))
+       (define maybe-spawn (apply check-and-maybe-spawn-fn
+                                  new-aggregate
+                                  projection-results))
+       (if maybe-spawn
+           (quit maybe-spawn)
+           (transition new-aggregate '()))]
+      [(message (timer-expired (== timer-id) _))
+       (quit (timeout-handler))]
+      [_ #f]))
   (list
    (when timeout-msec (message (set-timer timer-id timeout-msec 'relative)))
-   (spawn (lambda (e current-aggregate)
-	    (match e
-              [(? patch? p)
-               (define new-aggregate (update-interests current-aggregate p))
-	       (define projection-results
-		 (map (lambda (p) (matcher-key-set (matcher-project new-aggregate p))) projections))
-	       (define maybe-spawn (apply check-and-maybe-spawn-fn
-					  new-aggregate
-					  projection-results))
-               (if maybe-spawn
-                   (quit maybe-spawn)
-                   (transition new-aggregate '()))]
-	      [(message (timer-expired (== timer-id) _))
-               (quit (timeout-handler))]
-	      [_ #f]))
+   (spawn on-claim-handler
           (matcher-empty)
           (patch base-interests (matcher-empty))
           (patch-seq* (map projection->pattern projections))
