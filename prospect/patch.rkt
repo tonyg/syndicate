@@ -8,6 +8,7 @@
          empty-patch
          patch-empty?
          patch-non-empty?
+         patch/added?
          patch/removed?
          lift-patch
          drop-patch
@@ -27,6 +28,9 @@
          compute-patch
          biased-intersection
          view-patch
+         patch-project
+         patch-project/set
+         patch-project/set/single
 
          pretty-print-patch
          patch->pretty-string)
@@ -63,8 +67,8 @@
        (or (matcher-non-empty? (patch-added p))
            (matcher-non-empty? (patch-removed p)))))
 
-(define (patch/removed? p)
-  (and (patch? p) (matcher-non-empty? (patch-removed p))))
+(define (patch/added? p) (and (patch? p) (matcher-non-empty? (patch-added p))))
+(define (patch/removed? p) (and (patch? p) (matcher-non-empty? (patch-removed p))))
 
 (define (lift-patch p)
   (match-define (patch in out) p)
@@ -203,6 +207,18 @@
 (define (view-patch p interests)
   (patch (biased-intersection (patch-added p) interests)
          (biased-intersection (patch-removed p) interests)))
+
+(define (patch-project p spec)
+  (match-define (patch in out) p)
+  (patch (matcher-project in spec) (matcher-project out spec)))
+
+(define (patch-project/set p spec)
+  (match-define (patch in out) p)
+  (values (matcher-project/set in spec) (matcher-project/set out spec)))
+
+(define (patch-project/set/single p spec)
+  (match-define (patch in out) p)
+  (values (matcher-project/set/single in spec) (matcher-project/set/single out spec)))
 
 (define (pretty-print-patch p [port (current-output-port)])
   (display (patch->pretty-string p) port))
