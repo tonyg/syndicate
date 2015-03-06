@@ -41,6 +41,7 @@
          make-world
          spawn-world
          (rename-out [spawn-process spawn])
+         spawn/stateless
          make-spawn-world
 
          world-handle-event
@@ -215,6 +216,17 @@
                                  (label-patch (patch-seq initial-patch-exp ...) (set pid)))
                     behavior-exp
                     initial-state-exp))))
+
+(define-syntax-rule (spawn/stateless behavior-exp initial-patch-exp ...)
+  (spawn-process (stateless-behavior-wrap behavior-exp)
+                 (void)
+                 initial-patch-exp ...))
+
+(define ((stateless-behavior-wrap b) e state)
+  (match (b e)
+    [#f #f]
+    [(? quit? q) q]
+    [actions (transition state actions)]))
 
 (define-syntax-rule (spawn-world boot-action ...)
   (make-spawn-world (lambda () (list boot-action ...))))
