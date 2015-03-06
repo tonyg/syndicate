@@ -237,7 +237,7 @@
 
 (define (make-world boot-actions)
   (world 0
-         (list->queue (for/list ((a (in-list boot-actions))) (cons 'meta a)))
+         (list->queue (for/list ((a (in-list (clean-actions boot-actions)))) (cons 'meta a)))
          (set)
          (matcher-empty)
          (hash)
