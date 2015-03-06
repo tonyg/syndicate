@@ -66,8 +66,13 @@
 ;; Actions ⊃ Events
 (struct spawn (boot) #:prefab)
 
-;; Processes (machine states): (process Matcher (Option Behavior) Any)
+;; Processes (machine states): (process Matcher (U Behavior (disabled Behavior)) Any)
 (struct process (interests behavior state) #:transparent)
+
+;; Disabled Behaviors, when found in a Process, indicate that the
+;; process has been disabled and is waiting out the performance of its
+;; final actions before finally being removed.
+(struct disabled (behavior) #:transparent)
 
 ;; A Behavior is a ((Option Event) Any -> Transition): a function
 ;; mapping an Event (or, in the #f case, a poll signal) and a
@@ -150,7 +155,7 @@
 (define (send-event e pid w)
   (match (hash-ref (world-process-table w) pid #f)
     [#f w]
-    [(process _ #f _) w] ;; disabled due to earlier error
+    [(process _ (? disabled?) _) w] ;; disabled due to earlier error or quit
     [(and p (process _ behavior old-state))
      (invoke-process pid
                      (lambda () (clean-transition (ensure-transition (behavior e old-state))))
@@ -183,7 +188,7 @@
   (match (hash-ref (world-process-table w) pid #f)
     [#f w]
     [old-p
-     (define new-p (struct-copy process old-p [behavior #f]))
+     (define new-p (struct-copy process old-p [behavior (disabled (process-behavior old-p))]))
      (struct-copy world w [process-table (hash-set (world-process-table w) pid new-p)])]))
 
 (define (update-process pid p actions w)
