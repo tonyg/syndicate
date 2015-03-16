@@ -8,9 +8,12 @@
 	 trace-process-step
 	 trace-internal-step
 
-         exn->string) ;; required from web-server/private/util
+         exn->string ;; required from web-server/private/util
+         string-indent
+         indented-port-output)
 
 (require (only-in web-server/private/util exn->string))
+(require (only-in racket/string string-join string-split))
 
 (define trace-logger (make-logger 'minimart-trace))
 
@@ -30,13 +33,22 @@
     (log-message trace-logger 'info name "" r #f)))
 
 ;; Event PID Process (Option Exception) (Option Transition) -> Void
-(define (trace-process-step e pid p exn t)
+(define (trace-process-step e pid beh st exn t)
   (when exn
     (log-error "Process ~a died with exception:\n~a"
 	       (cons pid (trace-pid-stack))
 	       (exn->string exn)))
-  (record-trace-event 'process-step (list (cons pid (trace-pid-stack)) e p exn t)))
+  (record-trace-event 'process-step (list (cons pid (trace-pid-stack)) e beh st exn t)))
 
 ;; PID Action World Transition -> Void
 (define (trace-internal-step pid a w t)
   (record-trace-event 'internal-step (list (cons pid (trace-pid-stack)) a w t)))
+
+(define (string-indent amount s)
+  (define pad (make-string amount #\space))
+  (string-join (for/list [(line (string-split s "\n"))] (string-append pad line)) "\n"))
+
+(define (indented-port-output amount f)
+  (define p (open-output-string))
+  (f p)
+  (string-indent amount (get-output-string p)))

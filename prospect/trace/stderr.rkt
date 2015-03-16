@@ -9,6 +9,7 @@
 (require (only-in web-server/private/util exn->string))
 (require "../core.rkt")
 (require "../trace.rkt")
+(require "../mux.rkt")
 
 (define (env-aref varname default alist)
   (define key (or (getenv varname) default))
@@ -95,7 +96,7 @@
     (let loop ()
       (match-define (vector level message-string data event-name) (sync receiver))
       (match* (event-name data)
-	[('process-step (list pids e p exn t))
+	[('process-step (list pids e beh st exn t))
 	 (define pidstr (format-pids pids))
 	 (define relevant-exn? (and show-exceptions? exn))
 	 (match e
@@ -113,22 +114,23 @@
 			  (output "~a received a message:\n" pidstr)
 			  (pretty-write body (current-error-port))))])
 	 (when (or relevant-exn? show-process-states-pre?)
-	   (when (or relevant-exn? (not (boring-state? (process-state p))))
+	   (when (or relevant-exn? (not (boring-state? st)))
 	     (with-color YELLOW
 			 (output "~a's state just before the event:\n" pidstr)
-			 (output-state (process-state p)))))
+			 (output-state st))))
 	 (when relevant-exn?
 	   (with-color WHITE-ON-RED
-		       (output "Process ~a died with exception:\n~a\n"
+		       (output "Process ~a ~v died with exception:\n~a\n"
 			       pidstr
+                               beh
 			       (exn->string exn))))
          (when (quit? t)
            (with-color BRIGHT-RED
-             (output "Process ~a exited normally.\n" pidstr)))
+             (output "Process ~a ~v exited normally.\n" pidstr beh)))
 	 (when (or relevant-exn? show-process-states-post?)
 	   (when (transition? t)
 	     (unless (boring-state? (transition-state t))
-	       (when (not (equal? (process-state p) (transition-state t)))
+	       (when (not (equal? st (transition-state t)))
 		 (with-color YELLOW
 			     (output "~a's state just after the event:\n" pidstr)
 			     (output-state (transition-state t)))))))]
@@ -136,16 +138,16 @@
 	 (when t ;; inert worlds don't change interestingly
 	   (define pidstr (format-pids pids))
 	   (define new-w (if (transition? t) (transition-state t) old-w))
-	   (define old-processes (world-process-table old-w))
-	   (define new-processes (world-process-table new-w))
-	   (define newcount (hash-count new-processes))
+	   (define newcount (hash-count (world-behaviors new-w)))
 	   (match a
 	     [(? spawn?)
 	      (when (or show-process-lifecycle? show-actions?)
-		(define newpid (set-first (set-subtract (hash-keys new-processes)
-							(hash-keys old-processes))))
+		(define newpid (set-first (set-subtract (hash-keys (world-behaviors new-w))
+							(hash-keys (world-behaviors old-w)))))
 		(define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
-                (match-define (process interests behavior state) (hash-ref new-processes newpid))
+                (define interests (mux-interests-of (world-mux new-w) newpid))
+                (define behavior (hash-ref (world-behaviors new-w) newpid))
+                (define state (hash-ref (world-states new-w) newpid))
 		(with-color BRIGHT-GREEN
 			    (output "~a ~v spawned from ~a (~a total processes now)\n"
 				    newpidstr
@@ -160,20 +162,14 @@
 		  (pretty-print-matcher interests (current-error-port))))]
 	     ['quit
 	      (when (or show-process-lifecycle? show-actions?)
-		(match (hash-ref old-processes (car pids) (lambda () #f))
-		  [#f (void)]
-		  [(process interests behavior state)
-		   (with-color BRIGHT-RED
-			       (output "~a ~v exited (~a total processes now)\n"
-				       pidstr
-                                       behavior
-				       newcount))
-		   (unless (boring-state? state)
-		     (output "~a's final state:\n" pidstr)
-		     (output-state state))
-		   (unless (matcher-empty? interests)
-		     (output "~a's final interests:\n" pidstr)
-		     (pretty-print-matcher interests (current-error-port)))]))]
+                (define interests (mux-interests-of (world-mux old-w) (car pids)))
+                (with-color BRIGHT-RED
+                  (output "~a exited (~a total processes now)\n"
+                          pidstr
+                          newcount))
+                (unless (matcher-empty? interests)
+                  (output "~a's final interests:\n" pidstr)
+                  (pretty-print-matcher interests (current-error-port))))]
 	     [(? patch? p)
 	      (when (or show-actions? show-patch-actions?)
 		(output "~a performed a patch:\n" pidstr)
@@ -183,11 +179,12 @@
 		(output "~a sent a message:\n" pidstr)
 		(pretty-write body (current-error-port)))])
 	   (when show-routing-table?
-	     (when (not (equal? (world-routing-table old-w) (world-routing-table new-w)))
+             (define old-table (mux-routing-table (world-mux old-w)))
+             (define new-table (mux-routing-table (world-mux new-w)))
+	     (when (not (equal? old-table new-table))
 	       (with-color BRIGHT-BLUE
 			   (output "~a's routing table:\n" (format-pids (cdr pids)))
-			   (pretty-print-matcher (world-routing-table new-w)
-						 (current-error-port))))))])
+			   (pretty-print-matcher new-table (current-error-port))))))])
       (loop))))
 
 (void (when (not (set-empty? flags))
