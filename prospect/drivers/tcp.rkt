@@ -85,7 +85,7 @@
 
 (define (spawn-tcp-listener server-addr)
   (match-define (tcp-listener port) server-addr)
-  (define listener (tcp:tcp-listen port 4 #t))
+  (define listener (tcp:tcp-listen port 128 #t))
   (define control-ch (make-channel))
   (thread (lambda () (tcp-listener-thread control-ch listener server-addr)))
   (spawn tcp-listener-behavior
