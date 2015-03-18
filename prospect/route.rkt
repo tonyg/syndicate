@@ -38,6 +38,8 @@
          ILM
          EOS
          matcher-step
+         success?
+         success-value
 
 	 ;; Projections
 	 compile-projection
@@ -533,27 +535,34 @@
                                #:seed [seed (cons (set) (set))]
                                #:combiner [combiner (lambda (v1 v2 a)
                                                       (cons (set-union (car a) v1)
-                                                            (set-union (cdr a) v2)))])
+                                                            (set-union (cdr a) v2)))]
+                               #:left-short [left-short (lambda (v r acc) acc)]
+                               #:right-short [right-short (lambda (v r acc) acc)])
   (let walk ((re1 re1) (re2 re2) (acc seed))
     (match* (re1 re2)
       [(#f _) acc]
       [(_ #f) acc]
-      [((wildcard-sequence r1) (wildcard-sequence r2)) (walk r1 r2 acc)]
-      [((wildcard-sequence r1) r2) (walk (expand-wildseq r1) r2 acc)]
-      [(r1 (wildcard-sequence r2)) (walk r1 (expand-wildseq r2) acc)]
-      [((success v1) (success v2)) (combiner v1 v2 acc)]
+
       [((? treap? h1) (? treap? h2))
        (define w1 (rlookup h1 ? #f))
        (define w2 (rlookup h2 ? #f))
        (define r (walk w1 w2 acc))
        (for/fold [(r r)]
-	   [(key (cond
-		  [(and w1 w2) (set-remove (set-union (treap-keys h1) (treap-keys h2)) ?)]
-		  [w1 (treap-keys h2)]
-		  [w2 (treap-keys h1)]
-		  [(< (treap-size h1) (treap-size h2)) (treap-keys h1)]
-		  [else (treap-keys h2)]))]
-	 (walk (rlookup h1 key w1) (rlookup h2 key w2) r))])))
+                 [(key (cond
+                         [(and w1 w2) (set-remove (set-union (treap-keys h1) (treap-keys h2)) ?)]
+                         [w1 (treap-keys h2)]
+                         [w2 (treap-keys h1)]
+                         [(< (treap-size h1) (treap-size h2)) (treap-keys h1)]
+                         [else (treap-keys h2)]))]
+	 (walk (rlookup h1 key w1) (rlookup h2 key w2) r))]
+
+      [((wildcard-sequence r1) (wildcard-sequence r2)) (walk r1 r2 acc)]
+      [((wildcard-sequence r1) r2) (walk (expand-wildseq r1) r2 acc)]
+      [(r1 (wildcard-sequence r2)) (walk r1 (expand-wildseq r2) acc)]
+
+      [((success v1) (success v2)) (combiner v1 v2 acc)]
+      [((success v) r) (left-short v r acc)]
+      [(r (success v)) (right-short v r acc)])))
 
 ;; Matcher × (Value → Matcher) → Matcher
 ;; Since Matchers accept *sequences* of input values, this appends two

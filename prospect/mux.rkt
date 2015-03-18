@@ -71,10 +71,12 @@
 
 (define (compute-affected-pids routing-table delta)
   (define cover (matcher-union (patch-added delta) (patch-removed delta)))
-  (matcher-match-matcher (pattern->matcher #t (observe (embedded-matcher cover)))
-                         routing-table
+  (matcher-match-matcher cover
+                         (matcher-step routing-table struct:observe)
                          #:seed (set)
-                         #:combiner (lambda (v1 v2 acc) (set-union v2 acc))))
+                         #:combiner (lambda (v1 v2 acc) (set-union v2 acc))
+                         #:left-short (lambda (v r acc)
+                                        (set-union acc (success-value (matcher-step r EOS))))))
 
 (define (mux-route-message m label body)
   (when (observe? body)
