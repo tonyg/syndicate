@@ -55,7 +55,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define at-meta-proj (compile-projection (at-meta (?!))))
-(define observe-proj (compile-projection (observe (?!))))
 
 (define (patch-empty? p)
   (and (patch? p)
@@ -197,12 +196,10 @@
          (matcher-subtract old-base new-base)))
 
 (define (biased-intersection object subject)
-  (matcher-project (matcher-intersect (pattern->matcher #t (observe (embedded-matcher object)))
-                                      subject
-                                      #:combiner (lambda (v1 v2) #t))
-                   observe-proj
-                   #:project-success (lambda (v) #t)
-                   #:combiner (lambda (v1 v2) #t)))
+  (matcher-intersect object
+                     (matcher-step subject struct:observe)
+                     #:combiner (lambda (v1 v2) #t)
+                     #:left-short (lambda (v r) (matcher-step r EOS))))
 
 (define (view-patch p interests)
   (patch (biased-intersection (patch-added p) interests)

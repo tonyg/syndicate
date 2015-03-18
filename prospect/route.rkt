@@ -33,6 +33,12 @@
 	 matcher-append
 	 matcher-relabel
 
+         SOL
+         SOV
+         ILM
+         EOS
+         matcher-step
+
 	 ;; Projections
 	 compile-projection
 	 compile-projection*
@@ -320,6 +326,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Matcher combinators
 
+(define (default-short v r)
+  (error 'default-short "Asymmetric matchers; value ~v, matcher ~v" v r))
+
 ;; Matcher Matcher -> Matcher
 ;; Computes the union of the multimaps passed in.
 (define (matcher-union re1 re2 #:combiner [combiner set-union])
@@ -329,21 +338,28 @@
 		   values
 		   values
 		   values
-		   values))
+		   values
+                   default-short
+                   default-short))
 
 ;; (A B -> C) -> A B -> B A -> C
 (define ((flip f) a b) (f b a))
 
 ;; Matcher Matcher -> Matcher
 ;; Computes the intersection of the multimaps passed in.
-(define (matcher-intersect re1 re2 #:combiner [combiner set-union])
+(define (matcher-intersect re1 re2
+                           #:combiner [combiner set-union]
+                           #:left-short [left-short default-short]
+                           #:right-short [right-short default-short])
   (matcher-recurse re1
 		   re2
                    combiner
 		   (lambda (r) #f)
 		   (lambda (r) #f)
 		   (lambda (h) #f)
-		   (lambda (h) #f)))
+		   (lambda (h) #f)
+                   left-short
+                   right-short))
 
 (define (empty-set-guard s)
   (if (set-empty? s) #f s))
@@ -361,19 +377,26 @@
 		   (lambda (r) #f)
 		   values
 		   (lambda (h) #f)
-		   values))
+		   values
+                   default-short
+                   default-short))
 
-(define (matcher-recurse re1 re2 vf left-false right-false right-base left-base)
+(define (matcher-recurse re1 re2 vf left-false right-false right-base left-base left-short right-short)
   (let f ((re1 re1) (re2 re2))
     (match* (re1 re2)
       [(#f r) (left-false r)]
       [(r #f) (right-false r)]
+
+      [((? treap? h1) (? treap? h2))
+       (fold-over-keys h1 h2 f (left-base h1) (right-base h2))]
+
       [((wildcard-sequence r1) (wildcard-sequence r2)) (rwildseq (f r1 r2))]
       [((wildcard-sequence r1) r2) (f (expand-wildseq r1) r2)]
       [(r1 (wildcard-sequence r2)) (f r1 (expand-wildseq r2))]
+
       [((success v1) (success v2)) (rsuccess (vf v1 v2))]
-      [((? treap? h1) (? treap? h2))
-       (fold-over-keys h1 h2 f (left-base h1) (right-base h2))])))
+      [((success v) r) (left-short v r)]
+      [(r (success v)) (right-short v r)])))
 
 (define (fold-over-keys h1 h2 f left-base right-base)
   (define w1 (rlookup h1 ? #f))
@@ -567,6 +590,14 @@
       [(? treap?) (for/fold [(acc (rwild (walk (rlookup m ? #f))))]
 			   [(kv (treap-to-alist m)) #:when (not (eq? (car kv) ?))]
 			 (rupdate acc (car kv) (walk (cdr kv))))])))
+
+;; Matcher Sigma -> Matcher
+(define (matcher-step m s)
+  (match m
+    [#f #f]
+    [(wildcard-sequence k) (if (key-close? s) k m)]
+    [(success _) #f]
+    [(? treap? h) (rlookup h s (treap-get h ? (lambda () #f)))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Projection
@@ -1488,3 +1519,30 @@
   (void
    (pretty-print-matcher* (matcher-union (pattern->matcher SA ?)
 					 (pattern->matcher SB (list ? '- ?))))))
+
+(module+ test
+  (let ()
+    (newline)
+    (printf "Biased-intersection test\n")
+    (struct obs (val) #:prefab)
+    (let ((object (matcher-union (pattern->matcher #t 1)
+                                 (pattern->matcher #t 2)))
+          (subject (matcher-union (pattern->matcher #t 99)
+                                  (pattern->matcher #t (obs ?)))))
+      (pretty-print-matcher* object)
+      ;; The default, slow way of computing a biased intersection:
+      (pretty-print-matcher*
+       (matcher-project (matcher-intersect (pattern->matcher #t (obs (embedded-matcher object)))
+                                           subject
+                                           #:combiner (lambda (v1 v2) #t))
+                        (compile-projection (obs (?!)))
+                        #:project-success (lambda (v) #t)
+                        #:combiner (lambda (v1 v2) #t)))
+      ;; A hopefully quicker way of doing the same:
+      (define intersection (matcher-intersect object
+                                              (matcher-step subject struct:obs)
+                                              #:combiner (lambda (v1 v2) #t)
+                                              #:left-short (lambda (v r)
+                                                             (matcher-step r EOS))))
+      (pretty-print-matcher* intersection))
+    (void)))
