@@ -53,10 +53,7 @@
     ;; be minimal with respect to existing interests of its label.
     (define old-routing-table (mux-routing-table m))
     (define new-routing-table (apply-patch old-routing-table delta))
-    (define delta-aggregate
-      (compute-aggregate-patch delta label old-routing-table))
-    (define delta-aggregate/no-meta
-      (compute-aggregate-patch delta label old-routing-table #:remove-meta? #t))
+    (define delta-aggregate (compute-aggregate-patch delta label old-routing-table))
     (define affected-pids (let ((pids (compute-affected-pids old-routing-table delta)))
                             (set-remove (set-add pids label) 'meta))) ;; TODO: removing meta is weird
     (values (struct-copy mux m [routing-table new-routing-table])
@@ -72,7 +69,8 @@
                     [else
                      (cons pid (view-patch delta-aggregate (mux-interests-of m pid)))]))
             (and (not (meta-label? label))
-                 (drop-patch delta-aggregate/no-meta)))))
+                 (drop-patch
+                  (compute-aggregate-patch delta label old-routing-table #:remove-meta? #t))))))
 
 (define (compute-affected-pids routing-table delta)
   (define cover (matcher-union (patch-added delta) (patch-removed delta)))
