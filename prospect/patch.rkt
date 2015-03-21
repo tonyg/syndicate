@@ -135,9 +135,13 @@
 ;; from `label`'s own interests, but where interest remains from other
 ;; peers, the overall effect will be nil.
 ;;
+;; If `remove-meta?` is true, then in addition to ignoring existing
+;; `label` interests, we also ignore existing `'meta`-labelled
+;; interests. This is used when computing an outbound/dropped patch.
+;;
 ;; PRECONDITION: `p` is (set label)-labelled
 ;; PRECONDITION: `base` is (set ...)-labelled
-(define (compute-aggregate-patch p label base)
+(define (compute-aggregate-patch p label base #:remove-meta? [remove-meta? #f])
   (define (add-combiner v1 v2)
     ;; Keep only points where `p` would add, where no `label` interest
     ;; is present*, and where no non-`label` interest is present. That
@@ -148,16 +152,32 @@
     ;; has established that no `label` interest is present at these
     ;; points), we can always discard such points by returning a
     ;; constant #f.
-    #f)
+    ;;
+    ;; ...except when `remove-meta?` is true. In that case, we need to
+    ;; keep the point in the case that the only interest present is
+    ;; `'meta`-labeled interest.
+    (if (and remove-meta? (equal? v2 (set 'meta)))
+        v1
+        #f))
   (define (rem-combiner v1 v2)
     ;; Keep only points where `p` would remove, where `label` interest
     ;; is present, and where no non-`label` interest is present. We
     ;; know that a previous patch-limiting operation has ensured that
     ;; `label` interest is present, so we only need to check whether
     ;; any other interest exists at each point.
+    ;;
+    ;; ...and again, for `remove-meta?`, the condition is slightly
+    ;; different. We need to keep the point in that case when either
+    ;; only label interest exists (which by precondition is always the
+    ;; case), or when exactly `label` and `'meta` interest exists, and
+    ;; in no other case.
     (if (= (set-count v2) 1)
         v1 ;; only `label` interest (previously established) exists here.
-        #f)) ;; other interest exists here, so we should discard this removed-point.
+        (if (and remove-meta?
+                 (= (set-count v2) 2)
+                 (set-member? v2 'meta))
+            v1 ;; remove-meta? is true, and exactly `label` and `'meta` interest exists here.
+            #f))) ;; other interest exists here, so we should discard this removed-point.
   (patch (matcher-subtract (patch-added p) base #:combiner add-combiner)
          (matcher-subtract (patch-removed p) base #:combiner rem-combiner)))
 
@@ -386,5 +406,53 @@
 
     (post-checks R1 R1-relabeled p-aggregate1)
     (post-checks R2 R2-relabeled p-aggregate2)
+    )
+
+  (let* ((ma (set->matcher (set 'a) (set 1)))
+         (mb (set->matcher (set 'b) (set 1)))
+         (mmeta (set->matcher (set 'meta) (set 1)))
+         (R0 (matcher-empty))
+         (R1 mmeta)
+         (R2 mb)
+         (R3 (matcher-union mb mmeta))
+         (R4 ma)
+         (R5 (matcher-union ma mmeta))
+         (R6 (matcher-union ma mb))
+         (R7 (matcher-union (matcher-union ma mb) mmeta))
+         (p0 empty-patch)
+         (p+ (patch (set->matcher (set 'a) (set 1)) (matcher-empty)))
+         (p- (patch (matcher-empty) (set->matcher (set 'a) (set 1)))))
+    (check-equal? (compute-aggregate-patch p0 'a R0) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R1) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R2) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R3) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R4) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R5) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R6) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R7) p0)
+    (check-equal? (compute-aggregate-patch p+ 'a R0) p+)
+    (check-equal? (compute-aggregate-patch p+ 'a R1) p0)
+    (check-equal? (compute-aggregate-patch p+ 'a R2) p0)
+    (check-equal? (compute-aggregate-patch p+ 'a R3) p0)
+    (check-equal? (compute-aggregate-patch p- 'a R4) p-)
+    (check-equal? (compute-aggregate-patch p- 'a R5) p0)
+    (check-equal? (compute-aggregate-patch p- 'a R6) p0)
+    (check-equal? (compute-aggregate-patch p- 'a R7) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R0 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R1 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R2 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R3 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R4 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R5 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R6 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p0 'a R7 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p+ 'a R0 #:remove-meta? #t) p+)
+    (check-equal? (compute-aggregate-patch p+ 'a R1 #:remove-meta? #t) p+)
+    (check-equal? (compute-aggregate-patch p+ 'a R2 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p+ 'a R3 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p- 'a R4 #:remove-meta? #t) p-)
+    (check-equal? (compute-aggregate-patch p- 'a R5 #:remove-meta? #t) p-)
+    (check-equal? (compute-aggregate-patch p- 'a R6 #:remove-meta? #t) p0)
+    (check-equal? (compute-aggregate-patch p- 'a R7 #:remove-meta? #t) p0)
     )
   )
