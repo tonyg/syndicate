@@ -67,7 +67,7 @@
 (define (format-pids pids)
   (match pids
     ['() "ground"]
-    [(cons 'meta rest) (format "boot action of ~a" (format-pids rest))]
+    [(cons 'meta rest) (format "context of ~a" (format-pids rest))]
     [_ (string-join (map number->string (reverse pids)) ":")]))
 
 (define (output fmt . args)
@@ -96,34 +96,55 @@
     (let loop ()
       (match-define (vector level message-string data event-name) (sync receiver))
       (match* (event-name data)
-	[('process-step (list pids e beh st exn t))
+	[('process-step (list pids e beh st))
 	 (define pidstr (format-pids pids))
-	 (define relevant-exn? (and show-exceptions? exn))
 	 (match e
 	   [#f
-	    (when (or relevant-exn? show-events?)
+	    (when show-events?
+	      (with-color YELLOW (output "~a is being polled for changes.\n" pidstr)))]
+	   [(? patch? p)
+	    (when (or show-events? show-patch-events?)
+	      (with-color YELLOW
+                (output "~a is receiving a patch:\n" pidstr)
+                (pretty-print-patch p (current-error-port))))]
+	   [(message body)
+	    (when (or show-events? show-message-events?)
+	      (with-color YELLOW
+                (output "~a is receiving a message:\n" pidstr)
+                (pretty-write body (current-error-port))))])
+	 (when show-process-states-pre?
+	   (when (not (boring-state? st))
+	     (with-color YELLOW
+               (output "~a's state just before the event:\n" pidstr)
+               (output-state st))))]
+        [('process-step-result (list pids e beh st exn t))
+	 (define pidstr (format-pids pids))
+	 (define relevant-exn? (and show-exceptions? exn))
+         (define (exn-and-not b) (and relevant-exn? (not b)))
+	 (match e
+	   [#f
+	    (when (exn-and-not show-events?)
 	      (with-color YELLOW (output "~a was polled for changes.\n" pidstr)))]
 	   [(? patch? p)
-	    (when (or relevant-exn? show-events? show-patch-events?)
+	    (when (exn-and-not (or show-events? show-patch-events?))
 	      (with-color YELLOW
-			  (output "~a received a patch:\n" pidstr)
-			  (pretty-print-patch p (current-error-port))))]
+                (output "~a received a patch:\n" pidstr)
+                (pretty-print-patch p (current-error-port))))]
 	   [(message body)
-	    (when (or relevant-exn? show-events? show-message-events?)
+	    (when (exn-and-not (or show-events? show-message-events?))
 	      (with-color YELLOW
-			  (output "~a received a message:\n" pidstr)
-			  (pretty-write body (current-error-port))))])
-	 (when (or relevant-exn? show-process-states-pre?)
-	   (when (or relevant-exn? (not (boring-state? st)))
-	     (with-color YELLOW
-			 (output "~a's state just before the event:\n" pidstr)
-			 (output-state st))))
+                (output "~a received a message:\n" pidstr)
+                (pretty-write body (current-error-port))))])
+	 (when (exn-and-not (and show-process-states-pre? (not (boring-state? st))))
+           (with-color YELLOW
+             (output "~a's state just before the event:\n" pidstr)
+             (output-state st)))
 	 (when relevant-exn?
 	   (with-color WHITE-ON-RED
-		       (output "Process ~a ~v died with exception:\n~a\n"
-			       pidstr
-                               beh
-			       (exn->string exn))))
+             (output "Process ~a ~v died with exception:\n~a\n"
+                     pidstr
+                     beh
+                     (exn->string exn))))
          (when (quit? t)
            (with-color BRIGHT-RED
              (output "Process ~a ~v exited normally.\n" pidstr beh)))
@@ -132,59 +153,68 @@
 	     (unless (boring-state? (transition-state t))
 	       (when (not (equal? st (transition-state t)))
 		 (with-color YELLOW
-			     (output "~a's state just after the event:\n" pidstr)
-			     (output-state (transition-state t)))))))]
-	[('internal-step (list pids a old-w t))
-	 (when t ;; inert worlds don't change interestingly
-	   (define pidstr (format-pids pids))
-	   (define new-w (if (transition? t) (transition-state t) old-w))
-	   (define newcount (hash-count (world-behaviors new-w)))
-	   (match a
-	     [(? spawn?)
-	      (when (or show-process-lifecycle? show-actions?)
-		(define newpid (set-first (set-subtract (hash-keys (world-behaviors new-w))
-							(hash-keys (world-behaviors old-w)))))
-		(define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
+                   (output "~a's state just after the event:\n" pidstr)
+                   (output-state (transition-state t)))))))]
+	[('internal-action (list pids a old-w))
+         (define pidstr (format-pids pids))
+         (define oldcount (hash-count (world-behaviors old-w)))
+         (match a
+           [(? spawn?)
+            ;; Handle this in internal-action-result
+            (void)]
+           ['quit
+            (when (or show-process-lifecycle? show-actions?)
+              (define interests (mux-interests-of (world-mux old-w) (car pids)))
+              (with-color BRIGHT-RED
+                (output "~a exiting (~a total processes remain)\n"
+                        pidstr
+                        (- oldcount 1)))
+              (unless (matcher-empty? interests)
+                (output "~a's final interests:\n" pidstr)
+                (pretty-print-matcher interests (current-error-port))))]
+           [(? patch? p)
+            (when (or show-actions? show-patch-actions?)
+              (output "~a performing a patch:\n" pidstr)
+              (pretty-print-patch p (current-error-port)))]
+           [(message body)
+            (when (or show-actions? show-message-actions?)
+              (output "~a sending a message:\n" pidstr)
+              (pretty-write body (current-error-port)))])]
+        [('internal-action-result (list pids a old-w t))
+         (when t
+           (define new-w (transition-state t))
+           (define pidstr (format-pids pids))
+           (define newcount (hash-count (world-behaviors new-w)))
+           (match a
+             [(? spawn?)
+              (when (or show-process-lifecycle? show-actions?)
+                (define newpid (mux-next-pid (world-mux old-w)))
+                (define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
                 (define interests (mux-interests-of (world-mux new-w) newpid))
                 (define behavior (hash-ref (world-behaviors new-w) newpid))
                 (define state (hash-ref (world-states new-w) newpid))
-		(with-color BRIGHT-GREEN
-			    (output "~a ~v spawned from ~a (~a total processes now)\n"
-				    newpidstr
-				    behavior
-				    pidstr
-				    newcount))
-		(unless (boring-state? state)
-		  (output "~a's initial state:\n" newpidstr)
-		  (output-state state))
-		(unless (matcher-empty? interests)
-		  (output "~a's initial interests:\n" newpidstr)
-		  (pretty-print-matcher interests (current-error-port))))]
-	     ['quit
-	      (when (or show-process-lifecycle? show-actions?)
-                (define interests (mux-interests-of (world-mux old-w) (car pids)))
-                (with-color BRIGHT-RED
-                  (output "~a exited (~a total processes now)\n"
+                (with-color BRIGHT-GREEN
+                  (output "~a ~v spawned from ~a (~a total processes now)\n"
+                          newpidstr
+                          behavior
                           pidstr
                           newcount))
+                (unless (boring-state? state)
+                  (output "~a's initial state:\n" newpidstr)
+                  (output-state state))
                 (unless (matcher-empty? interests)
-                  (output "~a's final interests:\n" pidstr)
+                  (output "~a's initial interests:\n" newpidstr)
                   (pretty-print-matcher interests (current-error-port))))]
-	     [(? patch? p)
-	      (when (or show-actions? show-patch-actions?)
-		(output "~a performed a patch:\n" pidstr)
-		(pretty-print-patch p (current-error-port)))]
-	     [(message body)
-	      (when (or show-actions? show-message-actions?)
-		(output "~a sent a message:\n" pidstr)
-		(pretty-write body (current-error-port)))])
-	   (when show-routing-table?
+             [_
+              ;; other cases handled in internal-action
+              (void)])
+           (when show-routing-table?
              (define old-table (mux-routing-table (world-mux old-w)))
              (define new-table (mux-routing-table (world-mux new-w)))
-	     (when (not (equal? old-table new-table))
-	       (with-color BRIGHT-BLUE
-			   (output "~a's routing table:\n" (format-pids (cdr pids)))
-			   (pretty-print-matcher new-table (current-error-port))))))])
+             (when (not (equal? old-table new-table))
+               (with-color BRIGHT-BLUE
+                 (output "~a's routing table:\n" (format-pids (cdr pids)))
+                 (pretty-print-matcher new-table (current-error-port))))))])
       (loop))))
 
 (void (when (not (set-empty? flags))

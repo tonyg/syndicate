@@ -151,22 +151,24 @@
   (define old-state (hash-ref (world-states w) pid #f))
   (if (not behavior)
       w
-      (invoke-process pid
-                      (lambda () (clean-transition (ensure-transition (behavior e old-state))))
-                      (match-lambda
-                        [#f w]
-                        [(and q (quit final-actions))
-                         (trace-process-step e pid behavior old-state #f q)
-                         (enqueue-actions (disable-process pid #f w) pid (append final-actions
-                                                                                 (list 'quit)))]
-                        [(and t (transition new-state new-actions))
-                         (trace-process-step e pid behavior old-state #f t)
-                         (enqueue-actions (mark-pid-runnable (update-state w pid new-state) pid)
-                                          pid
-                                          new-actions)])
-                      (lambda (exn)
-                        (trace-process-step e pid behavior old-state exn #f)
-                        (enqueue-actions (disable-process pid exn w) pid (list 'quit))))))
+      (begin
+        (trace-process-step e pid behavior old-state)
+        (invoke-process pid
+                        (lambda () (clean-transition (ensure-transition (behavior e old-state))))
+                        (match-lambda
+                          [#f w]
+                          [(and q (quit final-actions))
+                           (trace-process-step-result e pid behavior old-state #f q)
+                           (enqueue-actions (disable-process pid #f w) pid (append final-actions
+                                                                                   (list 'quit)))]
+                          [(and t (transition new-state new-actions))
+                           (trace-process-step-result e pid behavior old-state #f t)
+                           (enqueue-actions (mark-pid-runnable (update-state w pid new-state) pid)
+                                            pid
+                                            new-actions)])
+                        (lambda (exn)
+                          (trace-process-step-result e pid behavior old-state exn #f)
+                          (enqueue-actions (disable-process pid exn w) pid (list 'quit)))))))
 
 (define (update-state w pid s)
   (struct-copy world w [states (hash-set (world-states w) pid s)]))
@@ -277,8 +279,9 @@
   (for/fold ([wt (transition (struct-copy world w [pending-action-queue (make-queue)]) '())])
       ((entry (in-list (queue->list (world-pending-action-queue w)))))
     (match-define [cons label a] entry)
+    (trace-internal-action label a (transition-state wt))
     (define wt1 (transition-bind (perform-action label a) wt))
-    (trace-internal-step label a (transition-state wt) wt1)
+    (trace-internal-action-result label a (transition-state wt) wt1)
     wt1))
 
 (define ((perform-action label a) w)
