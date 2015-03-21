@@ -61,8 +61,10 @@
             (for/list [(pid affected-pids)]
               (cond [(equal? pid label)
                      (define feedback
-                       (patch (biased-intersection new-routing-table (patch-added delta))
-                              (biased-intersection old-routing-table (patch-removed delta))))
+                       (patch-union
+                        (patch (biased-intersection new-routing-table (patch-added delta))
+                               (biased-intersection old-routing-table (patch-removed delta)))
+                        (view-patch delta-aggregate (mux-interests-of m pid))))
                      (cons label feedback)]
                     [else
                      (cons pid (view-patch delta-aggregate (mux-interests-of m pid)))]))

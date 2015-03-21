@@ -28,6 +28,7 @@
          compute-patch
          biased-intersection
          view-patch
+         patch-union
          patch-project
          patch-project/set
          patch-project/set/single
@@ -204,6 +205,10 @@
 (define (view-patch p interests)
   (patch (biased-intersection (patch-added p) interests)
          (biased-intersection (patch-removed p) interests)))
+
+(define (patch-union p1 p2)
+  (patch (matcher-union (patch-added p1) (patch-added p2))
+         (matcher-union (patch-removed p1) (patch-removed p2))))
 
 (define (patch-project p spec)
   (match-define (patch in out) p)
