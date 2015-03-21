@@ -6,6 +6,7 @@
 (require racket/match)
 (require racket/list)
 (require "core.rkt")
+(require "trace.rkt")
 (require "trace/stderr.rkt")
 
 (provide (struct-out external-event)
@@ -77,7 +78,10 @@
                         (current-ground-event-async-channel)
                         (if inert? never-evt idle-handler)
                         (extract-active-events interests))))
-	  (match (clean-transition (world-handle-event e w))
+          (trace-process-step e #f world-handle-event w)
+          (define resulting-transition (clean-transition (world-handle-event e w)))
+          (trace-process-step-result e #f world-handle-event w #f resulting-transition)
+	  (match resulting-transition
 	    [#f ;; inert
 	     (await-interrupt #t w interests)]
 	    [(transition w actions)

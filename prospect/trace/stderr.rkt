@@ -33,6 +33,7 @@
 (define show-message-actions? #f)
 (define show-actions? #f)
 (define show-routing-table? #f)
+(define world-is-boring? #t)
 
 (define (set-stderr-trace-flags! flags-string)
   (set! flags (for/set [(c flags-string)] (string->symbol (string c))))
@@ -46,7 +47,8 @@
   (set! show-patch-actions? (set-member? flags 'R))
   (set! show-message-actions? (set-member? flags 'M))
   (set! show-actions? (set-member? flags 'a))
-  (set! show-routing-table? (set-member? flags 'g)))
+  (set! show-routing-table? (set-member? flags 'g))
+  (set! world-is-boring? (not (set-member? flags 'W))))
 
 (set-stderr-trace-flags! (or (getenv "MINIMART_TRACE") ""))
 
@@ -75,11 +77,11 @@
 
 (define (output-state state)
   (cond
-   [(world? state) (output "#<world>\n")]
+   [(world? state) (pretty-print-world state)]
    [else (pretty-write state (current-error-port))]))
 
 (define (boring-state? state)
-  (or (world? state)
+  (or (and (world? state) world-is-boring?)
       (void? state)))
 
 (define (set-color! c) (when colored-output? (output "\e[0~am" c)))

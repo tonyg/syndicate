@@ -34,25 +34,30 @@
   (when (log-level? trace-logger 'info)
     (log-message trace-logger 'info name "" r #f)))
 
-;; Event PID Process -> Void
-(define (trace-process-step e pid beh st)
-  (record-trace-event 'process-step (list (cons pid (trace-pid-stack)) e beh st)))
+(define (cons-pid pid)
+  (if pid
+      (cons pid (trace-pid-stack))
+      (trace-pid-stack)))
 
-;; Event PID Process (Option Exception) (Option Transition) -> Void
+;; Event (Option PID) Process -> Void
+(define (trace-process-step e pid beh st)
+  (record-trace-event 'process-step (list (cons-pid pid) e beh st)))
+
+;; Event (Option PID) Process (Option Exception) (Option Transition) -> Void
 (define (trace-process-step-result e pid beh st exn t)
   (when exn
     (log-error "Process ~a died with exception:\n~a"
-	       (cons pid (trace-pid-stack))
+	       (cons-pid pid)
 	       (exn->string exn)))
-  (record-trace-event 'process-step-result (list (cons pid (trace-pid-stack)) e beh st exn t)))
+  (record-trace-event 'process-step-result (list (cons-pid pid) e beh st exn t)))
 
-;; PID Action World -> Void
+;; (Option PID) Action World -> Void
 (define (trace-internal-action pid a w)
-  (record-trace-event 'internal-action (list (cons pid (trace-pid-stack)) a w)))
+  (record-trace-event 'internal-action (list (cons-pid pid) a w)))
 
-;; PID Action World Transition -> Void
+;; (Option PID) Action World Transition -> Void
 (define (trace-internal-action-result pid a w t)
-  (record-trace-event 'internal-action-result (list (cons pid (trace-pid-stack)) a w t)))
+  (record-trace-event 'internal-action-result (list (cons-pid pid) a w t)))
 
 (define (string-indent amount s)
   (define pad (make-string amount #\space))
