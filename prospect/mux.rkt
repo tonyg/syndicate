@@ -64,7 +64,8 @@
                        (patch-union
                         (patch (biased-intersection new-routing-table (patch-added delta))
                                (biased-intersection old-routing-table (patch-removed delta)))
-                        (view-patch delta-aggregate (mux-interests-of m pid))))
+                        (patch (biased-intersection (patch-added delta-aggregate) new-interests)
+                               (biased-intersection (patch-removed delta-aggregate) old-interests))))
                      (cons label feedback)]
                     [else
                      (cons pid (view-patch delta-aggregate (mux-interests-of m pid)))]))
