@@ -97,6 +97,48 @@
        (void)
        (sub `(parent ,? ,?)))
 
+;;;; Backward-chaining, below, doesn't quite work as formulated with
+;;;; this code snippet: the demand-matcher gets confused by wildcard
+;;;; demand from the recursive step. One way out of this might be to
+;;;; avoid patterns quantifying over more than one place at once: to
+;;;; have a process for *all* potential ancestor-queries for a given
+;;;; person, rather than one for each *specific* ancestor-query.
+;;
+;; (spawn-demand-matcher (observe `(ancestor ,(?!) ,(?!)))
+;;                       (advertise `(ancestor ,(?!) ,(?!)))
+;;                       (lambda (A B)
+;;                         (spawn (lambda (e old-facts)
+;;                                  (match e
+;;                                    [(? patch/removed?) (quit)]
+;;                                    [(? patch?)
+;;                                     (define new-facts (matcher-union old-facts (patch-added e)))
+;;                                     (define triples (matcher-project/set new-facts
+;;                                                                          (compile-projection
+;;                                                                           `(,(?!) ,(?!) ,(?!)))))
+;;                                     (printf "Learned new facts: ~v\n" triples)
+;;                                     (transition new-facts
+;;                                                 (when (or (set-member? triples `(parent ,A ,B))
+;;                                                           (for/or ((triple triples))
+;;                                                             (match triple
+;;                                                               [`(ancestor ,C ,(== B))
+;;                                                                (set-member? triples `(parent ,A ,C))]
+;;                                                               [_ #f])))
+;;                                                   (printf "... and as a result, asserting ~v\n"
+;;                                                           `(ancestor ,A ,B))
+;;                                                   (assert `(ancestor ,A ,B))))]
+;;                                    [_ #f]))
+;;                                (matcher-empty)
+;;                                (sub `(parent ,A ,B))
+;;                                (sub `(parent ,A ,?))
+;;                                (sub `(ancestor ,? ,B))
+;;                                (pub `(ancestor ,A ,B)))))
+
+(spawn (lambda (e s)
+         (when (patch? e) (pretty-print-patch e))
+         #f)
+       (void)
+       (sub `(ancestor ebbon douglas)))
+
 (define (after msec thunk)
   (define id (gensym 'after))
   (if (zero? msec)
