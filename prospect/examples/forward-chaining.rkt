@@ -7,6 +7,21 @@
 
 (spawn-timer-driver)
 
+(spawn (lambda (e old-count)
+         (match e
+           [(? patch?)
+            (define-values (in out)
+              (patch-project/set e (compile-projection `(parent ,(?!) ,(?!)))))
+            (define new-count (+ old-count (set-count in) (- (set-count out))))
+            (printf "New parent-record count: ~v\n" new-count)
+            (transition new-count
+                        (list (retract `(parent-count ,?))
+                              (assert `(parent-count ,new-count))))]
+           [_ #f]))
+       0
+       (sub `(parent ,? ,?))
+       (assert `(parent-count 0)))
+
 (define (insert-record record . monitors)
   (printf "Record ~v inserted, depending on ~v\n" record monitors)
   (spawn (lambda (e s)
