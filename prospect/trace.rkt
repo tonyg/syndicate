@@ -8,14 +8,9 @@
 	 trace-process-step
 	 trace-process-step-result
          trace-internal-action
-	 trace-internal-action-result
+	 trace-internal-action-result)
 
-         exn->string ;; required from web-server/private/util
-         string-indent
-         indented-port-output)
-
-(require (only-in web-server/private/util exn->string))
-(require (only-in racket/string string-join string-split))
+(require "pretty.rkt")
 
 (define trace-logger (make-logger 'minimart-trace))
 
@@ -58,12 +53,3 @@
 ;; (Option PID) Action World Transition -> Void
 (define (trace-internal-action-result pid a w t)
   (record-trace-event 'internal-action-result (list (cons-pid pid) a w t)))
-
-(define (string-indent amount s)
-  (define pad (make-string amount #\space))
-  (string-join (for/list [(line (string-split s "\n"))] (string-append pad line)) "\n"))
-
-(define (indented-port-output amount f)
-  (define p (open-output-string))
-  (f p)
-  (string-indent amount (get-output-string p)))

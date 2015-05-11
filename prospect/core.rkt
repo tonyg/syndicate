@@ -63,6 +63,7 @@
 (require "patch.rkt")
 (require "trace.rkt")
 (require "mux.rkt")
+(require "pretty.rkt")
 (module+ test (require rackunit))
 
 ;; Events = Patches ∪ Messages
@@ -97,7 +98,11 @@
                runnable-pids ;; (Setof PID)
                behaviors ;; (HashTable PID Behavior)
                states ;; (HashTable PID Any)
-               ) #:transparent)
+               )
+  #:transparent
+  #:methods gen:prospect-pretty-printable
+  [(define (prospect-pretty-print w [p (current-output-port)])
+     (pretty-print-world w p))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -362,11 +367,7 @@
   (for ([pid (set-union (hash-keys (mux-interest-table mux)) (hash-keys states))])
     (fprintf p " ---- process ~a, behavior ~v, STATE:\n" pid (hash-ref behaviors pid #f))
     (define state (hash-ref states pid #f))
-    (display (indented-port-output 6 (lambda (p)
-                                       (if (world? state)
-                                           (pretty-print-world state p)
-                                           (pretty-write state p))))
-             p)
+    (display (indented-port-output 6 (lambda (p) (prospect-pretty-print state p))) p)
     (newline p)
     (fprintf p "      process ~a, behavior ~v, CLAIMS:\n" pid (hash-ref behaviors pid #f))
     (display (indented-port-output 6 (lambda (p)

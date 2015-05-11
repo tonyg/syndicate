@@ -10,6 +10,8 @@
 (require "../core.rkt")
 (require "../trace.rkt")
 (require "../mux.rkt")
+(require "../endpoint.rkt")
+(require "../pretty.rkt")
 
 (define (env-aref varname default alist)
   (define key (or (getenv varname) default))
@@ -75,11 +77,6 @@
 (define (output fmt . args)
   (apply fprintf (current-error-port) fmt args))
 
-(define (output-state state)
-  (cond
-   [(world? state) (pretty-print-world state)]
-   [else (pretty-write state (current-error-port))]))
-
 (define (boring-state? state)
   (or (and (world? state) world-is-boring?)
       (void? state)))
@@ -118,7 +115,7 @@
 	   (when (not (boring-state? st))
 	     (with-color YELLOW
                (output "~a's state just before the event:\n" pidstr)
-               (output-state st))))]
+               (prospect-pretty-print st (current-error-port)))))]
         [('process-step-result (list pids e beh st exn t))
 	 (define pidstr (format-pids pids))
 	 (define relevant-exn? (and show-exceptions? exn))
@@ -140,7 +137,7 @@
 	 (when (exn-and-not (and show-process-states-pre? (not (boring-state? st))))
            (with-color YELLOW
              (output "~a's state just before the event:\n" pidstr)
-             (output-state st)))
+             (prospect-pretty-print st (current-error-port))))
 	 (when relevant-exn?
 	   (with-color WHITE-ON-RED
              (output "Process ~a ~v died with exception:\n~a\n"
@@ -156,7 +153,7 @@
 	       (when (not (equal? st (transition-state t)))
 		 (with-color YELLOW
                    (output "~a's state just after the event:\n" pidstr)
-                   (output-state (transition-state t)))))))]
+                   (prospect-pretty-print (transition-state t) (current-error-port)))))))]
 	[('internal-action (list pids a old-w))
          (define pidstr (format-pids pids))
          (define oldcount (hash-count (world-behaviors old-w)))
@@ -203,7 +200,7 @@
                           newcount))
                 (unless (boring-state? state)
                   (output "~a's initial state:\n" newpidstr)
-                  (output-state state))
+                  (prospect-pretty-print state (current-error-port)))
                 (unless (matcher-empty? interests)
                   (output "~a's initial interests:\n" newpidstr)
                   (pretty-print-matcher interests (current-error-port))))]
