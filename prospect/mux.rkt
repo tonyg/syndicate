@@ -8,7 +8,8 @@
          mux-remove-stream
          mux-update-stream
          mux-route-message
-         mux-interests-of)
+         mux-interests-of
+         compute-affected-pids)
 
 (require racket/set)
 (require racket/match)
