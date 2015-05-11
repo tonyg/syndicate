@@ -26,7 +26,7 @@
 	       final-stx)
 	     (syntax-case (local-expand (car forms)
 					'module
-					(syntax->list #'(quote 
+					(syntax->list #'(quote
 							 quote-syntax #%top
 							 lambda case-lambda
 							 let-values letrec-values
@@ -36,8 +36,8 @@
 							 define-values define-syntaxes
 							 begin-for-syntax
 							 module module*
-							 #%module-begin 
-							 #%require #%provide 
+							 #%module-begin
+							 #%require #%provide
 							 #%variable-reference))) ()
 	       [(head rest ...)
 		(if (free-identifier=? #'head #'begin)
@@ -47,7 +47,7 @@
 		    (if (ormap (lambda (i) (free-identifier=? #'head i))
 			       (syntax->list #'(define-values define-syntaxes begin-for-syntax
 						 module module*
-						 #%module-begin 
+						 #%module-begin
 						 #%require #%provide)))
 			(accumulate-actions action-ids
 					    (cons (car forms) final-forms)

@@ -21,27 +21,27 @@
 
 (module+ test
   (require rackunit)
-  
+
   (define v1 (canonicalize (cons 1 2)))
-  
+
   (let ((v2 (canonicalize (cons 1 2))))
     (check-eq? v1 v2))
-  
+
   (collect-garbage)
   (check-equal? (hash-count canonical-values) 1)
-  
+
   (let ((v2 (canonicalize (cons 1 2))))
     (check-eq? v1 v2))
-  
+
   (set! v1 (canonicalize (cons 1 2)))
-  
+
   (collect-garbage)
   (check-equal? (hash-count canonical-values) 1)
-  
+
   (let ((v2 (canonicalize (cons 1 2))))
     (check-eq? v1 v2))
-  
+
   (set! v1 #f)
-  
+
   (collect-garbage)
   (check-equal? (hash-count canonical-values) 0))
