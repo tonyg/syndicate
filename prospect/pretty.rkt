@@ -3,14 +3,14 @@
 (provide gen:prospect-pretty-printable
          prospect-pretty-print
 
-         exn->string ;; required from web-server/private/util
+         exn->string ;; required from exn-util.rkt
          string-indent
          indented-port-output)
 
 (require racket/generic)
 (require racket/pretty)
-(require (only-in web-server/private/util exn->string))
 (require (only-in racket/string string-join string-split))
+(require "exn-util.rkt")
 
 (define-generics prospect-pretty-printable
   (prospect-pretty-print prospect-pretty-printable [port])

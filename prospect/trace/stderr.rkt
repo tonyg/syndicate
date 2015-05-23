@@ -6,7 +6,7 @@
 (require racket/match)
 (require racket/pretty)
 (require (only-in racket/string string-join))
-(require (only-in web-server/private/util exn->string))
+(require "../exn-util.rkt")
 (require "../core.rkt")
 (require "../trace.rkt")
 (require "../mux.rkt")
