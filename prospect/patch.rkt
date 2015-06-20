@@ -39,6 +39,7 @@
 (require racket/set)
 (require racket/match)
 (require "route.rkt")
+(require "tset.rkt")
 (module+ test (require rackunit))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -116,7 +117,7 @@
   (match-define (patch in out) p)
   (patch (matcher-subtract in bound)
          (matcher-intersect out bound
-                            #:combiner (lambda (v1 v2) (empty-set-guard (set-intersect v1 v2))))))
+                            #:combiner (lambda (v1 v2) (empty-tset-guard (tset-intersect v1 v2))))))
 
 ;; Entries labelled with `label` may already exist in `base`; the
 ;; patch `p` MUST already have been limited to add only where no
@@ -156,7 +157,7 @@
     ;; ...except when `remove-meta?` is true. In that case, we need to
     ;; keep the point in the case that the only interest present is
     ;; `'meta`-labeled interest.
-    (if (and remove-meta? (equal? v2 (set 'meta)))
+    (if (and remove-meta? (equal? v2 (datum-tset 'meta)))
         v1
         #f))
   (define (rem-combiner v1 v2)
@@ -171,11 +172,11 @@
     ;; only label interest exists (which by precondition is always the
     ;; case), or when exactly `label` and `'meta` interest exists, and
     ;; in no other case.
-    (if (= (set-count v2) 1)
+    (if (= (tset-count v2) 1)
         v1 ;; only `label` interest (previously established) exists here.
         (if (and remove-meta?
-                 (= (set-count v2) 2)
-                 (set-member? v2 'meta))
+                 (= (tset-count v2) 2)
+                 (tset-member? v2 'meta))
             v1 ;; remove-meta? is true, and exactly `label` and `'meta` interest exists here.
             #f))) ;; other interest exists here, so we should discard this removed-point.
   (patch (matcher-subtract (patch-added p) base #:combiner add-combiner)
@@ -262,10 +263,12 @@
   (define (project-routing-table R label-set)
     (matcher-intersect R
                        (pattern->matcher label-set ?)
-                       #:combiner (lambda (v1 v2) (empty-set-guard (set-intersect v1 v2)))))
+                       #:combiner (lambda (v1 v2) (empty-tset-guard (tset-intersect v1 v2)))))
+
+  (define tset datum-tset)
 
   (define (sanity-check-examples)
-    (define SP (set 'P))
+    (define SP (tset 'P))
     (define m0 (matcher-empty))
     (define ma (pattern->matcher SP 'a))
     (define mb (pattern->matcher SP 'b))
@@ -363,11 +366,11 @@
   (let* ((pre-patch-a-keys                      (set   1   3   5   7))
          (pre-patch-b-keys                      (set     2 3     6 7))
          (pre-patch-keys                        (set   1 2 3   5 6 7))
-         (ma (set->matcher (set 'a) pre-patch-a-keys))
-         (mb (set->matcher (set 'b) pre-patch-b-keys))
+         (ma (set->matcher (tset 'a) pre-patch-a-keys))
+         (mb (set->matcher (tset 'b) pre-patch-b-keys))
          (R (matcher-union ma mb))
-         (pa-raw (patch (set->matcher (set 'a)  (set 0 1 2 3        ))
-                        (set->matcher (set 'a)  (set         4 5 6 7))))
+         (pa-raw (patch (set->matcher (tset 'a) (set 0 1 2 3        ))
+                        (set->matcher (tset 'a) (set         4 5 6 7))))
          (pa1 (limit-patch pa-raw ma))
          (pa2 (limit-patch/routing-table pa-raw R))
          (post-patch-a-keys                     (set 0 1 2 3        ))
@@ -379,26 +382,26 @@
          (p-aggregate2 (compute-aggregate-patch pa2 'a R))
          (R1 (apply-patch R pa1))
          (R2 (apply-patch R pa2))
-         (R-relabeled (matcher-relabel R (lambda (v) (set 'x))))
-         (R1-relabeled (apply-patch R-relabeled (label-patch (strip-patch p-aggregate1) (set 'x))))
-         (R2-relabeled (apply-patch R-relabeled (label-patch (strip-patch p-aggregate2) (set 'x)))))
+         (R-relabeled (matcher-relabel R (lambda (v) (tset 'x))))
+         (R1-relabeled (apply-patch R-relabeled (label-patch (strip-patch p-aggregate1) (tset 'x))))
+         (R2-relabeled (apply-patch R-relabeled (label-patch (strip-patch p-aggregate2) (tset 'x)))))
     (check-equal? pa1 pa2)
-    (check-equal? (matcher-match-value R 0) (set))
-    (check-equal? (matcher-match-value R 1) (set 'a))
-    (check-equal? (matcher-match-value R 2) (set 'b))
-    (check-equal? (matcher-match-value R 3) (set 'a 'b))
-    (check-equal? (matcher-match-value R 4) (set))
-    (check-equal? (matcher-match-value R 5) (set 'a))
-    (check-equal? (matcher-match-value R 6) (set 'b))
-    (check-equal? (matcher-match-value R 7) (set 'a 'b))
-    (check-equal? (matcher-key-set/single (project-routing-table R (set 'a))) pre-patch-a-keys)
-    (check-equal? (matcher-key-set/single (project-routing-table R (set 'b))) pre-patch-b-keys)
+    (check-equal? (matcher-match-value R 0 (tset)) (tset))
+    (check-equal? (matcher-match-value R 1 (tset)) (tset 'a))
+    (check-equal? (matcher-match-value R 2 (tset)) (tset 'b))
+    (check-equal? (matcher-match-value R 3 (tset)) (tset 'a 'b))
+    (check-equal? (matcher-match-value R 4 (tset)) (tset))
+    (check-equal? (matcher-match-value R 5 (tset)) (tset 'a))
+    (check-equal? (matcher-match-value R 6 (tset)) (tset 'b))
+    (check-equal? (matcher-match-value R 7 (tset)) (tset 'a 'b))
+    (check-equal? (matcher-key-set/single (project-routing-table R (tset 'a))) pre-patch-a-keys)
+    (check-equal? (matcher-key-set/single (project-routing-table R (tset 'b))) pre-patch-b-keys)
     (check-equal? (matcher-key-set/single R) pre-patch-keys)
     (check-equal? (matcher-key-set/single R-relabeled) pre-patch-keys)
 
     (define (post-checks R* R*-relabeled p-aggregate)
-      (check-equal? (matcher-key-set/single (project-routing-table R* (set 'a))) post-patch-a-keys)
-      (check-equal? (matcher-key-set/single (project-routing-table R* (set 'b))) post-patch-b-keys)
+      (check-equal? (matcher-key-set/single (project-routing-table R* (tset 'a))) post-patch-a-keys)
+      (check-equal? (matcher-key-set/single (project-routing-table R* (tset 'b))) post-patch-b-keys)
       (check-equal? (matcher-key-set/single R*) post-patch-keys)
       (check-equal? (matcher-key-set/single R*-relabeled) post-patch-keys)
       (check-equal? (matcher-key-set/single (patch-added p-aggregate)) aggregate-added)
@@ -408,9 +411,9 @@
     (post-checks R2 R2-relabeled p-aggregate2)
     )
 
-  (let* ((ma (set->matcher (set 'a) (set 1)))
-         (mb (set->matcher (set 'b) (set 1)))
-         (mmeta (set->matcher (set 'meta) (set 1)))
+  (let* ((ma (set->matcher (tset 'a) (set 1)))
+         (mb (set->matcher (tset 'b) (set 1)))
+         (mmeta (set->matcher (tset 'meta) (set 1)))
          (R0 (matcher-empty))
          (R1 mmeta)
          (R2 mb)
@@ -420,8 +423,8 @@
          (R6 (matcher-union ma mb))
          (R7 (matcher-union (matcher-union ma mb) mmeta))
          (p0 empty-patch)
-         (p+ (patch (set->matcher (set 'a) (set 1)) (matcher-empty)))
-         (p- (patch (matcher-empty) (set->matcher (set 'a) (set 1)))))
+         (p+ (patch (set->matcher (tset 'a) (set 1)) (matcher-empty)))
+         (p- (patch (matcher-empty) (set->matcher (tset 'a) (set 1)))))
     (check-equal? (compute-aggregate-patch p0 'a R0) p0)
     (check-equal? (compute-aggregate-patch p0 'a R1) p0)
     (check-equal? (compute-aggregate-patch p0 'a R2) p0)

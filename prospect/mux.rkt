@@ -16,6 +16,7 @@
 (require "route.rkt")
 (require "patch.rkt")
 (require "trace.rkt")
+(require "tset.rkt")
 
 ;; A PID is a Nat.
 ;; A Label is a PID or 'meta.
@@ -43,7 +44,7 @@
 
 (define (mux-update-stream m label delta-orig)
   (define old-interests (mux-interests-of m label))
-  (define delta (limit-patch (label-patch delta-orig (set label)) old-interests))
+  (define delta (limit-patch (label-patch delta-orig (datum-tset label)) old-interests))
   (define new-interests (apply-patch old-interests delta))
   (let* ((m (struct-copy mux m
                          [interest-table
@@ -56,10 +57,10 @@
     (define new-routing-table (apply-patch old-routing-table delta))
     (define delta-aggregate (compute-aggregate-patch delta label old-routing-table))
     (define affected-pids (let ((pids (compute-affected-pids old-routing-table delta)))
-                            (set-remove (set-add pids label) 'meta))) ;; TODO: removing meta is weird
+                            (tset-remove (tset-add pids label) 'meta))) ;; TODO: removing meta is weird
     (values (struct-copy mux m [routing-table new-routing-table])
             label
-            (for/list [(pid affected-pids)]
+            (for/list [(pid (tset->list affected-pids))]
               (cond [(equal? pid label)
                      (define feedback
                        (patch-union
@@ -78,10 +79,10 @@
   (define cover (matcher-union (patch-added delta) (patch-removed delta)))
   (matcher-match-matcher cover
                          (matcher-step routing-table struct:observe)
-                         #:seed (set)
-                         #:combiner (lambda (v1 v2 acc) (set-union v2 acc))
+                         #:seed (datum-tset)
+                         #:combiner (lambda (v1 v2 acc) (tset-union v2 acc))
                          #:left-short (lambda (v r acc)
-                                        (set-union acc (success-value (matcher-step r EOS))))))
+                                        (tset-union acc (success-value (matcher-step r EOS))))))
 
 (define (mux-route-message m label body)
   (when (observe? body)
@@ -95,7 +96,7 @@
           (at-meta? body)) ;; it relates to envt, not local
      (values #t '())]
     [else
-     (values #f (set->list (matcher-match-value (mux-routing-table m) (observe body))))]))
+     (values #f (tset->list (matcher-match-value (mux-routing-table m) (observe body) (datum-tset))))]))
 
 (define (mux-interests-of m label)
   (hash-ref (mux-interest-table m) label (matcher-empty)))

@@ -25,7 +25,7 @@
 	 pattern->matcher*
 	 matcher-union
 	 matcher-intersect
-         empty-set-guard
+         empty-tset-guard
          matcher-subtract-combiner
 	 matcher-subtract
 	 matcher-match-value
@@ -63,6 +63,7 @@
 (require (only-in racket/class object?))
 (require "canonicalize.rkt")
 (require "treap.rkt")
+(require "tset.rkt")
 (require data/order)
 
 (require rackunit)
@@ -333,7 +334,7 @@
 
 ;; Matcher Matcher -> Matcher
 ;; Computes the union of the multimaps passed in.
-(define (matcher-union re1 re2 #:combiner [combiner set-union])
+(define (matcher-union re1 re2 #:combiner [combiner tset-union])
   (matcher-recurse re1
 		   re2
                    combiner
@@ -350,7 +351,7 @@
 ;; Matcher Matcher -> Matcher
 ;; Computes the intersection of the multimaps passed in.
 (define (matcher-intersect re1 re2
-                           #:combiner [combiner set-union]
+                           #:combiner [combiner tset-union]
                            #:left-short [left-short default-short]
                            #:right-short [right-short default-short])
   (matcher-recurse re1
@@ -363,11 +364,11 @@
                    left-short
                    right-short))
 
-(define (empty-set-guard s)
-  (if (set-empty? s) #f s))
+(define (empty-tset-guard s)
+  (if (tset-empty? s) #f s))
 
 (define (matcher-subtract-combiner s1 s2)
-  (empty-set-guard (set-subtract s1 s2)))
+  (empty-tset-guard (tset-subtract s1 s2)))
 
 ;; Matcher Matcher -> Matcher
 ;; Removes re2's mappings from re1.
@@ -487,7 +488,7 @@
 ;; Sigmas and runs them through the Matcher r. If v leads to a success
 ;; Matcher, returns the values contained in the success Matcher;
 ;; otherwise, returns failure-result.
-(define (matcher-match-value r v [failure-result (set)])
+(define (matcher-match-value r v failure-result)
   (let walk ((vs (list v)) (stack '(())) (r r))
     (match r
       [#f failure-result]
@@ -532,10 +533,10 @@
 ;; keys. Returns the union of all successful values reached by the
 ;; probe.
 (define (matcher-match-matcher re1 re2
-                               #:seed [seed (cons (set) (set))]
+                               #:seed seed
                                #:combiner [combiner (lambda (v1 v2 a)
-                                                      (cons (set-union (car a) v1)
-                                                            (set-union (cdr a) v2)))]
+                                                      (cons (tset-union (car a) v1)
+                                                            (tset-union (cdr a) v2)))]
                                #:left-short [left-short (lambda (v r acc) acc)]
                                #:right-short [right-short (lambda (v r acc) acc)])
   (let walk ((re1 re1) (re2 re2) (acc seed))
@@ -715,7 +716,7 @@
 
     (lambda (m spec
              #:project-success [project-success values]
-             #:combiner [combiner set-union])
+             #:combiner [combiner tset-union])
       (define (drop-match m spec) (general-match values drop-edge drop-sigma drop-bal m spec
                                                  project-success drop-match take-match))
       (define (take-match m spec) (general-match rwild  rupdate   rseq       take-bal m spec
@@ -834,7 +835,7 @@
        (walk (+ i 5) k)]
       [(success vs)
        (d "{")
-       (d vs)
+       (d (if (tset? vs) (cons 'tset (tset->list vs)) vs))
        (d "}")]
       [(? treap? h)
        (if (zero? (treap-size h))
@@ -926,13 +927,15 @@
 (module+ test
   (require racket/pretty)
 
-  (define SA (set 'A))
-  (define SB (set 'B))
-  (define SC (set 'C))
-  (define SD (set 'D))
-  (define Sfoo (set 'foo))
-  (define S+ (set '+))
-  (define SX (set 'X))
+  (define tset datum-tset)
+
+  (define SA (tset 'A))
+  (define SB (tset 'B))
+  (define SC (tset 'C))
+  (define SD (tset 'D))
+  (define Sfoo (tset 'foo))
+  (define S+ (tset '+))
+  (define SX (tset 'X))
   (define (E v) (rseq EOS (rsuccess v)))
   (check-equal? (pattern->matcher SA 123) (rseq 123 (E SA)))
   (check-equal? (pattern->matcher SA (cons 1 2))
@@ -951,10 +954,10 @@
       (match tests
 	['() (void)]
 	[(list* message expectedstr rest)
-	 (define actualset (matcher-match-value matcher message))
+	 (define actualset (matcher-match-value matcher message (tset)))
 	 (printf "~v ==> ~v\n" message actualset)
 	 (check-equal? actualset
-		       (apply set (map (lambda (c) (string->symbol (string c)))
+		       (apply tset (map (lambda (c) (string->symbol (string c)))
 				       (string->list expectedstr))))
 	 (walk rest)])))
 
@@ -1020,7 +1023,7 @@
   (void (pretty-print-matcher* (matcher-union (pattern->matcher SA (list (list 'a 'b) 'x))
 					      ;; Note: this is a largely nonsense matcher,
 					      ;; since it expects no input at all
-					      (rseq EOS (rsuccess (set 'B))))))
+					      (rseq EOS (rsuccess (tset 'B))))))
 
   (check-matches
    (pretty-print-matcher*
@@ -1060,7 +1063,7 @@
     (define ps
       (for/list ((c (in-string "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")))
 	(define csym (string->symbol (string c)))
-	(pattern->matcher (set csym) (list csym ?))))
+	(pattern->matcher (tset csym) (list csym ?))))
     (matcher-union (foldr matcher-union (matcher-empty) ps)
 		   (pattern->matcher S+ (list 'Z (list ? '- ?)))))
 
@@ -1227,7 +1230,7 @@
     (matcher-intersect (pattern->matcher SA a)
 		       (pattern->matcher SB b)))
 
-  (define EAB (E (set 'A 'B)))
+  (define EAB (E (tset 'A 'B)))
 
   (define (rseq* x . xs)
     (let walk ((xs (cons x xs)))
@@ -1282,23 +1285,23 @@
     (define m2 (pretty-print-matcher* (pattern->matcher SD ?)))
     (define mi (pretty-print-matcher* (matcher-intersect m1 m2)))
     (check-requal? mi
-		   (H SOL (H 'a (H  ? (H EOS (E (set 'A 'D))))
-			     'b (H  ? (H EOS (E (set 'B 'D)))
-				    'c (H EOS (E (set 'B 'C 'D)))))))
+		   (H SOL (H 'a (H  ? (H EOS (E (tset 'A 'D))))
+			     'b (H  ? (H EOS (E (tset 'B 'D)))
+				    'c (H EOS (E (tset 'B 'C 'D)))))))
     (check-requal? (pretty-print-matcher* (matcher-intersect m1 m2 #:combiner (lambda (v1 v2) v1)))
 		   m1))
   )
 
 (module+ test
   (define (matcher-match-matcher-list m1 m2)
-    (match-define (cons s1 s2) (matcher-match-matcher m1 m2))
+    (match-define (cons s1 s2) (matcher-match-matcher m1 m2 #:seed (cons (tset) (tset))))
     (list s1 s2))
   (define (matcher-union* a b)
     (matcher-union a b #:combiner (lambda (v1 v2)
                                     (match* (v1 v2)
                                       [(#t v) v]
                                       [(v #t) v]
-                                      [(v1 v2) (set-union v1 v2)]))))
+                                      [(v1 v2) (tset-union v1 v2)]))))
   (let ((abc (foldr matcher-union* (matcher-empty)
 		    (list (pattern->matcher SA (list 'a ?))
 			  (pattern->matcher SB (list 'b ?))
@@ -1308,21 +1311,21 @@
 			  (pattern->matcher SC (list 'c ?))
 			  (pattern->matcher SD (list 'd ?))))))
     (check-equal? (matcher-match-matcher-list abc abc)
-		  (list (set 'A 'B 'C) (set 'A 'B 'C)))
+		  (list (tset 'A 'B 'C) (tset 'A 'B 'C)))
     (check-equal? (matcher-match-matcher abc abc
-                                         #:seed (set)
-                                         #:combiner (lambda (v1 v2 a) (set-union v2 a)))
-		  (set 'A 'B 'C))
-    (check-equal? (matcher-match-matcher-list abc (matcher-relabel bcd (lambda (old) (set #t))))
-		  (list (set 'B 'C) (set #t)))
+                                         #:seed (tset)
+                                         #:combiner (lambda (v1 v2 a) (tset-union v2 a)))
+		  (tset 'A 'B 'C))
+    (check-equal? (matcher-match-matcher-list abc (matcher-relabel bcd (lambda (old) (tset #t))))
+		  (list (tset 'B 'C) (tset #t)))
     (check-equal? (matcher-match-matcher-list abc (pattern->matcher Sfoo ?))
-		  (list (set 'A 'B 'C) (set 'foo)))
+		  (list (tset 'A 'B 'C) (tset 'foo)))
     (check-equal? (matcher-match-matcher-list abc (pattern->matcher Sfoo (list ? ?)))
-		  (list (set 'A 'B 'C) (set 'foo)))
+		  (list (tset 'A 'B 'C) (tset 'foo)))
     (check-equal? (matcher-match-matcher-list abc (pattern->matcher Sfoo (list ? 'x)))
-		  (list (set 'A 'B 'C) (set 'foo)))
+		  (list (tset 'A 'B 'C) (tset 'foo)))
     (check-equal? (matcher-match-matcher-list abc (pattern->matcher Sfoo (list ? 'x ?)))
-		  (list (set) (set)))))
+		  (list (tset) (tset)))))
 
 (module+ test
   (check-equal? (compile-projection (cons 'a 'b))
@@ -1495,14 +1498,14 @@
 			(pattern->matcher SB (list 3 4)))))
 	(S '((("(")
 	      ((1      ((2 (((")") (((")") ("" ("A")))))))
-			(3 (((")") (((")") ("" ("D" "C")))))))))
+			(3 (((")") (((")") ("" ("C" "D")))))))))
 	       (3      ((2 (((")") (((")") ("" ("A")))))))
 			(3 (((")") (((")") ("" ("D")))))))
 			(4 (((")") (((")") ("" ("B")))))))))
 	       (("__") ((2 (((")") (((")") ("" ("A")))))))
 			(3 (((")") (((")") ("" ("D"))))))))))))))
-    (check-equal? (matcher->jsexpr M (lambda (v) (map symbol->string (set->list v)))) S)
-    (check-requal? (jsexpr->matcher S (lambda (v) (list->set (map string->symbol v)))) M)))
+    (check-equal? (matcher->jsexpr M (lambda (v) (map symbol->string (tset->list v)))) S)
+    (check-requal? (jsexpr->matcher S (lambda (v) (make-tset datum-order (map string->symbol v)))) M)))
 
 (module+ test
   (check-requal? (pretty-print-matcher*

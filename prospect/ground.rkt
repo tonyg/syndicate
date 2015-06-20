@@ -8,6 +8,7 @@
 (require "core.rkt")
 (require "trace.rkt")
 (require "trace/stderr.rkt")
+(require "tset.rkt")
 
 (provide (struct-out external-event)
          send-ground-message
@@ -91,7 +92,7 @@
 		 [(cons a actions)
 		  (match a
                     [(? patch? p)
-                     (process-actions actions (apply-patch interests (label-patch p (set 'root))))]
+                     (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
 		    [_
 		     (log-warning "run-ground: ignoring useless meta-action ~v" a)
 		     (process-actions actions interests)])]))])))))
