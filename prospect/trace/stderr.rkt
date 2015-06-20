@@ -187,7 +187,7 @@
            (match a
              [(? spawn?)
               (when (or show-process-lifecycle? show-actions?)
-                (define newpid (mux-next-pid (world-mux old-w)))
+                (define-values (newpid _old-w-mux*) (mux-alloc-pid (world-mux old-w)))
                 (define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
                 (define interests (mux-interests-of (world-mux new-w) newpid))
                 (define behavior (hash-ref (world-behaviors new-w) newpid))

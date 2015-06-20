@@ -30,8 +30,6 @@
          event?
          action?
 
-         meta-label?
-
          prepend-at-meta
          assert
          retract
@@ -89,8 +87,8 @@
 (struct transition (state actions) #:transparent)
 (struct quit (actions) #:prefab)
 
-;; A PID is a Nat.
-;; A Label is a PID or 'meta.
+;; A PID is a non-zero Nat.
+;; A Label is a PID or 0, representing meta.
 
 ;; VM private states
 (struct world (mux ;; Multiplexer
@@ -237,7 +235,7 @@
 
 (define (make-world boot-actions)
   (world (mux)
-         (list->queue (for/list ((a (in-list (clean-actions boot-actions)))) (cons 'meta a)))
+         (list->queue (for/list ((a (in-list (clean-actions boot-actions)))) (cons meta-label a)))
          (set)
          (hash)
          (hash)))
@@ -276,8 +274,8 @@
 (define ((inject-event e) w)
   (transition (match e
                 [#f w]
-                [(? patch? delta) (enqueue-actions w 'meta (list (lift-patch delta)))]
-                [(message body) (enqueue-actions w 'meta (list (message (at-meta body))))])
+                [(? patch? delta) (enqueue-actions w meta-label (list (lift-patch delta)))]
+                [(message body) (enqueue-actions w meta-label (list (message (at-meta body))))])
               '()))
 
 (define (perform-actions w)
@@ -361,7 +359,8 @@
   (fprintf p " - ~a live processes (~a with claims)\n"
            (hash-count states)
            (hash-count (mux-interest-table mux)))
-  (fprintf p " - next pid: ~a\n" (mux-next-pid mux))
+  (fprintf p " - stream count: ~a\n" (mux-stream-count mux))
+  (fprintf p " - free pids: ~a\n" (mux-free-pids mux))
   (fprintf p " - routing table:\n")
   (pretty-print-matcher (mux-routing-table mux) p)
   (for ([pid (set-union (hash-keys (mux-interest-table mux)) (hash-keys states))])

@@ -25,7 +25,7 @@
 	 pattern->matcher*
 	 matcher-union
 	 matcher-intersect
-         empty-tset-guard
+         empty-bitset-guard
          matcher-subtract-combiner
 	 matcher-subtract
 	 matcher-match-value
@@ -63,7 +63,7 @@
 (require (only-in racket/class object?))
 (require "canonicalize.rkt")
 (require "treap.rkt")
-(require "tset.rkt")
+(require "bitset.rkt")
 (require data/order)
 
 (require rackunit)
@@ -334,7 +334,7 @@
 
 ;; Matcher Matcher -> Matcher
 ;; Computes the union of the multimaps passed in.
-(define (matcher-union re1 re2 #:combiner [combiner tset-union])
+(define (matcher-union re1 re2 #:combiner [combiner bitset-union])
   (matcher-recurse re1
 		   re2
                    combiner
@@ -351,7 +351,7 @@
 ;; Matcher Matcher -> Matcher
 ;; Computes the intersection of the multimaps passed in.
 (define (matcher-intersect re1 re2
-                           #:combiner [combiner tset-union]
+                           #:combiner [combiner bitset-union]
                            #:left-short [left-short default-short]
                            #:right-short [right-short default-short])
   (matcher-recurse re1
@@ -364,11 +364,11 @@
                    left-short
                    right-short))
 
-(define (empty-tset-guard s)
-  (if (tset-empty? s) #f s))
+(define (empty-bitset-guard s)
+  (if (bitset-empty? s) #f s))
 
 (define (matcher-subtract-combiner s1 s2)
-  (empty-tset-guard (tset-subtract s1 s2)))
+  (empty-bitset-guard (bitset-subtract s1 s2)))
 
 ;; Matcher Matcher -> Matcher
 ;; Removes re2's mappings from re1.
@@ -535,8 +535,8 @@
 (define (matcher-match-matcher re1 re2
                                #:seed seed
                                #:combiner [combiner (lambda (v1 v2 a)
-                                                      (cons (tset-union (car a) v1)
-                                                            (tset-union (cdr a) v2)))]
+                                                      (cons (bitset-union (car a) v1)
+                                                            (bitset-union (cdr a) v2)))]
                                #:left-short [left-short (lambda (v r acc) acc)]
                                #:right-short [right-short (lambda (v r acc) acc)])
   (let walk ((re1 re1) (re2 re2) (acc seed))
@@ -716,7 +716,7 @@
 
     (lambda (m spec
              #:project-success [project-success values]
-             #:combiner [combiner tset-union])
+             #:combiner [combiner bitset-union])
       (define (drop-match m spec) (general-match values drop-edge drop-sigma drop-bal m spec
                                                  project-success drop-match take-match))
       (define (take-match m spec) (general-match rwild  rupdate   rseq       take-bal m spec
@@ -835,7 +835,7 @@
        (walk (+ i 5) k)]
       [(success vs)
        (d "{")
-       (d (if (tset? vs) (cons 'tset (tset->list vs)) vs))
+       (d (if (bitset? vs) (cons 'bitset (bitset->list vs)) vs))
        (d "}")]
       [(? treap? h)
        (if (zero? (treap-size h))
@@ -927,15 +927,25 @@
 (module+ test
   (require racket/pretty)
 
-  (define tset datum-tset)
+  (define (small-integer->string i)
+    (string (integer->char i)))
 
-  (define SA (tset 'A))
-  (define SB (tset 'B))
-  (define SC (tset 'C))
-  (define SD (tset 'D))
-  (define Sfoo (tset 'foo))
-  (define S+ (tset '+))
-  (define SX (tset 'X))
+  (define (symbol->small-integer s)
+    (define str (symbol->string s))
+    (if (= (string-length str) 1)
+        (char->integer (string-ref str 0))
+        (error 'symbol->small-integer "Symbol too long: ~v" s)))
+
+  (define (bitset* . syms)
+    (apply bitset (map symbol->small-integer syms)))
+
+  (define SA (bitset* 'A))
+  (define SB (bitset* 'B))
+  (define SC (bitset* 'C))
+  (define SD (bitset* 'D))
+  (define Sfoo (bitset* 'f))
+  (define S+ (bitset* '+))
+  (define SX (bitset* 'X))
   (define (E v) (rseq EOS (rsuccess v)))
   (check-equal? (pattern->matcher SA 123) (rseq 123 (E SA)))
   (check-equal? (pattern->matcher SA (cons 1 2))
@@ -954,17 +964,17 @@
       (match tests
 	['() (void)]
 	[(list* message expectedstr rest)
-	 (define actualset (matcher-match-value matcher message (tset)))
+	 (define actualset (matcher-match-value matcher message (bitset)))
 	 (printf "~v ==> ~v\n" message actualset)
 	 (check-equal? actualset
-		       (apply tset (map (lambda (c) (string->symbol (string c)))
-				       (string->list expectedstr))))
+		       (apply bitset* (map (lambda (c) (string->symbol (string c)))
+                                           (string->list expectedstr))))
 	 (walk rest)])))
 
   (check-matches
    #f
    (list 'z 'x) ""
-   'foo ""
+   'f ""
    (list (list 'z (list 'z))) "")
 
   (define (pretty-print-matcher* m)
@@ -1023,7 +1033,7 @@
   (void (pretty-print-matcher* (matcher-union (pattern->matcher SA (list (list 'a 'b) 'x))
 					      ;; Note: this is a largely nonsense matcher,
 					      ;; since it expects no input at all
-					      (rseq EOS (rsuccess (tset 'B))))))
+					      (rseq EOS (rsuccess (bitset* 'B))))))
 
   (check-matches
    (pretty-print-matcher*
@@ -1063,7 +1073,7 @@
     (define ps
       (for/list ((c (in-string "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")))
 	(define csym (string->symbol (string c)))
-	(pattern->matcher (tset csym) (list csym ?))))
+	(pattern->matcher (bitset* csym) (list csym ?))))
     (matcher-union (foldr matcher-union (matcher-empty) ps)
 		   (pattern->matcher S+ (list 'Z (list ? '- ?)))))
 
@@ -1230,7 +1240,7 @@
     (matcher-intersect (pattern->matcher SA a)
 		       (pattern->matcher SB b)))
 
-  (define EAB (E (tset 'A 'B)))
+  (define EAB (E (bitset* 'A 'B)))
 
   (define (rseq* x . xs)
     (let walk ((xs (cons x xs)))
@@ -1285,23 +1295,23 @@
     (define m2 (pretty-print-matcher* (pattern->matcher SD ?)))
     (define mi (pretty-print-matcher* (matcher-intersect m1 m2)))
     (check-requal? mi
-		   (H SOL (H 'a (H  ? (H EOS (E (tset 'A 'D))))
-			     'b (H  ? (H EOS (E (tset 'B 'D)))
-				    'c (H EOS (E (tset 'B 'C 'D)))))))
+		   (H SOL (H 'a (H  ? (H EOS (E (bitset* 'A 'D))))
+			     'b (H  ? (H EOS (E (bitset* 'B 'D)))
+				    'c (H EOS (E (bitset* 'B 'C 'D)))))))
     (check-requal? (pretty-print-matcher* (matcher-intersect m1 m2 #:combiner (lambda (v1 v2) v1)))
 		   m1))
   )
 
 (module+ test
   (define (matcher-match-matcher-list m1 m2)
-    (match-define (cons s1 s2) (matcher-match-matcher m1 m2 #:seed (cons (tset) (tset))))
+    (match-define (cons s1 s2) (matcher-match-matcher m1 m2 #:seed (cons (bitset) (bitset))))
     (list s1 s2))
   (define (matcher-union* a b)
     (matcher-union a b #:combiner (lambda (v1 v2)
                                     (match* (v1 v2)
                                       [(#t v) v]
                                       [(v #t) v]
-                                      [(v1 v2) (tset-union v1 v2)]))))
+                                      [(v1 v2) (bitset-union v1 v2)]))))
   (let ((abc (foldr matcher-union* (matcher-empty)
 		    (list (pattern->matcher SA (list 'a ?))
 			  (pattern->matcher SB (list 'b ?))
@@ -1311,21 +1321,21 @@
 			  (pattern->matcher SC (list 'c ?))
 			  (pattern->matcher SD (list 'd ?))))))
     (check-equal? (matcher-match-matcher-list abc abc)
-		  (list (tset 'A 'B 'C) (tset 'A 'B 'C)))
+		  (list (bitset* 'A 'B 'C) (bitset* 'A 'B 'C)))
     (check-equal? (matcher-match-matcher abc abc
-                                         #:seed (tset)
-                                         #:combiner (lambda (v1 v2 a) (tset-union v2 a)))
-		  (tset 'A 'B 'C))
-    (check-equal? (matcher-match-matcher-list abc (matcher-relabel bcd (lambda (old) (tset #t))))
-		  (list (tset 'B 'C) (tset #t)))
+                                         #:seed (bitset)
+                                         #:combiner (lambda (v1 v2 a) (bitset-union v2 a)))
+		  (bitset* 'A 'B 'C))
+    (check-equal? (matcher-match-matcher-list abc (matcher-relabel bcd (lambda (old) (bitset 0))))
+		  (list (bitset* 'B 'C) (bitset 0)))
     (check-equal? (matcher-match-matcher-list abc (pattern->matcher Sfoo ?))
-		  (list (tset 'A 'B 'C) (tset 'foo)))
+		  (list (bitset* 'A 'B 'C) (bitset* 'f)))
     (check-equal? (matcher-match-matcher-list abc (pattern->matcher Sfoo (list ? ?)))
-		  (list (tset 'A 'B 'C) (tset 'foo)))
+		  (list (bitset* 'A 'B 'C) (bitset* 'f)))
     (check-equal? (matcher-match-matcher-list abc (pattern->matcher Sfoo (list ? 'x)))
-		  (list (tset 'A 'B 'C) (tset 'foo)))
+		  (list (bitset* 'A 'B 'C) (bitset* 'f)))
     (check-equal? (matcher-match-matcher-list abc (pattern->matcher Sfoo (list ? 'x ?)))
-		  (list (tset) (tset)))))
+		  (list (bitset) (bitset)))))
 
 (module+ test
   (check-equal? (compile-projection (cons 'a 'b))
@@ -1476,16 +1486,16 @@
   (printf "Checking that subtraction from union is identity-like\n")
 
   (let ((A (pattern->matcher SA ?))
-	(B (pattern->matcher SB (list (list (list (list 'foo)))))))
+	(B (pattern->matcher SB (list (list (list (list 'f)))))))
     (check-requal? (pretty-print-matcher* (matcher-subtract (matcher-union A B) B))
 		   A))
   (let ((A (pattern->matcher SA ?))
-	(B (matcher-union (pattern->matcher SB (list (list (list (list 'foo)))))
+	(B (matcher-union (pattern->matcher SB (list (list (list (list 'f)))))
 			  (pattern->matcher SB (list (list (list (list 'bar))))))))
     (check-requal? (pretty-print-matcher* (matcher-subtract (matcher-union A B) B))
 		   A))
   (let ((A (pattern->matcher SA ?))
-	(B (matcher-union (pattern->matcher SB (list (list (list (list 'foo)))))
+	(B (matcher-union (pattern->matcher SB (list (list (list (list 'f)))))
 			  (pattern->matcher SB (list (list (list (list 'bar))))))))
     (check-requal? (pretty-print-matcher* (matcher-subtract (matcher-union A B) A))
 		   B)))
@@ -1498,14 +1508,14 @@
 			(pattern->matcher SB (list 3 4)))))
 	(S '((("(")
 	      ((1      ((2 (((")") (((")") ("" ("A")))))))
-			(3 (((")") (((")") ("" ("C" "D")))))))))
+			(3 (((")") (((")") ("" ("D" "C")))))))))
 	       (3      ((2 (((")") (((")") ("" ("A")))))))
 			(3 (((")") (((")") ("" ("D")))))))
 			(4 (((")") (((")") ("" ("B")))))))))
 	       (("__") ((2 (((")") (((")") ("" ("A")))))))
 			(3 (((")") (((")") ("" ("D"))))))))))))))
-    (check-equal? (matcher->jsexpr M (lambda (v) (map symbol->string (tset->list v)))) S)
-    (check-requal? (jsexpr->matcher S (lambda (v) (make-tset datum-order (map string->symbol v)))) M)))
+    (check-equal? (matcher->jsexpr M (lambda (v) (map small-integer->string (bitset->list v)))) S)
+    (check-requal? (jsexpr->matcher S (lambda (v) (apply bitset* (map string->symbol v)))) M)))
 
 (module+ test
   (check-requal? (pretty-print-matcher*
