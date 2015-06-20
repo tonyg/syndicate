@@ -8,14 +8,17 @@
 ;; Further, we explicitly canonicalize N instances, so eq? works to compare treaps by value.
 
 (provide treap?
+         treap-order
          treap-size
          treap-empty
          treap-empty?
+         treap->empty
          treap-insert
          treap-delete
          treap-get
          treap-keys
          treap-values
+         treap-fold
          treap-to-alist
          treap-has-key?
 
@@ -62,6 +65,8 @@
 (define (treap-empty o) (treap o L0 0))
 
 (define (treap-empty? t) (zero? (treap-size t)))
+
+(define (treap->empty t) (treap-empty (treap-order t)))
 
 (define (default-priority key)
   ;; Loosely based on a restriction of murmur32 v3
@@ -184,6 +189,12 @@
     (match n
       [(L) acc]
       [(N k _ _ left right) (walk left (cons k (walk right acc)))])))
+
+(define (treap-fold t f seed)
+  (let walk ((n (treap-root t)) (acc seed))
+    (match n
+      [(L) acc]
+      [(N k v _ left right) (walk left (f (walk right acc) k v))])))
 
 (define (treap-to-alist t)
   (let walk ((n (treap-root t)) (acc '()))
