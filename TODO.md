@@ -10,3 +10,9 @@ nothing that's already being done.
 TCP options negotiation.
  - SACK
  - Window scaling
+
+Bugs:
+ - RST kills a connection even if its sequence number is bogus. Check
+   to make sure it's in the window. (See
+   http://static.googleusercontent.com/media/research.google.com/en//pubs/archive/41848.pdf
+   and RFC 5961)
