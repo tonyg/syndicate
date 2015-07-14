@@ -53,6 +53,9 @@
 
 	 ;; Printing and Serialization
 	 pretty-print-matcher
+         matcher->abstract-graph
+         abstract-graph->dot
+         matcher->dot
 	 matcher->pretty-string
 	 matcher->jsexpr
 	 jsexpr->matcher)
@@ -863,6 +866,54 @@
 
 (define (matcher->pretty-string m #:indent [initial-indent 0])
   (with-output-to-string (lambda () (pretty-print-matcher m #:indent initial-indent))))
+
+(define (matcher->abstract-graph m)
+  (define nodes (hasheq))
+  (define edges '())
+  (define (add-edge! source-id label target)
+    (let ((target-id (walk target)))
+      (when target-id
+        (set! edges (cons (list source-id label target-id) edges)))))
+  (define (walk m)
+    (and m
+         (car
+          (hash-ref nodes m
+                    (lambda ()
+                      (define node-info
+                        (match m
+                          [(wildcard-sequence _) (list 'tail)]
+                          [(success v) (list 'ok v)]
+                          [(? treap?) (list 'branch)]))
+                      (define source-id (gensym 'i))
+                      (define entry (cons source-id node-info))
+                      (set! nodes (hash-set nodes m entry))
+                      (match m
+                        [(wildcard-sequence k) (add-edge! source-id #f k)]
+                        [(success _) (void)]
+                        [(? treap? h) (treap-fold h
+                                                  (lambda (seed k v) (add-edge! source-id k v))
+                                                  (void))])
+                      entry)))))
+  (walk m)
+  (list (hash-values nodes) edges))
+
+(define (abstract-graph->dot g)
+  (match-define (list nodes edges) g)
+  (with-output-to-string
+    (lambda ()
+      (printf "digraph Matcher {\n")
+      (for ((n nodes))
+        (match n
+          [(list id type) (printf "  ~a [label=\"~a\"];\n" id type)]
+          [(list id type x) (printf "  ~a [label=\"~a ~v\"];\n" id type x)]))
+      (for ((e edges))
+        (match e
+          [(list s #f t) (printf "  ~a -> ~a;\n" s t)]
+          [(list s label t) (printf "  ~a -> ~a [label=\"~v\"];\n" s t label)]))
+      (printf "}\n"))))
+
+(define (matcher->dot m)
+  (abstract-graph->dot (matcher->abstract-graph m)))
 
 ;; Matcher (Value -> JSExpr) -> JSExpr
 ;; Serializes a matcher to a JSON expression.
