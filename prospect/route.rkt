@@ -1023,7 +1023,16 @@
     (pretty-print-matcher m)
     (flush-output)
     m)
- 
+
+  (define (pretty-print-matcher*/dot m)
+    (newline)
+    (display (matcher->dot (matcher-relabel m (lambda (v)
+                                                (if (treap? v)
+                                                    (map car (treap-to-alist v))
+                                                    v)))))
+    (flush-output)
+    m)
+
   (void (pretty-print-matcher*
 	 (matcher-union (pattern->matcher SA (list (list ?) 'x))
 			(pattern->matcher SB (list (list ?) 'y)))))
@@ -1580,8 +1589,10 @@
 
 (module+ test
   (void
-   (pretty-print-matcher* (matcher-union (pattern->matcher SA ?)
-					 (pattern->matcher SB (list ? '- ?))))))
+   (let ((m (matcher-union (pattern->matcher SA ?)
+                           (pattern->matcher SB (list ? '- ?)))))
+     (pretty-print-matcher* m)
+     (pretty-print-matcher*/dot m))))
 
 (module+ test
   (let ()
