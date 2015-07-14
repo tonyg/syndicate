@@ -871,29 +871,28 @@
   (define nodes (hasheq))
   (define edges '())
   (define (add-edge! source-id label target)
-    (let ((target-id (walk target)))
-      (when target-id
-        (set! edges (cons (list source-id label target-id) edges)))))
+    (set! edges (cons (list source-id label (walk target)) edges)))
   (define (walk m)
-    (and m
-         (car
-          (hash-ref nodes m
-                    (lambda ()
-                      (define node-info
-                        (match m
-                          [(wildcard-sequence _) (list 'tail)]
-                          [(success v) (list 'ok v)]
-                          [(? treap?) (list 'branch)]))
-                      (define source-id (gensym 'i))
-                      (define entry (cons source-id node-info))
-                      (set! nodes (hash-set nodes m entry))
-                      (match m
-                        [(wildcard-sequence k) (add-edge! source-id #f k)]
-                        [(success _) (void)]
-                        [(? treap? h) (treap-fold h
-                                                  (lambda (seed k v) (add-edge! source-id k v))
-                                                  (void))])
-                      entry)))))
+    (car
+     (hash-ref nodes m
+               (lambda ()
+                 (define node-info
+                   (match m
+                     [#f (list 'fail)]
+                     [(wildcard-sequence _) (list 'tail)]
+                     [(success v) (list 'ok v)]
+                     [(? treap?) (list 'branch)]))
+                 (define source-id (gensym 'i))
+                 (define entry (cons source-id node-info))
+                 (set! nodes (hash-set nodes m entry))
+                 (match m
+                   [#f (void)]
+                   [(wildcard-sequence k) (add-edge! source-id #f k)]
+                   [(success _) (void)]
+                   [(? treap? h) (treap-fold h
+                                             (lambda (seed k v) (add-edge! source-id k v))
+                                             (void))])
+                 entry))))
   (walk m)
   (list (hash-values nodes) edges))
 
