@@ -6,4 +6,5 @@
 	       "net-lib"
 	       "profile-lib"
 	       "rackunit-lib"
+	       "htdp-lib"
 	       ))
