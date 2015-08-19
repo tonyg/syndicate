@@ -17,13 +17,13 @@
          tset-member?
          )
 
-(require data/order)
+(require "hash-order.rkt")
 
 (define (tset? t)
   (treap? t))
 
 (define (datum-tset . elts)
-  (make-tset datum-order elts))
+  (make-tset hash-order elts))
 
 (define (make-tset o elts)
   (for/fold [(t (tset-empty o))] [(e elts)] (tset-add t e)))
@@ -75,7 +75,7 @@
 (module+ test
   (require rackunit)
   (require data/order)
-  (define (tset . elts) (make-tset datum-order elts))
+  (define (tset . elts) (make-tset hash-order elts))
   (check-equal? (tset->list (tset 1 2 3 4 5)) '(1 2 3 4 5))
   (check-equal? (tset->list (tset 5 4 3 2 1)) '(1 2 3 4 5))
   (check-equal? (tset->list (tset-union (tset 1 2 3) (tset 2 3 4))) '(1 2 3 4))
@@ -88,7 +88,7 @@
   (check-equal? (tset-count (tset 1 2 3)) 3)
   (check-equal? (tset-count (tset)) 0)
   (check-equal? (tset-count (tset-union (tset 1 2 3) (tset 2 3 4))) 4)
-  (check-true (tset? (tset-empty datum-order)))
+  (check-true (tset? (tset-empty hash-order)))
   (check-true (tset? (tset)))
   (check-false (tset? 123))
   (check-false (tset? (list 1 2 3)))

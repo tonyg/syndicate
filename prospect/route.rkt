@@ -67,7 +67,7 @@
 (require "canonicalize.rkt")
 (require "treap.rkt")
 (require "tset.rkt")
-(require data/order)
+(require "hash-order.rkt")
 
 (require rackunit)
 
@@ -187,10 +187,10 @@
   (define sta? (struct-type? a))
   (define stb? (struct-type? b))
   (cond
-   [(and sta? stb?) (datum-order (struct-type-name a) (struct-type-name b))]
+   [(and sta? stb?) (hash-order (struct-type-name a) (struct-type-name b))]
    [sta? '<]
    [stb? '>]
-   [else (datum-order a b)]))
+   [else (hash-order a b)]))
 
 ;; (Treap (U Sigma Wildcard) Matcher)
 ;; The empty branch-matcher
@@ -1564,7 +1564,7 @@
 	       (("__") ((2 (((")") (((")") ("" ("A")))))))
 			(3 (((")") (((")") ("" ("D"))))))))))))))
     (check-equal? (matcher->jsexpr M (lambda (v) (map symbol->string (tset->list v)))) S)
-    (check-requal? (jsexpr->matcher S (lambda (v) (make-tset datum-order (map string->symbol v)))) M)))
+    (check-requal? (jsexpr->matcher S (lambda (v) (make-tset hash-order (map string->symbol v)))) M)))
 
 (module+ test
   (check-requal? (pretty-print-matcher*
