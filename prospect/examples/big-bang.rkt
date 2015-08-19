@@ -58,8 +58,8 @@
                               (patch-project/set/single p
                                                         (compile-projection
                                                          (at-meta (?! (active-window ?))))))
-                            (log-info "~v" in)
-                            #f]
+                            (transition s (update-window 'active-window-label 300 0
+                                                         (text (format "~v" in) 22 "black")))]
                            [_ #f]))
                        (void)
                        (sub (active-window ?) #:meta-level 1))
