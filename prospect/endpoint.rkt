@@ -19,6 +19,7 @@
 (require "core.rkt")
 (require "mux.rkt")
 (require "pretty.rkt")
+(require "tset.rkt")
 
 ;; An EID is a Nat.
 
@@ -88,7 +89,8 @@
     (match e
       [#f (hash-keys endpoints)]
       [(? patch?) (compute-affected-pids routing-table e)]
-      [(message body) (matcher-match-value routing-table (observe body))]))
+      [(message body)
+       (tset->list (matcher-match-value routing-table (observe body) (datum-tset)))]))
   (define tasks (for/list [(eid affected-eids)]
                   (list (if (patch? e)
                             (view-patch e (hash-ref interests eid matcher-empty))
@@ -134,7 +136,7 @@
 (define (interpret-endpoint-patch cumulative-patch actions g eid p0)
   (define old-interests (hash-ref (endpoint-group-interests g) eid matcher-empty))
   (define old-routing-table (endpoint-group-routing-table g))
-  (define p (limit-patch (label-patch p0 (set eid)) old-interests))
+  (define p (limit-patch (label-patch p0 (datum-tset eid)) old-interests))
   (define p-aggregate (compute-aggregate-patch p eid old-routing-table))
   (define new-interests (apply-patch old-interests p))
   (define new-routing-table (apply-patch old-routing-table p))
