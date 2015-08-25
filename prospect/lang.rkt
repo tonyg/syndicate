@@ -25,7 +25,7 @@
 	       ;;(pretty-print (syntax->datum final-stx))
 	       final-stx)
 	     (syntax-case (local-expand (car forms)
-					'module-begin
+					'module
                                         (kernel-form-identifier-list)) ()
 	       [(head rest ...)
 		(if (free-identifier=? #'head #'begin)
