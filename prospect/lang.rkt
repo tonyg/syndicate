@@ -1,6 +1,6 @@
 #lang racket/base
 
-(require (for-syntax racket/base))
+(require (for-syntax racket/base syntax/kerncase))
 
 (require racket/match)
 (require "main.rkt")
@@ -25,20 +25,8 @@
 	       ;;(pretty-print (syntax->datum final-stx))
 	       final-stx)
 	     (syntax-case (local-expand (car forms)
-					'module
-					(syntax->list #'(quote
-							 quote-syntax #%top
-							 lambda case-lambda
-							 let-values letrec-values
-							 begin begin0 set!
-							 with-continuation-mark
-							 if #%app #%expression
-							 define-values define-syntaxes
-							 begin-for-syntax
-							 module module*
-							 #%module-begin
-							 #%require #%provide
-							 #%variable-reference))) ()
+					'module-begin
+                                        (kernel-form-identifier-list)) ()
 	       [(head rest ...)
 		(if (free-identifier=? #'head #'begin)
 		    (accumulate-actions action-ids
