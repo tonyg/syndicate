@@ -30,7 +30,7 @@
 
 ;;---------------------------------------------------------------------------
 
-(struct window (id x y z image) #:transparent)
+(struct window (id x y z image) #:transparent) ;; image must be sealed
 
 (struct to-server (message) #:transparent)
 (struct from-server (message) #:transparent)
@@ -44,7 +44,7 @@
 
 (define (update-window id x y image #:z [z 0])
   (patch-seq (retract (window id ? ? ? ?) #:meta-level 1)
-             (assert (window id x y z image) #:meta-level 1)))
+             (assert (window id x y z (seal image)) #:meta-level 1)))
 
 ;;---------------------------------------------------------------------------
 
@@ -114,12 +114,12 @@
   (let loop ((ws (bb-windows b)))
     (match ws
       ['() #f]
-      [(cons (window id x y _ image) ws)
+      [(cons (window id x y _ (seal image)) ws)
        (if (inside? mx my x y image) id (loop ws))])))
 
 (define (render b)
   (for/fold [(scene empty-image)] [(w (bb-windows b))]
-    (match-define (window _ x y z image) w)
+    (match-define (window _ x y z (seal image)) w)
     (overlay/xy scene x y image)))
 
 (define (update-active-window active-id)

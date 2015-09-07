@@ -9,6 +9,8 @@
          (struct-out transition)
          (struct-out world)
 
+         (struct-out seal)
+
          (all-from-out "patch.rkt")
 
          ;; imported from route.rkt:
@@ -103,6 +105,12 @@
   #:methods gen:prospect-pretty-printable
   [(define (prospect-pretty-print w [p (current-output-port)])
      (pretty-print-world w p))])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Seals are used by protocols to prevent the routing tries from
+;; examining internal structure of values.
+
+(struct seal (contents)) ;; NB. Neither transparent nor prefab
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
