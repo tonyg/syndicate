@@ -13,7 +13,10 @@
                       (transition s (for/list [(w added)]
                                       (match-define (window width height) w)
                                       (update-scene `((push-matrix (scale ,width ,height)
-                                                                   (texture ,(rectangle 1 1 "solid" "white"))))
+                                                                   (texture ,(rectangle 1 1 "solid" "white")))
+                                                      ;; (rotate -30)
+                                                      ;; (scale 5 5)
+                                                      )
                                                     `())))]
                      [_ #f]))
                  (void)

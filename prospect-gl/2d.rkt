@@ -96,7 +96,7 @@
 (define (instruction->racket-code instr)
   (match instr
     [`(rotate ,(? number? deg))
-     (values `(glRotated ,deg) '())]
+     (values `(glRotated ,deg 0 0 -1) '())]
     [`(scale ,(? number? x) ,(? number? y))
      (values `(glScaled ,x ,y 1) '())]
     [`(translate ,(? number? x) ,(? number? y))
