@@ -6,6 +6,7 @@
          (struct-out scene)
          (except-out (struct-out sprite) sprite)
          (rename-out [sprite <sprite>] [make-sprite sprite])
+         simple-sprite
          update-scene
          update-sprites
          2d-world)
@@ -54,6 +55,11 @@
 
 (define (make-sprite z instructions)
   (sprite z (seal instructions)))
+
+(define (simple-sprite z x y w h i)
+  (make-sprite z `((translate ,x ,y)
+                   (scale ,w ,h)
+                   (texture ,i))))
 
 (define (update-sprites . ss)
   (patch-seq* (cons (retract (sprite ? ?) #:meta-level 1)
