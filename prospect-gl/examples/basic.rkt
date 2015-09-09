@@ -12,8 +12,12 @@
                       (define-values (added removed) (patch-project/set/single p window-projection))
                       (transition s (for/list [(w added)]
                                       (match-define (window width height) w)
-                                      (update-scene `((push-matrix (scale ,width ,height)
-                                                                   (texture ,(rectangle 1 1 "solid" "white")))
+                                      (update-scene `((push-matrix (scale ,width ,(* height 2))
+                                                                   (translate 0 -0.25)
+                                                                   (texture
+                                                                    ,(overlay/xy (rectangle 1 1 "solid" "white")
+                                                                                 0 0
+                                                                                 (rectangle 1 2 "solid" "black"))))
                                                       ;; (rotate -30)
                                                       ;; (scale 5 5)
                                                       )
