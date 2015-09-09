@@ -20,6 +20,20 @@
                  (sub (window ? ?) #:meta-level 1)
                  ;; (assert 'fullscreen #:meta-level 1)
                  )
+          (let ((move-to (lambda (x y)
+                           (transition (list x y)
+                                       (update-sprites (simple-sprite 0 x y 10 10 (rectangle 1 1 "solid" "blue")))))))
+            (spawn (lambda (e s)
+                     (match-define (list x y) s)
+                     (match e
+                       [(message (at-meta (key-event 'left _))) (move-to (- x 2) y)]
+                       [(message (at-meta (key-event 'right _))) (move-to (+ x 2) y)]
+                       [(message (at-meta (key-event 'up _))) (move-to x (- y 2))]
+                       [(message (at-meta (key-event 'down _))) (move-to x (+ y 2))]
+                       [_ #f]))
+                   (list 100 100)
+                   (update-sprites (simple-sprite -0.5 100 100 10 10 (rectangle 1 1 "solid" "blue")))
+                   (sub (key-event ? ?) #:meta-level 1)))
           (spawn (lambda (e s) #f)
                  (void)
                  (update-sprites (simple-sprite 0 50 50 50 50 (circle 50 "solid" "orange"))
