@@ -43,6 +43,18 @@
                                  (simple-sprite -1 60 60 50 50 (circle 50 "solid" "green"))))
           (spawn (lambda (e s)
                    (match e
+                     [(message (at-meta (frame-event counter elapsed-ms)))
+                      (and (> elapsed-ms 0)
+                           (let ((i (text (format "~a fps" (/ counter (/ elapsed-ms 1000.0))) 22 "black")))
+                             (transition s (update-sprites (simple-sprite -10 300 10
+                                                                          (image-width i)
+                                                                          (image-height i)
+                                                                          i)))))]
+                     [_ #f]))
+                 (void)
+                 (sub (frame-event ? ?) #:meta-level 1))
+          (spawn (lambda (e s)
+                   (match e
                      [(message _)
                       (transition s (assert 'stop #:meta-level 1))]
                      [_ #f]))
