@@ -6,20 +6,20 @@
   is to use a different #lang, and to call `run-ground` yourself; see an
   example in prospect/examples/example-plain.rkt.
 
-* How do I debug a prospect pgoram?
+* How do I debug a prospect program?
   - You can view a colored trace of a program's execution on stderr by setting the MINIMART_TRACE environment variable, e.g.
 
     ```
-    $ MINMART_TRACE=xetpag racket foo.rkt
+    $ MINIMART_TRACE=xetpag racket foo.rkt
     ```
 
-    shows<br>
-    x - exceptions<br>
-    e - events<br>
-    t - process states (after they handle each event)<br>
-    p - lifecycle events (spawns, crashes, and quits)<br>
-    a - process actions<br>
-    g - dataspace contents<br>
+    shows  
+    x - exceptions  
+    e - events  
+    t - process states (after they handle each event)  
+    p - lifecycle events (spawns, crashes, and quits)  
+    a - process actions  
+    g - dataspace contents  
     Adding 'W' will show whole world-states too. Remove each individual
     character to turn off the corresponding trace facility; the default
     value of the variable is just the empty-string.
@@ -37,19 +37,19 @@
     ```
 * How do spawned processes communicate with one another?
 
-  | Expression |  Effect of resulting patch | Meaning |
-  | ---------- | -------------------------- | ------- |
-  | (assert X) | X will be asserted         | claim of X |
-  | (retract X) | X will be retracted       | remove claim |
-  | (sub X)    | (observe X) asserted       | claim interest in X |
-  | (unsub X)  | (observe X) retracted      | unsubscribe |
-  | (pub X)    | (advertise X) asserted     | claim intent to claim X (or possibility of claim) |
-  | (unpub X)  | (advertise X) retracted    |         |
+  | Expression  | Effect of resulting patch  | Meaning                                           |
+  | ----------  | -------------------------- | -------                                           |
+  | (assert X)  | X will be asserted         | claim of X                                        |
+  | (retract X) | X will be retracted        | remove claim                                      |
+  | (sub X)     | (observe X) asserted       | claim interest in X                               |
+  | (unsub X)   | (observe X) retracted      | unsubscribe                                       |
+  | (pub X)     | (advertise X) asserted     | claim intent to claim X (or possibility of claim) |
+  | (unpub X)   | (advertise X) retracted    |                                                   |
 
   Those all construct **patch** actions. Separately, there are **message** actions:
 
-  | Expression | Effect of resulting action | Meaning |
-  | ---------- | -------------------------- | ------- |
+  | Expression  | Effect of resulting action                        | Meaning                 |
+  | ----------  | --------------------------                        | -------                 |
   | (message X) | routes X via dataspace via (observe X) assertions | subscribers to X get it |
 
 * What is the difference between `pub` and `assert`?
@@ -115,7 +115,7 @@
     One potential issue with this is it generates two observable events.
     That is, there is a window of time when the old term has been retracted
     but the new has not yet been asserted. Implicit in this is the idea that
-    the actions an eventhandler produces are performed **in order**, and you
+    the actions an event-handler produces are performed **in order**, and you
     can rely on that in NC. So in the example above, the retraction will
     logically happen before the assertion. You can avoid this by using
     `patch-seq` instead, to combine patches into a single equivalent patch:
@@ -170,8 +170,8 @@
   so to send `'foo` at the ground level use `(send-ground-message 'foo)` rather than
   `(send-ground-message (message 'foo))`)
 
-* My gui program isn't working!
-  - Eventspaces. Wrap your gui code with
+* My GUI program isn't working!
+  - Eventspaces. Wrap your GUI code with
   ```racket
   (parameterize ((current-eventspace (make-eventspace)))
     ...)
@@ -186,17 +186,17 @@
 
 * Why does `patch-seq` exist? Aren't all the actions in a transition effectively `patch-seq`d together?
   - Effectively, yes, that is what happens. The difference is in the
-  granularity of the action: when issuing *separate patch actions*, it's
-  possible for an observer to observe a moment *in between* the adjacent
-  patches, with the dataspace in an intermediate state.
-  <br><br>
-  Patch-seq combines multiple patches into a single patch having the same
-  effect as the sequence of individual patches.
-  <br><br>
-  By combining a bunch of patch actions into a single action, there is no
-  opportunity for a peer to observe some intermediate state. The peer only
-  gets to observe things-as-they-were-before-the-patch, and
-  things-as-they-are-after-the-patch.
+    granularity of the action: when issuing *separate patch actions*, it's
+    possible for an observer to observe a moment *in between* the adjacent
+    patches, with the dataspace in an intermediate state.
+
+    Patch-seq combines multiple patches into a single patch having the same
+    effect as the sequence of individual patches.
+
+    By combining a bunch of patch actions into a single action, there is no
+    opportunity for a peer to observe some intermediate state. The peer only
+    gets to observe things-as-they-were-before-the-patch, and
+    things-as-they-are-after-the-patch.
 
 * How do I create a tiered network, such as
   ```
@@ -221,40 +221,41 @@
   - if you started with the set Y of assertions, you'd go to Y + {X}, then just {X}.
 
 * Can a message be included in the initial actions of a process?
+
   - At the moment they are not allowed in the implementation;
-  this is more restrictive than the calculus, where any action is
-  permitted in a boot action.
-  <br><br>
-  If I remember right, the reason they are not allowed is to do with
-  atomic assignment of responsibilities at spawn time.
-  <br><br>
-  Imagine a socket listener detects some shared state that indicates a new
-  socket is waiting to be accepted. It decides to spawn a process to
-  handle the new connection.
-  <br><br>
-  The protocol for sockets involves maintaining shared state signalling
-  the willingness of each end to continue. Once such a signal is asserted,
-  it must be maintained continuously, because its retraction signals
-  disconnection.
-  <br><br>
-  So the newly-spawned process must signal this state. If it is spawned
-  without the state included in its assertions, then it must assert the
-  state later on. But what if it fails to do so? Then it's violating it's
-  implicit contract with the peer - a kind of denial of service. What if
-  it fails to do so because it *crashes* before it has a chance to? Then
-  the peer will hang forever waiting for something to happen.
-  <br><br>
-  For this reason, it is possible to spawn processes with nonempty
-  assertion sets. The assertions take effect atomically with the creation
-  of the process itself. So the spawning process can atomically "assign
-  responsibility" to the spawned process, giving it no opportunity to
-  crash before the necessary shared state has been asserted.
-  <br><br>
-  The current implementation is problematic though. The computation of the
-  initial patch is being done in the context of the spawned process, which
-  means that if it crashes computing the initial patch, only the spawned
-  process is killed - the spawning process is not signalled. More thought
-  required.
+    this is more restrictive than the calculus, where any action is
+    permitted in a boot action.
+
+	If I remember right, the reason they are not allowed is to do with
+	atomic assignment of responsibilities at spawn time.
+
+	Imagine a socket listener detects some shared state that indicates a new
+	socket is waiting to be accepted. It decides to spawn a process to
+	handle the new connection.
+
+	The protocol for sockets involves maintaining shared state signalling
+	the willingness of each end to continue. Once such a signal is asserted,
+	it must be maintained continuously, because its retraction signals
+	disconnection.
+
+	So the newly-spawned process must signal this state. If it is spawned
+	without the state included in its assertions, then it must assert the
+	state later on. But what if it fails to do so? Then it's violating it's
+	implicit contract with the peer - a kind of denial of service. What if
+	it fails to do so because it *crashes* before it has a chance to? Then
+	the peer will hang forever waiting for something to happen.
+
+	For this reason, it is possible to spawn processes with nonempty
+	assertion sets. The assertions take effect atomically with the creation
+	of the process itself. So the spawning process can atomically "assign
+	responsibility" to the spawned process, giving it no opportunity to
+	crash before the necessary shared state has been asserted.
+
+	The current implementation is problematic though. The computation of the
+	initial patch is being done in the context of the spawned process, which
+	means that if it crashes computing the initial patch, only the spawned
+	process is killed - the spawning process is not signalled. More thought
+	required.
 
 * Can I split a prospect program across multiple files?
   - Only one module with `#lang prospect` can be used at a time.
