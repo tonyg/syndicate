@@ -259,3 +259,8 @@
 
 * Can I split a prospect program across multiple files?
   - Only one module with `#lang prospect` can be used at a time.
+
+* Why does `#f` keep getting sent as an event?
+  - When a behavior returns something besides `#f` in response to an event, it is
+  repeatedly sent `#f` until it does return `#f`.
+  - Think of it as a way of the network asking "anything else?"
