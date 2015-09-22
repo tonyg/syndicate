@@ -61,7 +61,7 @@
 * How do I create a process/actor?
   ```racket
   ;; single actor
-  (spawn (lambda (event state) ... (transaction state' (list action ...)))
+  (spawn (lambda (event state) ... (transition state' (list action ...)))
          initial-state
          initial-action ...)
   ;; network of actors
