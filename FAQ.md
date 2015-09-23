@@ -64,6 +64,9 @@
   (spawn (lambda (event state) ... (transition state' (list action ...)))
          initial-state
          initial-action ...)
+  ;; stateless actor
+  (spawn/stateless (lambda (event) ... (list action ...))
+                   initial-action ...)
   ;; network of actors
   (spawn-world boot-action ...)
   ```
