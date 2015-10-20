@@ -156,6 +156,14 @@
                          (compile-projection `(posn ,? ,(?!))))
     ```
     and get the result `(set (list 3))`.
+  - an entire structure can be captured by passing a pattern as an argument to
+    `(?!)`.
+
+    ```racket
+    (matcher-project/set (patch-added p)
+                         (compile-projection (?! `(posn ,? ,?))))
+    ```
+    with the same example yields `(set (list ('posn 2 3))`.
   - `matcher-project/set/single` is like calling `set-first` on the result of
   `matcher-project/set`
   - `patch-project/set` uses `values` to return the result of matching a projection
