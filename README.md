@@ -50,7 +50,7 @@ Once you have Racket installed, run
 
 to install the package from the Racket package repository, or
 
-    raco pkg install --link `pwd`
+    raco pkg install
 
 from the root directory of the Git checkout to install the package
 from a local snapshot. (Alternatively, `make link` does the same thing.)
