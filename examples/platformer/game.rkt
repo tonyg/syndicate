@@ -10,12 +10,12 @@ Layers:
 
 - External Events
   key press/release (interrupts from the outside world)
-  explain timer
+  timer events (as per system timer driver)
 
 - Ground
   corresponds to computer itself
   device drivers
-  applications (?)
+  applications (e.g. in this instance, the game)
 
 - Game
   running application
@@ -27,15 +27,12 @@ Layers:
   model of the game world
   actors represent entities in the world, mostly
   misc actors do physicsish things
-  there is physics actor, which could become an "active" network
 
 ## Common Data Definitions
 
-(struct vec (x y))
-(struct point (x y)) ; C
-
-A Vec is a (vec Number Number)
-A Point is a (point Number Number)
+A Vec is a (vector Number Number)
+A Point is a (vector Number Number)
+(See vector functions in plot/utils)
 
 ## Ground Layer Protocols
 
@@ -206,10 +203,10 @@ An Attribute is an (attribute ID Aspect), an assertion describing some aspect of
 the named gamepiece
 
 An Aspect is either
- - 'player -- the named piece is a player avatar
+ - 'player - the named piece is a player avatar
  - 'enemy - the named piece is an enemy
- - 'furniture - the named piece can be stood on / jumped from
- - 'gold-star - the named piece, if touched, causes the level to
+ - 'solid - the named piece can be stood on / jumped from
+ - 'goal - the named piece, if touched, causes the level to
            End The Game In Victory
 
 An InitialPosition is an (initial-position ID Point), an assertion specifying
