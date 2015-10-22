@@ -35,8 +35,9 @@
 (struct frame-event (counter timestamp) #:transparent)
 
 ;; Message sent by world. Describes a key event. Key is a sealed
-;; key-event%.
-(struct key-event (code key) #:transparent)
+;; key-event%. `press?` is #t when the key is pressed (or
+;; autorepeated!), and #f when it is released.
+(struct key-event (code press? key) #:transparent)
 
 ;; Shared state maintained by program. Prelude and postlude are to be
 ;; sealed instruction lists. It is an error to have more than exactly
@@ -117,6 +118,8 @@
 
 (define (image->bitmap i)
   (cond
+    [(is-a? i bitmap%)
+     i]
     [(image:image? i)
      (define w (image:image-width i))
      (define h (image:image-height i))
@@ -131,8 +134,6 @@
      bm]
     [(pict:pict? i)
      (pict:pict->bitmap i)]
-    [(is-a? i bitmap%)
-     i]
     [else
      (error 'image->bitmap "unsupported image type ~v" i)]))
 
@@ -319,7 +320,11 @@
     (define/override (on-char key)
       (with-gl-context
         (lambda ()
-          (inject-event! (message (key-event (send key get-key-code) (seal key))))
+          (inject-event!
+           (message
+            (match (send key get-key-code)
+              ['release (key-event (send key get-key-release-code) #f (seal key))]
+              [code     (key-event code                            #t (seal key))])))
           (quiesce!))))
 
     (super-new (style '(gl no-autoclear)))))

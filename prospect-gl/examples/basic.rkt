@@ -4,7 +4,14 @@
 (require 2htdp/image)
 (require "../2d.rkt")
 
+;; This little dance is because of https://github.com/racket/racket/issues/1099
+(require (rename-in 2htdp/planetcute [character-cat-girl character-cat-girl*]))
+(define CC character-cat-girl*)
+
+(struct key-pressed (code) #:transparent)
+
 (define window-projection (compile-projection (at-meta (?! (window ? ?)))))
+(define key-pressed-projection (compile-projection (key-pressed (?!))))
 
 (2d-world (spawn (lambda (e s)
                    (match e
@@ -27,25 +34,54 @@
                  (sub (window ? ?) #:meta-level 1)
                  ;; (assert 'fullscreen #:meta-level 1)
                  )
-          (let ((move-to (lambda (x y)
-                           (transition (list x y)
-                                       (update-sprites (simple-sprite 0 x y 10 10 (rectangle 1 1 "solid" "blue")))))))
+          (spawn (lambda (e s)
+                   (match e
+                     [(message (at-meta (key-event code press? _)))
+                      (transition (void) ((if press? assert retract) (key-pressed code)))]
+                     [#f #f]))
+                 (void)
+                 (sub (key-event ? ? ?) #:meta-level 1))
+          (let ((move-to (lambda (x y keys-down)
+                           (transition (list x y keys-down)
+                                       (update-sprites
+                                        (simple-sprite 0
+                                                       x
+                                                       y
+                                                       (image-width CC)
+                                                       (image-height CC)
+                                                       CC))))))
             (spawn (lambda (e s)
-                     (match-define (list x y) s)
+                     (match-define (list x y keys-down) s)
                      (match e
-                       [(message (at-meta (key-event 'left _))) (move-to (- x 2) y)]
-                       [(message (at-meta (key-event 'right _))) (move-to (+ x 2) y)]
-                       [(message (at-meta (key-event 'up _))) (move-to x (- y 2))]
-                       [(message (at-meta (key-event 'down _))) (move-to x (+ y 2))]
+                       [(? patch? p)
+                        (define-values (added removed)
+                          (patch-project/set/single p key-pressed-projection))
+                        (define new-keys-down (set-subtract (set-union keys-down added) removed))
+                        (transition (list x y new-keys-down) '())]
+                       [(message (at-meta (frame-event _ _)))
+                        (define-values (old-x old-y) (values x y))
+                        (define speed 6)
+                        (let* ((x (if (set-member? keys-down 'left) (- x speed) x))
+                               (x (if (set-member? keys-down 'right) (+ x speed) x))
+                               (y (if (set-member? keys-down 'up) (- y speed) y))
+                               (y (if (set-member? keys-down 'down) (+ y speed) y)))
+                          (and (not (and (= x old-x) (= y old-y)))
+                               (move-to x y keys-down)))]
                        [_ #f]))
-                   (list 100 100)
-                   (update-sprites (simple-sprite -0.5 100 100 10 10 (rectangle 1 1 "solid" "blue")))
-                   (sub (key-event ? ?) #:meta-level 1)))
+                   (list 100 100 (set))
+                   (update-sprites (simple-sprite -0.5
+                                                  100
+                                                  100
+                                                  (image-width CC)
+                                                  (image-height CC)
+                                                  CC))
+                   (sub (frame-event ? ?) #:meta-level 1)
+                   (sub (key-pressed ?))))
           (spawn (lambda (e s) #f)
                  (void)
                  (update-sprites (simple-sprite 0 50 50 50 50 (circle 50 "solid" "orange"))
                                  (simple-sprite -1 60 60 50 50 (circle 50 "solid" "green"))))
-          (spawn (lambda (e s)
+          #;(spawn (lambda (e s)
                    (match e
                      [(message (at-meta (frame-event counter elapsed-ms)))
                       (and (> elapsed-ms 0)
@@ -63,6 +99,6 @@
                       (transition s (assert 'stop #:meta-level 1))]
                      [_ #f]))
                  (void)
-                 (sub (key-event #\q ?) #:meta-level 1))
+                 (sub (key-event #\q #t ?) #:meta-level 1))
           )
 (exit 0)
