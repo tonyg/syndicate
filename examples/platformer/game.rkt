@@ -5,6 +5,7 @@
          "./periodic_timer.rkt")
 
 (require prospect/drivers/timer)
+(require plot/utils) ;; for vector utilities
 
 #|
 
@@ -72,8 +73,6 @@ where sprite-renderer produces a pict, given a frame number
 
 A ScrollOffset is a (scroll-offset Vec), indicating the vector to *subtract*
 from world coordinates to get device coordinates.
-
-A ScreenSize is a (screen-size Vec), indicating the size of the device.
 
 The coordinate systems:
  World coordinates = the large virtual canvas, origin at top-left,
@@ -279,7 +278,7 @@ Player -> Physics: (jump)
 |#
 
 ;;---------------------------------------------------------------------------
-;; 
+;; Keyboard and Display
 
 ;; A KeyStateChangeEvent is either
 ;;  - (key-press KeyEvent) ;; from 2htdp
@@ -287,6 +286,36 @@ Player -> Physics: (jump)
 ;; signalling a key state change.
 (struct key-press (key) #:prefab)
 (struct key-release (key) #:prefab)
+
+;; A ScreenSize is a (screen-size Vec), indicating the size of the device.
+(struct screen-size (vec) #:prefab)
+
+;; The canvas here both delivers keyboard events and serves as a
+;; display medium.
+(define game-canvas%
+  (class canvas%
+    (init-field key-handler)
+    (super-new)
+    (define/override (on-char event)
+      (match (send event get-key-code)
+        ['release (key-handler (key-release (send event get-key-release-code)))]
+        [other    (key-handler (key-press other))]))))
+
+;; Construct, show and return a game-canvas%.
+;; Keypresses will result in ground-messages.
+(define (make-frame width height)
+  (parameterize ((current-eventspace (make-eventspace)))
+    (define frame (new frame%
+                       [label "Prospect Platformer"]
+                       [width width]
+                       [height height]))
+    (define canvas
+      (new game-canvas%
+           [parent frame]
+           [key-handler send-ground-message]))
+    (send canvas focus)
+    (send frame show #t)
+    canvas))
 
 ;; -> KeyboardIntegrator
 (define (spawn-keyboard-driver)
@@ -296,6 +325,19 @@ Player -> Physics: (jump)
          (sub (
          ))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (spawn-timer-driver)
 (spawn-keyboard-driver)
 ;;(spawn-display-driver)
+
+(let ((canvas (make-frame 600 400)))
+  ;; Retrieve the actual displayed size of the canvas, which differs
+  ;; from the requested frame size because of window chrome etc.
+  (define the-screen-size
+    (let-values (((x-max y-max) (send canvas get-client-size)))
+      (screen-size (vector x-max y-max))))
+  (define the-dc (send canvas get-dc))
+  ;;
+  ;; So equipped, we may spawn the renderer.
+  (spawn-renderer the-screen-size the-dc))
