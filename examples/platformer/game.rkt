@@ -4,6 +4,8 @@
          "./geometry.rkt"
          "./periodic_timer.rkt")
 
+(require prospect/drivers/timer)
+
 #|
 
 Layers:
@@ -79,11 +81,6 @@ The coordinate systems:
  Device coordinates = the window's coordinates, mapped to world coords
    via scroll offset & clipping
  In both, layer numbers are more positive further away from the camera.
-
-A KeyStateChangeEvent is either
- - (key-press KeyEvent) ;; from 2htdp
- - (key-release KeyEvent)
-signalling a key state change.
 
 A KeyDown is a (key-down KeyEvent), an assertion indicating that the
 named key is currently being held down.
@@ -281,6 +278,24 @@ Player -> Physics: (jump)
 
 |#
 
-(struct velocity (id vect) #:prefab)
-(struct damage (id pts) #:prefab)
-(struct attr (id
+;;---------------------------------------------------------------------------
+;; 
+
+;; A KeyStateChangeEvent is either
+;;  - (key-press KeyEvent) ;; from 2htdp
+;;  - (key-release KeyEvent)
+;; signalling a key state change.
+(struct key-press (key) #:prefab)
+(struct key-release (key) #:prefab)
+
+;; -> KeyboardIntegrator
+(define (spawn-keyboard-driver)
+  (spawn (lambda (e s)
+           ...)
+         (void)
+         (sub (
+         ))
+
+(spawn-timer-driver)
+(spawn-keyboard-driver)
+;;(spawn-display-driver)
