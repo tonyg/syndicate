@@ -239,6 +239,22 @@
     (define world (make-world boot-actions))
     (define event-queue (make-queue))
 
+    (define target-frame-rate 30)
+    (define frame-count 0)
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    (define (sleep-and-refresh)
+      (define target-sim-time (* frame-count (/ target-frame-rate)))
+      (define sleep-time (- target-sim-time (/ (sim-time) 1000.0)))
+      (when (positive? sleep-time)
+        (sleep/yield sleep-time))
+      (refresh)
+      (set! frame-count (+ frame-count 1)))
+
+    (define/public (set-target-frame-rate! r)
+      (set! target-frame-rate r))
+
     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
     (define (inject-event! e)
@@ -319,7 +335,7 @@
           (render-scene! prelude sprites postlude)
           (glFlush)
           (swap-gl-buffers)))
-      (queue-callback (lambda () (refresh)) #f))
+      (queue-callback (lambda () (sleep-and-refresh)) #f))
 
     (define/override (on-size width height)
       (with-gl-context

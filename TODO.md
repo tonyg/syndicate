@@ -1,1 +1,2 @@
- - Some way of clamping the frame rate to e.g. 60Hz and failing that 24Hz
+ - Some way of adjusting target frame rate based on whether we're
+   achieving the goal or not; e.g. fall back from 60Hz to 24Hz
