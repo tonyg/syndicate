@@ -1,0 +1,1 @@
+ - Some way of clamping the frame rate to e.g. 60Hz and failing that 24Hz
