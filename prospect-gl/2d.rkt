@@ -34,7 +34,7 @@
 (struct window (width height) #:transparent)
 
 ;; Message sent by world. Describes frame about to be rendered.
-(struct frame-event (counter timestamp) #:transparent)
+(struct frame-event (counter timestamp target-frame-rate) #:transparent)
 
 ;; Message sent by world. Describes a key event. Key is a sealed
 ;; key-event%. `press?` is #t when the key is pressed (or
@@ -320,7 +320,7 @@
     (define/override (on-paint)
       (with-gl-context
         (lambda ()
-          (inject-event! (message (frame-event counter (sim-time))))
+          (inject-event! (message (frame-event counter (sim-time) target-frame-rate)))
           (set! counter (+ counter 1))
           (quiesce!)
           (unless initialised?
