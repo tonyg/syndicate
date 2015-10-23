@@ -4,8 +4,10 @@
 (require racket/match)
 (require prospect/drivers/timer)
 (require plot/utils) ;; for vector utilities
+(require 2htdp/image)
 (require prospect-gl/2d)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Layers:
 ;;
 ;; - External I/O
@@ -28,25 +30,32 @@
 ;;   actors represent entities in the world, mostly
 ;;   misc actors do physicsish things
 ;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ## Common Data Definitions
 ;;
 ;; A Vec is a (vector Number Number)
 ;; A Point is a (vector Number Number)
 ;; (See vector functions in plot/utils)
-;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ## Ground Layer Protocols
-;;
-;;  - Scene Management
+
+;;-------------------------------------------------------------------------
+;; ### Scene Management
 ;;     - assertion: ScrollOffset
 ;;     - role: SceneManager
 ;;         Displays the scene backdrop and adjusts display coordinates via ScrollOffset.
 ;;
 ;; A ScrollOffset is a (scroll-offset Vec), indicating the vector to *subtract*
 ;; from world coordinates to get device coordinates.
-;;
+(struct scroll-offset (vec) #:transparent)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ## Game Layer Protocols
-;;
-;;  - Scoring
+
+;;-------------------------------------------------------------------------
+;; ### Scoring
 ;;     - message: AddToScore
 ;;     - assertion: CurrentScore
 ;;     - role: ScoreKeeper
@@ -54,7 +63,17 @@
 ;;         Publishes the score using a CurrentScore.
 ;;         Responds to AddToScore by updating the score.
 ;;
-;;  - Level Spawning
+;; An AddToScore is an (add-to-score Number), a message
+;; which signals a need to add the given number to the player's
+;; current score.
+(struct add-to-score (delta) #:transparent)
+;;
+;; A CurrentScore is a (current-score Number), an assertion
+;; indicating the player's current score.
+(struct current-score (value) #:transparent)
+
+;;-------------------------------------------------------------------------
+;; ### Level Spawning
 ;;     - assertion: LevelRunning
 ;;     - message: LevelCompleted
 ;;     - role: LevelSpawner
@@ -71,22 +90,18 @@
 ;;         going. Sends LevelCompleted if the player successfully completed
 ;;         the level.
 ;;
-;; An AddToScore is an (add-to-score Number), a message
-;; which signals a need to add the given number to the player's
-;; current score.
-;;
-;; A CurrentScore is a (current-score Number), an assertion
-;; indicating the player's current score.
-;;
 ;; A LevelRunning is a (level-running), an assertion indicating that the
 ;; current level is still in progress.
 ;;
 ;; A LevelCompleted is a (level-completed), a message indicating that
 ;; the current level was *successfully* completed before it terminated.
 ;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ## Level Layer Protocols
 ;;
-;;  - Movement and Physics
+;;-------------------------------------------------------------------------
+;; ### Movement and Physics
 ;;     - message: JumpRequest
 ;;     - assertion: Impulse
 ;;     - assertion: Velocity
@@ -118,7 +133,8 @@
 ;;         enemies, the goal(s), and platforms and blocks in the environment.
 ;;         Asserts a Sprite two layers out to render itself.
 ;;
-;;  - Player State
+;;-------------------------------------------------------------------------
+;; ### Player State
 ;;     - message: Damage
 ;;     - assertion: Health
 ;;     - role: Player
@@ -126,7 +142,8 @@
 ;;         Responds to Damage.
 ;;         When hitpoints drop low enough, removes the player from the board.
 ;;
-;;  - World State
+;;-------------------------------------------------------------------------
+;; ### World State
 ;;     - assertion: LevelSize
 ;;     - role: DisplayControl
 ;;         Maintains a LevelSize assertion.
@@ -230,67 +247,70 @@
 ;; Keyboard -> Player: (press space)
 ;; Player -> Physics: (jump)
 
-;;---------------------------------------------------------------------------
-;; Keyboard and Display
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; SceneManager
 
-;; A KeyStateChangeEvent is either
-;;  - (key-press KeyEvent) ;; from 2htdp
-;;  - (key-release KeyEvent)
-;; signalling a key state change.
-(struct key-press (key) #:prefab)
-(struct key-release (key) #:prefab)
+(define window-projection (compile-projection (at-meta (?! (window ? ?)))))
+(define scroll-offset-projection (compile-projection (scroll-offset (?!))))
 
-;; A ScreenSize is a (screen-size Vec), indicating the size of the device.
-(struct screen-size (vec) #:prefab)
+(define (spawn-scene-manager)
+  (struct scene-manager-state (size offset) #:prefab)
 
-;; The canvas here both delivers keyboard events and serves as a
-;; display medium.
-(define game-canvas%
-  (class canvas%
-    (init-field key-handler)
-    (super-new)
-    (define/override (on-char event)
-      (match (send event get-key-code)
-        ['release (key-handler (key-release (send event get-key-release-code)))]
-        [other    (key-handler (key-press other))]))))
+  (define (update-window-size s p)
+    (define-values (added removed) (patch-project/set/single p window-projection))
+    (for/fold [(s s)] [(w added)]
+      (match-define (window width height) w)
+      (struct-copy scene-manager-state s [size (vector width height)])))
 
-;; Construct, show and return a game-canvas%.
-;; Keypresses will result in ground-messages.
-(define (make-frame width height)
-  (parameterize ((current-eventspace (make-eventspace)))
-    (define frame (new frame%
-                       [label "Prospect Platformer"]
-                       [width width]
-                       [height height]))
-    (define canvas
-      (new game-canvas%
-           [parent frame]
-           [key-handler send-ground-message]))
-    (send canvas focus)
-    (send frame show #t)
-    canvas))
+  (define (update-scroll-offset s p)
+    (define-values (added removed) (patch-project/set/single p scroll-offset-projection))
+    (for/fold [(s s)] [(o added)]
+      (match-define (scroll-offset vec) o)
+      (struct-copy scene-manager-state s [offset vec])))
 
-;; -> KeyboardIntegrator
-(define (spawn-keyboard-driver)
   (spawn (lambda (e s)
-           ...)
-         (void)
-         (sub (
-         ))
+           (match e
+             [(? patch? p)
+              (let* ((s (update-window-size s p))
+                     (s (update-scroll-offset s p)))
+                (match-define (vector width height) (scene-manager-state-size s))
+                (match-define (vector ofs-x ofs-y) (scene-manager-state-offset s))
+                (transition s
+                 (update-scene `((push-matrix (scale ,width ,height)
+                                              (texture ,(rectangle 1 1 "solid" "white"))
+                                              )
+                                 (translate ,ofs-x ,ofs-y))
+                               `())))]
+             [_ #f]))
+         (scene-manager-state (vector 0 0) (vector 0 0))
+         (sub (window ? ?) #:meta-level 1)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ScoreKeeper
+
+(define (spawn-score-keeper)
+  (spawn (lambda (e s)
+           (match e
+             [(message (add-to-score delta))
+              (transition (+ s delta)
+                          (retract (current-score ?))
+                          (assert (current-score delta)))]
+             [_ #f]))
+         0
+         (sub (add-to-score ?))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; LevelSpawner
+
+(define (spawn-level-spawner)
+  (void))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(spawn-timer-driver)
-(spawn-keyboard-driver)
-;;(spawn-display-driver)
-
-(let ((canvas (make-frame 600 400)))
-  ;; Retrieve the actual displayed size of the canvas, which differs
-  ;; from the requested frame size because of window chrome etc.
-  (define the-screen-size
-    (let-values (((x-max y-max) (send canvas get-client-size)))
-      (screen-size (vector x-max y-max))))
-  (define the-dc (send canvas get-dc))
-  ;;
-  ;; So equipped, we may spawn the renderer.
-  (spawn-renderer the-screen-size the-dc))
+(2d-world #:width 600 #:height 400
+ (spawn-keyboard-integrator)
+ (spawn-scene-manager)
+ (spawn-world (spawn-score-keeper)
+              (spawn-level-spawner)
+              )
+ )
