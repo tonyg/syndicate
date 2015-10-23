@@ -17,7 +17,10 @@
          (lambda (e)
            (match e
              [(message (at-meta (tcp-channel _ _ bs)))
-              (message `(,user says ,(string-trim (bytes->string/utf-8 bs))))]
+              (define input-string (string-trim (bytes->string/utf-8 bs)))
+              (if (equal? input-string "quit-world")
+                  (quit-world)
+                  (message `(,user says ,input-string)))]
              [(message `(,who says ,what))
               (say who "says: ~a" what)]
              [(? patch? p)
