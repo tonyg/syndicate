@@ -301,7 +301,7 @@
        (rseq (struct->struct-type p)
 	     (walk-pair-chain (cdr (vector->list (struct->vector p)))
 			      acc))]
-      [other (rseq other acc)]))
+      [other (rseq (canonicalize other) acc)]))
 
   (walk-pair-chain ps0 (rsuccess v)))
 
@@ -527,7 +527,7 @@
 	    [#f (walk rest stack (get ?))]
 	    [k (walk (cdr (vector->list (struct->vector s))) (cons rest stack) k)])]
 	 [(cons v rest)
-	  (walk rest stack (rlookup r v (get ?)))])])))
+	  (walk rest stack (rlookup r (canonicalize v) (get ?)))])])))
 
 ;; Matcher Matcher -> Value
 ;;
@@ -638,7 +638,7 @@
        (cons (struct->struct-type p)
 	     (walk-pair-chain (cdr (vector->list (struct->vector p)))
 			      acc))]
-      [other (cons other acc)]))
+      [other (cons (canonicalize other) acc)]))
 
   (walk-pair-chain ps0 '()))
 
