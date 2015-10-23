@@ -78,7 +78,7 @@
 
 (2d-world (spawn-keyboard-integrator)
           (spawn-background)
-          (spawn-frame-counter)
+          ;; (spawn-frame-counter)
           (spawn-player-avatar)
           (spawn (lambda (e s) #f)
                  (void)
