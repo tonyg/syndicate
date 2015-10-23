@@ -4,95 +4,86 @@
 (require 2htdp/image)
 (require "../2d.rkt")
 
-;; This little dance is because of https://github.com/racket/racket/issues/1099
-(require (rename-in 2htdp/planetcute [character-cat-girl character-cat-girl*]))
-(define CC character-cat-girl*)
-
-(struct key-pressed (code) #:transparent)
-
 (define window-projection (compile-projection (at-meta (?! (window ? ?)))))
 (define key-pressed-projection (compile-projection (key-pressed (?!))))
 
-(2d-world (spawn (lambda (e s)
-                   (match e
-                     [(? patch? p)
-                      (define-values (added removed) (patch-project/set/single p window-projection))
-                      (transition s (for/list [(w added)]
-                                      (match-define (window width height) w)
-                                      (update-scene `((push-matrix (scale ,width ,(* height 2))
-                                                                   (translate 0 -0.25)
-                                                                   (texture
-                                                                    ,(overlay/xy (rectangle 1 1 "solid" "white")
-                                                                                 0 0
-                                                                                 (rectangle 1 2 "solid" "black"))))
-                                                      ;; (rotate -30)
-                                                      ;; (scale 5 5)
-                                                      )
-                                                    `())))]
-                     [_ #f]))
-                 (void)
-                 (sub (window ? ?) #:meta-level 1)
-                 ;; (assert 'fullscreen #:meta-level 1)
-                 )
-          (spawn (lambda (e s)
-                   (match e
-                     [(message (at-meta (key-event code press? _)))
-                      (transition (void) ((if press? assert retract) (key-pressed code)))]
-                     [#f #f]))
-                 (void)
-                 (sub (key-event ? ? ?) #:meta-level 1))
-          (let ((move-to (lambda (x y keys-down)
-                           (transition (list x y keys-down)
-                                       (update-sprites
-                                        (simple-sprite 0
-                                                       x
-                                                       y
-                                                       (image-width CC)
-                                                       (image-height CC)
-                                                       CC))))))
-            (spawn (lambda (e s)
-                     (match-define (list x y keys-down) s)
-                     (match e
-                       [(? patch? p)
-                        (define-values (added removed)
-                          (patch-project/set/single p key-pressed-projection))
-                        (define new-keys-down (set-subtract (set-union keys-down added) removed))
-                        (transition (list x y new-keys-down) '())]
-                       [(message (at-meta (frame-event _ _)))
-                        (define-values (old-x old-y) (values x y))
-                        (define speed 6)
-                        (let* ((x (if (set-member? keys-down 'left) (- x speed) x))
-                               (x (if (set-member? keys-down 'right) (+ x speed) x))
-                               (y (if (set-member? keys-down 'up) (- y speed) y))
-                               (y (if (set-member? keys-down 'down) (+ y speed) y)))
-                          (and (not (and (= x old-x) (= y old-y)))
-                               (move-to x y keys-down)))]
-                       [_ #f]))
-                   (list 100 100 (set))
-                   (update-sprites (simple-sprite -0.5
-                                                  100
-                                                  100
-                                                  (image-width CC)
-                                                  (image-height CC)
-                                                  CC))
-                   (sub (frame-event ? ?) #:meta-level 1)
-                   (sub (key-pressed ?))))
+(define (spawn-background)
+  (spawn (lambda (e s)
+           (match e
+             [(? patch? p)
+              (define-values (added removed) (patch-project/set/single p window-projection))
+              (transition s (for/list [(w added)]
+                              (match-define (window width height) w)
+                              (update-scene `((push-matrix (scale ,width ,(* height 2))
+                                                           (translate 0 -0.25)
+                                                           (texture
+                                                            ,(overlay/xy (rectangle 1 1 "solid" "white")
+                                                                         0 0
+                                                                         (rectangle 1 2 "solid" "black"))))
+                                              ;; (rotate -30)
+                                              ;; (scale 5 5)
+                                              )
+                                            `())))]
+             [_ #f]))
+         (void)
+         (sub (window ? ?) #:meta-level 1)
+         ;; (assert 'fullscreen #:meta-level 1)
+         ))
+
+(define (spawn-player-avatar)
+  ;; This little dance is because of https://github.com/racket/racket/issues/1099
+  (local-require (rename-in 2htdp/planetcute [character-cat-girl character-cat-girl*]))
+  (define CC character-cat-girl*)
+  (define (move-to x y keys-down)
+    (transition (list x y keys-down)
+                (update-sprites
+                 (simple-sprite 0 x y (image-width CC) (image-height CC) CC))))
+  (spawn (lambda (e s)
+           (match-define (list x y keys-down) s)
+           (match e
+             [(? patch? p)
+              (define-values (added removed)
+                (patch-project/set/single p key-pressed-projection))
+              (define new-keys-down (set-subtract (set-union keys-down added) removed))
+              (transition (list x y new-keys-down) '())]
+             [(message (at-meta (frame-event _ _)))
+              (define-values (old-x old-y) (values x y))
+              (define speed 6)
+              (let* ((x (if (set-member? keys-down 'left) (- x speed) x))
+                     (x (if (set-member? keys-down 'right) (+ x speed) x))
+                     (y (if (set-member? keys-down 'up) (- y speed) y))
+                     (y (if (set-member? keys-down 'down) (+ y speed) y)))
+                (and (not (and (= x old-x) (= y old-y)))
+                     (move-to x y keys-down)))]
+             [_ #f]))
+         (list 100 100 (set))
+         (update-sprites
+          (simple-sprite -0.5 100 100 (image-width CC) (image-height CC) CC))
+         (sub (frame-event ? ?) #:meta-level 1)
+         (sub (key-pressed ?))))
+
+(define (spawn-frame-counter)
+  (spawn (lambda (e s)
+           (match e
+             [(message (at-meta (frame-event counter elapsed-ms)))
+              (and (> elapsed-ms 0)
+                   (let ((i (text (format "~a fps" (/ counter (/ elapsed-ms 1000.0))) 22 "black")))
+                     (transition s (update-sprites (simple-sprite -10 300 10
+                                                                  (image-width i)
+                                                                  (image-height i)
+                                                                  i)))))]
+             [_ #f]))
+         (void)
+         (sub (frame-event ? ?) #:meta-level 1)))
+
+(2d-world (spawn-keyboard-integrator)
+          (spawn-background)
+          (spawn-frame-counter)
+          (spawn-player-avatar)
           (spawn (lambda (e s) #f)
                  (void)
                  (update-sprites (simple-sprite 0 50 50 50 50 (circle 50 "solid" "orange"))
                                  (simple-sprite -1 60 60 50 50 (circle 50 "solid" "green"))))
-          #;(spawn (lambda (e s)
-                   (match e
-                     [(message (at-meta (frame-event counter elapsed-ms)))
-                      (and (> elapsed-ms 0)
-                           (let ((i (text (format "~a fps" (/ counter (/ elapsed-ms 1000.0))) 22 "black")))
-                             (transition s (update-sprites (simple-sprite -10 300 10
-                                                                          (image-width i)
-                                                                          (image-height i)
-                                                                          i)))))]
-                     [_ #f]))
-                 (void)
-                 (sub (frame-event ? ?) #:meta-level 1))
           (spawn (lambda (e s)
                    (match e
                      [(message _)

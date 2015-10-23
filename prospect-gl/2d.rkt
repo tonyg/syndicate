@@ -3,12 +3,14 @@
 (provide (struct-out window)
          (struct-out frame-event)
          (struct-out key-event)
+         (struct-out key-pressed)
          (struct-out scene)
          (except-out (struct-out sprite) sprite)
          (rename-out [sprite <sprite>] [make-sprite sprite])
          simple-sprite
          update-scene
          update-sprites
+         spawn-keyboard-integrator
          2d-world)
 
 (require data/order)
@@ -39,6 +41,10 @@
 ;; autorepeated!), and #f when it is released.
 (struct key-event (code press? key) #:transparent)
 
+;; Assertion. Indicates that the named key is held down. See role
+;; KeyboardIntegrator and spawn-keyboard-integrator.
+(struct key-pressed (code) #:transparent)
+
 ;; Shared state maintained by program. Prelude and postlude are to be
 ;; sealed instruction lists. It is an error to have more than exactly
 ;; one active such record at a given time.
@@ -65,6 +71,18 @@
 (define (update-sprites . ss)
   (patch-seq* (cons (retract (sprite ? ?) #:meta-level 1)
                     (map (lambda (s) (assert s #:meta-level 1)) ss))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; KeyboardIntegrator. Integrates key-events into key-pressed assertions.
+(define (spawn-keyboard-integrator)
+  (spawn (lambda (e s)
+           (match e
+             [(message (at-meta (key-event code press? _)))
+              (transition (void) ((if press? assert retract) (key-pressed code)))]
+             [#f #f]))
+         (void)
+         (sub (key-event ? ? ?) #:meta-level 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
