@@ -31,9 +31,8 @@
          ))
 
 (define (spawn-player-avatar)
-  ;; This little dance is because of https://github.com/racket/racket/issues/1099
-  (local-require (rename-in 2htdp/planetcute [character-cat-girl character-cat-girl*]))
-  (define CC character-cat-girl*)
+  (local-require 2htdp/planetcute)
+  (define CC character-cat-girl)
   (define (move-to x y keys-down)
     (transition (list x y keys-down)
                 (update-sprites
