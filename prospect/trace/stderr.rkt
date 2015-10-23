@@ -171,6 +171,9 @@
               (unless (matcher-empty? interests)
                 (output "~a's final interests:\n" pidstr)
                 (pretty-print-matcher interests (current-error-port))))]
+           [(quit-world)
+            (with-color BRIGHT-RED
+              (output "Process ~a performed a quit-world.\n" pidstr))]
            [(? patch? p)
             (when (or show-actions? show-patch-actions?)
               (output "~a performing a patch:\n" pidstr)
@@ -180,7 +183,7 @@
               (output "~a sending a message:\n" pidstr)
               (pretty-write body (current-error-port)))])]
         [('internal-action-result (list pids a old-w t))
-         (when t
+         (when (transition? t)
            (define new-w (transition-state t))
            (define pidstr (format-pids pids))
            (define newcount (hash-count (world-behaviors new-w)))

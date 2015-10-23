@@ -3,6 +3,7 @@
 
 (provide (struct-out message)
          (except-out (struct-out quit) quit)
+         (struct-out quit-world)
          (rename-out [quit <quit>])
          (except-out (struct-out spawn) spawn)
          (rename-out [spawn <spawn>])
@@ -73,6 +74,7 @@
 
 ;; Actions ⊃ Events
 (struct spawn (boot) #:prefab)
+(struct quit-world () #:prefab) ;; NB. An action. Compare (quit), a Transition.
 
 ;; A Behavior is a ((Option Event) Any -> Transition): a function
 ;; mapping an Event (or, in the #f case, a poll signal) and a
@@ -115,7 +117,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (event? x) (or (patch? x) (message? x)))
-(define (action? x) (or (event? x) (spawn? x)))
+(define (action? x) (or (event? x) (spawn? x) (quit-world? x)))
 
 (define (prepend-at-meta pattern level)
   (if (zero? level)
@@ -333,6 +335,8 @@
                       ;; ^ behavior & state already removed by disable-process
                       patches
                       meta-action)]
+    [(quit-world)
+     (make-quit)]
     [(? patch? delta-orig)
      (define-values (new-mux _label patches meta-action)
        (mux-update-stream (world-mux w) label delta-orig))
