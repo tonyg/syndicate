@@ -1,19 +1,18 @@
 #lang prospect
 
-(require racket
-         "./geometry.rkt"
-         "./periodic_timer.rkt")
-
+(require racket/set)
+(require racket/match)
 (require prospect/drivers/timer)
 (require plot/utils) ;; for vector utilities
+(require prospect-gl/2d)
 
 #|
 
 Layers:
 
-- External Events
-  key press/release (interrupts from the outside world)
-  timer events (as per system timer driver)
+- External I/O
+  as arranged by prospect-gl/2d
+  including keyboard events, interface to rendering, and frame timing
 
 - Ground
   corresponds to computer itself
@@ -39,54 +38,13 @@ A Point is a (vector Number Number)
 
 ## Ground Layer Protocols
 
- - Rendering
-    - assertion: Sprite
+ - Scene Management
     - assertion: ScrollOffset
-    - assertion: ScreenSize
-    - role: Renderer
-        Responds to FrameDescription by drawing the current set of Sprites,
-        adjusted via the current ScrollOffset, in a window sized by ScreenSize.
-
- - Keyboard State
-    - message: KeyStateChangeEvent (external event)
-    - assertion: KeyDown
-    - role: KeyboardIntegrator
-        Receives KeyStateChangeEvent from outer space, summing them to
-        maintain collections of KeyDown assertions.
-
- - Timer
-    (standard system driver & protocol)
-
- - Frame Counting
-    - message: FrameDescription
-    - role: FrameCounter
-        Arranges for, and responds to, system timer events, issuing
-        FrameDescriptions at regular intervals (a constant compiled-in
-        frames-per-second value).
-
-A Sprite is a (sprite (Nat -> Pict) Number Number Nat)
-where sprite-renderer produces a pict, given a frame number
-      sprite-x is the X coordinate in world coordinates for sprite's top-left
-      sprite-y is the Y coordinate in world coordinates for sprite's top-left
-      sprite-layer is the layer number for the sprite, more negative for closer
-        to the camera.
+    - role: SceneManager
+        Displays the scene backdrop and adjusts display coordinates via ScrollOffset.
 
 A ScrollOffset is a (scroll-offset Vec), indicating the vector to *subtract*
 from world coordinates to get device coordinates.
-
-The coordinate systems:
- World coordinates = the large virtual canvas, origin at top-left,
-   x increases right and y increases down
- Device coordinates = the window's coordinates, mapped to world coords
-   via scroll offset & clipping
- In both, layer numbers are more positive further away from the camera.
-
-A KeyDown is a (key-down KeyEvent), an assertion indicating that the
-named key is currently being held down.
-
-A FrameDescription is a (frame Nat), a message (!)
-indicating a boundary between frames; that is, that frame number frame-number
-is just about to begin.
 
 ## Game Layer Protocols
 
