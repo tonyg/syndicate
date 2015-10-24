@@ -293,6 +293,7 @@
 (define (perform-actions w)
   (for/fold ([wt (transition (struct-copy world w [pending-action-queue (make-queue)]) '())])
       ((entry (in-list (queue->list (world-pending-action-queue w)))))
+    #:break (quit? wt) ;; TODO: should a quit action be delayed until the end of the turn?
     (match-define [cons label a] entry)
     (trace-internal-action label a (transition-state wt))
     (define wt1 (transition-bind (perform-action label a) wt))
