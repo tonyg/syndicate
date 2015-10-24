@@ -45,35 +45,35 @@
                 (patch-project/set/single p key-pressed-projection))
               (define new-keys-down (set-subtract (set-union keys-down added) removed))
               (transition (list x y new-keys-down) '())]
-             [(message (at-meta (frame-event _ _ target-frame-rate)))
+             [(message (at-meta (frame-event _ _ elapsed-ms _)))
               (define-values (old-x old-y) (values x y))
-              (define speed (/ 360.0 target-frame-rate))
-              (let* ((x (if (set-member? keys-down 'left) (- x speed) x))
-                     (x (if (set-member? keys-down 'right) (+ x speed) x))
-                     (y (if (set-member? keys-down 'up) (- y speed) y))
-                     (y (if (set-member? keys-down 'down) (+ y speed) y)))
+              (define distance (* 0.360 elapsed-ms))
+              (let* ((x (if (set-member? keys-down 'left) (- x distance) x))
+                     (x (if (set-member? keys-down 'right) (+ x distance) x))
+                     (y (if (set-member? keys-down 'up) (- y distance) y))
+                     (y (if (set-member? keys-down 'down) (+ y distance) y)))
                 (and (not (and (= x old-x) (= y old-y)))
                      (move-to x y keys-down)))]
              [_ #f]))
          (list 100 100 (set))
          (update-sprites
           (simple-sprite -0.5 100 100 (image-width CC) (image-height CC) CC))
-         (sub (frame-event ? ? ?) #:meta-level 1)
+         (sub (frame-event ? ? ? ?) #:meta-level 1)
          (sub (key-pressed ?))))
 
 (define (spawn-frame-counter)
   (spawn (lambda (e s)
            (match e
-             [(message (at-meta (frame-event counter elapsed-ms _)))
-              (and (> elapsed-ms 0)
-                   (let ((i (text (format "~a fps" (/ counter (/ elapsed-ms 1000.0))) 22 "black")))
+             [(message (at-meta (frame-event counter sim-time-ms _ _)))
+              (and (> sim-time-ms 0)
+                   (let ((i (text (format "~a fps" (/ counter (/ sim-time-ms 1000.0))) 22 "black")))
                      (transition s (update-sprites (simple-sprite -10 300 10
                                                                   (image-width i)
                                                                   (image-height i)
                                                                   i)))))]
              [_ #f]))
          (void)
-         (sub (frame-event ? ? ?) #:meta-level 1)))
+         (sub (frame-event ? ? ? ?) #:meta-level 1)))
 
 (2d-world (spawn-keyboard-integrator)
           (spawn-background)

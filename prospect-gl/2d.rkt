@@ -34,7 +34,7 @@
 (struct window (width height) #:transparent)
 
 ;; Message sent by world. Describes frame about to be rendered.
-(struct frame-event (counter timestamp target-frame-rate) #:transparent)
+(struct frame-event (counter timestamp elapsed-ms target-frame-rate) #:transparent)
 
 ;; Message sent by world. Describes a key event. Key is a sealed
 ;; key-event%. `press?` is #t when the key is pressed (or
@@ -223,6 +223,7 @@
 
     (define counter 0)
     (define start-time (current-inexact-milliseconds))
+    (define prev-frame-time start-time)
     (define/public (sim-time)
       (- (current-inexact-milliseconds) start-time))
 
@@ -239,18 +240,16 @@
     (define world (make-world boot-actions))
     (define event-queue (make-queue))
 
-    (define target-frame-rate 30)
-    (define frame-count 0)
+    (define target-frame-rate 60)
 
     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
     (define (sleep-and-refresh)
-      (define target-sim-time (* frame-count (/ target-frame-rate)))
+      (define target-sim-time (* counter (/ target-frame-rate)))
       (define sleep-time (- target-sim-time (/ (sim-time) 1000.0)))
       (when (positive? sleep-time)
         (sleep/yield sleep-time))
-      (refresh)
-      (set! frame-count (+ frame-count 1)))
+      (refresh))
 
     (define/public (set-target-frame-rate! r)
       (set! target-frame-rate r))
@@ -320,8 +319,13 @@
     (define/override (on-paint)
       (with-gl-context
         (lambda ()
-          (inject-event! (message (frame-event counter (sim-time) target-frame-rate)))
-          (set! counter (+ counter 1))
+          (let ((this-frame-time (sim-time)))
+            (inject-event! (message (frame-event counter
+                                                 this-frame-time
+                                                 (- this-frame-time prev-frame-time)
+                                                 target-frame-rate)))
+            (set! counter (+ counter 1))
+            (set! prev-frame-time this-frame-time))
           (quiesce!)
           (unless initialised?
             (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA) ;; premultiplied
