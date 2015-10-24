@@ -1,6 +1,8 @@
 #lang racket/base
 
 (require 2htdp/image)
+(require 2htdp/planetcute)
+
 (require racket/set)
 (require racket/match)
 (require plot/utils) ;; for vector utilities
@@ -102,7 +104,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ## Level Layer Protocols
-;;
+
 ;;-------------------------------------------------------------------------
 ;; ### Movement and Physics
 ;;     - message: JumpRequest
@@ -135,7 +137,7 @@
 ;;         started. May issue JumpRequests at any time. Represents both the player,
 ;;         enemies, the goal(s), and platforms and blocks in the environment.
 ;;         Asserts a Sprite two layers out to render itself.
-;;
+
 ;;-------------------------------------------------------------------------
 ;; ### Player State
 ;;     - message: Damage
@@ -145,6 +147,14 @@
 ;;         Responds to Damage.
 ;;         When hitpoints drop low enough, removes the player from the board.
 ;;
+;; A Damage is a (damage ID Number), a message indicating an event that should
+;; consume the given number of health points of the named gamepiece.
+(struct damage (id hit-points) #:transparent)
+;;
+;; A Health is a (health ID Number), an assertion describing the current hitpoints
+;; of the named gamepiece.
+(struct health (id hit-points) #:transparent)
+
 ;;-------------------------------------------------------------------------
 ;; ### World State
 ;;     - assertion: LevelSize
@@ -185,15 +195,10 @@
 ;; not only the *existence* but also the initial position (in World coordinates)
 ;; of the named gamepiece.
 ;;
-;; A Damage is a (damage ID Number), a message indicating an event that should
-;; consume the given number of health points of the named gamepiece.
-;;
-;; A Health is a (health ID Number), an assertion describing the current hitpoints
-;; of the named gamepiece.
-;;
 ;; A LevelSize is a (level-size Vec), an assertion describing the right-hand and
 ;; bottom edges of the level canvas (in World coordinates).
-;;
+
+
 ;; -----------
 ;; Interaction Diagrams (to be refactored into the description later)
 ;;
@@ -271,24 +276,22 @@
       (match-define (scroll-offset vec) o)
       (struct-copy scene-manager-state s [offset vec])))
 
-  (parameterize ((2d-world-meta-level 1))
-    (spawn (lambda (e s)
-             (parameterize ((2d-world-meta-level 1))
-               (match e
-                 [(? patch? p)
-                  (let* ((s (update-window-size s p))
-                         (s (update-scroll-offset s p)))
-                    (match-define (vector width height) (scene-manager-state-size s))
-                    (match-define (vector ofs-x ofs-y) (scene-manager-state-offset s))
-                    (transition s
-                                (update-scene `((push-matrix
-                                                 (scale ,width ,height)
-                                                 (texture ,(rectangle 1 1 "solid" "white")))
-                                                (translate ,ofs-x ,ofs-y))
-                                              `())))]
-                 [_ #f])))
-           (scene-manager-state (vector 0 0) (vector 0 0))
-           (sub (window ? ?) #:meta-level 1))))
+  (spawn (lambda (e s)
+           (match e
+             [(? patch? p)
+              (let* ((s (update-window-size s p))
+                     (s (update-scroll-offset s p)))
+                (match-define (vector width height) (scene-manager-state-size s))
+                (match-define (vector ofs-x ofs-y) (scene-manager-state-offset s))
+                (transition s
+                            (update-scene `((push-matrix
+                                             (scale ,width ,height)
+                                             (texture ,(rectangle 1 1 "solid" "white")))
+                                            (translate ,(- ofs-x) ,(- ofs-y)))
+                                          `())))]
+             [_ #f]))
+         (scene-manager-state (vector 0 0) (vector 0 0))
+         (sub (window ? ?) #:meta-level 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ScoreKeeper
@@ -305,44 +308,86 @@
          (sub (add-to-score ?))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Player
+
+(define player-id 'player)
+
+(define (spawn-player-avatar)
+  (struct player-state (x y hit-points) #:prefab)
+  (define initial-player-state (player-state 50 50 1))
+  (define icon character-cat-girl)
+  (define icon-width (/ (image-width icon) 2))
+  (define icon-height (/ (image-height icon) 2))
+
+  (define (sprite-update s)
+    (update-sprites #:meta-level game-level
+     (simple-sprite 0
+                    (- (player-state-x s) (/ icon-width 2))
+                    (- (player-state-y s) (* 13/16 icon-height))
+                    icon-width
+                    icon-height
+                    icon)))
+
+  (spawn (lambda (e s)
+           (match-define (player-state x y hit-points) s)
+           (match e
+             [(message (damage _ amount))
+              (define new-hit-points (- hit-points amount))
+              (if (positive? new-hit-points)
+                  (transition (struct-copy player-state s
+                                           [hit-points (- hit-points amount)])
+                              '())
+                  (quit))]
+             [_ #f]))
+         initial-player-state
+         (sub (damage player-id ?))
+         (assert (health player-id (player-state-hit-points initial-player-state)))
+         (assert (level-running) #:meta-level 1)
+         (sprite-update initial-player-state)
+         ))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelSpawner
 
-(define (spawn-level level-number)
-  (spawn-world (spawn (lambda (e s)
-                        (and (not s)
-                             (transition #t (assert (level-running) #:meta-level 1))))
-                      #f)
-               (spawn (lambda (e s) #f)
-                      (void)
-                      (update-sprites (simple-sprite 0 50 50 50 50 (circle 50 "solid" "purple"))))))
+(define (spawn-level . actions)
+  (spawn-world
+   (spawn-player-avatar)
+   actions))
+
+(define (spawn-numbered-level level-number)
+  (match level-number
+    [0 (spawn-level (spawn (lambda (e s) #f)
+                           (void)
+                           (update-sprites #:meta-level game-level
+                                           (simple-sprite 0 50 50 50 50
+                                                          (rectangle 50 50 "solid" "purple")))))]))
 
 (define (spawn-level-spawner)
   (struct level-spawner-state (current-level level-complete?) #:prefab)
 
-  (list (spawn-level 0)
-        (spawn (lambda (e s)
+  (list (spawn (lambda (e s)
                  (match-define (level-spawner-state current-level level-complete?) s)
                  (match e
                    [(? patch/removed?)
                     (define next-level (if level-complete? (+ current-level 1) current-level))
                     (transition (level-spawner-state next-level #f)
-                                (spawn-level next-level))]
+                                (spawn-numbered-level next-level))]
                    [(message (level-completed))
                     (transition (struct-copy level-spawner-state s [level-complete? #t]) '())]
                    [_ #f]))
                (level-spawner-state 0 #f)
                (sub (level-running))
-               (sub (level-completed)))))
+               (sub (level-completed)))
+        (spawn-numbered-level 0)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(2d-world-meta-level 3) ;; TODO ack bleargh. See comment in prospect-gl/2d.rkt
+(define game-level 3) ;; used to specify meta-level to reach external I/O
 
 (2d-world #:width 600 #:height 400
- (parameterize ((2d-world-meta-level 1)) ;; TODO ick yeughhh
-   (spawn-keyboard-integrator))
- (spawn-scene-manager)
- (spawn-world (spawn-score-keeper)
-              (spawn-level-spawner)
-              )
- )
+          (spawn-keyboard-integrator)
+          (spawn-scene-manager)
+          (spawn-world (spawn-score-keeper)
+                       (spawn-level-spawner)
+                       )
+          )
