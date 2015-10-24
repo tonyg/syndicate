@@ -7,7 +7,6 @@
          (struct-out scene)
          (except-out (struct-out sprite) sprite)
          (rename-out [sprite <sprite>] [make-sprite sprite])
-         2d-world-meta-level
          simple-sprite
          update-scene
          update-sprites
@@ -57,19 +56,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: Parameters don't work very well for this. We want it to be a
-;; local, relative idea -- some actors will engage at metalevel 1,
-;; some at metalevel 2, and we would prefer to just be able to say
-;; (parameterize ((2d-world-meta-level N)) (spawn ...)), but we can't,
-;; because parameterization *isn't lexical enough*.
-;;
-;; Perhaps the current-parameterization should be saved at spawn time?
-;;
-(define 2d-world-meta-level (make-parameter 1))
-
-(define (update-scene prelude postlude)
-  (patch-seq (retract (scene ? ?) #:meta-level (2d-world-meta-level))
-             (assert (scene (seal prelude) (seal postlude)) #:meta-level (2d-world-meta-level))))
+(define (update-scene prelude postlude #:meta-level [meta-level 1])
+  (patch-seq (retract (scene ? ?) #:meta-level meta-level)
+             (assert (scene (seal prelude) (seal postlude)) #:meta-level meta-level)))
 
 (define (make-sprite z instructions)
   (sprite z (seal instructions)))
@@ -79,21 +68,21 @@
                    (scale ,w ,h)
                    (texture ,i))))
 
-(define (update-sprites . ss)
-  (patch-seq* (cons (retract (sprite ? ?) #:meta-level (2d-world-meta-level))
-                    (map (lambda (s) (assert s #:meta-level (2d-world-meta-level))) ss))))
+(define (update-sprites #:meta-level [meta-level 1] . ss)
+  (patch-seq* (cons (retract (sprite ? ?) #:meta-level meta-level)
+                    (map (lambda (s) (assert s #:meta-level meta-level)) ss))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; KeyboardIntegrator. Integrates key-events into key-pressed assertions.
-(define (spawn-keyboard-integrator)
+(define (spawn-keyboard-integrator #:meta-level [meta-level 1])
   (spawn (lambda (e s)
            (match e
              [(message (at-meta (key-event code press? _)))
               (transition (void) ((if press? assert retract) (key-pressed code)))]
              [#f #f]))
          (void)
-         (sub (key-event ? ? ?) #:meta-level (2d-world-meta-level))))
+         (sub (key-event ? ? ?) #:meta-level meta-level)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
