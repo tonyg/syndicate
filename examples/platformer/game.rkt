@@ -1,10 +1,12 @@
-#lang prospect
+#lang racket/base
 
+(require 2htdp/image)
 (require racket/set)
 (require racket/match)
-(require prospect/drivers/timer)
 (require plot/utils) ;; for vector utilities
-(require 2htdp/image)
+
+(require prospect)
+(require prospect/drivers/timer)
 (require prospect-gl/2d)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -92,10 +94,11 @@
 ;;
 ;; A LevelRunning is a (level-running), an assertion indicating that the
 ;; current level is still in progress.
+(struct level-running () #:transparent)
 ;;
 ;; A LevelCompleted is a (level-completed), a message indicating that
 ;; the current level was *successfully* completed before it terminated.
-;;
+(struct level-completed () #:transparent)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ## Level Layer Protocols
@@ -268,22 +271,24 @@
       (match-define (scroll-offset vec) o)
       (struct-copy scene-manager-state s [offset vec])))
 
-  (spawn (lambda (e s)
-           (match e
-             [(? patch? p)
-              (let* ((s (update-window-size s p))
-                     (s (update-scroll-offset s p)))
-                (match-define (vector width height) (scene-manager-state-size s))
-                (match-define (vector ofs-x ofs-y) (scene-manager-state-offset s))
-                (transition s
-                 (update-scene `((push-matrix (scale ,width ,height)
-                                              (texture ,(rectangle 1 1 "solid" "white"))
-                                              )
-                                 (translate ,ofs-x ,ofs-y))
-                               `())))]
-             [_ #f]))
-         (scene-manager-state (vector 0 0) (vector 0 0))
-         (sub (window ? ?) #:meta-level 1)))
+  (parameterize ((2d-world-meta-level 1))
+    (spawn (lambda (e s)
+             (parameterize ((2d-world-meta-level 1))
+               (match e
+                 [(? patch? p)
+                  (let* ((s (update-window-size s p))
+                         (s (update-scroll-offset s p)))
+                    (match-define (vector width height) (scene-manager-state-size s))
+                    (match-define (vector ofs-x ofs-y) (scene-manager-state-offset s))
+                    (transition s
+                                (update-scene `((push-matrix
+                                                 (scale ,width ,height)
+                                                 (texture ,(rectangle 1 1 "solid" "white")))
+                                                (translate ,ofs-x ,ofs-y))
+                                              `())))]
+                 [_ #f])))
+           (scene-manager-state (vector 0 0) (vector 0 0))
+           (sub (window ? ?) #:meta-level 1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ScoreKeeper
@@ -302,13 +307,40 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelSpawner
 
+(define (spawn-level level-number)
+  (spawn-world (spawn (lambda (e s)
+                        (and (not s)
+                             (transition #t (assert (level-running) #:meta-level 1))))
+                      #f)
+               (spawn (lambda (e s) #f)
+                      (void)
+                      (update-sprites (simple-sprite 0 50 50 50 50 (circle 50 "solid" "purple"))))))
+
 (define (spawn-level-spawner)
-  (void))
+  (struct level-spawner-state (current-level level-complete?) #:prefab)
+
+  (list (spawn-level 0)
+        (spawn (lambda (e s)
+                 (match-define (level-spawner-state current-level level-complete?) s)
+                 (match e
+                   [(? patch/removed?)
+                    (define next-level (if level-complete? (+ current-level 1) current-level))
+                    (transition (level-spawner-state next-level #f)
+                                (spawn-level next-level))]
+                   [(message (level-completed))
+                    (transition (struct-copy level-spawner-state s [level-complete? #t]) '())]
+                   [_ #f]))
+               (level-spawner-state 0 #f)
+               (sub (level-running))
+               (sub (level-completed)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(2d-world-meta-level 3) ;; TODO ack bleargh. See comment in prospect-gl/2d.rkt
+
 (2d-world #:width 600 #:height 400
- (spawn-keyboard-integrator)
+ (parameterize ((2d-world-meta-level 1)) ;; TODO ick yeughhh
+   (spawn-keyboard-integrator))
  (spawn-scene-manager)
  (spawn-world (spawn-score-keeper)
               (spawn-level-spawner)
