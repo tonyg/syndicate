@@ -110,18 +110,17 @@
 ;;     - message: JumpRequest
 ;;     - assertion: Impulse
 ;;     - assertion: Position
-;;     - assertion: Massive
-;;     - assertion: Attributes
 ;;     - assertion: GamePieceConfiguration
 ;;     - role: PhysicsEngine
 ;;         Maintains positions, velocities and accelerations of all GamePieces.
 ;;         Uses GamePieceConfiguration for global properties of pieces.
 ;;         Publishes Position to match.
 ;;         Listens to FrameDescription, using it to advance the simulation.
+;;         Considers only mobile GamePieces for movement.
 ;;         Takes Impulses as the baseline for moving GamePieces around.
-;;         For Massive GamePieces, applies gravitational acceleration.
+;;         For massive mobile GamePieces, applies gravitational acceleration.
 ;;         Computes collisions between GamePieces.
-;;         Uses Attributed Aspects of GamePieces to decide what to do in response.
+;;         Uses Attributes of GamePieces to decide what to do in response to collisions.
 ;;         Sometimes, this involves sending Damage.
 ;;         Responds to JumpRequest by checking whether the named piece is in a
 ;;         jumpable location, and sets its upward velocity negative if so.
@@ -131,11 +130,12 @@
 ;;         then kills the world. When the player vanishes from the board, kills
 ;;         the world.
 ;;     - role: GamePiece
-;;         Maintains private state. Asserts Impulse to move around, asserts Massive
-;;         and Attributes as required, asserts GamePieceConfiguration to get things
-;;         started. May issue JumpRequests at any time. Represents both the player,
-;;         enemies, the goal(s), and platforms and blocks in the environment.
-;;         Asserts a Sprite two layers out to render itself.
+;;         Maintains private state. Asserts Impulse to move around,
+;;         and GamePieceConfiguration to get things started. May issue
+;;         JumpRequests at any time. Represents both the player,
+;;         enemies, the goal(s), and platforms and blocks in the
+;;         environment. Asserts a Sprite two layers out to render
+;;         itself.
 ;;
 ;; An ID is a Symbol; the special symbol 'player indicates the player's avatar.
 ;; Gensyms from (gensym 'enemy) name enemies, etc.
@@ -148,31 +148,30 @@
 ;; the net *requested* velocity of the given gamepiece.
 (struct impulse (id vec) #:transparent)
 ;;
-;; A Position is a (position ID Point), an assertion describing the current actual
-;; position of the named gamepiece.
-(struct position (id point) #:transparent)
+;; A Position is a (position ID Point Vec), an assertion describing
+;; the current actual top-left corner and (physics-related, not
+;; necessarily graphics-related) size of the named gamepiece.
+(struct position (id top-left size) #:transparent)
 ;;
-;; A Massive is a (massive ID), an assertion noting that the named gamepiece
-;; should be subject to the effects of gravity.
-(struct massive (id) #:transparent)
-;;
-;; An Attributes is an (attributes ID (Setof Aspect)), an assertion
-;; describing some aspect of the named gamepiece
-(struct attributes (id aspects) #:transparent)
-;;
-;; An Aspect is either
+;; An Attribute is either
 ;;  - 'player - the named piece is a player avatar
 ;;  - 'enemy - the named piece is an enemy
 ;;  - 'solid - the named piece can be stood on / jumped from
 ;;  - 'goal - the named piece, if touched, causes the level to
 ;;            End The Game In Victory
+;;  - 'mobile - the named piece is not fixed in place
+;;  - 'massive - the named piece is subject to effects of gravity
+;;               (it is an error to be 'massive but not 'mobile)
 ;;
 ;; A GamePieceConfiguration is a
-;;  - (game-piece-configuration ID Point Point Point)
-;; an assertion specifying not only the *existence* of the named
-;; gamepiece but also its initial position, size and hotspot (in World
-;; coordinates).
-(struct game-piece-configuration (id initial-position size hotspot) #:transparent)
+;;  - (game-piece-configuration ID Point Vec (Set Attribute))
+;; an assertion specifying not only the *existence* of a named
+;; gamepiece, but also its initial position and size and a collection
+;; of its Attributes.
+(struct game-piece-configuration (id initial-position size attributes) #:transparent)
+
+(define (game-piece-has-attribute? g attr)
+  (set-member? (game-piece-configuration-attributes g) attr))
 
 ;;-------------------------------------------------------------------------
 ;; ### Player State
@@ -234,7 +233,7 @@
 ;;
 ;; title Movement Sequence
 ;;
-;; Moveable -> Physics: (massive ID)
+;; Moveable -> Physics: (mobile ID Boolean)
 ;; Moveable -> Physics: (attr ID ...)
 ;; Moveable -> Physics: (impulse ID vec)
 ;; note right of Physics: Processes simulation normally
@@ -265,11 +264,9 @@
 (define window-projection1 (compile-projection (at-meta (?! (window ? ?)))))
 (define window-projection3 (compile-projection (at-meta (at-meta (at-meta (?! (window ? ?)))))))
 (define scroll-offset-projection (compile-projection (scroll-offset (?!))))
-(define position-projection (compile-projection (position ? (?!))))
 (define key-pressed-projection (compile-projection (at-meta (at-meta (key-pressed (?!))))))
+(define position-projection (compile-projection (?! (position ? ? ?))))
 (define impulse-projection (compile-projection (?! (impulse ? ?))))
-(define massive-projection (compile-projection (massive (?!))))
-(define attributes-projection (compile-projection (?! (attributes ? ?))))
 (define game-piece-configuration-projection
   (compile-projection (?! (game-piece-configuration ? ? ? ?))))
 
@@ -334,8 +331,19 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; PhysicsEngine
 
+(define jump-vel (vector 0 -1))
+
 (define (spawn-physics-engine)
-  (struct physics-state (configs positions velocities impulses massives attributes) #:prefab)
+  (struct physics-state (configs    ;; Hash ID -> GamePieceConfiguration
+                         positions  ;; Hash ID -> Point
+                         velocities ;; Hash ID -> Vector
+                         impulses   ;; Hash ID -> Vector
+                         ) #:prefab)
+
+  (define (piece-cfg s id) (hash-ref (physics-state-configs s) id))
+  (define (piece-pos s id) (hash-ref (physics-state-positions s) id (lambda () (vector 0 0))))
+  (define (piece-vel s id) (hash-ref (physics-state-velocities s) id (lambda () (vector 0 0))))
+  (define (piece-imp s id) (hash-ref (physics-state-impulses s) id (lambda () (vector 0 0))))
 
   (define ((remove-game-piece-configurations p) s)
     (define removed (matcher-project/set/single (patch-removed p)
@@ -349,7 +357,7 @@
                     [velocities (hash-remove (physics-state-velocities s) id)]))
      (for/list [(g removed)]
        (define id (game-piece-configuration-id g))
-       (retract (position id ?)))))
+       (retract (position id ? ?)))))
 
   (define ((add-game-piece-configurations p) s)
     (define added (matcher-project/set/single (patch-added p)
@@ -362,8 +370,8 @@
                     [positions (hash-set (physics-state-positions s) id initial-position)]
                     [velocities (hash-set (physics-state-velocities s) id (vector 0 0))]))
      (for/list [(g added)]
-       (define id (game-piece-configuration-id g))
-       (assert (position id (game-piece-configuration-initial-position g))))))
+       (match-define (game-piece-configuration id initial-position size _) g)
+       (assert (position id initial-position size)))))
 
   (define ((update-impulses p) s)
     (transition
@@ -375,47 +383,98 @@
                                                     impulse-vec)])
      '()))
 
-  (define ((update-massives p) s)
+  (define ((update-piece g new-pos new-vel) s)
+    (define id (game-piece-configuration-id g))
     (transition
      (struct-copy physics-state s
-                  [massives (update-set-from-patch (physics-state-massives s)
-                                                    p
-                                                    massive-projection)])
-     '()))
+                  [positions (hash-set (physics-state-positions s) id new-pos)]
+                  [velocities (hash-set (physics-state-velocities s) id new-vel)])
+     (patch-seq (retract (position id ? ?))
+                (assert (position id new-pos (game-piece-configuration-size g))))))
 
-  (define ((update-attributes p) s)
-    (transition
-     (struct-copy physics-state s
-                  [attributes (update-hash-from-patch (physics-state-attributes s)
-                                                      p
-                                                      attributes-projection
-                                                      attributes-id
-                                                      attributes-aspects)])
-     '()))
+  (define (find-support p size s)
+    (match-define (vector p-left p-top) p)
+    (match-define (vector p-w p-h) size)
+    (define p-right (+ p-left p-w))
+    (define p-bottom (+ p-top p-h))
+    (for/or [((id g) (in-hash (physics-state-configs s)))
+             #:when (game-piece-has-attribute? g 'solid)]
+      (match-define (vector left top) (piece-pos s id))
+      (and (< (abs (- top p-bottom)) 0.5)
+           (<= left p-right)
+           (match (game-piece-configuration-size g)
+             [(vector w h)
+              (<= p-left (+ left w))])
+           g)))
 
-  (define (evaluate-jump-request id s)
-    ;; TODO
-    #f)
+  (define (segment-intersection-time p0 r q0 q1)
+    ;; See http://stackoverflow.com/a/565282/169231
+    (define s (v- q1 q0))
+    (define rxs (vcross2 r s))
+    (cond [(< (abs rxs) 0.005) #f] ;; zeroish; lines are parallel (and maybe collinear)
+          [else
+           (define q-pxs (vcross2 (v- q0 p0) s))
+           (define t (/ q-pxs rxs))
+           (and (<= 0 t 1) t)]))
+
+  (define (three-corners top-left size)
+    (match-define (vector w h) size)
+    (values (v+ top-left (vector w 0))
+            (v+ top-left size)
+            (v+ top-left (vector 0 h))))
+
+  (define (clip-movement-by top-left moved-top-left size solid-top-left solid-size)
+    (define-values (solid-top-right solid-bottom-right solid-bottom-left)
+      (three-corners solid-top-left solid-size))
+    (define-values (top-right bottom-right bottom-left)
+      (three-corners top-left size))
+    (define r (v- moved-top-left top-left))
+    (define t
+      (apply min
+             (for/list [(p (in-list (list top-left top-right bottom-right bottom-left)))]
+               (min (or (segment-intersection-time p r solid-top-left solid-top-right) 1)
+                    (or (segment-intersection-time p r solid-top-left solid-bottom-left) 1)
+                    (or (segment-intersection-time p r solid-top-right solid-bottom-right) 1)
+                    (or (segment-intersection-time p r solid-bottom-left solid-bottom-right) 1)))))
+    (v+ top-left (v* r t)))
+
+  (define (clip-movement-by-solids s p0 p1 size)
+    (for/fold [(p1 p1)]
+              [((id g) (in-hash (physics-state-configs s)))
+               #:when (game-piece-has-attribute? g 'solid)]
+      (define p1*
+        (clip-movement-by p0 p1 size (piece-pos s id) (game-piece-configuration-size g)))
+      (log-info "\np0  ~v\np1  ~v\ng ~v\np1* ~v" p0 p1 g p1*)
+      p1*))
 
   (define ((update-game-piece elapsed-ms id state-at-beginning-of-frame) s)
-    (define-values (pos0 vel0 imp0 massive? attributes)
-      (match state-at-beginning-of-frame
-        [(physics-state _ ps vs is ms as)
-         (values (hash-ref ps id (lambda () (vector 0 0)))
-                 (hash-ref vs id (lambda () (vector 0 0)))
-                 (hash-ref is id (lambda () (vector 0 0)))
-                 (set-member? ms id)
-                 (hash-ref as id (lambda () (set))))]))
-    (define vel1 (if massive? (v+ vel0 (vector 0 (* 0.001 elapsed-ms))) vel0))
+    (define g (piece-cfg state-at-beginning-of-frame id))
+    (define size (game-piece-configuration-size g))
+    (define pos0 (piece-pos state-at-beginning-of-frame id))
+    (define support (find-support pos0 size state-at-beginning-of-frame))
+
+    (define vel0 (piece-vel state-at-beginning-of-frame id))
+    (define imp0 (piece-imp state-at-beginning-of-frame id))
+
+    (define vel1 (cond
+                   [support (piece-vel state-at-beginning-of-frame
+                                       (game-piece-configuration-id support))]
+                   [(game-piece-has-attribute? g 'massive)
+                    (v+ vel0 (vector 0 (* 0.001 elapsed-ms)))]
+                   [else
+                    vel0]))
+
     (define pos1 (v+ pos0 (v* (v+ vel1 imp0) (* 0.360 elapsed-ms)))) ;; 360 pixels per second
-    (if (and (v= pos0 pos1)
-             (v= vel0 vel1))
-        (transition s '())
-        (transition (struct-copy physics-state s
-                                 [positions (hash-set (physics-state-positions s) id pos1)]
-                                 [velocities (hash-set (physics-state-velocities s) id vel1)])
-                    (patch-seq (retract (position id ?))
-                               (assert (position id pos1))))))
+    (define final-pos (clip-movement-by-solids state-at-beginning-of-frame pos0 pos1 size))
+    ;; TODO: collision with enemies
+    ((update-piece g final-pos vel1) s))
+
+  (define (evaluate-jump-request id s)
+    (define g (piece-cfg s id))
+    (define pos (piece-pos s id))
+    (define support (find-support pos (game-piece-configuration-size g) s))
+    (and support
+         ((update-piece g (v+ pos (vector 0 -1)) jump-vel) s)))
 
   (spawn (lambda (e s)
            (match e
@@ -423,25 +482,20 @@
               (sequence-transitions (transition s '())
                                     (remove-game-piece-configurations p)
                                     (add-game-piece-configurations p)
-                                    (update-impulses p)
-                                    (update-massives p)
-                                    (update-attributes p))]
+                                    (update-impulses p))]
              [(message (jump-request id))
               (evaluate-jump-request id s)]
              [(message (at-meta (at-meta (at-meta (frame-event _ _ elapsed-ms _)))))
               (for/fold [(t (transition s '()))]
-                        [(id (in-hash-keys (physics-state-configs s)))]
+                        [((id g) (in-hash (physics-state-configs s)))
+                         #:when (game-piece-has-attribute? g 'mobile)]
                 (transition-bind (update-game-piece elapsed-ms id s) t))]
              [_ #f]))
          (physics-state (hash)
                         (hash)
                         (hash)
-                        (hash)
-                        (set)
                         (hash))
          (sub (impulse ? ?))
-         (sub (massive ?))
-         (sub (attributes ? ?))
          (sub (game-piece-configuration ? ? ? ?))
          (sub (jump-request ?))
          (sub (frame-event ? ? ? ?) #:meta-level game-level)))
@@ -451,22 +505,27 @@
 
 (define player-id 'player)
 
-(define (spawn-player-avatar)
+(define (spawn-player-avatar initial-focus-x initial-focus-y)
   (struct player-state (x y hit-points keys-down) #:prefab)
-  (define initial-x 50)
-  (define initial-y 50)
-  (define initial-player-state (player-state initial-x initial-y 1 (set)))
+
   (define icon character-cat-girl)
   (define icon-width (/ (image-width icon) 2))
   (define icon-height (/ (image-height icon) 2))
-  (define icon-hotspot-width (/ icon-width 2))
-  (define icon-hotspot-height (* 13/16 icon-height))
+
+  (define icon-hitbox-width (* 2/3 icon-width))
+  (define icon-hitbox-height (* 2/5 icon-height))
+  (define hitbox-offset-x (/ (- icon-width icon-hitbox-width) 2))
+  (define hitbox-offset-y (- (* 13/16 icon-height) icon-hitbox-height))
+
+  (define initial-x (- initial-focus-x (/ icon-hitbox-width 2)))
+  (define initial-y (- initial-focus-y icon-hitbox-height))
+  (define initial-player-state (player-state initial-x initial-y 1 (set)))
 
   (define (sprite-update s)
     (update-sprites #:meta-level game-level
      (simple-sprite 0
-                    (- (player-state-x s) icon-hotspot-width)
-                    (- (player-state-y s) icon-hotspot-height)
+                    (- (player-state-x s) hitbox-offset-x)
+                    (- (player-state-y s) hitbox-offset-y)
                     icon-width
                     icon-height
                     icon)))
@@ -474,7 +533,7 @@
   (define ((monitor-position-change p) s)
     (define s1
       (for/fold [(s s)] [(pos (matcher-project/set/single (patch-added p) position-projection))]
-        (match-define (vector nx ny) pos)
+        (match-define (position _ (vector nx ny) _) pos)
         (struct-copy player-state s [x nx] [y ny])))
     (transition s1 (sprite-update s1)))
 
@@ -523,16 +582,35 @@
          (assert (level-running) #:meta-level 1)
          (assert (game-piece-configuration player-id
                                            (vector initial-x initial-y)
-                                           (vector icon-width icon-height)
-                                           (vector icon-hotspot-width icon-hotspot-height)))
-         (assert (massive player-id))
-         (assert (attributes player-id (set 'player)))
-         (sub (position player-id ?))
+                                           (vector icon-hitbox-width icon-hitbox-height)
+                                           (set 'player 'mobile 'massive)))
+         (sub (position player-id ? ?))
          (sub (key-pressed 'left) #:meta-level 2)
          (sub (key-pressed 'right) #:meta-level 2)
          (sub (key-pressed #\space) #:meta-level 2)
          (sprite-update initial-player-state)
          ))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Ground Block
+
+(define standard-ground-height 50)
+
+(define (spawn-ground-block top-left size #:color [color "purple"])
+  (match-define (vector x y) top-left)
+  (match-define (vector w h) size)
+  (define block-id (gensym 'ground-block))
+
+  (spawn (lambda (e s)
+           (match e
+             [_ #f]))
+         (void)
+         (update-sprites #:meta-level game-level
+                         (simple-sprite 0 x y w h (rectangle w h "solid" color)))
+         (assert (game-piece-configuration block-id
+                                           top-left
+                                           size
+                                           (set 'solid)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; DisplayControl
@@ -557,7 +635,7 @@
       (for/fold [(s s)] [(pos (matcher-project/set/single (patch-added p)
                                                           position-projection))]
         (match-define (vector ww wh) (display-controller-state-window-size s))
-        (match-define (vector px py) pos)
+        (match-define (position _ (vector px py) _) pos)
         (struct-copy display-controller-state s
                      [offset-pos (vector (compute-offset px ww (vector-ref level-size-vec 0))
                                          (compute-offset py wh (vector-ref level-size-vec 1)))])))
@@ -577,7 +655,7 @@
              [_ #f]))
          (display-controller-state (vector 0 0) (vector 0 0) (vector 0 0))
          (sub (window ? ?) #:meta-level game-level)
-         (sub (position player-id ?))
+         (sub (position player-id ? ?))
          (assert (level-size level-size-vec))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -589,21 +667,20 @@
                    (lambda (e s) #f)
                    (void)))))
 
-(define (spawn-level level-size-vec . actions)
+(define (spawn-level #:initial-player-x [initial-player-x 50]
+                     #:initial-player-y [initial-player-y 50]
+                     #:level-size level-size-vec
+                     . actions)
   (spawn-world
    (spawn-display-controller level-size-vec)
    (spawn-physics-engine)
-   (spawn-player-avatar)
+   (spawn-player-avatar initial-player-x initial-player-y)
    actions))
 
 (define (spawn-numbered-level level-number)
   (match level-number
-    [0 (spawn-level (vector 4000 800)
-                    (spawn (lambda (e s) #f)
-                           (void)
-                           (update-sprites #:meta-level game-level
-                                           (simple-sprite 0 50 50 50 50
-                                                          (rectangle 50 50 "solid" "purple")))))]))
+    [0 (spawn-level #:level-size (vector 4000 800)
+                    (spawn-ground-block (vector 25 300) (vector 500 standard-ground-height)))]))
 
 (define (spawn-level-spawner)
   (struct level-spawner-state (current-level level-complete?) #:prefab)
