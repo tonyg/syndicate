@@ -331,7 +331,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; PhysicsEngine
 
-(define jump-vel (vector 0 -1))
+(define jump-vel (vector 0 -2))
+(define gravity 0.004)
 
 (define (spawn-physics-engine)
   (struct physics-state (configs    ;; Hash ID -> GamePieceConfiguration
@@ -460,7 +461,7 @@
                     (piece-vel state-at-beginning-of-frame
                                (game-piece-configuration-id support))]
                    [(game-piece-has-attribute? g 'massive)
-                    (v+ vel0 (vector 0 (* 0.001 elapsed-ms)))]
+                    (v+ vel0 (vector 0 (* gravity elapsed-ms)))]
                    [else
                     vel0]))
 
