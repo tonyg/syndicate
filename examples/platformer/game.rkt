@@ -331,6 +331,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; PhysicsEngine
 
+(define impulse-multiplier 0.360) ;; 360 pixels per second
 (define jump-vel (vector 0 -2))
 (define gravity 0.004)
 
@@ -465,7 +466,7 @@
                    [else
                     vel0]))
 
-    (define pos1 (v+ pos0 (v* (v+ vel1 imp0) (* 0.360 elapsed-ms)))) ;; 360 pixels per second
+    (define pos1 (v+ pos0 (v* (v+ vel1 imp0) (* impulse-multiplier elapsed-ms))))
     (define final-pos (clip-movement-by-solids state-at-beginning-of-frame pos0 pos1 size))
     ;; TODO: collision with enemies
     ((update-piece g final-pos vel1) s))
