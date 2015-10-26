@@ -514,7 +514,7 @@
   (define icon-width (/ (image-width icon) 2))
   (define icon-height (/ (image-height icon) 2))
 
-  (define icon-hitbox-width (* 2/3 icon-width))
+  (define icon-hitbox-width (* 2/6 icon-width))
   (define icon-hitbox-height (* 2/5 icon-height))
   (define hitbox-offset-x (/ (- icon-width icon-hitbox-width) 2))
   (define hitbox-offset-y (- (* 13/16 icon-height) icon-hitbox-height))
