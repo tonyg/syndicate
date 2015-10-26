@@ -456,8 +456,9 @@
     (define imp0 (piece-imp state-at-beginning-of-frame id))
 
     (define vel1 (cond
-                   [support (piece-vel state-at-beginning-of-frame
-                                       (game-piece-configuration-id support))]
+                   [(and support (not (negative? (vector-ref vel0 1))))
+                    (piece-vel state-at-beginning-of-frame
+                               (game-piece-configuration-id support))]
                    [(game-piece-has-attribute? g 'massive)
                     (v+ vel0 (vector 0 (* 0.001 elapsed-ms)))]
                    [else
