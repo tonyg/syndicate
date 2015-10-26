@@ -415,7 +415,7 @@
           [else
            (define q-pxs (vcross2 (v- q0 p0) s))
            (define t (/ q-pxs rxs))
-           (and (<= 0 t 1) t)]))
+           (and (< 0 t 1) t)]))
 
   (define (three-corners top-left size)
     (match-define (vector w h) size)
@@ -444,7 +444,6 @@
                #:when (game-piece-has-attribute? g 'solid)]
       (define p1*
         (clip-movement-by p0 p1 size (piece-pos s id) (game-piece-configuration-size g)))
-      (log-info "\np0  ~v\np1  ~v\ng ~v\np1* ~v" p0 p1 g p1*)
       p1*))
 
   (define ((update-game-piece elapsed-ms id state-at-beginning-of-frame) s)
