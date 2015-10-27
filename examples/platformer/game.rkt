@@ -860,11 +860,32 @@
                    (lambda (e s) #f)
                    (void)))))
 
+(define (spawn-background-image level-size scene)
+  (match-define (vector level-width level-height) level-size)
+  (define scene-width (image-width scene))
+  (define scene-height (image-height scene))
+  (define level-aspect (/ level-width level-height))
+  (define scene-aspect (/ scene-width scene-height))
+  (define scale (if (> level-aspect scene-aspect) ;; level is wider, proportionally, than scene
+                    (/ level-width scene-width)
+                    (/ level-height scene-height)))
+  (spawn-standalone-assertions
+   (update-sprites #:meta-level game-level
+                   (sprite 10
+                           `((scale ,(* scene-width scale)
+                                    ,(* scene-height scale))
+                             (texture ,scene))))))
+
+;; http://www.travelization.net/wp-content/uploads/2012/07/beautiful-grassland-wallpapers-1920x1080.jpg
+(define grassland-backdrop (bitmap/file "beautiful-grassland-wallpapers-1920x1080.jpg"))
+
 (define (spawn-level #:initial-player-x [initial-player-x 50]
                      #:initial-player-y [initial-player-y 50]
                      #:level-size [level-size-vec (vector 4000 2000)]
+                     #:scene [scene grassland-backdrop]
                      . actions)
   (spawn-world
+   (and scene (spawn-background-image level-size-vec scene))
    (spawn-display-controller level-size-vec)
    (spawn-physics-engine)
    (spawn-player-avatar initial-player-x initial-player-y)
