@@ -352,8 +352,8 @@
            (match e
              [(message (add-to-score delta))
               (transition (+ s delta)
-                          (retract (current-score ?))
-                          (assert (current-score delta)))]
+                          (patch-seq (retract (current-score ?))
+                                     (assert (current-score delta))))]
              [_ #f]))
          0
          (sub (add-to-score ?))))
