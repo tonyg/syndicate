@@ -517,7 +517,7 @@
 (define player-id 'player)
 
 (define (spawn-player-avatar initial-focus-x initial-focus-y)
-  (struct player-state (x y hit-points keys-down) #:prefab)
+  (struct player-state (pos hit-points keys-down) #:prefab)
 
   (define icon character-cat-girl)
   (define icon-width (/ (image-width icon) 2))
@@ -530,22 +530,23 @@
 
   (define initial-x (- initial-focus-x (/ icon-hitbox-width 2)))
   (define initial-y (- initial-focus-y icon-hitbox-height))
-  (define initial-player-state (player-state initial-x initial-y 1 (set)))
+  (define initial-player-state (player-state (vector initial-x initial-y) 1 (set)))
 
   (define (sprite-update s)
+    (match-define (vector x y) (player-state-pos s))
     (update-sprites #:meta-level game-level
-     (simple-sprite 0
-                    (- (player-state-x s) hitbox-offset-x)
-                    (- (player-state-y s) hitbox-offset-y)
-                    icon-width
-                    icon-height
-                    icon)))
+                    (simple-sprite 0
+                                   (- x hitbox-offset-x)
+                                   (- y hitbox-offset-y)
+                                   icon-width
+                                   icon-height
+                                   icon)))
 
   (define ((monitor-position-change p) s)
     (define s1
       (for/fold [(s s)] [(pos (matcher-project/set/single (patch-added p) position-projection))]
-        (match-define (position _ (vector nx ny) _) pos)
-        (struct-copy player-state s [x nx] [y ny])))
+        (match-define (position _ hitbox-top-left _) pos)
+        (struct-copy player-state s [pos hitbox-top-left])))
     (transition s1 (sprite-update s1)))
 
   (define ((integrate-keypresses p) s)
@@ -571,7 +572,6 @@
                              (assert (impulse player-id (vector h-impulse 0)))))))
 
   (spawn (lambda (e s)
-           (match-define (player-state x y hit-points keys-down) s)
            (match e
              [(? patch? p)
               (sequence-transitions (transition s '())
@@ -580,11 +580,10 @@
                                     (maybe-jump s)
                                     update-impulse)]
              [(message (damage _ amount))
+              (define hit-points (player-state-hit-points s))
               (define new-hit-points (- hit-points amount))
               (if (positive? new-hit-points)
-                  (transition (struct-copy player-state s
-                                           [hit-points (- hit-points amount)])
-                              '())
+                  (transition (struct-copy player-state s [hit-points (- hit-points amount)]) '())
                   (quit))]
              [_ #f]))
          initial-player-state
