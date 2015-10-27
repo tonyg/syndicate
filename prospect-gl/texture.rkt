@@ -72,6 +72,7 @@
     (define/public (dispose)
       (set! ref-count (- ref-count 1))
       (when (zero? ref-count)
+        ;; (log-info "releasing texture cache entry for ~a" key)
         (hash-remove! texture-cache key)
         (hash-set! texture-second-chances key this)))
 
@@ -85,11 +86,13 @@
               (lambda ()
                 (define t (cond
                             [(hash-has-key? texture-second-chances key)
+                             ;; (log-info "recycling texture cache entry for ~a" key)
                              (define t (hash-ref texture-second-chances key))
                              (hash-remove! texture-second-chances key)
                              t]
                             [else
                              (define bm (key->bitmap key))
+                             ;; (log-info "allocating new texture cache entry for ~a" key)
                              (new entry% [key key] [texture (new texture% [bitmap bm])])]))
                 (hash-set! texture-cache key t)
                 t)))
@@ -98,6 +101,9 @@
 
 (define (flush-texture-cache!)
   (define now (current-seconds))
+  ;; (log-info "~a cache entries, ~a second-chances"
+  ;;           (hash-count texture-cache)
+  ;;           (hash-count texture-second-chances))
   (when (> now (+ last-flush 10))
     ;; (log-info "flushing texture cache (~a entries)" (hash-count texture-second-chances))
     (for [(entry (in-hash-values texture-second-chances))] (send entry *cleanup))

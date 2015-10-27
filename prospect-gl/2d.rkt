@@ -299,6 +299,7 @@
       ;; Remove old sprites first, to recycle their texture identifiers (if any)
       (for [(s removed)] (remove-sprite! sprites s))
       (for [(s added)] (add-sprite! sprites s))
+      ;; (log-info "~a sprites" (splay-tree-count sprites))
       (flush-texture-cache!))
 
     (define (process-stop-requests! p)
