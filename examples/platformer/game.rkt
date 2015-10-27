@@ -293,8 +293,7 @@
 
   (define (update-scroll-offset s p)
     (define-values (added removed) (patch-project/set/single p scroll-offset-projection))
-    (for/fold [(s s)] [(o added)]
-      (match-define (scroll-offset vec) o)
+    (for/fold [(s s)] [(vec added)]
       (struct-copy scene-manager-state s [offset vec])))
 
   (spawn (lambda (e s)
@@ -312,6 +311,7 @@
                                           `())))]
              [_ #f]))
          (scene-manager-state (vector 0 0) (vector 0 0))
+         (sub (scroll-offset ?))
          (sub (window ? ?) #:meta-level 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -626,35 +626,32 @@
 ;; DisplayControl
 
 (define (spawn-display-controller level-size-vec)
-  (struct display-controller-state (window-size player-pos offset-pos) #:prefab)
+  (match-define (vector level-width level-height) level-size-vec)
 
   (define ((update-window-size p) s)
     (define added (matcher-project/set/single (patch-added p) window-projection3))
-    (transition
-     (for/fold [(s s)] [(w added)]
-       (match-define (window width height) w)
-       (struct-copy display-controller-state s [window-size (vector width height)]))
-     '()))
+    (transition (for/fold [(s s)] [(w added)]
+                  (match-define (window width height) w)
+                  (vector width height))
+                '()))
 
   (define (compute-offset pos viewport limit)
     (define half-viewport (/ viewport 2))
     (min (max 0 (- pos half-viewport)) (- limit half-viewport)))
 
   (define ((update-scroll-offset-from-player-position p) s)
-    (define s1
-      (for/fold [(s s)] [(pos (matcher-project/set/single (patch-added p)
-                                                          position-projection))]
-        (match-define (vector ww wh) (display-controller-state-window-size s))
-        (match-define (position _ (vector px py) _) pos)
-        (struct-copy display-controller-state s
-                     [offset-pos (vector (compute-offset px ww (vector-ref level-size-vec 0))
-                                         (compute-offset py wh (vector-ref level-size-vec 1)))])))
-    (transition s1
-                (if (equal? (display-controller-state-offset-pos s)
-                            (display-controller-state-offset-pos s1))
-                    '()
-                    (list (retract (scroll-offset ?))
-                          (assert (scroll-offset (display-controller-state-offset-pos s1)))))))
+    (define player-positions (matcher-project/set/single (patch-added p) position-projection))
+    (and (not (set-empty? player-positions))
+         (let ((player-position (set-first player-positions)))
+           (match-define (vector ww wh) s)
+           (match-define (position _ (vector px py) _) player-position)
+           (if (> py level-height)
+               (transition s (message (damage player-id +inf.0)))
+               (let ((offset-pos (vector (compute-offset px ww level-width)
+                                         (compute-offset py wh level-height))))
+                 (transition s
+                             (patch-seq (retract #:meta-level 2 (scroll-offset ?))
+                                        (assert #:meta-level 2 (scroll-offset offset-pos)))))))))
 
   (spawn (lambda (e s)
            (match e
@@ -663,7 +660,7 @@
                                     (update-window-size p)
                                     (update-scroll-offset-from-player-position p))]
              [_ #f]))
-         (display-controller-state (vector 0 0) (vector 0 0) (vector 0 0))
+         (vector 0 0)
          (sub (window ? ?) #:meta-level game-level)
          (sub (position player-id ? ?))
          (assert (level-size level-size-vec))))
