@@ -165,9 +165,13 @@
 (struct game-piece-configuration (id initial-position size attributes) #:transparent)
 ;;
 ;; A Touching is a
-;;  - (touching ID ID)
-;; an assertion indicating that the first ID is touching the second.
-(struct touching (a b) #:transparent)
+;;  - (touching ID ID Side)
+;; an assertion indicating that the first ID is touching the second on
+;; the named side of the second ID.
+(struct touching (a b side) #:transparent)
+;;
+;; A Side is either 'top, 'left, 'right, 'bottom or the special value
+;; 'mid, indicating an unknown or uncomputable side.
 
 (define (game-piece-has-attribute? g attr)
   (set-member? (game-piece-configuration-attributes g) attr))
@@ -294,6 +298,7 @@
 (define impulse-projection (compile-projection (?! (impulse ? ?))))
 (define game-piece-configuration-projection
   (compile-projection (?! (game-piece-configuration ? ? ? ?))))
+(define touching-projection (compile-projection (?! (touching ? ? ?))))
 
 (define (update-set-from-patch orig p projection)
   (define-values (added removed) (patch-project/set/single p projection))
@@ -486,10 +491,12 @@
           (define-values (top-right bottom-right bottom-left)
             (three-corners top-left size))
           (for/or [(p (in-list (list top-left top-right bottom-right bottom-left)))]
-            (or (segment-intersection-time p r touchable-top-left touchable-top-right)
-                (segment-intersection-time p r touchable-top-left touchable-bottom-left)
-                (segment-intersection-time p r touchable-top-right touchable-bottom-right)
-                (segment-intersection-time p r touchable-bottom-left touchable-bottom-right))))
+            (or
+             (and (segment-intersection-time p r touchable-top-left touchable-top-right) 'top)
+             (and (segment-intersection-time p r touchable-top-left touchable-bottom-left) 'left)
+             (and (segment-intersection-time p r touchable-top-right touchable-bottom-right) 'right)
+             (and (segment-intersection-time p r touchable-bottom-left touchable-bottom-right)
+                  'bottom))))
         (let ()
           (match-define (vector left top) top-left)
           (match-define (vector touchable-left touchable-top) touchable-top-left)
@@ -498,15 +505,16 @@
           (and (<= left (+ touchable-left touchable-width))
                (<= top (+ touchable-top touchable-height))
                (<= touchable-left (+ left width))
-               (<= touchable-top (+ top height))))))
+               (<= touchable-top (+ top height))
+               'mid))))
 
   (define (touchables-touched-during-movement s p0 p1 size)
     (for/fold [(ts '())]
               [((id g) (in-hash (physics-state-configs s)))
                #:when (game-piece-has-attribute? g 'touchable)]
-      (if (touched-during-movement? p0 p1 size (piece-pos s id) (game-piece-configuration-size g))
-          (cons g ts)
-          ts)))
+      (define side
+        (touched-during-movement? p0 p1 size (piece-pos s id) (game-piece-configuration-size g)))
+      (if side (cons (cons side g) ts) ts)))
 
   (define ((update-game-piece elapsed-ms id state-at-beginning-of-frame) s)
     (define g (piece-cfg state-at-beginning-of-frame id))
@@ -536,10 +544,11 @@
     (sequence-transitions
      (transition s
                  (patch-seq*
-                  (cons (retract (touching id ?))
+                  (cons (retract (touching id ? ?))
                         (for/list [(t touchables)]
+                          (match-define (cons side tg) t)
                           (assert
-                           (touching id (game-piece-configuration-id t)))))))
+                           (touching id (game-piece-configuration-id tg) side))))))
      (update-piece g pos0 final-pos final-vel)))
 
   (define (evaluate-jump-request id s)
@@ -688,7 +697,43 @@
                                            initial-top-left
                                            (icon-hitbox-size i)
                                            (set 'touchable)))
-         (sub (touching player-id goal-id))
+         (sub (touching player-id goal-id ?))
+         (update-sprites #:meta-level game-level (icon-sprite i -1 initial-top-left))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Enemy
+
+(define (spawn-enemy initial-x initial-y range-lo range-hi)
+  (define enemy-id (gensym 'enemy))
+
+  (define i (icon enemy-bug planetcute-scale 9/10 1/3 5/6))
+  (define initial-top-left (focus->top-left i initial-x initial-y))
+
+  (define ((damage-contacts p) s)
+    (define-values (to-damage squashed?)
+      (for/fold [(to-damage '()) (squashed? #f)]
+                [(t (matcher-project/set/single (patch-added p) touching-projection))]
+        (match-define (touching who _ side) t)
+        (if (eq? side 'top)
+            (values to-damage #t)
+            (values (cons who to-damage) squashed?))))
+    (define damage-actions (for/list [(who to-damage)] (message (damage who 1))))
+    (if squashed?
+        (quit damage-actions)
+        (transition s damage-actions)))
+
+  (spawn (lambda (e s)
+           (match e
+             [(? patch? p)
+              (sequence-transitions (transition s '())
+                                    (damage-contacts p))]
+             [_ #f]))
+         (void)
+         (assert (game-piece-configuration enemy-id
+                                           initial-top-left
+                                           (icon-hitbox-size i)
+                                           (set 'touchable)))
+         (sub (touching player-id enemy-id ?))
          (update-sprites #:meta-level game-level (icon-sprite i -1 initial-top-left))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -779,6 +824,7 @@
   (match level-number
     [0 (spawn-level #:level-size (vector 4000 800)
                     (spawn-goal-piece 250 280)
+                    (spawn-enemy 550 200 400 600)
                     (spawn-ground-block (vector 400 200) (vector 200 standard-ground-height))
                     (spawn-ground-block (vector 200 280) (vector 200 200)
                                         #:color "orange")
