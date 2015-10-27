@@ -691,6 +691,8 @@
   (match level-number
     [0 (spawn-level #:level-size (vector 4000 800)
                     (spawn-ground-block (vector 400 200) (vector 200 standard-ground-height))
+                    (spawn-ground-block (vector 200 280) (vector 200 200)
+                                        #:color "orange")
                     (spawn-ground-block (vector 25 300) (vector 500 standard-ground-height)))]))
 
 (define (spawn-level-spawner)
