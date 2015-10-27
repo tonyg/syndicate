@@ -121,14 +121,9 @@
 ;;         For massive mobile GamePieces, applies gravitational acceleration.
 ;;         Computes collisions between GamePieces.
 ;;         Uses Attributes of GamePieces to decide what to do in response to collisions.
-;;         Sometimes, this involves sending Damage.
+;;         For 'touchable GamePieces, a Touching row is asserted.
 ;;         Responds to JumpRequest by checking whether the named piece is in a
 ;;         jumpable location, and sets its upward velocity negative if so.
-;;         Consumer of LevelSize to figure out regions where, if a GamePiece
-;;         crosses into them, Damage should be dealt to the piece.
-;;         When the player touches a goal, sends LevelCompleted one layer out and
-;;         then kills the world. When the player vanishes from the board, kills
-;;         the world.
 ;;     - role: GamePiece
 ;;         Maintains private state. Asserts Impulse to move around,
 ;;         and GamePieceConfiguration to get things started. May issue
@@ -155,10 +150,8 @@
 ;;
 ;; An Attribute is either
 ;;  - 'player - the named piece is a player avatar
-;;  - 'enemy - the named piece is an enemy
+;;  - 'touchable - the named piece reacts to the player's touch
 ;;  - 'solid - the named piece can be stood on / jumped from
-;;  - 'goal - the named piece, if touched, causes the level to
-;;            End The Game In Victory
 ;;  - 'mobile - the named piece is not fixed in place
 ;;  - 'massive - the named piece is subject to effects of gravity
 ;;               (it is an error to be 'massive but not 'mobile)
@@ -197,6 +190,7 @@
 ;;         Maintains a LevelSize assertion.
 ;;         Observes the Position of the player, and computes and maintains a
 ;;         ScrollOffset two layers out, to match.
+;;         Also kills the player if they wander below the bottom of the level.
 ;;
 ;; A LevelSize is a (level-size Vec), an assertion describing the right-hand and
 ;; bottom edges of the level canvas (in World coordinates).
