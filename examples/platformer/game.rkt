@@ -475,9 +475,17 @@
     (for/fold [(p1 p1)]
               [((id g) (in-hash (physics-state-configs s)))
                #:when (game-piece-has-attribute? g 'solid)]
+      (clip-movement-by p0 p1 size (piece-pos s id) (game-piece-configuration-size g))))
+
+  (define (touchables-touched-during-movement s p0 p1 size)
+    (for/fold [(ts '())]
+              [((id g) (in-hash (physics-state-configs s)))
+               #:when (game-piece-has-attribute? g 'touchable)]
       (define p1*
         (clip-movement-by p0 p1 size (piece-pos s id) (game-piece-configuration-size g)))
-      p1*))
+      (if (v= p1 p1*)
+          ts
+          (cons g ts))))
 
   (define ((update-game-piece elapsed-ms id state-at-beginning-of-frame) s)
     (define g (piece-cfg state-at-beginning-of-frame id))
@@ -503,6 +511,8 @@
     ;; - which will avoid the "sticking to the wall" artifact
     (define final-vel (if (v= pos1 final-pos) vel1 (vector 0 0))) ;; stop at collision
     ;; TODO: collision with enemies
+    (log-info "touchables: ~v"
+              (touchables-touched-during-movement state-at-beginning-of-frame pos0 final-pos size))
     ((update-piece g pos0 final-pos final-vel) s))
 
   (define (evaluate-jump-request id s)
@@ -632,6 +642,29 @@
                                            (set 'solid)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Goal piece
+
+(define (spawn-goal-piece initial-focus-x initial-focus-y)
+  (define goal-id (gensym 'goal))
+
+  (define i (icon key planetcute-scale 1/3 2/5 4/5))
+  (define initial-top-left (focus->top-left i initial-focus-x initial-focus-y))
+
+  (spawn (lambda (e s)
+           (match e
+             [_ #f]))
+         (void)
+         (assert (game-piece-configuration goal-id
+                                           initial-top-left
+                                           (icon-hitbox-size i)
+                                           (set 'touchable)))
+         (update-sprites #:meta-level game-level (icon-sprite i -1 initial-top-left))))
+
+;;         When the player touches a goal, sends LevelCompleted one layer out and
+;;         then kills the world. When the player vanishes from the board, kills
+;;         the world.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; DisplayControl
 
 (define (spawn-display-controller level-size-vec)
@@ -715,6 +748,7 @@
 (define (spawn-numbered-level level-number)
   (match level-number
     [0 (spawn-level #:level-size (vector 4000 800)
+                    (spawn-goal-piece 250 280)
                     (spawn-ground-block (vector 400 200) (vector 200 standard-ground-height))
                     (spawn-ground-block (vector 200 280) (vector 200 200)
                                         #:color "orange")
