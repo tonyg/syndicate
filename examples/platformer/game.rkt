@@ -316,6 +316,7 @@
 
 (define (spawn-scene-manager)
   (struct scene-manager-state (size offset) #:prefab)
+  (define backdrop (rectangle 1 1 "solid" "white"))
 
   (define (update-window-size s p)
     (define added (matcher-project/set/single (patch-added p) window-projection1))
@@ -338,7 +339,7 @@
                 (transition s
                             (update-scene `((push-matrix
                                              (scale ,width ,height)
-                                             (texture ,(rectangle 1 1 "solid" "white")))
+                                             (texture ,backdrop))
                                             (translate ,(- ofs-x) ,(- ofs-y)))
                                           `())))]
              [_ #f]))
@@ -665,13 +666,12 @@
   (match-define (vector x y) top-left)
   (match-define (vector w h) size)
   (define block-id (gensym 'ground-block))
-
+  (define block-pict (rectangle w h "solid" color))
   (spawn (lambda (e s)
            (match e
              [_ #f]))
          (void)
-         (update-sprites #:meta-level game-level
-                         (simple-sprite 0 x y w h (rectangle w h "solid" color)))
+         (update-sprites #:meta-level game-level (simple-sprite 0 x y w h block-pict))
          (assert (game-piece-configuration block-id
                                            top-left
                                            size
