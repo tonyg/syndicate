@@ -385,14 +385,15 @@
                                                     impulse-vec)])
      '()))
 
-  (define ((update-piece g new-pos new-vel) s)
+  (define ((update-piece g old-pos new-pos new-vel) s)
     (define id (game-piece-configuration-id g))
     (transition
      (struct-copy physics-state s
                   [positions (hash-set (physics-state-positions s) id new-pos)]
                   [velocities (hash-set (physics-state-velocities s) id new-vel)])
-     (patch-seq (retract (position id ? ?))
-                (assert (position id new-pos (game-piece-configuration-size g))))))
+     (and (not (v= old-pos new-pos))
+          (patch-seq (retract (position id ? ?))
+                     (assert (position id new-pos (game-piece-configuration-size g)))))))
 
   (define (find-support p size s)
     (match-define (vector p-left p-top) p)
@@ -477,14 +478,14 @@
     ;; - which will avoid the "sticking to the wall" artifact
     (define final-vel (if (v= pos1 final-pos) vel1 (vector 0 0))) ;; stop at collision
     ;; TODO: collision with enemies
-    ((update-piece g final-pos final-vel) s))
+    ((update-piece g pos0 final-pos final-vel) s))
 
   (define (evaluate-jump-request id s)
     (define g (piece-cfg s id))
     (define pos (piece-pos s id))
     (define support (find-support pos (game-piece-configuration-size g) s))
     (and support
-         ((update-piece g (v+ pos (vector 0 -1)) jump-vel) s)))
+         ((update-piece g pos (v+ pos (vector 0 -1)) jump-vel) s)))
 
   (spawn (lambda (e s)
            (match e
