@@ -955,7 +955,7 @@
                (level-spawner-state starting-level #f)
                (sub (level-running))
                (sub (level-completed)))
-        (spawn-numbered-level 0)))
+        (spawn-numbered-level starting-level)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
