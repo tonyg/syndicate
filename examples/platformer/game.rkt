@@ -444,7 +444,7 @@
            (define q-p (v- q0 p0))
            (define q-pxs (vcross2 q-p s))
            (define t (/ q-pxs rxs))
-           (and (< 0 t 1)
+           (and (<= 0 t 1)
                 (let* ((q-pxr (vcross2 q-p r))
                        (u (/ q-pxr rxs)))
                   (and (< 0 u 1)
