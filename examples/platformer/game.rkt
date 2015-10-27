@@ -415,9 +415,14 @@
     (define rxs (vcross2 r s))
     (cond [(< (abs rxs) 0.005) #f] ;; zeroish; lines are parallel (and maybe collinear)
           [else
-           (define q-pxs (vcross2 (v- q0 p0) s))
+           (define q-p (v- q0 p0))
+           (define q-pxs (vcross2 q-p s))
            (define t (/ q-pxs rxs))
-           (and (< 0 t 1) t)]))
+           (and (< 0 t 1)
+                (let* ((q-pxr (vcross2 q-p r))
+                       (u (/ q-pxr rxs)))
+                  (and (< 0 u 1)
+                       (- t 0.001))))]))
 
   (define (three-corners top-left size)
     (match-define (vector w h) size)
