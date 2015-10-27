@@ -111,6 +111,7 @@
 ;;     - assertion: Impulse
 ;;     - assertion: Position
 ;;     - assertion: GamePieceConfiguration
+;;     - assertion: Touching
 ;;     - role: PhysicsEngine
 ;;         Maintains positions, velocities and accelerations of all GamePieces.
 ;;         Uses GamePieceConfiguration for global properties of pieces.
@@ -162,6 +163,11 @@
 ;; gamepiece, but also its initial position and size and a collection
 ;; of its Attributes.
 (struct game-piece-configuration (id initial-position size attributes) #:transparent)
+;;
+;; A Touching is a
+;;  - (touching ID ID)
+;; an assertion indicating that the first ID is touching the second.
+(struct touching (a b) #:transparent)
 
 (define (game-piece-has-attribute? g attr)
   (set-member? (game-piece-configuration-attributes g) attr))
@@ -471,15 +477,36 @@
                #:when (game-piece-has-attribute? g 'solid)]
       (clip-movement-by p0 p1 size (piece-pos s id) (game-piece-configuration-size g))))
 
+  (define (touched-during-movement? top-left moved-top-left size touchable-top-left touchable-size)
+    (define r (v- moved-top-left top-left))
+    (if (positive? (vmag^2 r)) ;; r is nonzero, in other words
+        (let ()
+          (define-values (touchable-top-right touchable-bottom-right touchable-bottom-left)
+            (three-corners touchable-top-left touchable-size))
+          (define-values (top-right bottom-right bottom-left)
+            (three-corners top-left size))
+          (for/or [(p (in-list (list top-left top-right bottom-right bottom-left)))]
+            (or (segment-intersection-time p r touchable-top-left touchable-top-right)
+                (segment-intersection-time p r touchable-top-left touchable-bottom-left)
+                (segment-intersection-time p r touchable-top-right touchable-bottom-right)
+                (segment-intersection-time p r touchable-bottom-left touchable-bottom-right))))
+        (let ()
+          (match-define (vector left top) top-left)
+          (match-define (vector touchable-left touchable-top) touchable-top-left)
+          (match-define (vector width height) size)
+          (match-define (vector touchable-width touchable-height) touchable-size)
+          (and (<= left (+ touchable-left touchable-width))
+               (<= top (+ touchable-top touchable-height))
+               (<= touchable-left (+ left width))
+               (<= touchable-top (+ top height))))))
+
   (define (touchables-touched-during-movement s p0 p1 size)
     (for/fold [(ts '())]
               [((id g) (in-hash (physics-state-configs s)))
                #:when (game-piece-has-attribute? g 'touchable)]
-      (define p1*
-        (clip-movement-by p0 p1 size (piece-pos s id) (game-piece-configuration-size g)))
-      (if (v= p1 p1*)
-          ts
-          (cons g ts))))
+      (if (touched-during-movement? p0 p1 size (piece-pos s id) (game-piece-configuration-size g))
+          (cons g ts)
+          ts)))
 
   (define ((update-game-piece elapsed-ms id state-at-beginning-of-frame) s)
     (define g (piece-cfg state-at-beginning-of-frame id))
@@ -504,10 +531,16 @@
     ;; TODO: figure out how to cancel just the component of velocity blocked by the obstacle(s)
     ;; - which will avoid the "sticking to the wall" artifact
     (define final-vel (if (v= pos1 final-pos) vel1 (vector 0 0))) ;; stop at collision
-    ;; TODO: collision with enemies
-    (log-info "touchables: ~v"
-              (touchables-touched-during-movement state-at-beginning-of-frame pos0 final-pos size))
-    ((update-piece g pos0 final-pos final-vel) s))
+    (define touchables
+      (touchables-touched-during-movement state-at-beginning-of-frame pos0 final-pos size))
+    (sequence-transitions
+     (transition s
+                 (patch-seq*
+                  (cons (retract (touching id ?))
+                        (for/list [(t touchables)]
+                          (assert
+                           (touching id (game-piece-configuration-id t)))))))
+     (update-piece g pos0 final-pos final-vel)))
 
   (define (evaluate-jump-request id s)
     (define g (piece-cfg s id))
@@ -637,6 +670,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Goal piece
+;;
+;; When the player touches a goal, sends LevelCompleted one layer out.
 
 (define (spawn-goal-piece initial-focus-x initial-focus-y)
   (define goal-id (gensym 'goal))
@@ -646,17 +681,15 @@
 
   (spawn (lambda (e s)
            (match e
+             [(? patch/added?) (transition s (message (at-meta (level-completed))))]
              [_ #f]))
          (void)
          (assert (game-piece-configuration goal-id
                                            initial-top-left
                                            (icon-hitbox-size i)
                                            (set 'touchable)))
+         (sub (touching player-id goal-id))
          (update-sprites #:meta-level game-level (icon-sprite i -1 initial-top-left))))
-
-;;         When the player touches a goal, sends LevelCompleted one layer out and
-;;         then kills the world. When the player vanishes from the board, kills
-;;         the world.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; DisplayControl
@@ -703,16 +736,19 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelTerminationMonitor
+;;
+;; When the player vanishes from the board, or LevelCompleted is seen,
+;; kills the world.
 
 (define (spawn-level-termination-monitor)
   (spawn (lambda (e s)
            (match e
              [(? patch/removed?)
               (log-info "Player died! Terminating level.")
-              (quit)]
+              (transition s (quit-world))]
              [(message (at-meta (level-completed)))
               (log-info "Level completed! Terminating level.")
-              (quit)]
+              (transition s (quit-world))]
              [_ #f]))
          (void)
          (sub (game-piece-configuration player-id ? ? ?))
@@ -746,7 +782,16 @@
                     (spawn-ground-block (vector 400 200) (vector 200 standard-ground-height))
                     (spawn-ground-block (vector 200 280) (vector 200 200)
                                         #:color "orange")
-                    (spawn-ground-block (vector 25 300) (vector 500 standard-ground-height)))]))
+                    (spawn-ground-block (vector 25 300) (vector 500 standard-ground-height)))]
+    [_ (spawn-standalone-assertions
+        (update-sprites #:meta-level 2
+                        (let ((message (text "You won!" 72 "red")))
+                          (simple-sprite 0
+                                         10
+                                         100
+                                         (image-width message)
+                                         (image-height message)
+                                         message))))]))
 
 (define (spawn-level-spawner)
   (struct level-spawner-state (current-level level-complete?) #:prefab)
