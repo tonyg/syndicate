@@ -445,6 +445,9 @@
 
   (define (segment-intersection-time p0 r q0 q1)
     ;; See http://stackoverflow.com/a/565282/169231
+    ;; Enhanced to consider the direction of impact with the segment,
+    ;; too: only returns an intersection when the vector of motion is
+    ;; at an obtuse angle to the normal of the segment.
     (define s (v- q1 q0))
     (define rxs (vcross2 r s))
     (cond [(< (abs rxs) 0.005) #f] ;; zeroish; lines are parallel (and maybe collinear)
@@ -456,7 +459,10 @@
                 (let* ((q-pxr (vcross2 q-p r))
                        (u (/ q-pxr rxs)))
                   (and (< 0 u 1)
-                       (- t 0.001))))]))
+                       (let* ((q-norm
+                               (vnormalize (vector (vector-ref s 1) (- (vector-ref s 0))))))
+                         (and (not (positive? (vdot r q-norm)))
+                              (- t 0.001))))))]))
 
   (define (three-corners top-left size)
     (match-define (vector w h) size)
@@ -474,9 +480,10 @@
       (apply min
              (for/list [(p (in-list (list top-left top-right bottom-right bottom-left)))]
                (min (or (segment-intersection-time p r solid-top-left solid-top-right) 1)
-                    (or (segment-intersection-time p r solid-top-left solid-bottom-left) 1)
-                    (or (segment-intersection-time p r solid-top-right solid-bottom-right) 1)
-                    (or (segment-intersection-time p r solid-bottom-left solid-bottom-right) 1)))))
+                    ;; TODO: some means of specifying *which edges* should appear solid.
+                    #;(or (segment-intersection-time p r solid-top-right solid-bottom-right) 1)
+                    #;(or (segment-intersection-time p r solid-bottom-right solid-bottom-left) 1)
+                    #;(or (segment-intersection-time p r solid-bottom-left solid-top-left) 1)))))
     (v+ top-left (v* r t)))
 
   (define (clip-movement-by-solids s p0 p1 size)
@@ -496,10 +503,9 @@
           (for/or [(p (in-list (list top-left top-right bottom-right bottom-left)))]
             (or
              (and (segment-intersection-time p r touchable-top-left touchable-top-right) 'top)
-             (and (segment-intersection-time p r touchable-top-left touchable-bottom-left) 'left)
              (and (segment-intersection-time p r touchable-top-right touchable-bottom-right) 'right)
-             (and (segment-intersection-time p r touchable-bottom-left touchable-bottom-right)
-                  'bottom))))
+             (and (segment-intersection-time p r touchable-bottom-right touchable-bottom-left) 'bottom)
+             (and (segment-intersection-time p r touchable-bottom-left touchable-top-left) 'left))))
         (let ()
           (match-define (vector left top) top-left)
           (match-define (vector touchable-left touchable-top) touchable-top-left)
