@@ -877,7 +877,7 @@
                              (texture ,scene))))))
 
 ;; http://www.travelization.net/wp-content/uploads/2012/07/beautiful-grassland-wallpapers-1920x1080.jpg
-(define grassland-backdrop (bitmap/file "beautiful-grassland-wallpapers-1920x1080.jpg"))
+(define grassland-backdrop (bitmap "beautiful-grassland-wallpapers-1920x1080.jpg"))
 
 (define (spawn-level #:initial-player-x [initial-player-x 50]
                      #:initial-player-y [initial-player-y 50]
