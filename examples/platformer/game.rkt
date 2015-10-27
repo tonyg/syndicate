@@ -473,8 +473,11 @@
 
     (define pos1 (v+ pos0 (v* (v+ vel1 imp0) (* impulse-multiplier elapsed-ms))))
     (define final-pos (clip-movement-by-solids state-at-beginning-of-frame pos0 pos1 size))
+    ;; TODO: figure out how to cancel just the component of velocity blocked by the obstacle(s)
+    ;; - which will avoid the "sticking to the wall" artifact
+    (define final-vel (if (v= pos1 final-pos) vel1 (vector 0 0))) ;; stop at collision
     ;; TODO: collision with enemies
-    ((update-piece g final-pos vel1) s))
+    ((update-piece g final-pos final-vel) s))
 
   (define (evaluate-jump-request id s)
     (define g (piece-cfg s id))
