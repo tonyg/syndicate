@@ -478,7 +478,7 @@
     (define r (v- moved-top-left top-left))
     (define t
       (apply min
-             (for/list [(p (in-list (list top-left top-right bottom-right bottom-left)))]
+             (for/list [(p (in-list (list #;top-left #;top-right bottom-right bottom-left)))]
                (min (or (segment-intersection-time p r solid-top-left solid-top-right) 1)
                     ;; TODO: some means of specifying *which edges* should appear solid.
                     #;(or (segment-intersection-time p r solid-top-right solid-bottom-right) 1)
