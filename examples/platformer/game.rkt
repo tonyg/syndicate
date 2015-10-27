@@ -675,6 +675,24 @@
          (assert (level-size level-size-vec))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; LevelTerminationMonitor
+
+(define (spawn-level-termination-monitor)
+  (spawn (lambda (e s)
+           (match e
+             [(? patch/removed?)
+              (log-info "Player died! Terminating level.")
+              (quit)]
+             [(message (at-meta (level-completed)))
+              (log-info "Level completed! Terminating level.")
+              (quit)]
+             [_ #f]))
+         (void)
+         (sub (game-piece-configuration player-id ? ? ?))
+         (sub (level-completed) #:meta-level 1)
+         (assert (level-running) #:meta-level 1)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelSpawner
 
 (define (spawn-standalone-assertions . patches)
@@ -691,6 +709,7 @@
    (spawn-display-controller level-size-vec)
    (spawn-physics-engine)
    (spawn-player-avatar initial-player-x initial-player-y)
+   (spawn-level-termination-monitor)
    actions))
 
 (define (spawn-numbered-level level-number)
