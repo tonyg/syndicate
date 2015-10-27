@@ -5,6 +5,7 @@
 
 (require racket/set)
 (require racket/match)
+(require racket/promise)
 (require plot/utils) ;; for vector utilities
 
 (require prospect)
@@ -299,6 +300,7 @@
 (define game-piece-configuration-projection
   (compile-projection (?! (game-piece-configuration ? ? ? ?))))
 (define touching-projection (compile-projection (?! (touching ? ? ?))))
+(define level-size-projection (compile-projection (level-size (?!))))
 
 (define (update-set-from-patch orig p projection)
   (define-values (added removed) (patch-project/set/single p projection))
@@ -659,8 +661,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground Block
 
-(define standard-ground-height 50)
-
 (define (spawn-ground-block top-left size #:color [color "purple"])
   (match-define (vector x y) top-left)
   (match-define (vector w h) size)
@@ -703,11 +703,57 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Enemy
 
-(define (spawn-enemy initial-x initial-y range-lo range-hi)
+(define (spawn-enemy initial-x initial-y range-lo range-hi
+                     #:speed [speed 0.2]
+                     #:facing [initial-facing 'right])
+  (struct enemy-state [level-size facing] #:prefab)
+
   (define enemy-id (gensym 'enemy))
 
   (define i (icon enemy-bug planetcute-scale 9/10 1/3 5/6))
+  (define i-flipped (struct-copy icon i [pict (flip-horizontal (icon-pict i))]))
   (define initial-top-left (focus->top-left i initial-x initial-y))
+  (define initial-state (enemy-state #f initial-facing))
+
+  (define (sprite-patch s top-left)
+    (update-sprites #:meta-level game-level
+                    (icon-sprite (match (enemy-state-facing s)
+                                   ['right i]
+                                   ['left i-flipped])
+                                 -1
+                                 top-left)))
+
+  (define (motion-patch s)
+    (patch-seq (retract (impulse enemy-id ?))
+               (assert (impulse enemy-id (vector (* speed (match (enemy-state-facing s)
+                                                            ['right 1]
+                                                            ['left -1]))
+                                                 0)))))
+
+  (define ((monitor-level-size-change p) s)
+    (transition (for/fold [(s s)] [(vec (matcher-project/set/single (patch-added p)
+                                                                    level-size-projection))]
+                  (struct-copy enemy-state s [level-size vec]))
+                '()))
+
+  (define ((monitor-position-change p) s)
+    (define positions (matcher-project/set/single (patch-added p) position-projection))
+    (and (not (set-empty? positions))
+         (match (set-first positions)
+           [(position _ (and top-left (vector left top)) (vector width height))
+            (match (enemy-state-level-size s)
+              [(vector _ level-height) #:when (> top level-height) (quit)]
+              [_
+               (define old-facing (enemy-state-facing s))
+               (define new-facing (cond [(< left range-lo) 'right]
+                                        [(> (+ left width) range-hi) 'left]
+                                        [else old-facing]))
+               (if (equal? old-facing new-facing)
+                   (transition s (sprite-patch s top-left))
+                   (let ((new-s (struct-copy enemy-state s [facing new-facing])))
+                     (transition new-s
+                                 (list (motion-patch new-s)
+                                       (sprite-patch new-s top-left)))))])])))
 
   (define ((damage-contacts p) s)
     (define-values (to-damage squashed?)
@@ -726,15 +772,20 @@
            (match e
              [(? patch? p)
               (sequence-transitions (transition s '())
+                                    (monitor-level-size-change p)
+                                    (monitor-position-change p)
                                     (damage-contacts p))]
              [_ #f]))
-         (void)
+         initial-state
          (assert (game-piece-configuration enemy-id
                                            initial-top-left
                                            (icon-hitbox-size i)
-                                           (set 'touchable)))
+                                           (set 'mobile 'massive 'touchable)))
+         (sub (level-size ?))
+         (sub (position enemy-id ? ?))
          (sub (touching player-id enemy-id ?))
-         (update-sprites #:meta-level game-level (icon-sprite i -1 initial-top-left))))
+         (motion-patch initial-state)
+         (sprite-patch initial-state initial-top-left)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; DisplayControl
@@ -811,7 +862,7 @@
 
 (define (spawn-level #:initial-player-x [initial-player-x 50]
                      #:initial-player-y [initial-player-y 50]
-                     #:level-size level-size-vec
+                     #:level-size [level-size-vec (vector 4000 2000)]
                      . actions)
   (spawn-world
    (spawn-display-controller level-size-vec)
@@ -820,26 +871,44 @@
    (spawn-level-termination-monitor)
    actions))
 
-(define (spawn-numbered-level level-number)
-  (match level-number
-    [0 (spawn-level #:level-size (vector 4000 800)
-                    (spawn-goal-piece 250 280)
-                    (spawn-enemy 550 200 400 600)
-                    (spawn-ground-block (vector 400 200) (vector 200 standard-ground-height))
-                    (spawn-ground-block (vector 200 280) (vector 200 200)
-                                        #:color "orange")
-                    (spawn-ground-block (vector 25 300) (vector 500 standard-ground-height)))]
-    [_ (spawn-standalone-assertions
-        (update-sprites #:meta-level 2
-                        (let ((message (text "You won!" 72 "red")))
-                          (simple-sprite 0
-                                         10
-                                         100
-                                         (image-width message)
-                                         (image-height message)
-                                         message))))]))
+(define standard-ground-height 50)
 
-(define (spawn-level-spawner)
+(define (slab left top width #:color [color "purple"])
+  (spawn-ground-block (vector left top) (vector width standard-ground-height) #:color color))
+
+(define levels
+  (delay
+    (list
+     (spawn-level (slab 25 300 500)
+                  (slab 500 400 500)
+                  (slab 1000 500 400)
+                  (spawn-goal-piece 1380 500))
+     (spawn-level (slab 25 300 1000)
+                  (spawn-enemy 600 300 25 1025 #:facing 'left)
+                  (spawn-goal-piece 980 300))
+     (spawn-level (spawn-goal-piece 250 280)
+                  (spawn-enemy 550 200 400 600)
+                  (spawn-enemy 520 200 -100 1000 #:facing 'left)
+                  (spawn-ground-block (vector 400 200) (vector 200 standard-ground-height))
+                  (spawn-ground-block (vector 200 280) (vector 200 200)
+                                      #:color "orange")
+                  (spawn-ground-block (vector 25 300) (vector 500 standard-ground-height)))
+     )))
+
+(define (spawn-numbered-level level-number)
+  (if (< level-number (length (force levels)))
+      (list-ref (force levels) level-number)
+      (spawn-standalone-assertions
+       (update-sprites #:meta-level 2
+                       (let ((message (text "You won!" 72 "red")))
+                         (simple-sprite 0
+                                        10
+                                        100
+                                        (image-width message)
+                                        (image-height message)
+                                        message))))))
+
+(define (spawn-level-spawner starting-level)
   (struct level-spawner-state (current-level level-complete?) #:prefab)
 
   (list (spawn (lambda (e s)
@@ -852,7 +921,7 @@
                    [(message (level-completed))
                     (transition (struct-copy level-spawner-state s [level-complete? #t]) '())]
                    [_ #f]))
-               (level-spawner-state 0 #f)
+               (level-spawner-state starting-level #f)
                (sub (level-running))
                (sub (level-completed)))
         (spawn-numbered-level 0)))
@@ -865,6 +934,6 @@
           (spawn-keyboard-integrator)
           (spawn-scene-manager)
           (spawn-world (spawn-score-keeper)
-                       (spawn-level-spawner)
+                       (spawn-level-spawner 0)
                        )
           )
