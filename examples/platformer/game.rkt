@@ -259,6 +259,31 @@
 ;; Player -> Physics: (jump)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Icon
+
+(struct icon (pict scale hitbox-width-fraction hitbox-height-fraction baseline-fraction)
+  #:transparent)
+
+(define (icon-width i) (* (image-width (icon-pict i)) (icon-scale i)))
+(define (icon-height i) (* (image-height (icon-pict i)) (icon-scale i)))
+(define (icon-hitbox-width i) (* (icon-width i) (icon-hitbox-width-fraction i)))
+(define (icon-hitbox-height i) (* (icon-height i) (icon-hitbox-height-fraction i)))
+(define (icon-hitbox-size i) (vector (icon-hitbox-width i) (icon-hitbox-height i)))
+
+(define (focus->top-left i x y)
+  (vector (- x (/ (icon-hitbox-width i) 2))
+          (- y (icon-hitbox-height i))))
+
+(define (icon-sprite i layer pos)
+  (match-define (vector x y) pos)
+  (simple-sprite layer
+                 (- x (/ (- (icon-width i) (icon-hitbox-width i)) 2))
+                 (- y (- (* (icon-baseline-fraction i) (icon-height i)) (icon-hitbox-height i)))
+                 (icon-width i)
+                 (icon-height i)
+                 (icon-pict i)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Various projections
 
 (define window-projection1 (compile-projection (at-meta (?! (window ? ?)))))
@@ -515,32 +540,17 @@
 ;; Player
 
 (define player-id 'player)
+(define planetcute-scale 1/2)
 
 (define (spawn-player-avatar initial-focus-x initial-focus-y)
   (struct player-state (pos hit-points keys-down) #:prefab)
 
-  (define icon character-cat-girl)
-  (define icon-width (/ (image-width icon) 2))
-  (define icon-height (/ (image-height icon) 2))
-
-  (define icon-hitbox-width (* 2/6 icon-width))
-  (define icon-hitbox-height (* 3/10 icon-height))
-  (define hitbox-offset-x (/ (- icon-width icon-hitbox-width) 2))
-  (define hitbox-offset-y (- (* 13/16 icon-height) icon-hitbox-height))
-
-  (define initial-x (- initial-focus-x (/ icon-hitbox-width 2)))
-  (define initial-y (- initial-focus-y icon-hitbox-height))
-  (define initial-player-state (player-state (vector initial-x initial-y) 1 (set)))
+  (define i (icon character-cat-girl planetcute-scale 2/6 3/10 13/16))
+  (define initial-top-left (focus->top-left i initial-focus-x initial-focus-y))
+  (define initial-player-state (player-state initial-top-left 1 (set)))
 
   (define (sprite-update s)
-    (match-define (vector x y) (player-state-pos s))
-    (update-sprites #:meta-level game-level
-                    (simple-sprite 0
-                                   (- x hitbox-offset-x)
-                                   (- y hitbox-offset-y)
-                                   icon-width
-                                   icon-height
-                                   icon)))
+    (update-sprites #:meta-level game-level (icon-sprite i 0 (player-state-pos s))))
 
   (define ((monitor-position-change p) s)
     (define s1
@@ -589,10 +599,9 @@
          initial-player-state
          (sub (damage player-id ?))
          (assert (health player-id (player-state-hit-points initial-player-state)))
-         (assert (level-running) #:meta-level 1)
          (assert (game-piece-configuration player-id
-                                           (vector initial-x initial-y)
-                                           (vector icon-hitbox-width icon-hitbox-height)
+                                           initial-top-left
+                                           (icon-hitbox-size i)
                                            (set 'player 'mobile 'massive)))
          (sub (position player-id ? ?))
          (sub (key-pressed 'left) #:meta-level 2)
