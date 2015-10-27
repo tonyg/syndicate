@@ -285,6 +285,8 @@
     (define (process-scene-updates! p)
       (define-values (added removed) (patch-project/set/single p scene-projection))
       (when (not (set-empty? removed))
+        (compiled-instructions-dispose! prelude)
+        (compiled-instructions-dispose! postlude)
         (set! prelude empty-instructions)
         (set! postlude empty-instructions))
       (for [(s added)]
