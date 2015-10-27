@@ -1,6 +1,8 @@
 #lang racket/gui
 
-(provide texture%)
+(provide texture%
+         texture-cache-get
+         flush-texture-cache!)
 
 (require sgl/gl)
 (require sgl/gl-vectors)
@@ -47,3 +49,57 @@
 
     (super-new)
     (load-from-bitmap! initial-bitmap)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define texture-cache (make-hasheq))
+(define texture-second-chances (make-hasheq))
+(define last-flush 0)
+
+(define entry%
+  (class object%
+    (init-field key
+                texture)
+    (super-new)
+    (define ref-count 0)
+
+    (define/public (get-texture)
+      texture)
+
+    (define/public (inc-ref-count!)
+      (set! ref-count (+ ref-count 1)))
+
+    (define/public (dispose)
+      (set! ref-count (- ref-count 1))
+      (when (zero? ref-count)
+        (hash-remove! texture-cache key)
+        (hash-set! texture-second-chances key this)))
+
+    (define/public (*cleanup)
+      (send texture dispose))))
+
+(define (texture-cache-get key key->bitmap)
+  (define entry
+    (hash-ref texture-cache
+              key
+              (lambda ()
+                (define t (cond
+                            [(hash-has-key? texture-second-chances key)
+                             (define t (hash-ref texture-second-chances key))
+                             (hash-remove! texture-second-chances key)
+                             t]
+                            [else
+                             (define bm (key->bitmap key))
+                             (new entry% [key key] [texture (new texture% [bitmap bm])])]))
+                (hash-set! texture-cache key t)
+                t)))
+  (send entry inc-ref-count!)
+  entry)
+
+(define (flush-texture-cache!)
+  (define now (current-seconds))
+  (when (> now (+ last-flush 10))
+    ;; (log-info "flushing texture cache (~a entries)" (hash-count texture-second-chances))
+    (for [(entry (in-hash-values texture-second-chances))] (send entry *cleanup))
+    (hash-clear! texture-second-chances)
+    (set! last-flush now)))

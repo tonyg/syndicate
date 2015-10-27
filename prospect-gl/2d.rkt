@@ -123,8 +123,8 @@
     [`(color ,(? color-number? r) ,(? color-number? g) ,(? color-number? b) ,(? color-number? a))
      (values `(glColor4d ,r ,g ,b ,a) '())]
     [`(texture ,i)
-     (define tex (image->texture i))
-     (values `(draw-gl-face ,tex) (list tex))]
+     (define entry (image->texture-cache-entry i))
+     (values `(draw-gl-face ,(send entry get-texture)) (list entry))]
     [`(push-matrix ,instr ...)
      (define-values (code resources) (instructions->racket-code instr))
      (values `(begin (glPushMatrix) ,@code (glPopMatrix)) resources)]
@@ -155,9 +155,8 @@
     [else
      (error 'image->bitmap "unsupported image type ~v" i)]))
 
-(define (image->texture i)
-  (define bm (image->bitmap i))
-  (new texture% [bitmap bm]))
+(define (image->texture-cache-entry i)
+  (texture-cache-get i image->bitmap))
 
 ;; (define (lerp a b v) (+ (* v a) (* (- 1 v) b)))
 
@@ -297,7 +296,8 @@
       (define-values (added removed) (patch-project/set/single p sprite-projection))
       ;; Remove old sprites first, to recycle their texture identifiers (if any)
       (for [(s removed)] (remove-sprite! sprites s))
-      (for [(s added)] (add-sprite! sprites s)))
+      (for [(s added)] (add-sprite! sprites s))
+      (flush-texture-cache!))
 
     (define (process-stop-requests! p)
       (when (matcher-match-value (patch-added p) 'stop #f)
