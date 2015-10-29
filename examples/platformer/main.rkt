@@ -502,10 +502,10 @@
             (three-corners top-left size))
           (for/or [(p (in-list (list top-left top-right bottom-right bottom-left)))]
             (or
-             (and (segment-intersection-time p r touchable-top-left touchable-top-right) 'top)
              (and (segment-intersection-time p r touchable-top-right touchable-bottom-right) 'right)
              (and (segment-intersection-time p r touchable-bottom-right touchable-bottom-left) 'bottom)
-             (and (segment-intersection-time p r touchable-bottom-left touchable-top-left) 'left))))
+             (and (segment-intersection-time p r touchable-bottom-left touchable-top-left) 'left)
+             (and (segment-intersection-time p r touchable-top-left touchable-top-right) 'top))))
         (let ()
           (match-define (vector left top) top-left)
           (match-define (vector touchable-left touchable-top) touchable-top-left)
