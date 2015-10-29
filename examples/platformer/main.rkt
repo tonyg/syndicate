@@ -576,7 +576,12 @@
                                     (update-impulses p))]
              [(message (jump-request id))
               (evaluate-jump-request id s)]
-             [(message (at-meta (at-meta (at-meta (frame-event _ _ elapsed-ms _)))))
+             [(message (at-meta (at-meta (at-meta (frame-event counter _ elapsed-ms _)))))
+              (when (zero? (modulo counter 10))
+                (collect-garbage 'incremental)
+                (log-info "Instantaneous frame rate at frame ~a: ~a Hz"
+                          counter
+                          (/ 1000.0 elapsed-ms)))
               (for/fold [(t (transition s '()))]
                         [((id g) (in-hash (physics-state-configs s)))
                          #:when (game-piece-has-attribute? g 'mobile)]
@@ -926,6 +931,7 @@
      )))
 
 (define (spawn-numbered-level level-number)
+  (collect-garbage 'major)
   (if (< level-number (length (force levels)))
       (list-ref (force levels) level-number)
       (spawn-standalone-assertions
