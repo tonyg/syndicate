@@ -807,8 +807,7 @@
                 '()))
 
   (define (compute-offset pos viewport limit)
-    (define half-viewport (/ viewport 2))
-    (min (max 0 (- pos half-viewport)) (- limit half-viewport)))
+    (min (max 0 (- pos (/ viewport 2))) (- limit viewport)))
 
   (define ((update-scroll-offset-from-player-position p) s)
     (define player-positions (matcher-project/set/single (patch-added p) position-projection))
