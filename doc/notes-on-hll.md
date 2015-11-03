@@ -42,3 +42,22 @@ and `I` needs to be clarified, among many other things.
 
     (define-syntax-rule (forever O ...)
 	  (until (rising-edge #f) O ...))
+
+## Examples
+
+```racket
+#lang prospect/actor
+;; Simple mutable box and count-to-infinity box client.
+
+(struct set-box (new-value) #:transparent)
+(struct box-state (value) #:transparent)
+
+(actor (forever #:collect [(value 0)]
+         (assert (box-state value))
+         (on (message (set-box $new-value))
+           new-value)))
+
+(actor (forever
+         (on (asserted (box-state $value))
+           (send! (set-box (+ value 1))))))
+```
