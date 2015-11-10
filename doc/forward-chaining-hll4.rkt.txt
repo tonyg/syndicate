@@ -1,0 +1,12 @@
+#lang prospect/hll ;; -*- racket -*-
+
+(actor (forever (assert `(parent john douglas))))
+(actor (forever (assert `(parent bob john))))
+(actor (forever (assert `(parent ebbon bob))))
+
+(actor (forever (on (asserted `(parent ,$A ,$C))
+                    (until (retracted `(parent ,A ,C))
+                      (assert `(ancestor ,A ,C))
+                      (on (asserted `(ancestor ,C ,$B))
+                          (until (retracted `(ancestor ,C ,B))
+                            (assert `(ancestor ,A ,B))))))))

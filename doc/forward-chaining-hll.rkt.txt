@@ -1,0 +1,59 @@
+#lang prospect/hll ;; -*- racket -*-
+
+(actor (forever #:collect [(count 0)]
+                (assert `(parent-count ,count))
+                (on (asserted `(parent ,$p ,$c)) (+ count 1))
+                (on (retracted `(parent ,$p ,$c)) (- count 1))))
+
+(define (insert-record record . monitors)
+  (printf "Record ~v inserted, depending on ~v\n" record monitors)
+  (actor (state [(assert record)]
+           [(retracted (BIND-TO-PATCH-REMOVED removed (assertion-set-union* monitors)))
+            (printf "Retracting ~v because dependencies ~v vanished\n"
+                    record
+                    (assertion-set->list removed))]
+           [(message `(retract ,record))
+            (printf "Retracting ~v because we were told to explicitly\n" record)])))
+
+(insert-record `(parent john douglas))
+(insert-record `(parent bob john))
+(insert-record `(parent ebbon bob))
+
+(actor (forever (on (asserted `(parent ,$p ,$c))
+                    (insert-record `(ancestor ,p ,c)
+                                   `(parent ,p ,c)))))
+
+(actor (forever (on (asserted `(parent ,$A ,$C))
+                    (printf "Inductive step for ~v asserted\n" `(parent ,A ,C))
+                    (actor (state [(on (asserted `(ancestor ,C ,$B))
+                                       (insert-record `(ancestor ,A ,B)
+                                                      `(parent ,A ,C)
+                                                      `(ancestor ,C ,B)))]
+                             [(retracted `(parent ,A ,C))
+                              (printf
+                               "Inductive step for ~v retracted because of removal\n"
+                               `(parent ,A ,C))])))))
+
+(actor (forever (on (asserted `(ancestor ebbon douglas))
+                    (printf "Proved (ancestor ebbon douglas)\n"))
+                (on (retracted `(ancestor ebbon douglas))
+                    (printf "Proof of (ancestor ebbon douglas) invalidated\n"))))
+
+(define (after msec thunk)
+  (define id (gensym 'after))
+  (if (zero? msec)
+      (thunk)
+      (actor (send! (set-timer id msec 'relative))
+             (until (message (timer-expired id ?)))
+             (thunk))))
+
+(define use-delays? #t)
+
+(after (if use-delays? 1000 0) (lambda ()
+                                 (printf "----- Retracting\n")
+                                 (message `(retract (parent bob john)))))
+(after (if use-delays? 2000 0) (lambda ()
+                                 (printf "----- Asserting\n")
+                                 (list (insert-record `(parent bob mary))
+                                       (insert-record `(parent mary sue))
+                                       (insert-record `(parent sue john)))))
