@@ -1,0 +1,51 @@
+#lang racket ;; -*- racket -*-
+
+(require "../main.rkt")
+(require "../big-bang.rkt")
+
+(define (button #:background [background "grey"]
+                #:foreground [foreground "white"]
+                #:font-size [font-size 22]
+                name x y label callback)
+  (define label-image (text label font-size foreground))
+  (actor (forever
+          (on (message (at-meta (mouse-event ? ? name "button-down"))) (callback))
+          (assert (window name x y 0
+                          (seal
+                           (overlay label-image
+                                    (rectangle (+ (image-width label-image) 20)
+                                               (+ (image-height label-image) 20)
+                                               "solid"
+                                               background))))))))
+
+(define (draggable-shape name orig-x orig-y image)
+  (define (move-to x y) (assert (update-window name x y image #:z 10)))
+  (define (idle ticks x y)
+    (state [#:collect [(ticks ticks) (x x) (y y)]
+            (move-to x y)
+            (on (message (at-meta (tick-event)))
+                (define new-ticks (+ ticks 1))
+                (define displacement (* (cos (* new-ticks 10 1/180 pi)) 4))
+                (values new-ticks x (+ y displacement)))]
+      [(message (at-meta (mouse-event mx my name "button-down")))
+       (dragging mx my (- mx x) (- my y))]))
+  (define (dragging mx my dx dy)
+    (state [#:collect [(mx mx) (my my)]
+            (move-to (- mx dx) (- my dy))
+            (on (message (at-meta (mouse-event mx my ? "drag"))) (values mx my))]
+      [(message (at-meta (mouse-event mx my ? (or "leave" "button-up"))))
+       (idle 0 (- mx dx) (- my dy))]))
+  (actor (idle 0 orig-x orig-y)))
+
+(big-bang-world #:width 640
+                #:height 480
+                (actor (forever
+                        (on (asserted (active-window $id) #:meta-level 1)
+                            (update-window 'active-window-label 300 0
+                                           (text (format "~v" id) 22 "black")))))
+                (button #:background "red" 'stop-button 0 0 "Exit"
+                        (lambda () (assert! 'stop #:meta-level 1)))
+                (draggable-shape 'c1 50 50 (circle 30 "solid" "orange"))
+                (draggable-shape 's1 100 100 (star 40 "solid" "firebrick")))
+
+(exit 0)

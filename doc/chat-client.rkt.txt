@@ -1,0 +1,22 @@
+#lang prospect ;; -*- racket -*-
+
+(require (only-in racket/port read-bytes-line-evt))
+(require "../drivers/tcp.rkt")
+
+(define local-handle (tcp-handle 'chat))
+(define remote-handle (tcp-address "localhost" 5999))
+
+(spawn-tcp-driver)
+(actor (define e (read-bytes-line-evt (current-input-port) 'any))
+       (until quit?
+              #:collect [quit? #f]
+              (assert (advertise (tcp-channel local-handle remote-handle ?)))
+              (on (retracted (advertise (tcp-channel remote-handle local-handle ?))) #t)
+              (on (message (at-meta (external-event e (list $value))))
+                  (match value
+                    [(? eof-object?) #t]
+                    [(? bytes?) (send! (tcp-channel local-handle remote-handle value)) #f]))
+              (on (message (tcp-channel remote-handle local-handle $bs))
+                  (write-bytes bs)
+                  (flush-output)
+                  #f)))
