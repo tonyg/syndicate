@@ -1,24 +1,23 @@
 ## Syntax
 
-Just a sketch, at the moment. The connection between Racket `expr`s
-and `I` needs to be clarified, among many other things.
+Just a sketch, at the moment.
 
-	Instantaneous actions, I := (actor Idef ...)
-							    (state [O ...] [E I ...] ...)
+	Instantaneous actions, I := (actor I ...)
+	                            (network I ...)
+							    (state [B O ...] [E I ...] ...)
 								(background I ...)
 								(assert! P)
 								(retract! P)
 								(send! P)
 								(flush!)              ;; ???
-								(begin I ...)         ;; and, generally, expr?
-	  Actor-level defs, Idef := I
-								(define id expr)
-								(define (id id ...) expr ...)
+								expr
+        Optional Bindings, B := ;; nothing, or
+			                    #:collect [(id I) ...]
 		  Ongoing actions, O := (on E I ...)
-								(once E I ...)
+								(once E I ...)        ;; ???
 								(assert P)
 								(track [x Agg] I ...)
-								(begin O ...)         ;; ??? expr?
+								(begin O ...)         ;; ??? begin isn't quite right
 			Predicates, Pred := (not Pred)
 								(exists P Pred)
 								(forall P Pred)
@@ -37,11 +36,52 @@ and `I` needs to be clarified, among many other things.
 								Pred
                  Patterns, P := ... ;; uses $var as binder
 
-	(define-syntax-rule (until E O ...)
-	  (state [O ...] [E]))
+	(define-syntax-rule (until B E O ...)
+	  (state [B O ...] [E (final-values-of B)]))
 
-    (define-syntax-rule (forever O ...)
-	  (until (rising-edge #f) O ...))
+    (define-syntax-rule (forever B O ...)
+	  (state [B O ...]))
+
+Note also that `falling-edge` is encodable using `rising-edge` and
+`not`, and that `forall` is encodable using `exists` and `not`.
+
+`state` has the `B` bindings visible in the `I`s, and returns the
+value of the final `I` from the `E` exit branch that was chosen.
+
+There are four kinds of actor-spawning `I`s: `actor`, `network`,
+`state` and `background`. Neither `actor`, `network` nor `background`
+yield a value; only `state` does so. However, both `state` and
+`background` link to their invoking contexts, because `state` may
+return a value or crash, and `background` may crash. Actors using
+`state` and `background` must therefore have a special continuation
+table in their private state to link them to their `state` and
+`background` logical-children-but-physical-siblings. The link
+communicates values (on success) and crashes (on failure).
+
+Q: Should exception values be transmitted on `state` failure? I think
+no, but I am not sure there's a good reason why not.
+
+Of the events, `asserted`, `retracted` and `message` require no
+private-state, since the network does the book-keeping for us.
+`rising-edge`, however, needs to track the state of its predicate. If
+the predicate happens to involve an `exists`, then an assertion set
+must be maintained, like for a `track`.
+
+This is leading me to believe that the order of operations is:
+
+ - Given a patch,
+   - update `track`s and assertion-sets related to `rising-edge`.
+   - handle `on` for `asserted`, `retracted` and `rising-edge`, in order of appearance (!?)
+   - maintain `assert`s
+ - Given a message,
+   - handle `on` for `message` and `rising-edge`, in order of appearance (!?)
+   - maintain `assert`s
+
+Actually, I'm not sure `falling-edge` is encodable using
+`rising-edge`, since the initial state might be different. Do we
+assume that the level is high when the level is unknown for a
+falling-edge? I think it likely, given I think it likely that we
+assume the level is low when the level is unknown for a rising-edge.
 
 ## Examples
 
