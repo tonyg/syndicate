@@ -86,12 +86,14 @@
 ;;  - a (transition Any (Constreeof Action)), a new Process state to
 ;;        be held by its World and a sequence of Actions for the World
 ;;        to take on the transitioning Process's behalf.
-;;  - a (quit (Constreeof Action)), signalling that the Process should
-;;        never again be handed an event, and that any queued actions
-;;        should be performed, followed by the sequence of Actions given,
-;;        and then the process should be garbage-collected.
+;;  - a (quit (Option Exn) (Constreeof Action)), signalling that the
+;;        Process should never again be handed an event, and that any
+;;        queued actions should be performed, followed by the sequence
+;;        of Actions given, and then the process should be
+;;        garbage-collected. The optional Exn is only used for
+;;        debugging purposes; #f means normal termination.
 (struct transition (state actions) #:transparent)
-(struct quit (actions) #:prefab)
+(struct quit (exn actions) #:prefab)
 
 ;; A PID is a Nat.
 ;; A Label is a PID or 'meta.
@@ -155,7 +157,7 @@
 (define (clean-transition t)
   (match t
     [#f #f]
-    [(quit actions) (quit (clean-actions actions))]
+    [(quit exn actions) (quit exn (clean-actions actions))]
     [(transition state actions) (transition state (clean-actions actions))]))
 
 (define (clean-actions actions)
@@ -172,8 +174,8 @@
                         (lambda () (clean-transition (ensure-transition (behavior e old-state))))
                         (match-lambda
                           [#f w]
-                          [(and q (quit final-actions))
-                           (trace-process-step-result e pid behavior old-state #f q)
+                          [(and q (quit exn final-actions))
+                           (trace-process-step-result e pid behavior old-state exn q)
                            (enqueue-actions (disable-process pid #f w) pid (append final-actions
                                                                                    (list 'quit)))]
                           [(and t (transition new-state new-actions))
@@ -222,8 +224,8 @@
      (queue-append-list (world-pending-action-queue w)
                         (for/list [(a actions)] (cons label a)))]))
 
-(define (make-quit . actions)
-  (quit actions))
+(define (make-quit #:exception [exn #f] . actions)
+  (quit exn actions))
 
 (define-syntax-rule (spawn-process behavior-exp initial-state-exp initial-patch-exp ...)
   (spawn (lambda ()
@@ -261,11 +263,11 @@
 (define (transition-bind k t0)
   (match t0
     [#f (error 'transition-bind "Cannot bind from transition #f with continuation ~v" k)]
-    [(quit _) t0]
+    [(quit _ _) t0]
     [(transition state0 actions0)
      (match (k state0)
        [#f t0]
-       [(quit actions1) (quit (cons actions0 actions1))]
+       [(quit exn actions1) (quit exn (cons actions0 actions1))]
        [(transition state1 actions1) (transition state1 (cons actions0 actions1))])]))
 
 (define (sequence-transitions t0 . steps)
@@ -397,8 +399,8 @@
     (let loop ((w w) (actions '()))
       (pretty-print w)
       (match (world-handle-event #f w)
-        [#f (values w (flatten actions))]
-        [(quit new-actions) (values w (flatten (cons actions new-actions)))]
+        [#f (values w #f (flatten actions))]
+        [(quit exn new-actions) (values w exn (flatten (cons actions new-actions)))]
         [(transition new-w new-actions) (loop new-w (cons actions new-actions))])))
 
   (step* (make-world '()))

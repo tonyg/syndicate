@@ -115,7 +115,7 @@
         (match-define (list e eid ep) task)
         (match ((handler-getter ep) e (endpoint-group-state g))
           [#f (values cumulative-patch actions g idle?)]
-          [(<quit> ep-acs) (return (quit (filter action? (flatten ep-acs))))]
+          [(<quit> exn ep-acs) (return (quit exn (filter action? (flatten ep-acs))))]
           [(transition new-state ep-acs)
            (define-values (cp acs next-g)
              (interpret-endpoint-actions cumulative-patch
