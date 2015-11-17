@@ -16,6 +16,7 @@ Just a sketch, at the moment.
 		  Ongoing actions, O := (on E I ...)
 								(once E I ...)        ;; ???
 								(assert P)
+								(assert #:when Pred P)
 								(track [x Agg] I ...)
 								(begin O ...)         ;; ??? begin isn't quite right
 			Predicates, Pred := (not Pred)
@@ -82,6 +83,15 @@ Actually, I'm not sure `falling-edge` is encodable using
 assume that the level is high when the level is unknown for a
 falling-edge? I think it likely, given I think it likely that we
 assume the level is low when the level is unknown for a rising-edge.
+
+`when` is a bit tricky, because it should clearly apply to `on` and
+`assert`, but it is not clear that it should apply to `track`.
+Furthermore, what should happen if, mid-way through some interaction
+involving assertions, the `when` predicate goes false? Should the
+subscription be retracted? On balance, I'm starting to think that
+`when` is a bad idea. In my sketches so far, there's only one place
+it's used, to conditionally `assert` a set, so I've added `#:when` to
+`assert` instead.
 
 ## Examples
 
