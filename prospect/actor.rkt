@@ -9,7 +9,7 @@
 (provide ;; actor
          ;; network
          ;; background
-         ;; state
+         state
 
          until
          forever
@@ -53,151 +53,108 @@
 (require "route.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Actor State
 
-(define-syntax (state stx)
-  (syntax-parse stx
-    [(_ #:init [I ...] [#:collect [(id init) ...] O ...] [E Oe ...] ...)
-     (expand-state 'state #'(I ...) #'(id ...) #'(init ...) #'(O ...) #'([E Oe ...] ...))]
-    [(_ [#:collect [(id init) ...] O ...] [E Oe ...] ...)
-     (expand-state 'state #'() #'(id ...) #'(init ...) #'(O ...) #'([E Oe ...] ...))]
-    [(_ #:init [I ...] [O ...] [E Oe ...] ...)
-     (expand-state 'state #'(I ...) #'() #'() #'(O ...) #'([E Oe ...] ...))]
-    [(_ [O ...] [E Oe ...] ...)
-     (expand-state 'state #'() #'() #'() #'(O ...) #'([E Oe ...] ...))]))
+;; A Variables is a (Vectorof Any), storing the explicit and implicit
+;; state variables of an actor, including tracked and implicit
+;; aggregates.
 
-(define-syntax-rule (until E O ...)
-  (state [O ...] [E (void)])) ;; TODO: return collected value(s)
+;; A Script is a (Variables -> Variables). It is to be executed inside
+;; the special syndicate-hll prompt, and so may have Instruction
+;; side-effects.
 
-(define-syntax-rule (forever O ...)
-  (state [O ...]))
+;; An Instruction is one of
+;; - (patch-instruction Patch (Void -> Instruction))
+;; - (send-instruction Message (Void -> Instruction))
+;; - (quit-instruction (Option Exn))
+;; - (spawn-instruction LinkageKind Script (-> Variables) Behavior (Void -> Instruction))
+;; - (script-complete-instruction Variables)
+;; and represents a side-effect for an actor to take in its
+;; interactions with the outside world.
+;;
+;; A LinkageKind is one of
+;; - 'call, a blocking, exception-linked connection
+;; - 'actor, a non-blocking, non-exception-linked connection
+;; - 'network, a non-blocking, nested, non-exception-linked connection
+;;
+;; Patch Instructions are issued when the actor uses `assert!` and
+;; `retract!`. Send instructions are issued when the actor uses
+;; `send!`, and quit instructions when `quit!` is called.
+;; Script-complete instructions are automatically issued when a Script
+;; terminates successfully.
+;;
+;; Spawn instructions are issued when `actor`, `network`, and `state`
+;; are used, directly or indirectly. (TODO: `background`?) The
+;; included function yielding Variables sets up the initial variables
+;; of the actor, and the included Script transforms the variables and
+;; performs initial side effects that must be performed in a context
+;; where the spawned actor's ongoing event handlers are already
+;; established. The included Behavior describes exactly the ongoing
+;; event handlers, and the included (Void -> Instruction) continuation
+;; is released when the spawned actor terminates (for blocking
+;; variants) or immediately following the spawn (for non-blocking
+;; variants).
+;;
+;; (Background is done differently, with a new continuation for the
+;; background script, and a self-send to activate it. (TODO))
+;;
+(struct patch-instruction (patch k) #:transparent)
+(struct send-instruction (message k) #:transparent)
+(struct quit-instruction (maybe-exn) #:transparent)
+(struct spawn-instruction (linkage-kind init-script init-variables-fn ongoing-handler k)
+  #:transparent)
+(struct script-complete-instruction (variables) #:transparent)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(struct link-active (parent-id child-id) #:prefab) ;; assertion
-(struct link (parent-id child-id values) #:prefab) ;; message
-
-(define link-active-projection (compile-projection (link-active ? (?!))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(struct actor-state (continuation-table ;; Own continuations
-                     parent-id
-                     self-id
-                     variables ;; Explicit variables + tracked aggregates + implicit aggregates
-                     adhoc-assertions ;; assert!/retract! aggregate
-                     pending-patch ;; assert!/retract! patch being accumulated, or #f
+;; An ActorState is an (actor-state ... as below), describing the
+;; state of an HLL actor.
+;;
+(struct actor-state (continuation-table ;; (Hashtable Symbol (Variables Any ... -> Instruction))
+                     caller-id          ;; Symbol
+                     self-id            ;; Symbol
+                     variables          ;; Variables
+                     adhoc-assertions   ;; Matcher - assert!/retract! aggregate
+                     pending-patch      ;; (Option Patch) - assert!/retract! patch being accumulated
                      )
   #:prefab)
 
-(define (generic-actor-behaviour e s)
-  (match e
-    [(? patch/removed? p)
-     (define continuation-table (actor-state-continuation-table s))
-     (define quit?
-       (for/or [(child-id (matcher-project/set/single (patch-removed p) link-active-projection))]
-         (hash-has-key? continuation-table child-id)))
-     (if quit? ;; TODO: raise exception instead? Signal the cause of the quit somehow?
-         (quit)
-         #f)]
-    [(message (link _ child-id reply-values))
-     (invoke-stored-continuation s child-id reply-values)]
-    [_ #f]))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Linkage protocol
+;;
+;; Linkages are used to both propagate values from callee to caller
+;; and to monitor callee presence for exception-propagation.
+;;   - assertion: LinkActive
+;;   - message: LinkResult
+;;   - role: Caller
+;;       Monitors LinkActive to detect termination of the Callee,
+;;       normal or abnormal. If LinkResult is received before
+;;       LinkActive vanishes, termination was normal; otherwise, it
+;;       was abnormal.
+;;   - role: Callee
+;;       Asserts LinkActive while it runs. Should send LinkResult
+;;       before termination to indicate success and communicate values
+;;       to Caller.
+;;
+;; A LinkActive is a (link-active Symbol Symbol), describing an
+;; ongoing relationship between the indicated caller and callee.
+(struct link-active (caller-id callee-id) #:prefab)
+;;
+;; A LinkResult is a (link-result Symbol Symbol (Listof Any)),
+;; describing the final values yielded by a callee to its caller.
+(struct link-result (caller-id callee-id values) #:prefab) ;; message
 
-(define (store-continuation s child-id get-next-instr)
-  (struct-copy actor-state s
-               [continuation-table
-                (hash-set (actor-state-continuation-table s)
-                          child-id
-                          get-next-instr)]))
-
-(define (invoke-stored-continuation s child-id reply-values)
-  (define continuation-table (actor-state-continuation-table s))
-  (define continuation (hash-ref continuation-table child-id #f))
-  (define new-table (hash-remove continuation-table child-id))
-  (handle-actor-syscall (transition (struct-copy actor-state s [continuation-table new-table])
-                                    '())
-                        (apply continuation (actor-state-variables s) reply-values)))
-
-(define (run-script s script)
-  (handle-actor-syscall (transition s '())
-                        ((reply-to (lambda (dummy)
-                                     (call-with-values
-                                      (lambda () (script (actor-state-variables s)))
-                                      (lambda new-variables
-                                        (call-in-raw-context/abort
-                                         (lambda ()
-                                           (script-complete-instruction new-variables)))))))
-                         (void))))
-
-(define (compose-ongoing-handler ongoing-handler)
-  (lambda (e s)
-    (match (ongoing-handler e s)
-      [#f (generic-actor-behaviour e s)]
-      [t (transition-bind (lambda (s) (generic-actor-behaviour e s)) t)])))
-
-(define (handle-actor-syscall t instr)
-  (match-define (transition s previous-actions) t)
-  (match instr
-    [(patch-instruction p get-next-instr)
-     (define p0 (actor-state-pending-patch s))
-     (handle-actor-syscall (transition (struct-copy actor-state s
-                                        [adhoc-assertions
-                                         (update-interests (actor-state-adhoc-assertions s) p)]
-                                        [pending-patch
-                                         (if p0 (patch-seq p0 p) p)])
-                                       previous-actions)
-                           (get-next-instr (void)))]
-    [(send-instruction m get-next-instr)
-     (handle-actor-syscall (transition (struct-copy actor-state s [pending-patch #f])
-                                       (list previous-actions
-                                             (actor-state-pending-patch s)
-                                             (message m)))
-                           (get-next-instr (void)))]
-    [(quit-instruction maybe-exn)
-     (quit #:exception maybe-exn
-           (list previous-actions
-                 (actor-state-pending-patch s)))]
-    [(spawn-instruction actor-kind init-script init-variables-fn ongoing-handler get-next-instr)
-     (define child-id (gensym 'actor))
-     (define child-parent-id (and (eq? actor-kind 'state) (actor-state-self-id s)))
-     (define sub-to-children
-       (patch-seq (sub (link-active child-id ?))
-                  (sub (link child-id ? ?))))
-     (define initial-subs
-       (if child-parent-id
-           (patch-seq sub-to-children
-                      (assert (link-active child-parent-id child-id)))
-           sub-to-children))
-     (transition (store-continuation s child-id get-next-instr)
-                 (list previous-actions
-                       (<spawn> (lambda ()
-                                  (list (if ongoing-handler
-                                            (compose-ongoing-handler ongoing-handler)
-                                            generic-actor-behaviour)
-                                        (transition-bind
-                                         (lambda (s) (run-script s init-script))
-                                         (transition (actor-state (hasheq)
-                                                                  child-parent-id
-                                                                  child-id
-                                                                  (init-variables-fn)
-                                                                  (matcher-empty)
-                                                                  #f)
-                                                     initial-subs)))))))]
-    [(script-complete-instruction new-variables)
-     (transition (struct-copy actor-state s
-                              [pending-patch #f]
-                              [variables new-variables])
-                 (list previous-actions
-                       (actor-state-pending-patch s)))]))
+;; Projection for observing LinkActive.
+(define link-active-projection (compile-projection (link-active ? (?!))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Producing Instruction side-effects
 
 (define prompt (make-continuation-prompt-tag 'syndicate-hll))
 
+;; (Any ... -> Nothing) -> (Any ... -> Instruction)
 (define (reply-to k)
   (lambda reply-values
     (call-with-continuation-prompt (lambda ()
-                                     (with-handlers [(values
+                                     (with-handlers [((lambda (e) #t)
                                                       (lambda (exn)
                                                         (call-in-raw-context/abort
                                                          (lambda () (quit-instruction exn)))))]
@@ -205,21 +162,15 @@
                                        (error 'reply-to "Script returned directly")))
                                    prompt)))
 
+;; (-> Instruction) -> Nothing
 (define (call-in-raw-context/abort proc)
   (abort-current-continuation prompt proc))
 
+;; ((Any ... -> Instruction) -> Instruction)
 (define (call-in-raw-context proc)
   (call-with-composable-continuation
    (lambda (k) (abort-current-continuation prompt (lambda () (proc (reply-to k)))))
    prompt))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(struct patch-instruction (patch k) #:transparent)
-(struct send-instruction (message k) #:transparent)
-(struct quit-instruction (maybe-exn) #:transparent)
-(struct spawn-instruction (actor-kind init-script init-variables-fn ongoing-handler k) #:transparent)
-(struct script-complete-instruction (variables) #:transparent)
 
 ;; Returns void
 (define (assert! P)
@@ -242,22 +193,143 @@
    (lambda () (quit-instruction maybe-exn))))
 
 ;; Returns new variables, plus values from spawned actor if any.
-(define (spawn! actor-kind init-script init-variables-fn ongoing-handler)
+(define (spawn! linkage-kind init-script init-variables-fn ongoing-handler)
   (call-in-raw-context
-   (lambda (k) (spawn-instruction actor-kind init-script init-variables-fn ongoing-handler k))))
+   (lambda (k) (spawn-instruction linkage-kind init-script init-variables-fn ongoing-handler k))))
+
+;; Syntax for spawning a 'call-linked actor.
+(define-syntax (state stx)
+  (syntax-parse stx
+    [(_ #:init [I ...] [#:collect [(id init) ...] O ...] [E Oe ...] ...)
+     (expand-state 'call #'(I ...) #'(id ...) #'(init ...) #'(O ...) #'([E Oe ...] ...))]
+    [(_ [#:collect [(id init) ...] O ...] [E Oe ...] ...)
+     (expand-state 'call #'() #'(id ...) #'(init ...) #'(O ...) #'([E Oe ...] ...))]
+    [(_ #:init [I ...] [O ...] [E Oe ...] ...)
+     (expand-state 'call #'(I ...) #'() #'() #'(O ...) #'([E Oe ...] ...))]
+    [(_ [O ...] [E Oe ...] ...)
+     (expand-state 'call #'() #'() #'() #'(O ...) #'([E Oe ...] ...))]))
+
+;; Sugar
+(define-syntax-rule (until E O ...)
+  (state [O ...] [E (void)])) ;; TODO: return collected value(s)
+
+;; Sugar
+(define-syntax-rule (forever O ...)
+  (state [O ...]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Main behavior of HLL actors
 
-;; Actor kinds:
-;;  - 'actor
-;;  - 'state
-;;  - 'network
-;;
-;; Background is done differently, with a new continuation for the
-;; background script, and a self-send to activate it.
+;; Behavior
+(define (generic-actor-behavior e s)
+  (match e
+    [(? patch/removed? p)
+     (define continuation-table (actor-state-continuation-table s))
+     (define quit?
+       (for/or [(callee-id (matcher-project/set/single (patch-removed p) link-active-projection))]
+         (hash-has-key? continuation-table callee-id)))
+     (if quit? ;; TODO: raise exception instead? Signal the cause of the quit somehow?
+         (quit)
+         #f)]
+    [(message (link-result _ callee-id reply-values))
+     (invoke-stored-continuation s callee-id reply-values)]
+    [_ #f]))
+
+;; ActorState Symbol (Variables Any ... -> Instruction) -> ActorState
+(define (store-continuation s callee-id get-next-instr)
+  (struct-copy actor-state s
+               [continuation-table
+                (hash-set (actor-state-continuation-table s)
+                          callee-id
+                          get-next-instr)]))
+
+;; ActorState Symbol (Listof Any) -> Transition
+(define (invoke-stored-continuation s callee-id reply-values)
+  (define continuation-table (actor-state-continuation-table s))
+  (define continuation (hash-ref continuation-table callee-id #f))
+  (define new-table (hash-remove continuation-table callee-id))
+  (handle-actor-syscall (transition (struct-copy actor-state s [continuation-table new-table])
+                                    '())
+                        (apply continuation (actor-state-variables s) reply-values)))
+
+;; ActorState Script -> Transition
+(define (run-script s script)
+  (handle-actor-syscall (transition s '())
+                        ((reply-to (lambda (dummy)
+                                     (define new-variables (script (actor-state-variables s)))
+                                     (call-in-raw-context/abort
+                                      (lambda ()
+                                        (script-complete-instruction new-variables)))))
+                         (void))))
+
+;; Behavior -> Behavior
+(define (compose-ongoing-handler ongoing-handler)
+  (lambda (e s)
+    (match (ongoing-handler e s)
+      [#f (generic-actor-behavior e s)]
+      [t (transition-bind (lambda (s) (generic-actor-behavior e s)) t)])))
+
+;; Transition Instruction -> Transition
+(define (handle-actor-syscall t instr)
+  (match-define (transition s previous-actions) t)
+  (match instr
+    [(patch-instruction p get-next-instr)
+     (define p0 (actor-state-pending-patch s))
+     (handle-actor-syscall (transition (struct-copy actor-state s
+                                        [adhoc-assertions
+                                         (update-interests (actor-state-adhoc-assertions s) p)]
+                                        [pending-patch
+                                         (if p0 (patch-seq p0 p) p)])
+                                       previous-actions)
+                           (get-next-instr (void)))]
+    [(send-instruction m get-next-instr)
+     (handle-actor-syscall (transition (struct-copy actor-state s [pending-patch #f])
+                                       (list previous-actions
+                                             (actor-state-pending-patch s)
+                                             (message m)))
+                           (get-next-instr (void)))]
+    [(quit-instruction maybe-exn)
+     (quit #:exception maybe-exn
+           (list previous-actions
+                 (actor-state-pending-patch s)))]
+    [(spawn-instruction linkage-kind init-script init-variables-fn ongoing-handler get-next-instr)
+     (define callee-id (gensym 'actor))
+     (define callee-caller-id (and (eq? linkage-kind 'call) (actor-state-self-id s)))
+     (define sub-to-callees
+       (patch-seq (sub (link-active callee-id ?))
+                  (sub (link-result callee-id ? ?))))
+     (define initial-subs
+       (if callee-caller-id
+           (patch-seq sub-to-callees
+                      (assert (link-active callee-caller-id callee-id)))
+           sub-to-callees))
+     (transition (store-continuation s callee-id get-next-instr)
+                 (list previous-actions
+                       (<spawn> (lambda ()
+                                  (list (if ongoing-handler
+                                            (compose-ongoing-handler ongoing-handler)
+                                            generic-actor-behavior)
+                                        (transition-bind
+                                         (lambda (s) (run-script s init-script))
+                                         (transition (actor-state (hasheq)
+                                                                  callee-caller-id
+                                                                  callee-id
+                                                                  (init-variables-fn)
+                                                                  (matcher-empty)
+                                                                  #f)
+                                                     initial-subs)))))))]
+    [(script-complete-instruction new-variables)
+     (transition (struct-copy actor-state s
+                              [pending-patch #f]
+                              [variables new-variables])
+                 (list previous-actions
+                       (actor-state-pending-patch s)))]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Compilation of HLL actors
 
 (begin-for-syntax
-  (define (expand-state actor-kind init-actions binding-names binding-inits ongoings edges)
+  (define (expand-state linkage-kind init-actions binding-names binding-inits ongoings edges)
     (define state-variable-init-exps binding-inits)
 
     (define (allocate-state-variable! init-exp)
@@ -274,6 +346,7 @@
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; HLL pattern analysis
 
 (begin-for-syntax
   (define (dollar-id? stx)
