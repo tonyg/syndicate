@@ -5,8 +5,8 @@
 
 (spawn-timer-driver)
 
-(define ((log-it eid stage) e u)
-  (log-info "endpoint ~a stage ~a state ~a: ~v" eid stage u e)
+(define ((log-it eid) e u)
+  (log-info "endpoint ~a state ~a: ~v" eid u e)
   (and e (transition (+ u 1)
                      (if (equal? e (message 2))
                          (if (equal? eid 0)
@@ -25,17 +25,13 @@
 (spawn-endpoint-group 0
                       (add-endpoint
                        (lambda (eid state)
-                         (values (endpoint (log-it eid "pre")
-                                           (log-it eid "peri")
-                                           (log-it eid "post"))
+                         (values (log-it eid)
                                  (transition state
                                              (list (sub 1)
                                                    (sub 2))))))
                       (add-endpoint
                        (lambda (eid state)
-                         (values (endpoint (log-it eid "pre")
-                                           (log-it eid "peri")
-                                           (log-it eid "post"))
+                         (values (log-it eid)
                                  (transition state
                                              (list (sub 3)
                                                    (sub 2)))))))

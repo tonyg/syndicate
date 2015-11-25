@@ -8,7 +8,6 @@
          spawn-endpoint-group
          boot-endpoint-group
          endpoint-action?
-         (struct-out endpoint)
          endpoint-group-handle-event
          pretty-print-endpoint-group)
 
@@ -36,7 +35,7 @@
   [(define (prospect-pretty-print g [p (current-output-port)])
      (pretty-print-endpoint-group g p))])
 
-;; A Handler is a (Event State -> Transition)
+;; A Endpoint is a (Event State -> Transition)
 ;; A Transition reuses the struct from core, but with EndpointActions instead of plain Actions.
 ;; An EndpointAction is either an Action, or a
 ;; (add-endpoint (EID State -> (Values Endpoint Transition))), or a
@@ -70,18 +69,7 @@
       (add-endpoint? a)
       (delete-endpoint? a)))
 
-;; An Endpoint represents the behaviour of an endpoint.
-(struct endpoint (pre-handler ;; Handler
-                  peri-handler ;; Handler
-                  post-handler ;; Handler
-                  ) #:transparent)
-
-(define (inert-handler e state) #f)
-
-(define inert-endpoint
-  (endpoint inert-handler
-            inert-handler
-            inert-handler))
+(define (inert-endpoint e state) #f)
 
 (define (endpoint-group-handle-event e g)
   (match-define (endpoint-group _ routing-table interests endpoints state) g)
@@ -91,20 +79,14 @@
       [(? patch?) (compute-affected-pids routing-table e)]
       [(message body)
        (tset->list (matcher-match-value routing-table (observe body) (datum-tset)))]))
-  (define tasks (for/list [(eid affected-eids)]
-                  (list (if (patch? e)
-                            (view-patch e (hash-ref interests eid matcher-empty))
-                            e)
-                        eid
-                        (hash-ref endpoints eid inert-endpoint))))
-  (define t0 (transition g '()))
-  (define t1 (sequence-transitions t0
-                                   (sequence-handlers tasks endpoint-pre-handler)
-                                   (sequence-handlers tasks endpoint-peri-handler)
-                                   (sequence-handlers tasks endpoint-post-handler)))
-  (if (eq? t1 t0) #f t1))
+  (sequence-handlers g (for/list [(eid affected-eids)]
+                         (list (if (patch? e)
+                                   (view-patch e (hash-ref interests eid matcher-empty))
+                                   e)
+                               eid
+                               (hash-ref endpoints eid (lambda () inert-endpoint))))))
 
-(define ((sequence-handlers tasks handler-getter) g)
+(define (sequence-handlers g tasks)
   (let/ec return
     (define-values (final-cumulative-patch final-actions final-g idle?)
       (for/fold ([cumulative-patch empty-patch]
@@ -113,7 +95,7 @@
                  [idle? #t])
                 ([task tasks])
         (match-define (list e eid ep) task)
-        (match ((handler-getter ep) e (endpoint-group-state g))
+        (match (ep e (endpoint-group-state g))
           [#f (values cumulative-patch actions g idle?)]
           [(<quit> exn ep-acs) (return (<quit> exn (filter action? (flatten ep-acs))))]
           [(transition new-state ep-acs)
