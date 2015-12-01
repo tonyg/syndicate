@@ -4,6 +4,7 @@
 (provide (struct-out endpoint-group)
          (struct-out add-endpoint)
          (struct-out delete-endpoint)
+         (struct-out as-endpoint)
          make-endpoint-group
          spawn-endpoint-group
          boot-endpoint-group
@@ -39,9 +40,11 @@
 ;; A Transition reuses the struct from core, but with EndpointActions instead of plain Actions.
 ;; An EndpointAction is either an Action, or a
 ;; (add-endpoint (EID State -> (Values Endpoint Transition))), or a
-;; (delete-endpoint EID)
+;; (delete-endpoint)
+;; (as-endpoint EID EndpointAction)
 (struct add-endpoint (function) #:prefab)
-(struct delete-endpoint (eid) #:prefab)
+(struct delete-endpoint () #:prefab)
+(struct as-endpoint (eid action) #:prefab)
 
 (define (make-endpoint-group initial-state)
   (endpoint-group 0
@@ -67,7 +70,8 @@
 (define (endpoint-action? a)
   (or (action? a)
       (add-endpoint? a)
-      (delete-endpoint? a)))
+      (delete-endpoint? a)
+      (and (as-endpoint? a) (endpoint-action? (as-endpoint-action a)))))
 
 (define (inert-endpoint e state) #f)
 
@@ -155,14 +159,16 @@
                                               [state (transition-state initial-transition)])
                                  new-eid
                                  (transition-actions initial-transition))]
-    [(delete-endpoint eid)
+    [(delete-endpoint)
      (interpret-endpoint-patch cumulative-patch
                                actions
                                (struct-copy endpoint-group g
                                             [endpoints
                                              (hash-remove (endpoint-group-endpoints g) eid)])
                                eid
-                               (patch (matcher-empty) (pattern->matcher #t ?)))]))
+                               (patch (matcher-empty) (pattern->matcher #t ?)))]
+    [(as-endpoint other-eid inner-endpoint-action)
+     (interpret-endpoint-actions cumulative-patch actions g other-eid inner-endpoint-action)]))
 
 (define (interpret-endpoint-actions cumulative-patch actions g eid unflattened-endpoint-actions)
   (define endpoint-actions (filter endpoint-action? (flatten unflattened-endpoint-actions)))

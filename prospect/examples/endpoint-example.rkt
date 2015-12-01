@@ -10,7 +10,7 @@
   (and e (transition (+ u 1)
                      (if (equal? e (message 2))
                          (if (equal? eid 0)
-                             (list (unsub 2) (sub 5) (delete-endpoint 1))
+                             (list (unsub 2) (sub 5) (as-endpoint 1 (delete-endpoint)))
                              (list (unsub 2) (sub 5)))
                          '()))))
 
