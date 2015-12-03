@@ -18,9 +18,9 @@
          (when (message? e) (log-info "general: ~v" e))
          #f)
        (void)
-       (sub ?)
-       (unsub (observe ?))
-       (unsub (at-meta ?)))
+       (patch-seq (sub ?)
+                  (unsub (observe ?))
+                  (unsub (at-meta ?))))
 
 (spawn-endpoint-group 0
                       (add-endpoint

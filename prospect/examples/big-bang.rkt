@@ -12,14 +12,15 @@
              [(message (at-meta (mouse-event _ _ _ "button-down"))) (transition s (callback))]
              [_ #f]))
          (void)
-         (let ((label-image (text label font-size foreground)))
-           (update-window name x y
-                          (overlay label-image
-                                   (rectangle (+ (image-width label-image) 20)
-                                              (+ (image-height label-image) 20)
-                                              "solid"
-                                              background))))
-         (sub (mouse-event ? ? name ?) #:meta-level 1)))
+         (patch-seq
+          (let ((label-image (text label font-size foreground)))
+            (update-window name x y
+                           (overlay label-image
+                                    (rectangle (+ (image-width label-image) 20)
+                                               (+ (image-height label-image) 20)
+                                               "solid"
+                                               background))))
+          (sub (mouse-event ? ? name ?) #:meta-level 1))))
 
 (define (draggable-shape name orig-x orig-y image)
   (struct idle (ticks x y) #:transparent)
@@ -45,9 +46,9 @@
                              (mouse-sub name)))]
           [(_ _) #f])
          (idle 0 orig-x orig-y)
-         (sub (tick-event) #:meta-level 1)
-         (mouse-sub name)
-         (move-to orig-x orig-y)))
+         (patch-seq (sub (tick-event) #:meta-level 1)
+                    (mouse-sub name)
+                    (move-to orig-x orig-y))))
 
 (big-bang-world #:width 640
                 #:height 480

@@ -24,9 +24,9 @@
                                                                    (format "msg ~v\n" n))))))]))
   (spawn connection-handler
 	 0
-         (sub (advertise (tcp-channel c server-id ?)))
-	 (sub (tcp-channel c server-id ?))
-         (pub (tcp-channel server-id c ?))))
+         (patch-seq (sub (advertise (tcp-channel c server-id ?)))
+                    (sub (tcp-channel c server-id ?))
+                    (pub (tcp-channel server-id c ?)))))
 
 (spawn-demand-matcher (advertise (tcp-channel (?!) server-id ?))
                       (observe (tcp-channel (?!) server-id ?))

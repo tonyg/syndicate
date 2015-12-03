@@ -90,10 +90,11 @@
   (thread (lambda () (tcp-listener-thread control-ch listener server-addr)))
   (spawn tcp-listener-behavior
 	 (listener-state control-ch server-addr)
-         (sub (advertise (observe (tcp-channel ? server-addr ?)))) ;; monitor peer
-         (pub (advertise (tcp-channel ? server-addr ?))) ;; declare we might make connections
-         (sub (tcp-accepted ? server-addr ? ?) #:meta-level 1) ;; events from driver thread
-         ))
+         (patch-seq
+          (sub (advertise (observe (tcp-channel ? server-addr ?)))) ;; monitor peer
+          (pub (advertise (tcp-channel ? server-addr ?))) ;; declare we might make connections
+          (sub (tcp-accepted ? server-addr ? ?) #:meta-level 1) ;; events from driver thread
+          )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Outbound Connection
@@ -176,8 +177,9 @@
   (thread (lambda () (tcp-connection-thread remote-addr local-addr control-ch cin)))
   (spawn tcp-connection
 	 (connection-state control-ch cout)
-         (sub (observe (tcp-channel remote-addr local-addr ?))) ;; monitor peer
-         (pub (tcp-channel remote-addr local-addr ?)) ;; may send segments to peer
-         (sub (tcp-channel local-addr remote-addr ?)) ;; want segments from peer
-         (sub (tcp-channel remote-addr local-addr ?) #:meta-level 1) ;; segments from driver thread
-         ))
+         (patch-seq
+          (sub (observe (tcp-channel remote-addr local-addr ?))) ;; monitor peer
+          (pub (tcp-channel remote-addr local-addr ?)) ;; may send segments to peer
+          (sub (tcp-channel local-addr remote-addr ?)) ;; want segments from peer
+          (sub (tcp-channel remote-addr local-addr ?) #:meta-level 1) ;; segments from driver thread
+          )))

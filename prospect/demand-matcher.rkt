@@ -99,9 +99,9 @@
 				 (lambda (acs . rs) (cons (apply decrease-handler rs) acs))))
   (spawn demand-matcher-handle-event
 	 d
-         (sub (projection->pattern demand-spec) #:meta-level meta-level)
-         (sub (projection->pattern supply-spec) #:meta-level meta-level)
-         (pub (projection->pattern supply-spec) #:meta-level meta-level)))
+         (patch-seq (sub (projection->pattern demand-spec) #:meta-level meta-level)
+                    (sub (projection->pattern supply-spec) #:meta-level meta-level)
+                    (pub (projection->pattern supply-spec) #:meta-level meta-level))))
 
 ;; (Matcher (Option (Setof (Listof Value))) ... -> (Option (Constreeof Action)))
 ;;    Matcher Projection ...
@@ -137,6 +137,6 @@
    (when timeout-msec (message (set-timer timer-id timeout-msec 'relative)))
    (spawn on-claim-handler
           (matcher-empty)
-          (patch base-interests (matcher-empty))
-          (patch-seq* (map projection->pattern projections))
-          (sub (timer-expired timer-id ?)))))
+          (patch-seq (patch base-interests (matcher-empty))
+                     (patch-seq* (map projection->pattern projections))
+                     (sub (timer-expired timer-id ?))))))

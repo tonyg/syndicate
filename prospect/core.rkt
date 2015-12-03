@@ -148,8 +148,11 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define (general-transition? v)
+  (or (not v) (transition? v) (quit? v)))
+
 (define (ensure-transition v)
-  (if (or (not v) (transition? v) (quit? v))
+  (if (general-transition? v)
       v
       (raise (exn:fail:contract (format "Expected transition, quit or #f; got ~v" v)
 				(current-continuation-marks)))))
@@ -227,16 +230,15 @@
 (define (make-quit #:exception [exn #f] . actions)
   (quit exn actions))
 
-(define-syntax-rule (spawn-process behavior-exp initial-state-exp initial-patch-exp ...)
+(define-syntax-rule (spawn-process behavior-exp initial-state-exp initial-action-tree-exp)
   (spawn (lambda ()
-           (list (patch-seq initial-patch-exp ...)
-                 behavior-exp
-                 initial-state-exp))))
+           (list behavior-exp
+                 (transition initial-state-exp initial-action-tree-exp)))))
 
-(define-syntax-rule (spawn/stateless behavior-exp initial-patch-exp ...)
+(define-syntax-rule (spawn/stateless behavior-exp initial-action-tree-exp)
   (spawn-process (stateless-behavior-wrap behavior-exp)
                  (void)
-                 initial-patch-exp ...))
+                 initial-action-tree-exp))
 
 (define ((stateless-behavior-wrap b) e state)
   (match (b e)
@@ -256,9 +258,8 @@
 
 (define (make-spawn-world boot-actions-thunk)
   (spawn (lambda ()
-           (list empty-patch
-                 world-handle-event
-                 (make-world (boot-actions-thunk))))))
+           (list world-handle-event
+                 (transition (make-world (boot-actions-thunk)) '())))))
 
 (define (transition-bind k t0)
   (match t0
@@ -308,25 +309,15 @@
      (invoke-process 'booting
                      (lambda ()
                        (match (boot)
-                         [(and results (list (? patch?) (? procedure?) _))
+                         [(and results (list (? procedure?) (? general-transition?)))
                           results]
                          [other
                           (error 'spawn
                                  "Spawn boot procedure must yield boot spec; received ~v"
                                  other)]))
                      (lambda (results)
-                       (match-define (list initial-patch behavior initial-state) results)
-                       (define-values (new-mux new-pid patches meta-action)
-                         (mux-add-stream (world-mux w) initial-patch))
-                       (let* ((w (update-state w new-pid initial-state))
-                              (w (mark-pid-runnable w new-pid))
-                              (w (struct-copy world w
-                                              [mux new-mux]
-                                              [behaviors (hash-set (world-behaviors w)
-                                                                   new-pid
-                                                                   behavior)]))
-                              (w (deliver-patches w patches meta-action)))
-                         w))
+                       (match-define (list behavior initial-transition) results)
+                       (create-process w behavior initial-transition))
                      (lambda (exn)
                        (log-error "Spawned process in world ~a died with exception:\n~a"
                                   (trace-pid-stack)
@@ -351,6 +342,37 @@
      (transition (for/fold [(w w)] [(pid (in-list affected-pids))]
                    (send-event m pid w))
                  (and send-to-meta? (message (at-meta-claim body))))]))
+
+(define (create-process w behavior initial-transition)
+  (if (not initial-transition)
+      w ;; Uh, ok
+      (let ()
+        (define-values (postprocess initial-actions)
+          (match (clean-transition initial-transition)
+            [(and q (quit exn initial-actions0))
+             (values (lambda (w pid)
+                       (trace-process-step-result 'boot pid behavior (void) exn q)
+                       (disable-process pid exn w))
+                     (append initial-actions0 (list 'quit)))]
+            [(and t (transition initial-state initial-actions0))
+             (values (lambda (w pid)
+                       (trace-process-step-result 'boot pid behavior (void) #f t)
+                       (mark-pid-runnable (update-state w pid initial-state) pid))
+                     initial-actions0)]))
+        (define-values (initial-patch remaining-initial-actions)
+          (match initial-actions
+            [(cons (? patch? p) rest) (values p rest)]
+            [other (values empty-patch other)]))
+        (define-values (new-mux new-pid patches meta-action)
+          (mux-add-stream (world-mux w) initial-patch))
+        (let* ((w (struct-copy world w
+                               [mux new-mux]
+                               [behaviors (hash-set (world-behaviors w)
+                                                    new-pid
+                                                    behavior)]))
+               (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions))
+               (w (deliver-patches w patches meta-action)))
+          w))))
 
 (define (deliver-patches w patches meta-action)
   (transition (for/fold [(w w)] [(entry (in-list patches))]

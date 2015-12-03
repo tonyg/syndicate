@@ -6,6 +6,7 @@
          (struct-out delete-endpoint)
          make-endpoint-group
          spawn-endpoint-group
+         boot-endpoint-group
          endpoint-action?
          (struct-out endpoint)
          endpoint-group-handle-event
@@ -50,20 +51,19 @@
                   (hash)
                   initial-state))
 
-(define-syntax-rule (spawn-endpoint-group initial-state add-endpoint-instruction ...)
-  (<spawn> (lambda ()
-             (define-values (final-cumulative-patch final-actions final-g)
-               (interpret-endpoint-actions empty-patch
-                                           '()
-                                           (make-endpoint-group initial-state)
-                                           -1
-                                           (list add-endpoint-instruction ...)))
-             (when (not (null? final-actions))
-               (error 'spawn-endpoint-group
-                      "Unexpected initial actions: ~v" final-actions))
-             (list final-cumulative-patch
-                   endpoint-group-handle-event
-                   final-g))))
+(define-syntax-rule (spawn-endpoint-group initial-state action-constree ...)
+  (<spawn> (lambda () (boot-endpoint-group initial-state (list action-constree ...)))))
+
+(define (boot-endpoint-group initial-state initial-actions)
+  (define-values (final-cumulative-patch final-actions final-g)
+    (interpret-endpoint-actions empty-patch
+                                '()
+                                (make-endpoint-group initial-state)
+                                -1
+                                initial-actions))
+  (list endpoint-group-handle-event
+        (transition final-g (incorporate-cumulative-patch final-actions
+                                                          final-cumulative-patch))))
 
 (define (endpoint-action? a)
   (or (action? a)

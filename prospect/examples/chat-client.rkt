@@ -19,8 +19,9 @@
                       (flush-output)
                       #f]
                      [_ #f]))
-                 (sub (external-event (read-bytes-line-evt (current-input-port) 'any) ?)
-                      #:meta-level 1)
-                 (sub (tcp-channel remote-handle local-handle ?))
-                 (sub (advertise (tcp-channel remote-handle local-handle ?)))
-                 (pub (tcp-channel local-handle remote-handle ?)))
+                 (patch-seq
+                  (sub (external-event (read-bytes-line-evt (current-input-port) 'any) ?)
+                       #:meta-level 1)
+                  (sub (tcp-channel remote-handle local-handle ?))
+                  (sub (advertise (tcp-channel remote-handle local-handle ?)))
+                  (pub (tcp-channel local-handle remote-handle ?))))

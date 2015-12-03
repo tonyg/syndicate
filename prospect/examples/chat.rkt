@@ -30,13 +30,14 @@
                     (list (for/list [(who arrived)] (say who "arrived."))
                           (for/list [(who departed)] (say who "departed.")))))]
              [#f #f]))
-         (sub `(,? says ,?)) ;; read actual chat messages
-         (sub (advertise `(,? says ,?))) ;; observe peer presence
-         (pub `(,user says ,?)) ;; advertise our presence
-         (sub (tcp-channel them us ?) #:meta-level 1) ;; read from remote client
-         (sub (advertise (tcp-channel them us ?)) #:meta-level 1) ;; monitor remote client
-         (pub (tcp-channel us them ?) #:meta-level 1) ;; we will write to remote client
-         )))
+         (patch-seq
+          (sub `(,? says ,?)) ;; read actual chat messages
+          (sub (advertise `(,? says ,?))) ;; observe peer presence
+          (pub `(,user says ,?)) ;; advertise our presence
+          (sub (tcp-channel them us ?) #:meta-level 1) ;; read from remote client
+          (sub (advertise (tcp-channel them us ?)) #:meta-level 1) ;; monitor remote client
+          (pub (tcp-channel us them ?) #:meta-level 1) ;; we will write to remote client
+          ))))
 
 (spawn-tcp-driver)
 (spawn-world

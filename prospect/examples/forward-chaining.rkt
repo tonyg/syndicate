@@ -19,8 +19,8 @@
                               (assert `(parent-count ,new-count))))]
            [_ #f]))
        0
-       (sub `(parent ,? ,?))
-       (assert `(parent-count 0)))
+       (patch-seq (sub `(parent ,? ,?))
+                  (assert `(parent-count 0))))
 
 (define (insert-record record . monitors)
   (printf "Record ~v inserted, depending on ~v\n" record monitors)
@@ -36,9 +36,9 @@
               (quit)]
              [_ #f]))
          (void)
-         (assert record)
-         (sub `(retract ,record))
-         (patch-seq* (map sub monitors))))
+         (patch-seq (assert record)
+                    (sub `(retract ,record))
+                    (patch-seq* (map sub monitors)))))
 
 (insert-record `(parent john douglas))
 (insert-record `(parent bob john))
@@ -91,8 +91,8 @@
                                                                          `(parent ,A ,C)
                                                                          `(ancestor ,C ,B)))))))
                                  (void)
-                                 (sub `(parent ,A ,C))
-                                 (sub `(ancestor ,C ,?)))))]
+                                 (patch-seq (sub `(parent ,A ,C))
+                                            (sub `(ancestor ,C ,?))))))]
            [_ #f]))
        (void)
        (sub `(parent ,? ,?)))
@@ -128,10 +128,11 @@
 ;;                                                   (assert `(ancestor ,A ,B))))]
 ;;                                    [_ #f]))
 ;;                                (matcher-empty)
-;;                                (sub `(parent ,A ,B))
-;;                                (sub `(parent ,A ,?))
-;;                                (sub `(ancestor ,? ,B))
-;;                                (pub `(ancestor ,A ,B)))))
+;;                                (patch-seq
+;;                                 (sub `(parent ,A ,B))
+;;                                 (sub `(parent ,A ,?))
+;;                                 (sub `(ancestor ,? ,B))
+;;                                 (pub `(ancestor ,A ,B))))))
 
 (spawn (lambda (e s)
          (when (patch? e) (pretty-print-patch e))
@@ -143,11 +144,10 @@
   (define id (gensym 'after))
   (if (zero? msec)
       (thunk)
-      (list
-       (spawn (lambda (e s) (and (message? e) (quit (thunk))))
-              (void)
-              (sub (timer-expired id ?)))
-       (message (set-timer id msec 'relative)))))
+      (spawn (lambda (e s) (and (message? e) (quit (thunk))))
+             (void)
+             (list (message (set-timer id msec 'relative))
+                   (sub (timer-expired id ?))))))
 
 (define use-delays? #t)
 

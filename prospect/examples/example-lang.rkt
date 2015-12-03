@@ -28,7 +28,7 @@
     [_ #f]))
 
 (spawn-world (spawn r (void) (sub ?))
-             (spawn b 0))
+             (spawn b 0 '()))
 
 (define (echoer e s)
   (match e
@@ -38,7 +38,8 @@
      (transition s (message `(print (got-line ,line))))]
     [_ #f]))
 
-(spawn echoer (void)
+(spawn echoer
+       (void)
        (sub (external-event (read-line-evt (current-input-port) 'any) ?) #:meta-level 1))
 
 (define (ticker e s)
@@ -56,9 +57,10 @@
 
 (spawn-timer-driver)
 (message (set-timer 'tick 1000 'relative))
-(spawn ticker 1
-       (sub (observe (set-timer ? ? ?)))
-       (sub (timer-expired 'tick ?)))
+(spawn ticker
+       1
+       (patch-seq (sub (observe (set-timer ? ? ?)))
+                  (sub (timer-expired 'tick ?))))
 
 (define (printer e s)
   (match e
@@ -67,4 +69,6 @@
      #f]
     [_ #f]))
 
-(spawn printer (void) (sub `(print ,?)))
+(spawn printer
+       (void)
+       (sub `(print ,?)))

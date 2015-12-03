@@ -9,5 +9,5 @@
             [1 (transition 2 (retract 'a #:meta-level 1))]
             [_ #f]))
         0
-        (assert 'a #:meta-level 1)
-        (assert (observe 'a) #:meta-level 1)))
+        (patch-seq (assert 'a #:meta-level 1)
+                   (assert (observe 'a) #:meta-level 1))))

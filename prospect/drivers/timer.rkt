@@ -35,8 +35,8 @@
       [_ #f]))
   (spawn timer-driver
          0 ;; initial count
-         (sub (set-timer ? ? ?))
-         (pub (timer-expired ? ?))))
+         (patch-seq (sub (set-timer ? ? ?))
+                    (pub (timer-expired ? ?)))))
 
 (define (timer-driver-thread-main control-ch)
   (define heap (make-timer-heap))

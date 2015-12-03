@@ -107,10 +107,11 @@
 				       (connection-handler server-addr)))
   (spawn websocket-listener
 	 (listener-state shutdown-procedure server-addr)
-         (sub (advertise (observe (websocket-message ? server-addr ?)))) ;; monitor peer
-         (pub (advertise (websocket-message ? server-addr ?))) ;; declare we might make connections
-         (sub (websocket-connection ? server-addr ? ? ?) #:meta-level 1) ;; events from driver thd
-         ))
+         (patch-seq
+          (sub (advertise (observe (websocket-message ? server-addr ?)))) ;; monitor peer
+          (pub (advertise (websocket-message ? server-addr ?))) ;; declare we might make connections
+          (sub (websocket-connection ? server-addr ? ? ?) #:meta-level 1) ;; events from driver thd
+          )))
 
 (define (spawn-websocket-connection local-addr remote-addr)
   (match-define (websocket-remote-server url) remote-addr)
@@ -136,8 +137,9 @@
               (transition (cons m buffered-messages-rev) '())]
              [_ #f]))
          '()
-         (sub (websocket-connection id local-addr remote-addr ? control-ch) #:meta-level 1)
-         (sub (websocket-message local-addr remote-addr ?))))
+         (patch-seq
+          (sub (websocket-connection id local-addr remote-addr ? control-ch) #:meta-level 1)
+          (sub (websocket-message local-addr remote-addr ?)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Connection
@@ -173,8 +175,9 @@
 (define (spawn-connection local-addr remote-addr id c control-ch)
   (spawn websocket-connection-behaviour
 	 (connection-state local-addr remote-addr c control-ch)
-         (sub (observe (websocket-message remote-addr local-addr ?))) ;; monitor peer
-	 (pub (websocket-message remote-addr local-addr ?)) ;; may send messages to peer
-         (sub (websocket-message local-addr remote-addr ?)) ;; want segments from peer
-         (sub (websocket-incoming-message id ?) #:meta-level 1) ;; segments from driver thd
-         ))
+         (patch-seq
+          (sub (observe (websocket-message remote-addr local-addr ?))) ;; monitor peer
+          (pub (websocket-message remote-addr local-addr ?)) ;; may send messages to peer
+          (sub (websocket-message local-addr remote-addr ?)) ;; want segments from peer
+          (sub (websocket-incoming-message id ?) #:meta-level 1) ;; segments from driver thd
+          )))

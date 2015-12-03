@@ -72,8 +72,8 @@
                                  (transition-bind (process-suggestion suggestion) t)))]
              [_ #f]))
          (db-state 0 (hash) (set))
-         (sub (observe (binding ? ? ? ?)))
-         (sub (update ? ? ? ?))))
+         (patch-seq (sub (observe (binding ? ? ? ?)))
+                    (sub (update ? ? ? ?)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -96,8 +96,8 @@
                                     other-epoch other-version other-value))])]
              [_ #f]))
          (void)
-         (assert (update key epoch version value))
-         (sub (binding key ? ? ?))))
+         (patch-seq (assert (update key epoch version value))
+                    (sub (binding key ? ? ?)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

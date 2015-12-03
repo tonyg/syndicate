@@ -59,12 +59,14 @@
 (run-ground (spawn quasi-spy (void) (sub ?))
 	    (spawn-timer-driver)
 	    (message (set-timer 'tick 1000 'relative))
-	    (spawn ticker 1
-                   (sub (observe (set-timer ? ? ?)))
-                   (sub (timer-expired 'tick ?)))
+	    (spawn ticker
+                   1
+                   (patch-seq (sub (observe (set-timer ? ? ?)))
+                              (sub (timer-expired 'tick ?))))
 	    (spawn-world (spawn r (void) (sub ?))
-			 (spawn b 0))
-	    (spawn echoer (void)
+			 (spawn b 0 '()))
+	    (spawn echoer
+                   (void)
                    (sub (external-event (read-line-evt (current-input-port) 'any) ?)
                         #:meta-level 1))
 	    (spawn printer (void) (sub `(print ,?))))

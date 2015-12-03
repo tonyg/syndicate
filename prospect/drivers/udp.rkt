@@ -69,10 +69,10 @@
 	      #f]
 	     [_ #f]))
 	 (void)
-         (sub (udp-packet ? local-addr ?) #:meta-level 1)
-         (sub (udp-packet local-addr (udp-remote-address ? ?) ?))
-         (pub (udp-packet (udp-remote-address ? ?) local-addr ?))
-         (sub (observe (udp-packet (udp-remote-address ? ?) local-addr ?)))))
+         (patch-seq (sub (udp-packet ? local-addr ?) #:meta-level 1)
+                    (sub (udp-packet local-addr (udp-remote-address ? ?) ?))
+                    (pub (udp-packet (udp-remote-address ? ?) local-addr ?))
+                    (sub (observe (udp-packet (udp-remote-address ? ?) local-addr ?))))))
 
 ;; UdpLocalAddress UdpSocket Channel -> Void
 (define (udp-receiver-thread local-addr socket control-ch)

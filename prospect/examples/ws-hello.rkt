@@ -20,9 +20,9 @@
 	   #f)]))
   (spawn connection-handler
 	 0
-         (sub (advertise (websocket-message c server-id ?)))
-         (sub (websocket-message c server-id ?))
-         (pub (websocket-message server-id c ?))))
+         (patch-seq (sub (advertise (websocket-message c server-id ?)))
+                    (sub (websocket-message c server-id ?))
+                    (pub (websocket-message server-id c ?)))))
 
 (spawn-demand-matcher (advertise (websocket-message (?! any-client) server-id ?))
                       (observe (websocket-message (?! any-client) server-id ?))

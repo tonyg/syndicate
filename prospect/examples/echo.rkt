@@ -19,6 +19,6 @@
                                     (transition state (message (tcp-channel dst src bs)))]
                                    [_ #f]))
                                (void)
-                               (sub (advertise (tcp-channel c server-id ?)))
-                               (sub (tcp-channel c server-id ?))
-                               (pub (tcp-channel server-id c ?)))))
+                               (patch-seq (sub (advertise (tcp-channel c server-id ?)))
+                                          (sub (tcp-channel c server-id ?))
+                                          (pub (tcp-channel server-id c ?))))))

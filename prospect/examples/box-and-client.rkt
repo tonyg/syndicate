@@ -11,8 +11,8 @@
                                              (assert (box-state new-value))))]
            [_ #f]))
        0
-       (sub (set-box ?))
-       (assert (box-state 0)))
+       (patch-seq (sub (set-box ?))
+                  (assert (box-state 0))))
 
 (spawn (lambda (e s)
          (match e
@@ -23,4 +23,4 @@
                             (message (set-box (+ v 1)))))]
            [_ #f]))
        (void)
-       (sub (box-state ?)))
+       (patch-seq (sub (box-state ?))))
