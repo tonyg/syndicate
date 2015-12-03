@@ -83,7 +83,7 @@
       [(? patch?) (compute-affected-pids routing-table e)]
       [(message body)
        (tset->list (matcher-match-value routing-table (observe body) (datum-tset)))]))
-  (sequence-handlers g (for/list [(eid affected-eids)]
+  (sequence-handlers g (for/list [(eid (sort affected-eids <))]
                          (list (if (patch? e)
                                    (view-patch e (hash-ref interests eid matcher-empty))
                                    e)

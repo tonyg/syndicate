@@ -51,6 +51,7 @@
 
 (require "core.rkt")
 (require "route.rkt")
+(require "endpoint.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Actor State
@@ -67,7 +68,7 @@
 ;; - (patch-instruction Patch (Void -> Instruction))
 ;; - (send-instruction Message (Void -> Instruction))
 ;; - (quit-instruction (Option Exn))
-;; - (spawn-instruction LinkageKind Script (-> Variables) Behavior (Void -> Instruction))
+;; - (spawn-instruction LinkageKind Script (-> Variables) (Void -> Instruction))
 ;; - (script-complete-instruction Variables)
 ;; and represents a side-effect for an actor to take in its
 ;; interactions with the outside world.
@@ -87,13 +88,11 @@
 ;; are used, directly or indirectly. (TODO: `background`?) The
 ;; included function yielding Variables sets up the initial variables
 ;; of the actor, and the included Script transforms the variables and
-;; performs initial side effects that must be performed in a context
-;; where the spawned actor's ongoing event handlers are already
-;; established. The included Behavior describes exactly the ongoing
-;; event handlers, and the included (Void -> Instruction) continuation
-;; is released when the spawned actor terminates (for blocking
-;; variants) or immediately following the spawn (for non-blocking
-;; variants).
+;; performs initial side effects, including establishing the ongoing
+;; event handlers via add-endpoint actions. The included (Void ->
+;; Instruction) continuation is released when the spawned actor
+;; terminates (for blocking variants) or immediately following the
+;; spawn (for non-blocking variants).
 ;;
 ;; (Background is done differently, with a new continuation for the
 ;; background script, and a self-send to activate it. (TODO))
@@ -101,7 +100,7 @@
 (struct patch-instruction (patch k) #:transparent)
 (struct send-instruction (message k) #:transparent)
 (struct quit-instruction (maybe-exn) #:transparent)
-(struct spawn-instruction (linkage-kind init-script init-variables-fn ongoing-handler k)
+(struct spawn-instruction (linkage-kind init-script init-variables-fn k)
   #:transparent)
 (struct script-complete-instruction (variables) #:transparent)
 
@@ -112,7 +111,6 @@
                      caller-id          ;; Symbol
                      self-id            ;; Symbol
                      variables          ;; Variables
-                     adhoc-assertions   ;; Matcher - assert!/retract! aggregate
                      pending-patch      ;; (Option Patch) - assert!/retract! patch being accumulated
                      )
   #:prefab)
@@ -193,9 +191,9 @@
    (lambda () (quit-instruction maybe-exn))))
 
 ;; Returns new variables, plus values from spawned actor if any.
-(define (spawn! linkage-kind init-script init-variables-fn ongoing-handler)
+(define (spawn! linkage-kind init-script init-variables-fn)
   (call-in-raw-context
-   (lambda (k) (spawn-instruction linkage-kind init-script init-variables-fn ongoing-handler k))))
+   (lambda (k) (spawn-instruction linkage-kind init-script init-variables-fn k))))
 
 ;; Syntax for spawning a 'call-linked actor.
 (define-syntax (state stx)
@@ -219,6 +217,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Main behavior of HLL actors
+
+;; Special EID used to track ad-hoc assertions
+;; TODO: Revisit this, it is a bit ugly
+(define *adhoc-eid* -2) ;; TODO: -1 is used in spawn-endpoint-group
 
 ;; Behavior
 (define (generic-actor-behavior e s)
@@ -276,23 +278,20 @@
     [(patch-instruction p get-next-instr)
      (define p0 (actor-state-pending-patch s))
      (handle-actor-syscall (transition (struct-copy actor-state s
-                                        [adhoc-assertions
-                                         (update-interests (actor-state-adhoc-assertions s) p)]
-                                        [pending-patch
-                                         (if p0 (patch-seq p0 p) p)])
+                                                    [pending-patch (if p0 (patch-seq p0 p) p)])
                                        previous-actions)
                            (get-next-instr (void)))]
     [(send-instruction m get-next-instr)
      (handle-actor-syscall (transition (struct-copy actor-state s [pending-patch #f])
                                        (list previous-actions
-                                             (actor-state-pending-patch s)
+                                             (as-endpoint *adhoc-eid* (actor-state-pending-patch s))
                                              (message m)))
                            (get-next-instr (void)))]
     [(quit-instruction maybe-exn)
      (quit #:exception maybe-exn
            (list previous-actions
-                 (actor-state-pending-patch s)))]
-    [(spawn-instruction linkage-kind init-script init-variables-fn ongoing-handler get-next-instr)
+                 (as-endpoint *adhoc-eid* (actor-state-pending-patch s))))]
+    [(spawn-instruction linkage-kind init-script init-variables-fn get-next-instr)
      (define callee-id (gensym 'actor))
      (define callee-caller-id (and (eq? linkage-kind 'call) (actor-state-self-id s)))
      (define sub-to-callees
@@ -306,24 +305,23 @@
      (transition (store-continuation s callee-id get-next-instr)
                  (list previous-actions
                        (<spawn> (lambda ()
-                                  (list (if ongoing-handler
-                                            (compose-ongoing-handler ongoing-handler)
-                                            generic-actor-behavior)
-                                        (transition-bind
-                                         (lambda (s) (run-script s init-script))
-                                         (transition (actor-state (hasheq)
-                                                                  callee-caller-id
-                                                                  callee-id
-                                                                  (init-variables-fn)
-                                                                  (matcher-empty)
-                                                                  #f)
-                                                     initial-subs)))))))]
+                                  ;; TODO: ↓ Handle quit, #f etc.
+                                  (match-define (transition initial-state initial-actions)
+                                    (transition-bind
+                                     (lambda (s) (run-script s init-script))
+                                     (transition (actor-state (hasheq)
+                                                              callee-caller-id
+                                                              callee-id
+                                                              (init-variables-fn)
+                                                              #f)
+                                                 initial-subs)))
+                                  (boot-endpoint-group initial-state initial-actions)))))]
     [(script-complete-instruction new-variables)
      (transition (struct-copy actor-state s
                               [pending-patch #f]
                               [variables new-variables])
                  (list previous-actions
-                       (actor-state-pending-patch s)))]))
+                       (as-endpoint *adhoc-eid* (actor-state-pending-patch s))))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compilation of HLL actors
