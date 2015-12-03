@@ -7,6 +7,7 @@
 (spawn (lambda (e current-value)
          (match e
            [(message (set-box new-value))
+            (log-info "box: taking on new-value ~v" new-value)
             (transition new-value (patch-seq (retract (box-state current-value))
                                              (assert (box-state new-value))))]
            [_ #f]))
@@ -20,6 +21,7 @@
             (transition s (for/list [(v (matcher-project/set/single
                                          added
                                          (compile-projection (box-state (?!)))))]
+                            (log-info "client: learned that box's value is now ~v" v)
                             (message (set-box (+ v 1)))))]
            [_ #f]))
        (void)
