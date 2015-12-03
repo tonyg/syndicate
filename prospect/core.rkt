@@ -179,8 +179,8 @@
                           [#f w]
                           [(and q (quit exn final-actions))
                            (trace-process-step-result e pid behavior old-state exn q)
-                           (enqueue-actions (disable-process pid #f w) pid (append final-actions
-                                                                                   (list 'quit)))]
+                           (enqueue-actions (disable-process pid exn w) pid (append final-actions
+                                                                                    (list 'quit)))]
                           [(and t (transition new-state new-actions))
                            (trace-process-step-result e pid behavior old-state #f t)
                            (enqueue-actions (mark-pid-runnable (update-state w pid new-state) pid)
