@@ -344,8 +344,8 @@
                                           `())))]
              [_ #f]))
          (scene-manager-state (vector 0 0) (vector 0 0))
-         (sub (scroll-offset ?))
-         (sub (window ? ?) #:meta-level 1)))
+         (patch-seq (sub (scroll-offset ?))
+                    (sub (window ? ?) #:meta-level 1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ScoreKeeper
@@ -591,10 +591,10 @@
                         (hash)
                         (hash)
                         (hash))
-         (sub (impulse ? ?))
-         (sub (game-piece-configuration ? ? ? ?))
-         (sub (jump-request ?))
-         (sub (frame-event ? ? ? ?) #:meta-level game-level)))
+         (patch-seq (sub (impulse ? ?))
+                    (sub (game-piece-configuration ? ? ? ?))
+                    (sub (jump-request ?))
+                    (sub (frame-event ? ? ? ?) #:meta-level game-level))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Player
@@ -657,18 +657,19 @@
                   (quit))]
              [_ #f]))
          initial-player-state
-         (sub (damage player-id ?))
-         (assert (health player-id (player-state-hit-points initial-player-state)))
-         (assert (game-piece-configuration player-id
-                                           initial-top-left
-                                           (icon-hitbox-size i)
-                                           (set 'player 'mobile 'massive)))
-         (sub (position player-id ? ?))
-         (sub (key-pressed 'left) #:meta-level 2)
-         (sub (key-pressed 'right) #:meta-level 2)
-         (sub (key-pressed #\space) #:meta-level 2)
-         (sprite-update initial-player-state)
-         ))
+         (patch-seq
+          (sub (damage player-id ?))
+          (assert (health player-id (player-state-hit-points initial-player-state)))
+          (assert (game-piece-configuration player-id
+                                            initial-top-left
+                                            (icon-hitbox-size i)
+                                            (set 'player 'mobile 'massive)))
+          (sub (position player-id ? ?))
+          (sub (key-pressed 'left) #:meta-level 2)
+          (sub (key-pressed 'right) #:meta-level 2)
+          (sub (key-pressed #\space) #:meta-level 2)
+          (sprite-update initial-player-state)
+          )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground Block
@@ -682,11 +683,12 @@
            (match e
              [_ #f]))
          (void)
-         (update-sprites #:meta-level game-level (simple-sprite 0 x y w h block-pict))
-         (assert (game-piece-configuration block-id
-                                           top-left
-                                           size
-                                           (set 'solid)))))
+         (patch-seq
+          (update-sprites #:meta-level game-level (simple-sprite 0 x y w h block-pict))
+          (assert (game-piece-configuration block-id
+                                            top-left
+                                            size
+                                            (set 'solid))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Goal piece
@@ -704,12 +706,13 @@
              [(? patch/added?) (transition s (message (at-meta (level-completed))))]
              [_ #f]))
          (void)
-         (assert (game-piece-configuration goal-id
-                                           initial-top-left
-                                           (icon-hitbox-size i)
-                                           (set 'touchable)))
-         (sub (touching player-id goal-id ?))
-         (update-sprites #:meta-level game-level (icon-sprite i -1 initial-top-left))))
+         (patch-seq
+          (assert (game-piece-configuration goal-id
+                                            initial-top-left
+                                            (icon-hitbox-size i)
+                                            (set 'touchable)))
+          (sub (touching player-id goal-id ?))
+          (update-sprites #:meta-level game-level (icon-sprite i -1 initial-top-left)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Enemy
@@ -788,15 +791,16 @@
                                     (damage-contacts p))]
              [_ #f]))
          initial-state
-         (assert (game-piece-configuration enemy-id
-                                           initial-top-left
-                                           (icon-hitbox-size i)
-                                           (set 'mobile 'massive 'touchable)))
-         (sub (level-size ?))
-         (sub (position enemy-id ? ?))
-         (sub (touching player-id enemy-id ?))
-         (motion-patch initial-state)
-         (sprite-patch initial-state initial-top-left)))
+         (patch-seq
+          (assert (game-piece-configuration enemy-id
+                                            initial-top-left
+                                            (icon-hitbox-size i)
+                                            (set 'mobile 'massive 'touchable)))
+          (sub (level-size ?))
+          (sub (position enemy-id ? ?))
+          (sub (touching player-id enemy-id ?))
+          (motion-patch initial-state)
+          (sprite-patch initial-state initial-top-left))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; DisplayControl
@@ -836,9 +840,9 @@
                                     (update-scroll-offset-from-player-position p))]
              [_ #f]))
          (vector 0 0)
-         (sub (window ? ?) #:meta-level game-level)
-         (sub (position player-id ? ?))
-         (assert (level-size level-size-vec))))
+         (patch-seq (sub (window ? ?) #:meta-level game-level)
+                    (sub (position player-id ? ?))
+                    (assert (level-size level-size-vec)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelTerminationMonitor
@@ -857,18 +861,17 @@
               (transition s (quit-world))]
              [_ #f]))
          (void)
-         (sub (game-piece-configuration player-id ? ? ?))
-         (sub (level-completed) #:meta-level 1)
-         (assert (level-running) #:meta-level 1)))
+         (patch-seq (sub (game-piece-configuration player-id ? ? ?))
+                    (sub (level-completed) #:meta-level 1)
+                    (assert (level-running) #:meta-level 1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelSpawner
 
 (define (spawn-standalone-assertions . patches)
   (<spawn> (lambda ()
-             (list (patch-seq* patches)
-                   (lambda (e s) #f)
-                   (void)))))
+             (list (lambda (e s) #f)
+                   (transition (void) (patch-seq* patches))))))
 
 (define (spawn-background-image level-size scene)
   (match-define (vector level-width level-height) level-size)
@@ -958,8 +961,8 @@
                     (transition (struct-copy level-spawner-state s [level-complete? #t]) '())]
                    [_ #f]))
                (level-spawner-state starting-level #f)
-               (sub (level-running))
-               (sub (level-completed)))
+               (patch-seq (sub (level-running))
+                          (sub (level-completed))))
         (spawn-numbered-level starting-level)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
