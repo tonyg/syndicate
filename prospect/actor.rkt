@@ -1,6 +1,6 @@
 #lang racket/base
 
-(provide ;; actor
+(provide actor
          ;; network
          ;; background
          state
@@ -60,7 +60,7 @@
 
 ;; An Instruction is one of
 ;; - (patch-instruction Patch (Void -> Instruction))
-;; - (send-instruction Message (Void -> Instruction))
+;; - (action-instruction EndpointAction (Void -> Instruction))
 ;; - (quit-instruction (Option Exn))
 ;; - (spawn-instruction LinkageKind Script (-> Variables) (Void -> Instruction))
 ;; - (script-complete-instruction Variables)
@@ -73,8 +73,8 @@
 ;; - 'network, a non-blocking, nested, non-exception-linked connection
 ;;
 ;; Patch Instructions are issued when the actor uses `assert!` and
-;; `retract!`. Send instructions are issued when the actor uses
-;; `send!`, and quit instructions when `quit!` is called.
+;; `retract!`. Action instructions are issued when the actor uses
+;; `do!`, and quit instructions when `quit!` is called.
 ;; Script-complete instructions are automatically issued when a Script
 ;; terminates successfully.
 ;;
@@ -92,7 +92,7 @@
 ;; background script, and a self-send to activate it. (TODO))
 ;;
 (struct patch-instruction (patch k) #:transparent)
-(struct send-instruction (message k) #:transparent)
+(struct action-instruction (action k) #:transparent)
 (struct quit-instruction (maybe-exn) #:transparent)
 (struct spawn-instruction (linkage-kind init-script init-variables-fn k)
   #:transparent)
@@ -175,9 +175,16 @@
    (lambda (k) (patch-instruction (patch (matcher-empty) (pattern->matcher #t P)) k))))
 
 ;; Returns void
-(define (send! M)
+(define (send! M) (do! (message M)))
+
+;; (ActorState -> Transition) -> Void
+(define (add-endpoint! f)
+  (do! (add-endpoint (lambda (new-eid s) (f s)))))
+
+;; Returns void
+(define (do! A)
   (call-in-raw-context
-   (lambda (k) (send-instruction M k))))
+   (lambda (k) (action-instruction A k))))
 
 ;; Does not return
 (define (quit! [maybe-exn #f])
@@ -208,6 +215,12 @@
 ;; Sugar
 (define-syntax-rule (forever O ...)
   (state [O ...]))
+
+;; Spawn actors with 'actor linkage
+(define-syntax (actor stx)
+  (syntax-parse stx
+    [(_ I ...)
+     (expand-state 'actor #'(I ... (quit!)) #'() #'() #'() #'())]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Main behavior of HLL actors
@@ -275,11 +288,11 @@
                                                     [pending-patch (if p0 (patch-seq p0 p) p)])
                                        previous-actions)
                            (get-next-instr (void)))]
-    [(send-instruction m get-next-instr)
+    [(action-instruction a get-next-instr)
      (handle-actor-syscall (transition (struct-copy actor-state s [pending-patch #f])
                                        (list previous-actions
                                              (as-endpoint *adhoc-eid* (actor-state-pending-patch s))
-                                             (message m)))
+                                             a))
                            (get-next-instr (void)))]
     [(quit-instruction maybe-exn)
      (quit #:exception maybe-exn
@@ -332,9 +345,12 @@
     (for ((edge (syntax->list edges)))
       (printf "~v\n" edge))
 
-    #`(actor-state (hasheq)
-                   (vector #,@state-variable-init-exps)))
-
+    #`(spawn! '#,linkage-kind
+              (lambda (vs)
+                #,@init-actions
+                vs)
+              (lambda ()
+                (vector #,@state-variable-init-exps))))
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
