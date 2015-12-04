@@ -324,24 +324,27 @@
                                   (exn->string exn))
                        (transition w '())))]
     ['quit
-     (define-values (new-mux _label patches meta-action) (mux-remove-stream (world-mux w) label))
-     (deliver-patches (struct-copy world w [mux new-mux])
-                      ;; ^ behavior & state already removed by disable-process
-                      patches
-                      meta-action)]
+     (define-values (new-mux _label delta delta-aggregate) (mux-remove-stream (world-mux w) label))
+     ;; behavior & state in w already removed by disable-process
+     (deliver-patches w new-mux label delta delta-aggregate)]
     [(quit-world)
      (make-quit)]
     [(? patch? delta-orig)
-     (define-values (new-mux _label patches meta-action)
+     (define-values (new-mux _label delta delta-aggregate)
        (mux-update-stream (world-mux w) label delta-orig))
-     (deliver-patches (struct-copy world w [mux new-mux])
-                      patches
-                      meta-action)]
+     (deliver-patches w new-mux label delta delta-aggregate)]
     [(and m (message body))
-     (define-values (send-to-meta? affected-pids) (mux-route-message (world-mux w) label body))
-     (transition (for/fold [(w w)] [(pid (in-list affected-pids))]
-                   (send-event m pid w))
-                 (and send-to-meta? (message (at-meta-claim body))))]))
+     (when (observe? body)
+       (log-warning "Stream ~a sent message containing query ~v"
+                    (cons label (trace-pid-stack))
+                    body))
+     (if (and (not (meta-label? label)) ;; it's from a local process, not envt
+              (at-meta? body)) ;; it relates to envt, not local
+         (transition w (message (at-meta-claim body)))
+         (transition (for/fold [(w w)]
+                               [(pid (in-list (mux-route-message (world-mux w) body)))]
+                       (send-event m pid w))
+                     '()))]))
 
 (define (create-process w behavior initial-transition)
   (if (not initial-transition)
@@ -363,18 +366,20 @@
           (match initial-actions
             [(cons (? patch? p) rest) (values p rest)]
             [other (values empty-patch other)]))
-        (define-values (new-mux new-pid patches meta-action)
+        (define-values (new-mux new-pid delta delta-aggregate)
           (mux-add-stream (world-mux w) initial-patch))
         (let* ((w (struct-copy world w
-                               [mux new-mux]
                                [behaviors (hash-set (world-behaviors w)
                                                     new-pid
                                                     behavior)]))
                (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions)))
-          (deliver-patches w patches meta-action)))))
+          (deliver-patches w new-mux new-pid delta delta-aggregate)))))
 
-(define (deliver-patches w patches meta-action)
-  (transition (for/fold [(w w)] [(entry (in-list patches))]
+(define (deliver-patches w new-mux acting-label delta delta-aggregate)
+  (define-values (patches meta-action)
+    (compute-patches (world-mux w) new-mux acting-label delta delta-aggregate))
+  (transition (for/fold [(w (struct-copy world w [mux new-mux]))]
+                        [(entry (in-list patches))]
                 (match-define (cons label event) entry)
                 (send-event/guard event label w))
               meta-action))

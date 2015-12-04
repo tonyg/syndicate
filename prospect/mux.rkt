@@ -9,6 +9,7 @@
          mux-update-stream
          mux-route-message
          mux-interests-of
+         compute-patches
          compute-affected-pids)
 
 (require racket/set)
@@ -44,36 +45,44 @@
 
 (define (mux-update-stream m label delta-orig)
   (define old-interests (mux-interests-of m label))
+  (define old-routing-table (mux-routing-table m))
   (define delta (limit-patch (label-patch delta-orig (datum-tset label)) old-interests))
   (define new-interests (apply-patch old-interests delta))
-  (let* ((m (struct-copy mux m
-                         [interest-table
-                          (if (matcher-empty? new-interests)
-                              (hash-remove (mux-interest-table m) label)
-                              (hash-set (mux-interest-table m) label new-interests))])))
-    ;; CONDITION at this point: delta has been labelled and limited to
-    ;; be minimal with respect to existing interests of its label.
-    (define old-routing-table (mux-routing-table m))
-    (define new-routing-table (apply-patch old-routing-table delta))
-    (define delta-aggregate (compute-aggregate-patch delta label old-routing-table))
-    (define affected-pids (let ((pids (compute-affected-pids old-routing-table delta)))
-                            (tset-remove (tset-add pids label) 'meta))) ;; TODO: removing meta is weird
-    (values (struct-copy mux m [routing-table new-routing-table])
-            label
-            (for/list [(pid (tset->list affected-pids))]
-              (cond [(equal? pid label)
-                     (define feedback
-                       (patch-union
-                        (patch (biased-intersection new-routing-table (patch-added delta))
-                               (biased-intersection old-routing-table (patch-removed delta)))
-                        (patch (biased-intersection (patch-added delta-aggregate) new-interests)
-                               (biased-intersection (patch-removed delta-aggregate) old-interests))))
-                     (cons label feedback)]
-                    [else
-                     (cons pid (view-patch delta-aggregate (mux-interests-of m pid)))]))
-            (and (not (meta-label? label))
-                 (drop-patch
-                  (compute-aggregate-patch delta label old-routing-table #:remove-meta? #t))))))
+  ;; CONDITION at this point: delta has been labelled and limited to
+  ;; be minimal with respect to existing interests of its label.
+  (define delta-aggregate (compute-aggregate-patch delta label old-routing-table))
+  (define new-routing-table (apply-patch old-routing-table delta))
+  (values (struct-copy mux m
+                       [routing-table new-routing-table]
+                       [interest-table (if (matcher-empty? new-interests)
+                                           (hash-remove (mux-interest-table m) label)
+                                           (hash-set (mux-interest-table m) label new-interests))])
+          label
+          delta
+          delta-aggregate))
+
+(define (compute-patches old-m new-m label delta delta-aggregate)
+  (define old-routing-table (mux-routing-table old-m))
+  (define new-routing-table (mux-routing-table new-m))
+  (define affected-pids
+    (let ((pids (compute-affected-pids old-routing-table delta)))
+      (tset-remove (tset-add pids label) 'meta))) ;; TODO: removing meta is weird
+  (values (for/list [(pid (tset->list affected-pids))]
+            (cond [(equal? pid label)
+                   (define feedback
+                     (patch-union
+                      (patch (biased-intersection new-routing-table (patch-added delta))
+                             (biased-intersection old-routing-table (patch-removed delta)))
+                      (patch (biased-intersection (patch-added delta-aggregate)
+                                                  (mux-interests-of new-m label))
+                             (biased-intersection (patch-removed delta-aggregate)
+                                                  (mux-interests-of old-m label)))))
+                   (cons label feedback)]
+                  [else
+                   (cons pid (view-patch delta-aggregate (mux-interests-of old-m pid)))]))
+          (and (not (meta-label? label))
+               (drop-patch
+                (compute-aggregate-patch delta label old-routing-table #:remove-meta? #t)))))
 
 (define (compute-affected-pids routing-table delta)
   (define cover (matcher-union (patch-added delta) (patch-removed delta)))
@@ -84,19 +93,10 @@
                          #:left-short (lambda (v r acc)
                                         (tset-union acc (success-value (matcher-step r EOS))))))
 
-(define (mux-route-message m label body)
-  (when (observe? body)
-    (log-warning "Stream ~a sent message containing query ~v"
-                 (cons label (trace-pid-stack))
-                 body))
-  (cond
-    [(matcher-match-value (mux-routing-table m) body #f) ;; some other stream has declared body
-     (values #f '())]
-    [(and (not (meta-label? label)) ;; it's from a local process, not envt
-          (at-meta? body)) ;; it relates to envt, not local
-     (values #t '())]
-    [else
-     (values #f (tset->list (matcher-match-value (mux-routing-table m) (observe body) (datum-tset))))]))
+(define (mux-route-message m body)
+  (if (matcher-match-value (mux-routing-table m) body #f) ;; some other stream has declared body
+      '()
+      (tset->list (matcher-match-value (mux-routing-table m) (observe body) (datum-tset)))))
 
 (define (mux-interests-of m label)
   (hash-ref (mux-interest-table m) label (matcher-empty)))
