@@ -446,7 +446,7 @@
 
   (expand-and-print
    #'(actor
-      (until (= count 10)
+      (until (rising-edge (= count 10))
              #:collect [(count 0)]
              (on (message `(hello ,$who))
                  (println "Got hello: ~a" who)
