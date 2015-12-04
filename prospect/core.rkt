@@ -345,7 +345,7 @@
 
 (define (create-process w behavior initial-transition)
   (if (not initial-transition)
-      w ;; Uh, ok
+      (transition w '()) ;; Uh, ok
       (let ()
         (define-values (postprocess initial-actions)
           (match (clean-transition initial-transition)
@@ -370,9 +370,8 @@
                                [behaviors (hash-set (world-behaviors w)
                                                     new-pid
                                                     behavior)]))
-               (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions))
-               (w (deliver-patches w patches meta-action)))
-          w))))
+               (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions)))
+          (deliver-patches w patches meta-action)))))
 
 (define (deliver-patches w patches meta-action)
   (transition (for/fold [(w w)] [(entry (in-list patches))]
