@@ -26,9 +26,10 @@
                                             `())))]
              [_ #f]))
          (void)
-         (sub (window ? ?) #:meta-level 1)
-         ;; (assert 'fullscreen #:meta-level 1)
-         ))
+         (patch-seq
+          (sub (window ? ?) #:meta-level 1)
+          ;; (assert 'fullscreen #:meta-level 1)
+          )))
 
 (define (spawn-player-avatar)
   (local-require 2htdp/planetcute)
@@ -56,10 +57,11 @@
                      (move-to x y keys-down)))]
              [_ #f]))
          (list 100 100 (set))
-         (update-sprites
-          (simple-sprite -0.5 100 100 (image-width CC) (image-height CC) CC))
-         (sub (frame-event ? ? ? ?) #:meta-level 1)
-         (sub (key-pressed ?))))
+         (patch-seq
+          (update-sprites
+           (simple-sprite -0.5 100 100 (image-width CC) (image-height CC) CC))
+          (sub (frame-event ? ? ? ?) #:meta-level 1)
+          (sub (key-pressed ?)))))
 
 (define (spawn-frame-counter)
   (spawn (lambda (e s)
