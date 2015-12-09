@@ -203,9 +203,14 @@
     [(_ [O ...] [E Oe ...] ...)
      (expand-state 'call #'() #'() #'() #'(O ...) #'([E Oe ...] ...))]))
 
+(define-syntax (named-binding-values stx)
+  (syntax-parse stx
+    [(_ #:collect [(id init) ...] O ...) #'(values id ...)]
+    [(_ O ...) #'(void)]))
+
 ;; Sugar
 (define-syntax-rule (until E O ...)
-  (state [O ...] [E (void)])) ;; TODO: return collected value(s)
+  (state [O ...] [E (named-binding-values O ...)]))
 
 ;; Sugar
 (define-syntax-rule (forever O ...)
@@ -346,7 +351,7 @@
       (- (length state-variable-init-exps) 1))
 
     (for ((edge (syntax->list edges)))
-      (printf "~v\n" edge))
+      (printf "~v\n" (syntax->datum edge)))
 
     (define action-fn-stx
       #`(lambda (self-id caller-id)
