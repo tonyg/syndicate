@@ -20,6 +20,7 @@
          )
 
 (require (for-syntax racket/base))
+(require (for-syntax racket/sequence))
 (require "support/dsl.rkt")
 
 (define&provide-dsl-helper-syntaxes "state/until/forever form"
@@ -50,9 +51,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Actor State
 
-;; A Variables is a (Vectorof Any), storing the explicit and implicit
-;; state variables of an actor, including tracked and implicit
-;; aggregates.
+;; A Variables is a (Vectorof Any), storing the explicit state
+;; variables of an actor.
+
+;; An Aggregates is a (Hashtable Nat Any), storing implicit state of
+;; an actor, including tracked and implicit aggregates.
 
 ;; A Script is a (Variables -> Variables). It is to be executed inside
 ;; the special syndicate-hll prompt, and so may have Instruction
@@ -103,6 +106,7 @@
                      caller-id          ;; Symbol
                      self-id            ;; Symbol
                      variables          ;; Variables
+                     aggregates         ;; Aggregates
                      pending-patch      ;; (Option Patch) - aggregate patch being accumulated
                      mux                ;; Mux
                      )
@@ -203,14 +207,15 @@
     [(_ [O ...] [E Oe ...] ...)
      (expand-state 'call #'() #'() #'() #'(O ...) #'([E Oe ...] ...))]))
 
-(define-syntax (named-binding-values stx)
-  (syntax-parse stx
-    [(_ #:collect [(id init) ...] O ...) #'(values id ...)]
-    [(_ O ...) #'(void)]))
-
 ;; Sugar
-(define-syntax-rule (until E O ...)
-  (state [O ...] [E (named-binding-values O ...)]))
+(define-syntax until
+  (syntax-rules ()
+    [(_ E #:collect [] O ...)
+     (state [#:collect [] O ...] [E (void)])]
+    [(_ E #:collect [(id init) ...] O ...)
+     (state [#:collect [(id init) ...] O ...] [E (values id ...)])]
+    [(_ E O ...)
+     (state [O ...] [E (void)])]))
 
 ;; Sugar
 (define-syntax-rule (forever O ...)
@@ -290,13 +295,6 @@
                                         (script-complete-instruction new-variables)))))
                          (void))))
 
-;; Behavior -> Behavior
-(define (compose-ongoing-handler ongoing-handler)
-  (lambda (e s)
-    (match (ongoing-handler e s)
-      [#f (generic-actor-behavior e s)]
-      [t (transition-bind (lambda (s) (generic-actor-behavior e s)) t)])))
-
 ;; Transition Instruction -> Transition
 (define (handle-actor-syscall t instr)
   (match instr
@@ -345,27 +343,142 @@
 (begin-for-syntax
   (define (expand-state linkage-kind init-actions binding-names binding-inits ongoings edges)
     ;; ----------------------------------------
-    (define state-variable-init-exps (box binding-inits))
-    (define track-update-stxs (box '()))
-    (define event-handler-stxs (box '())) ;; to include termination checks
-    (define maintain-assertions-stxs (box '()))
+    (define binding-count (length (syntax->list binding-names)))
+    ;; ----------------------------------------
+    ;; A StageProducer is a ((Syntax <Expr:Event>) -> (Syntax <Expr:(ActorState -> Transition)>)).
+    ;; It computes a behavior stage suitable for composition using sequence-transitions.
+    ;; It is given syntax for an expression yielding the actor's current event.
+
+    ;; Records syntaxes for aggregate initializers.
+    ;; (Boxof (Listof (Syntax <Expr:Any>)))
+    (define aggregate-init-stxs (box '()))
+
+    ;; Records aggregate updaters.
+    ;; (Boxof (Listof StageProducer))
+    (define track-updaters (box '()))
+
+    ;; Records both actual event handlers and termination check handlers.
+    ;; (Boxof (Listof StageProducer))
+    (define event-handlers (box '()))
+
+    ;; (Boxof (Listof StageProducer))
+    (define assertion-maintainers (box '()))
 
     (define (box-adjoin! v val) (set-box! v (append (unbox v) (list val))))
     ;; ----------------------------------------
 
-    (define (allocate-state-variable! init-exp)
-      (box-adjoin! state-variable-init-exps init-exp)
-      (- (length (unbox state-variable-init-exps)) 1))
+    (define (allocate-aggregate! init-stx)
+      (box-adjoin! aggregate-init-stxs init-stx)
+      (- (length (unbox aggregate-init-stxs)) 1))
+
+    ;; StageProducer -> Void
+    (define (add-track-updater! stage-producer) (box-adjoin! track-updaters stage-producer))
+    (define (add-event-handler! stage-producer) (box-adjoin! event-handlers stage-producer))
+
+    (define (mapply v fs) (map (lambda (f) (f v)) fs))
+
+    (define (make-run-script-call state-stx I-stxs)
+      #`(run-script #,state-stx (match-lambda
+                                  [(vector #,@binding-names)
+                                   (call-with-values (lambda () #,@I-stxs) vector)])))
+
+    (define (add-assertion-maintainer! endpoint-index
+                                       retract-stx
+                                       assert-stx
+                                       pat-stx
+                                       maybe-Pred-stx)
+      (define aggregate-index (allocate-aggregate! #'(matcher-empty)))
+      (box-adjoin! assertion-maintainers
+                   (lambda (evt-stx)
+                     #`(lambda (s)
+                         (define old-assertions
+                           (hash-ref (actor-state-aggregates s) #,aggregate-index))
+                         (define new-assertions
+                           #,(if maybe-Pred-stx
+                                 #`(if #,maybe-Pred-stx
+                                       (pattern->matcher #t #,pat-stx)
+                                       (matcher-empty))
+                                 #`(pattern->matcher #t #,pat-stx)))
+                         (and (not (eq? old-assertions new-assertions))
+                              ((extend-pending-patch #,endpoint-index
+                                                     (patch-seq (#,retract-stx old-assertions)
+                                                                (#,assert-stx new-assertions)))
+                               (struct-copy actor-state s
+                                            [aggregates (hash-set (actor-state-aggregates s)
+                                                                  #,aggregate-index
+                                                                  new-assertions)])))))))
+
+    (define (analyze-asserted-or-retracted! endpoint-index asserted? P-stx I-stxs)
+      (define-values (proj-stx pat match-pat bindings) (analyze-pattern P-stx))
+      (add-assertion-maintainer! endpoint-index #'unsub #'sub pat #f)
+      (add-event-handler!
+       (lambda (evt-stx)
+         #`(let ((proj #,proj-stx))
+             (lambda (s)
+               (match #,evt-stx
+                 [(? #,(if asserted? #'patch/added? #'patch/removed?) p)
+                  (sequence-transitions0*
+                   s
+                   (for/list [(entry (in-set (matcher-project/set
+                                              #,(if asserted?
+                                                    #'(patch-added p)
+                                                    #'(patch-removed p))
+                                              proj)))]
+                     (match-define (list #,@bindings) entry)
+                     (lambda (s) #,(make-run-script-call #'s I-stxs))))]
+                 [_ #f]))))))
 
     (define (analyze-event! index E-stx I-stxs)
-      (printf "event ~v ~v\n" E-stx (syntax->datum I-stxs)))
+      (syntax-parse E-stx
+        #:literals [asserted retracted message rising-edge]
+        [(asserted P)  (analyze-asserted-or-retracted! index #t #'P I-stxs)]
+        [(retracted P) (analyze-asserted-or-retracted! index #f #'P I-stxs)]
+        [(message P)
+         (define-values (proj pat match-pat bindings) (analyze-pattern #'P))
+         (add-assertion-maintainer! index #'unsub #'sub pat #f)
+         (add-event-handler!
+          (lambda (evt-stx)
+            #`(lambda (s)
+                (match #,evt-stx
+                  [(message #,match-pat) #,(make-run-script-call #'s I-stxs)]
+                  [_ #f]))))]
+        [(rising-edge Pred)
+         ;; TODO: more kinds of Pred than just expr
+         (define aggregate-index (allocate-aggregate! #'#f))
+         (add-event-handler!
+          (lambda (evt-stx)
+            #`(lambda (s)
+                (define old-val (hash-ref (actor-state-aggregates s) #,aggregate-index))
+                (define new-val Pred)
+                (if (eq? old-val new-val)
+                    #f
+                    (let ((s (struct-copy actor-state s
+                                          [aggregates (hash-set (actor-state-aggregates s)
+                                                                #,aggregate-index
+                                                                new-val)])))
+                      (if new-val
+                          #,(make-run-script-call #'s I-stxs)
+                          (transition s '())))))))]))
 
     (define (analyze-assertion! index Pred-stx P-stx)
-      (printf "assert ~v ~v\n" Pred-stx P-stx))
+      (define-values (proj pat match-pat bindings) (analyze-pattern P-stx))
+      (add-assertion-maintainer! index #'retract #'assert pat Pred-stx))
 
     (define (analyze-tracks! index track-spec-stxs I-stxs)
-      (printf "tracks ~v ~v\n" track-spec-stxs I-stxs))
+      (error 'analyze-tracks! "unimplemented"))
 
+    ;; Track analysis happens first, because we need the tracked
+    ;; bindings to be in scope everywhere else.
+    (for [(ongoing (in-list (syntax->list ongoings)))
+          (ongoing-index (in-naturals))]
+      (syntax-parse ongoing
+        #:literals [track]
+        [(track [track-spec ...] I ...)
+         (analyze-tracks! ongoing-index #'(track-spec ...) #'(I ...))]
+        [_ (void)]))
+
+    ;; Now make another pass over the ongoings, ignoring tracks this
+    ;; time.
     (for [(ongoing (in-list (syntax->list ongoings)))
           (ongoing-index (in-naturals))]
       (syntax-parse ongoing
@@ -377,31 +490,45 @@
         [(assert P)
          (analyze-assertion! ongoing-index #'#t #'P)]
         [(track [track-spec ...] I ...)
-         (analyze-tracks! ongoing-index #'(track-spec ...) #'(I ...))]))
+         (void)]))
 
+    ;; Finally, add in the termination conditions...
     (for [(edge (in-list (syntax->list edges)))
           (edge-index (in-naturals (length (syntax->list ongoings))))]
       (syntax-parse edge
         [(E I ...)
-         (analyze-event! edge-index #'E #'((call-with-values (lambda () (I ...)) quit!)))]))
+         (analyze-event! edge-index #'E #'((call-with-values (lambda () I ...) quit!)))]))
+
+    ;; ...and generic linkage-related behaviors.
+    (add-event-handler!
+     (lambda (evt-stx)
+       #`(lambda (s) (generic-actor-behavior #,evt-stx s))))
 
     (define action-fn-stx
       #`(lambda (self-id caller-id)
           (<spawn>
            (lambda ()
              ;; ActorState -> Transition
-             (define (maintain-assertions s)
-               (log-error "TODO: maintain-assertions")
-               (transition s '()))
+             (define ((maintain-assertions e) s)
+               (sequence-transitions0 s #,@(mapply #'e (unbox assertion-maintainers))))
 
              (define (behavior e s)
-               (log-error "TODO: event handling"))
+               (and e
+                    (sequence-transitions0 s
+                                           #,@(mapply #'e (unbox track-updaters))
+                                           #,@(mapply #'e (unbox event-handlers))
+                                           (maintain-assertions e))))
 
              (define initial-state
                (actor-state (hasheq)
                             caller-id
                             self-id
-                            (vector #,@(unbox state-variable-init-exps))
+                            (vector #,@binding-inits)
+                            (make-immutable-hash
+                             (list
+                              #,@(for/list [(init-stx (unbox aggregate-init-stxs))
+                                            (init-idx (in-naturals))]
+                                   #`(cons #,init-idx #,init-stx))))
                             #f
                             (mux)))
 
@@ -422,14 +549,62 @@
                                vs)))
 
              (list behavior
-                   (sequence-transitions (transition initial-state '())
-                                         subscribe-to-linkage
-                                         run-init-actions
-                                         maintain-assertions
-                                         perform-pending-patch))))))
+                   (sequence-transitions0 initial-state
+                                          subscribe-to-linkage
+                                          (maintain-assertions #f)
+                                          perform-pending-patch
+                                          run-init-actions))))))
+
+    (local-require racket/pretty)
+    (pretty-print (syntax->datum action-fn-stx))
 
     #`(spawn! '#,linkage-kind #,action-fn-stx))
   )
+
+    ;; ;; Given a Pred, computes (and perhaps allocates):
+    ;; ;;   - an optional StageProducer for taking on board information from the outside world
+    ;; ;;   - syntax for retrieving the current value of the Pred
+    ;; ;;   - syntax for evaluating a new value for the Pred
+    ;; ;;   - optional syntax for an updater for an aggregate
+    ;; ;; (Syntax <Pred>) -> (Values (Option StageProducer)
+    ;; ;;                            (Syntax <Expr:Boolean>)
+    ;; ;;                            (Syntax <Expr:Boolean>)
+    ;; ;;                            (Option (Syntax <Expr:(Any ActorState -> ActorState)>)))
+    ;; (define (analyze-pred! Pred-stx)
+    ;;   (syntax-parse Pred-stx
+    ;;     #:literals [not or and exists]
+    ;;     [(not Pred)
+    ;;      (define-values (upd curr next store) (analyze-pred! #'Pred))
+    ;;      (values upd #`(not #,curr) #`(not ,next))]
+    ;;     [((~and HEAD (~or or and)) PredN ...)
+    ;;      (define-values (upds currs nexts) (analyze-preds! #'(PredN ...)))
+    ;;      (values (and (not (null? upds))
+    ;;                   (lambda (evt-stx)
+    ;;                     #`(lambda (s) (sequence-transitions0 s #,@(mapply evt-stx upds)))))
+    ;;              #`(HEAD #,@currs)
+    ;;              #`(HEAD #,@nexts))]
+    ;;     [(exists P Pred)
+    ;;      ...]
+
+    ;;     [expr
+    ;;      (define index (allocate-aggregate!))
+    ;;      (values #f
+    ;;              #'
+    ;;      ...]))
+
+    ;; (define (analyze-preds! Pred-stxs)
+    ;;   (define-values (upds-rev currs-rev nexts-rev)
+    ;;     (for/fold [(upds-rev '())
+    ;;                (currs-rev '())
+    ;;                (nexts-rev '())]
+    ;;               [(Pred-stx (in-list (syntax->list Pred-stxs)))]
+    ;;       (define-values (upd curr next) (analyze-pred! Pred-stx))
+    ;;       (values (if upd (cons upd upds-rev) upds-rev)
+    ;;               (cons curr currs-rev)
+    ;;               (cons next nexts-rev))))
+    ;;   (values (reverse upds-rev)
+    ;;           (reverse currs-rev)
+    ;;           (reverse nexts-rev)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; HLL pattern analysis
@@ -510,7 +685,7 @@
   (require racket/pretty (for-syntax racket/pretty))
 
   (define (expand-and-print stx)
-    (values #;pretty-print (syntax->datum (expand stx))))
+    (pretty-print (syntax->datum (expand stx))))
 
   (begin-for-syntax
     (define (analyze-and-print pat-stx)
@@ -520,9 +695,9 @@
                         (m ,(map syntax->datum m))
                         (bs ,(map syntax->datum bs))))))
 
-    (analyze-and-print #'`(hello ,$who)))
+    #;(analyze-and-print #'`(hello ,$who)))
 
-  (expand-and-print
+  (expand
    #'(actor
       (until (rising-edge (= count 10))
              #:collect [(count 0)]

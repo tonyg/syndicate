@@ -19,9 +19,9 @@ Just a sketch, at the moment.
 								(assert #:when Pred P)
 								(track [x Agg] I ...)
 								(begin O ...)         ;; ??? begin isn't quite right
-			Predicates, Pred := (not Pred)
-								(exists P Pred)
-								(forall P Pred)
+			Predicates, Pred := (not Pred)        ;; -- NOT YET IMPLEMENTED
+								(exists P Pred)   ;; -- NOT YET IMPLEMENTED
+								(forall P Pred)   ;; -- NOT YET IMPLEMENTED
 								expr
 				   Events, E := (asserted P)
 								(retracted P)
@@ -94,6 +94,10 @@ subscription be retracted? On balance, I'm starting to think that
 `when` is a bad idea. In my sketches so far, there's only one place
 it's used, to conditionally `assert` a set, so I've added `#:when` to
 `assert` instead.
+
+Note that `exists` (and so `forall`) are tricky because of the nested
+`Pred`. For now, I'm not implementing them -- we'll see how painful it
+is to use `track` and plain-old `expr` `Pred`s instead.
 
 ## Examples
 
