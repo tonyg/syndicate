@@ -61,7 +61,7 @@
 ;; An Instruction is one of
 ;; - (patch-instruction Patch (Void -> Instruction))
 ;; - (action-instruction Action (Void -> Instruction))
-;; - (quit-instruction (Option Exn))
+;; - (quit-instruction (Option Exn) (Listof Any))
 ;; - (spawn-instruction LinkageKind (Symbol Symbol -> Spawn) (Void -> Instruction))
 ;; - (script-complete-instruction Variables)
 ;; and represents a side-effect for an actor to take in its
@@ -92,7 +92,7 @@
 ;;
 (struct patch-instruction (patch k) #:transparent)
 (struct action-instruction (action k) #:transparent)
-(struct quit-instruction (maybe-exn) #:transparent)
+(struct quit-instruction (maybe-exn result-values) #:transparent)
 (struct spawn-instruction (linkage-kind action-fn k) #:transparent)
 (struct script-complete-instruction (variables) #:transparent)
 
@@ -148,7 +148,7 @@
                                      (with-handlers [((lambda (e) #t)
                                                       (lambda (exn)
                                                         (call-in-raw-context/abort
-                                                         (lambda () (quit-instruction exn)))))]
+                                                         (lambda () (quit-instruction exn '())))))]
                                        (apply k reply-values)
                                        (error 'reply-to "Script returned directly")))
                                    prompt)))
@@ -182,9 +182,9 @@
    (lambda (k) (action-instruction A k))))
 
 ;; Does not return
-(define (quit! [maybe-exn #f])
+(define (quit! #:exception [maybe-exn #f] . result-values)
   (call-in-raw-context/abort
-   (lambda () (quit-instruction maybe-exn))))
+   (lambda () (quit-instruction maybe-exn result-values))))
 
 ;; Returns new variables, plus values from spawned actor if any.
 (define (spawn! linkage-kind action-fn)
@@ -309,7 +309,8 @@
                                                  perform-pending-patch
                                                  (lambda (s) (transition s a)))
                            (get-next-instr (void)))]
-    [(quit-instruction maybe-exn)
+    [(quit-instruction maybe-exn result-values)
+     (log-error "Ignoring result-values: ~v" result-values)
      (sequence-transitions t
                            perform-pending-patch
                            (lambda (s) (quit #:exception maybe-exn)))]
@@ -343,23 +344,55 @@
 
 (begin-for-syntax
   (define (expand-state linkage-kind init-actions binding-names binding-inits ongoings edges)
-    (define state-variable-init-exps binding-inits)
+    ;; ----------------------------------------
+    (define state-variable-init-exps (box binding-inits))
+    (define track-update-stxs (box '()))
+    (define event-handler-stxs (box '())) ;; to include termination checks
+    (define maintain-assertions-stxs (box '()))
+
+    (define (box-adjoin! v val) (set-box! v (append (unbox v) (list val))))
+    ;; ----------------------------------------
 
     (define (allocate-state-variable! init-exp)
-      (set! state-variable-init-exps
-            (append state-variable-init-exps (list init-exp)))
-      (- (length state-variable-init-exps) 1))
+      (box-adjoin! state-variable-init-exps init-exp)
+      (- (length (unbox state-variable-init-exps)) 1))
 
-    (for ((edge (syntax->list edges)))
-      (printf "~v\n" (syntax->datum edge)))
+    (define (analyze-event! index E-stx I-stxs)
+      (printf "event ~v ~v\n" E-stx (syntax->datum I-stxs)))
+
+    (define (analyze-assertion! index Pred-stx P-stx)
+      (printf "assert ~v ~v\n" Pred-stx P-stx))
+
+    (define (analyze-tracks! index track-spec-stxs I-stxs)
+      (printf "tracks ~v ~v\n" track-spec-stxs I-stxs))
+
+    (for [(ongoing (in-list (syntax->list ongoings)))
+          (ongoing-index (in-naturals))]
+      (syntax-parse ongoing
+        #:literals [on assert track]
+        [(on E I ...)
+         (analyze-event! ongoing-index #'E #'(I ...))]
+        [(assert #:when Pred P)
+         (analyze-assertion! ongoing-index #'Pred #'P)]
+        [(assert P)
+         (analyze-assertion! ongoing-index #'#t #'P)]
+        [(track [track-spec ...] I ...)
+         (analyze-tracks! ongoing-index #'(track-spec ...) #'(I ...))]))
+
+    (for [(edge (in-list (syntax->list edges)))
+          (edge-index (in-naturals (length (syntax->list ongoings))))]
+      (syntax-parse edge
+        [(E I ...)
+         (analyze-event! edge-index #'E #'((call-with-values (lambda () (I ...)) quit!)))]))
 
     (define action-fn-stx
       #`(lambda (self-id caller-id)
           (<spawn>
            (lambda ()
              ;; ActorState -> Transition
-             (define (update-ongoing-interests s)
-               blah blah)
+             (define (maintain-assertions s)
+               (log-error "TODO: maintain-assertions")
+               (transition s '()))
 
              (define (behavior e s)
                (log-error "TODO: event handling"))
@@ -368,7 +401,7 @@
                (actor-state (hasheq)
                             caller-id
                             self-id
-                            (vector #,@state-variable-init-exps)
+                            (vector #,@(unbox state-variable-init-exps))
                             #f
                             (mux)))
 
@@ -381,7 +414,7 @@
                        #`(patch-seq sub-to-callees
                                     (assert (link-active caller-id self-id)))
                        #`sub-to-callees))
-               (transition s initial-subs))
+               ((extend-pending-patch *linkage-label* initial-subs) s))
 
              (define (run-init-actions s)
                (run-script s (lambda (vs)
@@ -391,7 +424,9 @@
              (list behavior
                    (sequence-transitions (transition initial-state '())
                                          subscribe-to-linkage
-                                         run-init-actions))))))
+                                         run-init-actions
+                                         maintain-assertions
+                                         perform-pending-patch))))))
 
     #`(spawn! '#,linkage-kind #,action-fn-stx))
   )
@@ -475,7 +510,7 @@
   (require racket/pretty (for-syntax racket/pretty))
 
   (define (expand-and-print stx)
-    (pretty-print (syntax->datum (expand stx))))
+    (values #;pretty-print (syntax->datum (expand stx))))
 
   (begin-for-syntax
     (define (analyze-and-print pat-stx)
