@@ -8,7 +8,7 @@
 
 (spawn-tcp-driver)
 (actor (define e (read-bytes-line-evt (current-input-port) 'any))
-       (until quit?
+       (until (rising-edge quit?)
               #:collect [quit? #f]
               (assert (advertise (tcp-channel local-handle remote-handle ?)))
               (on (retracted (advertise (tcp-channel remote-handle local-handle ?))) #t)
