@@ -45,7 +45,7 @@
 
 (require "core.rkt")
 (require "route.rkt")
-(require "endpoint.rkt")
+(require "mux.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Actor State
@@ -60,9 +60,9 @@
 
 ;; An Instruction is one of
 ;; - (patch-instruction Patch (Void -> Instruction))
-;; - (action-instruction EndpointAction (Void -> Instruction))
+;; - (action-instruction Action (Void -> Instruction))
 ;; - (quit-instruction (Option Exn))
-;; - (spawn-instruction LinkageKind Script (-> Variables) (Void -> Instruction))
+;; - (spawn-instruction LinkageKind (Symbol Symbol -> Spawn) (Void -> Instruction))
 ;; - (script-complete-instruction Variables)
 ;; and represents a side-effect for an actor to take in its
 ;; interactions with the outside world.
@@ -80,13 +80,12 @@
 ;;
 ;; Spawn instructions are issued when `actor`, `network`, and `state`
 ;; are used, directly or indirectly. (TODO: `background`?) The
-;; included function yielding Variables sets up the initial variables
-;; of the actor, and the included Script transforms the variables and
-;; performs initial side effects, including establishing the ongoing
-;; event handlers via add-endpoint actions. The included (Void ->
-;; Instruction) continuation is released when the spawned actor
-;; terminates (for blocking variants) or immediately following the
-;; spawn (for non-blocking variants).
+;; spawn-action-producing function is given the IDs of the spawned and
+;; spawning actors, and is to return an action which spawns the new
+;; actor, which in turn engages in the appropriate linkage protocol
+;; with the spawning actor. The (Void -> Instruction) continuation is
+;; released when the spawned actor terminates (for blocking variants)
+;; or immediately following the spawn (for non-blocking variants).
 ;;
 ;; (Background is done differently, with a new continuation for the
 ;; background script, and a self-send to activate it. (TODO))
@@ -94,8 +93,7 @@
 (struct patch-instruction (patch k) #:transparent)
 (struct action-instruction (action k) #:transparent)
 (struct quit-instruction (maybe-exn) #:transparent)
-(struct spawn-instruction (linkage-kind init-script init-variables-fn k)
-  #:transparent)
+(struct spawn-instruction (linkage-kind action-fn k) #:transparent)
 (struct script-complete-instruction (variables) #:transparent)
 
 ;; An ActorState is an (actor-state ... as below), describing the
@@ -105,7 +103,8 @@
                      caller-id          ;; Symbol
                      self-id            ;; Symbol
                      variables          ;; Variables
-                     pending-patch      ;; (Option Patch) - assert!/retract! patch being accumulated
+                     pending-patch      ;; (Option Patch) - aggregate patch being accumulated
+                     mux                ;; Mux
                      )
   #:prefab)
 
@@ -177,10 +176,6 @@
 ;; Returns void
 (define (send! M) (do! (message M)))
 
-;; (ActorState -> Transition) -> Void
-(define (add-endpoint! f)
-  (do! (add-endpoint (lambda (new-eid s) (f s)))))
-
 ;; Returns void
 (define (do! A)
   (call-in-raw-context
@@ -192,9 +187,9 @@
    (lambda () (quit-instruction maybe-exn))))
 
 ;; Returns new variables, plus values from spawned actor if any.
-(define (spawn! linkage-kind init-script init-variables-fn)
+(define (spawn! linkage-kind action-fn)
   (call-in-raw-context
-   (lambda (k) (spawn-instruction linkage-kind init-script init-variables-fn k))))
+   (lambda (k) (spawn-instruction linkage-kind action-fn k))))
 
 ;; Syntax for spawning a 'call-linked actor.
 (define-syntax (state stx)
@@ -225,9 +220,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Main behavior of HLL actors
 
-;; Special EID used to track ad-hoc assertions
+;; Special mux label used to track ad-hoc assertions
 ;; TODO: Revisit this, it is a bit ugly
-(define *adhoc-eid* -2) ;; TODO: -1 is used in spawn-endpoint-group
+(define *adhoc-label* -1)
+
+;; Special mux label used to track linkage between actors.
+;; TODO: Revisit this, it is a bit ugly
+(define *linkage-label* -2)
 
 ;; Behavior
 (define (generic-actor-behavior e s)
@@ -261,6 +260,21 @@
                                     '())
                         (apply continuation (actor-state-variables s) reply-values)))
 
+;; ActorState -> Transition
+(define (perform-pending-patch s)
+  (transition (struct-copy actor-state s [pending-patch #f]) (actor-state-pending-patch s)))
+
+;; Label Patch -> ActorState -> Transition
+(define ((extend-pending-patch label p) s)
+  (define-values (new-mux _label _p p-aggregate)
+    (mux-update-stream (actor-state-mux s) label p))
+  (define p0 (actor-state-pending-patch s))
+  (define new-pending-patch (if p0 (patch-seq p0 p-aggregate) p-aggregate))
+  (transition (struct-copy actor-state s
+                           [pending-patch new-pending-patch]
+                           [mux new-mux])
+              '()))
+
 ;; ActorState Script -> Transition
 (define (run-script s script)
   (handle-actor-syscall (transition s '())
@@ -280,55 +294,44 @@
 
 ;; Transition Instruction -> Transition
 (define (handle-actor-syscall t instr)
-  (match-define (transition s previous-actions) t)
   (match instr
     [(patch-instruction p get-next-instr)
-     (define p0 (actor-state-pending-patch s))
-     (handle-actor-syscall (transition (struct-copy actor-state s
-                                                    [pending-patch (if p0 (patch-seq p0 p) p)])
-                                       previous-actions)
+     (handle-actor-syscall (sequence-transitions t
+                                                 (extend-pending-patch *adhoc-label* p))
                            (get-next-instr (void)))]
     [(action-instruction a get-next-instr)
-     (handle-actor-syscall (transition (struct-copy actor-state s [pending-patch #f])
-                                       (list previous-actions
-                                             (as-endpoint *adhoc-eid* (actor-state-pending-patch s))
-                                             a))
+     (handle-actor-syscall (sequence-transitions t
+                                                 perform-pending-patch
+                                                 (lambda (s) (transition s a)))
                            (get-next-instr (void)))]
     [(quit-instruction maybe-exn)
-     (quit #:exception maybe-exn
-           (list previous-actions
-                 (as-endpoint *adhoc-eid* (actor-state-pending-patch s))))]
-    [(spawn-instruction linkage-kind init-script init-variables-fn get-next-instr)
-     (define callee-id (gensym 'actor))
-     (define callee-caller-id (and (eq? linkage-kind 'call) (actor-state-self-id s)))
-     (define sub-to-callees
-       (patch-seq (sub (link-active callee-id ?))
-                  (sub (link-result callee-id ? ?))))
-     (define initial-subs
-       (if callee-caller-id
-           (patch-seq sub-to-callees
-                      (assert (link-active callee-caller-id callee-id)))
-           sub-to-callees))
-     (transition (store-continuation s callee-id get-next-instr)
-                 (list previous-actions
-                       (<spawn> (lambda ()
-                                  ;; TODO: ↓ Handle quit, #f etc.
-                                  (match-define (transition initial-state initial-actions)
-                                    (transition-bind
-                                     (lambda (s) (run-script s init-script))
-                                     (transition (actor-state (hasheq)
-                                                              callee-caller-id
-                                                              callee-id
-                                                              (init-variables-fn)
-                                                              #f)
-                                                 initial-subs)))
-                                  (boot-endpoint-group initial-state initial-actions)))))]
+     (sequence-transitions t
+                           perform-pending-patch
+                           (lambda (s) (quit #:exception maybe-exn)))]
+    [(spawn-instruction linkage-kind action-fn get-next-instr)
+     (define blocking? (eq? linkage-kind 'call))
+     (define next-t
+       (sequence-transitions t
+                             perform-pending-patch
+                             (lambda (s)
+                               (define callee-id (gensym 'actor))
+                               (transition (if blocking?
+                                               (store-continuation s callee-id get-next-instr)
+                                               s)
+                                           (action-fn callee-id (actor-state-self-id s))))))
+     (if blocking?
+         next-t
+         (handle-actor-syscall next-t (get-next-instr (void))))]
     [(script-complete-instruction new-variables)
-     (transition (struct-copy actor-state s
-                              [pending-patch #f]
-                              [variables new-variables])
-                 (list previous-actions
-                       (as-endpoint *adhoc-eid* (actor-state-pending-patch s))))]))
+     (sequence-transitions t
+                           ;; NB: Does not perform-pending-patch here.
+                           ;; Instead, the script runner will now
+                           ;; update ongoing subscriptions and
+                           ;; incorporate the pending patch into that
+                           ;; process.
+                           (lambda (s)
+                             (transition (struct-copy actor-state s [variables new-variables])
+                                         '())))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compilation of HLL actors
@@ -345,12 +348,47 @@
     (for ((edge (syntax->list edges)))
       (printf "~v\n" edge))
 
-    #`(spawn! '#,linkage-kind
-              (lambda (vs)
-                #,@init-actions
-                vs)
-              (lambda ()
-                (vector #,@state-variable-init-exps))))
+    (define action-fn-stx
+      #`(lambda (self-id caller-id)
+          (<spawn>
+           (lambda ()
+             ;; ActorState -> Transition
+             (define (update-ongoing-interests s)
+               blah blah)
+
+             (define (behavior e s)
+               (log-error "TODO: event handling"))
+
+             (define initial-state
+               (actor-state (hasheq)
+                            caller-id
+                            self-id
+                            (vector #,@state-variable-init-exps)
+                            #f
+                            (mux)))
+
+             (define (subscribe-to-linkage s)
+               (define sub-to-callees
+                 (patch-seq (sub (link-active self-id ?))
+                            (sub (link-result self-id ? ?))))
+               (define initial-subs
+                 #,(if (eq? linkage-kind 'call)
+                       #`(patch-seq sub-to-callees
+                                    (assert (link-active caller-id self-id)))
+                       #`sub-to-callees))
+               (transition s initial-subs))
+
+             (define (run-init-actions s)
+               (run-script s (lambda (vs)
+                               #,@init-actions
+                               vs)))
+
+             (list behavior
+                   (sequence-transitions (transition initial-state '())
+                                         subscribe-to-linkage
+                                         run-init-actions))))))
+
+    #`(spawn! '#,linkage-kind #,action-fn-stx))
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

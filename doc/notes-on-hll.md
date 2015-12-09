@@ -72,13 +72,13 @@ This is leading me to believe that the order of operations is:
 
  - Given a patch,
    - update `track`s and assertion-sets related to `rising-edge`.
-   - handle `on` for `asserted`, `retracted` and `rising-edge`, in order of appearance (!?)
-   - maintain `assert`s
+   - handle `on` for `asserted`, `retracted` and `rising-edge`, in order of appearance
    - check termination conditions
+   - maintain `assert`s and subscriptions for `on`s
  - Given a message,
-   - handle `on` for `message` and `rising-edge`, in order of appearance (!?)
-   - maintain `assert`s
+   - handle `on` for `message` and `rising-edge`, in order of appearance
    - check termination conditions
+   - maintain `assert`s and subscriptions for `on`s
 
 Actually, I'm not sure `falling-edge` is encodable using
 `rising-edge`, since the initial state might be different. Do we
