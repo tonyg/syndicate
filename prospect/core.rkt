@@ -272,7 +272,22 @@
        [(transition state1 actions1) (transition state1 (cons actions0 actions1))])]))
 
 (define (sequence-transitions t0 . steps)
+  (sequence-transitions* t0 steps))
+
+(define (sequence-transitions* t0 steps)
   (foldl transition-bind t0 steps))
+
+(define (sequence-transitions0 state0 . steps)
+  (sequence-transitions0* state0 steps))
+
+(define (sequence-transitions0* state0 steps)
+  (match steps
+    ['() #f]
+    [(cons step rest)
+     (match (step state0)
+       [#f (sequence-transitions0* state0 rest)]
+       [(? quit? q) q]
+       [(? transition? t) (sequence-transitions* t rest)])]))
 
 (define (inert? w)
   (and (queue-empty? (world-pending-action-queue w))
