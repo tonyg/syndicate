@@ -159,14 +159,7 @@
   (lambda reply-values
     (call-with-continuation-prompt (lambda ()
                                      (apply k reply-values)
-                                     (error 'reply-to "Script returned directly")
-                                     ;; TODO: v
-                                     #;(with-handlers [((lambda (e) #t)
-                                                      (lambda (exn)
-                                                        (call-in-raw-context/abort
-                                                         (lambda () (quit-instruction exn '())))))]
-                                       (apply k reply-values)
-                                       (error 'reply-to "Script returned directly")))
+                                     (error 'reply-to "Script returned directly"))
                                    prompt)))
 
 ;; (-> Instruction) -> Nothing
