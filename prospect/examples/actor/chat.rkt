@@ -6,6 +6,7 @@
 
 (struct says (who what) #:prefab)
 (struct present (who) #:prefab)
+(struct shutdown () #:prefab)
 
 (define (spawn-session them us)
   (actor (define (send-to-remote fmt . vs)
@@ -28,14 +29,21 @@
 
                 (assert (advertise (tcp-channel us them _)) #:meta-level 1)
                 (on (message (tcp-channel them us $bs) #:meta-level 1)
-                    (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
+                    (define input-string (string-trim (bytes->string/utf-8 bs)))
+                    (if (equal? input-string "quit-world")
+                        (send! (shutdown))
+                        (send! (says user input-string)))))))
 
 (spawn-tcp-driver)
 
-(spawn-world
- (%%boot
-  (lambda ()
-    (actor (define us (tcp-listener 5000))
-           (forever (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
+(%%boot
+ (lambda ()
+   (actor
+
+    (network (define us (tcp-listener 5000))
+             (until (message (shutdown))
+                    (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
                     (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
-                        (spawn-session them us)))))))
+                        (spawn-session them us))))
+
+    )))

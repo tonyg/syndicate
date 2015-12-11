@@ -1,7 +1,7 @@
 #lang racket/base
 
 (provide actor
-         ;; network
+         network
          ;; background
          state
 
@@ -241,6 +241,20 @@
     [(_ I ...)
      (expand-state 'actor #'(I ... (return/no-link-result!)) #'() #'() #'() #'())]))
 
+;; Spawn whole networks
+(define-syntax (network stx)
+  (syntax-parse stx
+    [(_ I ...)
+     (expand-state 'network
+                   #'(I
+                      ...
+                      (do! (quit-world))
+                      (return/no-link-result!))
+                   #'()
+                   #'()
+                   #'()
+                   #'())]))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Main behavior of HLL actors
 
@@ -351,10 +365,13 @@
                              perform-pending-patch
                              (lambda (s)
                                (define callee-id (gensym linkage-kind))
+                               (define spawn-action (action-fn callee-id (actor-state-self-id s)))
                                (transition (if blocking?
                                                (store-continuation s callee-id get-next-instr)
                                                s)
-                                           (action-fn callee-id (actor-state-self-id s))))))
+                                           (if (eq? linkage-kind 'network)
+                                               (spawn-world spawn-action)
+                                               spawn-action)))))
      (if blocking?
          next-t
          (handle-actor-syscall next-t (get-next-instr (void))))]
