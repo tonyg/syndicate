@@ -376,7 +376,6 @@
 ;; Compilation of HLL actors
 
 ;; TODO: track
-;; TODO: don't store aggregates for ongoings; instead, use the record of their interests in the mux
 ;; TODO: clean way of spawning low-level actors from hll
 ;; TODO: default to hll
 
@@ -437,38 +436,34 @@
                                                          vector)]))))
 
     (define (add-assertion-maintainer! endpoint-index
-                                       retract-stx
                                        assert-stx
                                        pat-stx
                                        maybe-Pred-stx
                                        L-stx)
-      (define aggregate-index (allocate-aggregate! #'(matcher-empty)))
       (box-adjoin! assertion-maintainers
                    (lambda (evt-stx)
                      #`(lambda (s)
                          (define old-assertions
-                           (hash-ref (actor-state-aggregates s) #,aggregate-index))
+                           (strip-interests
+                            (mux-interests-of (actor-state-mux s) #,endpoint-index)))
+                         (define (compute-new-assertions)
+                           (patch-added (#,assert-stx #,pat-stx #:meta-level #,L-stx)))
                          (define new-assertions
                            #,(if maybe-Pred-stx
                                  #`(if #,maybe-Pred-stx
-                                       (pattern->matcher #t #,pat-stx)
+                                       (compute-new-assertions)
                                        (matcher-empty))
-                                 #`(pattern->matcher #t #,pat-stx)))
+                                 #`(compute-new-assertions)))
                          (and (not (eq? old-assertions new-assertions))
                               ((extend-pending-patch
                                 #,endpoint-index
-                                (patch-seq (#,retract-stx (embedded-matcher old-assertions)
-                                                          #:meta-level #,L-stx)
-                                           (#,assert-stx (embedded-matcher new-assertions)
-                                                         #:meta-level #,L-stx)))
-                               (struct-copy actor-state s
-                                            [aggregates (hash-set (actor-state-aggregates s)
-                                                                  #,aggregate-index
-                                                                  new-assertions)])))))))
+                                (patch-seq (patch (matcher-empty) old-assertions)
+                                           (patch new-assertions (matcher-empty))))
+                               s))))))
 
     (define (analyze-asserted-or-retracted! endpoint-index asserted? P-stx I-stxs L-stx)
       (define-values (proj-stx pat match-pat bindings) (analyze-pattern P-stx))
-      (add-assertion-maintainer! endpoint-index #'unsub #'sub pat #f L-stx)
+      (add-assertion-maintainer! endpoint-index #'sub pat #f L-stx)
       (add-event-handler!
        (lambda (evt-stx)
          #`(let ((proj (compile-projection (prepend-at-meta #,proj-stx #,L-stx))))
@@ -493,7 +488,7 @@
 
     (define (analyze-message-subscription! endpoint-index P-stx I-stxs L-stx)
       (define-values (proj pat match-pat bindings) (analyze-pattern P-stx))
-      (add-assertion-maintainer! endpoint-index #'unsub #'sub pat #f L-stx)
+      (add-assertion-maintainer! endpoint-index #'sub pat #f L-stx)
       (add-event-handler!
        (lambda (evt-stx)
          #`(lambda (s)
@@ -528,7 +523,7 @@
 
     (define (analyze-assertion! index Pred-stx P-stx L-stx)
       (define-values (proj pat match-pat bindings) (analyze-pattern P-stx))
-      (add-assertion-maintainer! index #'retract #'core:assert pat Pred-stx L-stx))
+      (add-assertion-maintainer! index #'core:assert pat Pred-stx L-stx))
 
     (define (analyze-tracks! index track-spec-stxs I-stxs)
       (error 'analyze-tracks! "unimplemented"))
