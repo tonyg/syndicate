@@ -27,6 +27,7 @@
 (define show-exceptions? #f)
 (define show-patch-events? #f)
 (define show-message-events? #f)
+(define show-boot-events? #f)
 (define show-events? #f)
 (define show-process-states-pre? #f)
 (define show-process-states-post? #f)
@@ -42,6 +43,7 @@
   (set! show-exceptions? (set-member? flags 'x))
   (set! show-patch-events? (set-member? flags 'r))
   (set! show-message-events? (set-member? flags 'm))
+  (set! show-boot-events? (set-member? flags 'b))
   (set! show-events? (set-member? flags 'e))
   (set! show-process-states-pre? (set-member? flags 's))
   (set! show-process-states-post? (set-member? flags 't))
@@ -124,6 +126,9 @@
 	   [#f
 	    (when (exn-and-not show-events?)
 	      (with-color YELLOW (output "~a was polled for changes.\n" pidstr)))]
+	   ['boot
+	    (when (or show-events? show-boot-events?)
+	      (with-color YELLOW (output "~a was booted.\n" pidstr)))]
 	   [(? patch? p)
 	    (when (exn-and-not (or show-events? show-patch-events?))
 	      (with-color YELLOW
