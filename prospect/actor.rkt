@@ -463,8 +463,8 @@
                                            (patch new-assertions (matcher-empty))))
                                s))))))
 
-    (define (analyze-asserted-or-retracted! endpoint-index asserted? P-stx I-stxs L-stx)
-      (define-values (proj-stx pat match-pat bindings) (analyze-pattern P-stx))
+    (define (analyze-asserted-or-retracted! endpoint-index asserted? outer-expr-stx P-stx I-stxs L-stx)
+      (define-values (proj-stx pat match-pat bindings) (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! endpoint-index #'sub pat #f L-stx)
       (add-event-handler!
        (lambda (evt-stx)
@@ -488,8 +488,8 @@
           stx
           #`(at-meta #,(prepend-at-meta-stx stx (- level 1)))))
 
-    (define (analyze-message-subscription! endpoint-index P-stx I-stxs L-stx)
-      (define-values (proj pat match-pat bindings) (analyze-pattern P-stx))
+    (define (analyze-message-subscription! endpoint-index outer-expr-stx P-stx I-stxs L-stx)
+      (define-values (proj pat match-pat bindings) (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! endpoint-index #'sub pat #f L-stx)
       (add-event-handler!
        (lambda (evt-stx)
@@ -502,9 +502,12 @@
     (define (analyze-event! index E-stx I-stxs)
       (syntax-parse E-stx
         #:literals [asserted retracted message rising-edge]
-        [(asserted P L:meta-level) (analyze-asserted-or-retracted! index #t #'P I-stxs #'L.level)]
-        [(retracted P L:meta-level) (analyze-asserted-or-retracted! index #f #'P I-stxs #'L.level)]
-        [(message P L:meta-level) (analyze-message-subscription! index #'P I-stxs #'L.level)]
+        [(asserted P L:meta-level)
+         (analyze-asserted-or-retracted! index #t E-stx #'P I-stxs #'L.level)]
+        [(retracted P L:meta-level)
+         (analyze-asserted-or-retracted! index #f E-stx #'P I-stxs #'L.level)]
+        [(message P L:meta-level)
+         (analyze-message-subscription! index E-stx #'P I-stxs #'L.level)]
         [(rising-edge Pred)
          ;; TODO: more kinds of Pred than just expr
          (define aggregate-index (allocate-aggregate! #'#f))
@@ -523,8 +526,8 @@
                           #,(make-run-script-call #'s I-stxs)
                           (transition s '())))))))]))
 
-    (define (analyze-assertion! index Pred-stx P-stx L-stx)
-      (define-values (proj pat match-pat bindings) (analyze-pattern P-stx))
+    (define (analyze-assertion! index Pred-stx outer-expr-stx P-stx L-stx)
+      (define-values (proj pat match-pat bindings) (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! index #'core:assert pat Pred-stx L-stx))
 
     (define (analyze-tracks! index track-spec-stxs I-stxs)
@@ -549,7 +552,7 @@
         [(on E I ...)
          (analyze-event! ongoing-index #'E #'(I ...))]
         [(assert w:when-pred P L:meta-level)
-         (analyze-assertion! ongoing-index #'w.Pred #'P #'L.level)]
+         (analyze-assertion! ongoing-index #'w.Pred ongoing #'P #'L.level)]
         [(track [track-spec ...] I ...)
          (void)]))
 
@@ -680,63 +683,86 @@
          (datum->syntax stx (string->symbol (substring (symbol->string (syntax-e stx)) 1)))))
 
   ;; Syntax -> (Values Projection AssertionSetPattern MatchPattern (ListOf Identifier))
-  (define (analyze-pattern pat-stx)
-    (syntax-case pat-stx ($ quasiquote unquote quote)
-      ;; Extremely limited support for quasiquoting and quoting
-      [(quasiquote (unquote p)) (analyze-pattern #'p)]
-      [(quasiquote (p ...)) (analyze-pattern #'(list (quasiquote p) ...))]
-      [(quasiquote p) (values #''p #''p #''p '())]
-      [(quote p) (values #''p #''p #''p '())]
+  (define (analyze-pattern outer-expr-stx pat-stx0)
+    (let walk ((pat-stx pat-stx0))
+      (syntax-case pat-stx ($ ? quasiquote unquote quote)
+        ;; Extremely limited support for quasiquoting and quoting
+        [(quasiquote (unquote p)) (walk #'p)]
+        [(quasiquote (p ...)) (walk #'(list (quasiquote p) ...))]
+        [(quasiquote p) (values #''p #''p #''p '())]
+        [(quote p) (values #''p #''p #''p '())]
 
-      [$v
-       (dollar-id? #'$v)
-       (with-syntax [(v (undollar #'$v))]
-         (values #'(?!)
-                 #'?
-                 #'v
-                 (list #'v)))]
-
-      [($ v p)
-       (let ()
-         (define-values (pr g m bs) (analyze-pattern #'p))
-         (when (not (null? bs))
-           (raise-syntax-error #f "nested bindings not supported" pat-stx))
-         (values #`(?! #,pr)
-                 g
-                 #`(and v #,m)
-                 (list #'v)))]
-
-      [(ctor p ...)
-       (let ()
-         (define parts (if (identifier? #'ctor) #'(p ...) #'(ctor p ...)))
-         (define-values (pr g m bs)
-           (for/fold [(pr '()) (g '()) (m '()) (bs '())] [(p (syntax->list parts))]
-             (define-values (pr1 g1 m1 bs1) (analyze-pattern p))
-             (values (cons pr1 pr)
-                     (cons g1 g)
-                     (cons m1 m)
-                     (append bs1 bs))))
-         (if (identifier? #'ctor)
-             (values (cons #'ctor (reverse pr))
-                     (cons #'ctor (reverse g))
-                     (cons #'ctor (reverse m))
-                     bs)
-             (values (reverse pr)
-                     (reverse g)
-                     (reverse m)
-                     bs)))]
-
-      [non-pair
-       (if (and (identifier? #'non-pair)
-                (free-identifier=? #'non-pair #'_))
-           (values #'?
+        [$v
+         (dollar-id? #'$v)
+         (with-syntax [(v (undollar #'$v))]
+           (values #'(?!)
                    #'?
-                   #'_
-                   '())
-           (values #'non-pair
-                   #'non-pair
-                   #'(== non-pair)
-                   '()))]))
+                   #'v
+                   (list #'v)))]
+
+        [($ v p)
+         (let ()
+           (define-values (pr g m bs) (walk #'p))
+           (when (not (null? bs))
+             (raise-syntax-error #f "nested bindings not supported" outer-expr-stx pat-stx))
+           (values #`(?! #,pr)
+                   g
+                   #`(and v #,m)
+                   (list #'v)))]
+
+        [(? pred? p)
+         ;; TODO: support pred? in asserted/retracted as well as message events
+         (let ()
+           (syntax-parse outer-expr-stx
+             #:literals [message]
+             [(message _ ...) 'ok]
+             [_ (raise-syntax-error #f
+                                    "Predicate '?' matching only supported in message events"
+                                    outer-expr-stx
+                                    pat-stx)])
+           (define-values (pr g m bs) (walk #'p))
+           (values pr
+                   g
+                   #`(? pred? #,m)
+                   bs))]
+
+        [(ctor p ...)
+         (let ()
+           (define parts (if (identifier? #'ctor) #'(p ...) #'(ctor p ...)))
+           (define-values (pr g m bs)
+             (for/fold [(pr '()) (g '()) (m '()) (bs '())] [(p (syntax->list parts))]
+               (define-values (pr1 g1 m1 bs1) (walk p))
+               (values (cons pr1 pr)
+                       (cons g1 g)
+                       (cons m1 m)
+                       (append bs1 bs))))
+           (if (identifier? #'ctor)
+               (values (cons #'ctor (reverse pr))
+                       (cons #'ctor (reverse g))
+                       (cons #'ctor (reverse m))
+                       bs)
+               (values (reverse pr)
+                       (reverse g)
+                       (reverse m)
+                       bs)))]
+
+        [?
+         (raise-syntax-error #f
+                             "Invalid use of '?' in pattern; use '_' instead"
+                             outer-expr-stx
+                             pat-stx)]
+
+        [non-pair
+         (if (and (identifier? #'non-pair)
+                  (free-identifier=? #'non-pair #'_))
+             (values #'?
+                     #'?
+                     #'_
+                     '())
+             (values #'non-pair
+                     #'non-pair
+                     #'(== non-pair)
+                     '()))])))
 
   )
 
@@ -779,7 +805,7 @@
 
   (begin-for-syntax
     (define (analyze-and-print pat-stx)
-      (let-values (((pr g m bs) (analyze-pattern pat-stx)))
+      (let-values (((pr g m bs) (analyze-pattern pat-stx pat-stx)))
         (pretty-print `((pr ,(map syntax->datum pr))
                         (g ,(map syntax->datum g))
                         (m ,(map syntax->datum m))
