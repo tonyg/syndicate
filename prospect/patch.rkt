@@ -105,8 +105,12 @@
   (patch (label-interests (patch-added p) label)
          (label-interests (patch-removed p) label)))
 
-;; Requires set-labelled p and bound, but assumes that the label sets
-;; only ever contain one element.
+;; When given a set-labelled p and bound, assumes that the label sets
+;; only ever contain one element, thereby acting as if given a
+;; #t-labelled p and bound.
+;;
+;; Doesn't work in general with a mix of set- and #t-labelled
+;; arguments.
 (define (limit-patch p bound)
   (match-define (patch in out) p)
   (patch (matcher-subtract in bound #:combiner (lambda (v1 v2) #f))
@@ -117,7 +121,8 @@
 ;; queued actions), so we have to examine the whole area of the
 ;; routing table touched by p.
 ;;
-;; Unlike limit-patch, accepts label sets with arbitrary elements.
+;; Unlike limit-patch, expects set-labelled patch and bound, with
+;; label sets allowed to contain arbitrary elements.
 (define (limit-patch/routing-table p bound)
   (match-define (patch in out) p)
   (patch (matcher-subtract in bound)
@@ -462,5 +467,33 @@
     (check-equal? (compute-aggregate-patch p- 'a R5 #:remove-meta? #t) p-)
     (check-equal? (compute-aggregate-patch p- 'a R6 #:remove-meta? #t) p0)
     (check-equal? (compute-aggregate-patch p- 'a R7 #:remove-meta? #t) p0)
+    )
+
+  (let ((m1 (set->matcher #t (set 1 2)))
+        (m2 (set->matcher (tset 'a) (set 1 2)))
+        (p1 (patch (set->matcher #t (set 2 3)) (matcher-empty)))
+        (p2 (patch (set->matcher (tset 'a) (set 2 3)) (matcher-empty))))
+    (check-equal? (limit-patch p1 m1) (patch (set->matcher #t (set 3)) (matcher-empty)))
+    ;; This is false because the resulting patch has tset labelling:
+    (check-false (equal? (limit-patch p2 m1)
+                         (patch (set->matcher #t (set 3)) (matcher-empty))))
+    (check-equal? (limit-patch p1 m2)
+                  (patch (set->matcher #t (set 3)) (matcher-empty)))
+    (check-equal? (limit-patch p2 m2)
+                  (patch (set->matcher (tset 'a) (set 3)) (matcher-empty)))
+    )
+
+  (let ((m1 (set->matcher #t (set 1 2)))
+        (m2 (set->matcher (tset 'a) (set 1 2)))
+        (p1 (patch (matcher-empty) (set->matcher #t (set 2 3))))
+        (p2 (patch (matcher-empty) (set->matcher (tset 'a) (set 2 3)))))
+    (check-equal? (limit-patch p1 m1) (patch (matcher-empty) (set->matcher #t (set 2))))
+    ;; This is false because the resulting patch has tset labelling:
+    (check-false (equal? (limit-patch p2 m1)
+                         (patch (matcher-empty) (set->matcher #t (set 2)))))
+    (check-equal? (limit-patch p1 m2)
+                  (patch (matcher-empty) (set->matcher #t (set 2))))
+    (check-equal? (limit-patch p2 m2)
+                  (patch (matcher-empty) (set->matcher (tset 'a) (set 2))))
     )
   )
