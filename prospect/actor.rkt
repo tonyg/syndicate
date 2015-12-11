@@ -443,6 +443,8 @@
       (box-adjoin! assertion-maintainers
                    (lambda (evt-stx)
                      #`(lambda (s)
+                         (match-define (vector #,@binding-names)
+                           (actor-state-variables s))
                          (define old-assertions
                            (strip-interests
                             (mux-interests-of (actor-state-mux s) #,endpoint-index)))
@@ -575,7 +577,8 @@
                     (sequence-transitions0 s
                                            #,@(mapply #'e (unbox track-updaters))
                                            #,@(mapply #'e (unbox event-handlers))
-                                           (maintain-assertions e))))
+                                           (maintain-assertions e)
+                                           perform-pending-patch)))
 
              (define initial-state
                (actor-state (hasheq)
