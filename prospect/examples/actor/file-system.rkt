@@ -10,11 +10,11 @@
 (struct save (file) #:prefab)
 (struct delete (name) #:prefab)
 
-(spawn-timer-driver)
-
 (%%boot
  (lambda ()
    (actor
+
+    (perform-core-action! (spawn-timer-driver))
 
     (actor (forever #:collect [(files (hash))]
                     (on (asserted (observe (file $name _)))

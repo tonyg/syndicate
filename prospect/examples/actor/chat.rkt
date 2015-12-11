@@ -34,11 +34,11 @@
                         (send! (shutdown))
                         (send! (says user input-string)))))))
 
-(spawn-tcp-driver)
-
 (%%boot
  (lambda ()
    (actor
+
+    (perform-core-action! (spawn-tcp-driver))
 
     (network (define us (tcp-listener 5000))
              (until (message (shutdown))

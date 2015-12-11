@@ -13,6 +13,7 @@
          send!
          return!
          return/no-link-result!
+         perform-core-action!
 
          ;; forall
 
@@ -83,9 +84,9 @@
 ;;
 ;; Patch Instructions are issued when the actor uses `assert!` and
 ;; `retract!`. Action instructions are issued when the actor uses
-;; `do!`, and return instructions when `return!` is called.
-;; Script-complete instructions are automatically issued when a Script
-;; terminates successfully.
+;; `perform-core-action!`, and return instructions when `return!` is
+;; called. Script-complete instructions are automatically issued when
+;; a Script terminates successfully.
 ;;
 ;; Spawn instructions are issued when `actor`, `network`, and `state`
 ;; are used, directly or indirectly. (TODO: `background`?) The
@@ -184,10 +185,10 @@
 
 ;; Returns void
 (define (send! M #:meta-level [meta-level 0])
-  (do! (message (prepend-at-meta M meta-level))))
+  (perform-core-action! (message (prepend-at-meta M meta-level))))
 
 ;; Returns void
-(define (do! A)
+(define (perform-core-action! A)
   (call-in-raw-context
    (lambda (k) (action-instruction A k))))
 
@@ -248,7 +249,7 @@
      (expand-state 'network
                    #'(I
                       ...
-                      (do! (quit-world))
+                      (perform-core-action! (quit-world))
                       (return/no-link-result!))
                    #'()
                    #'()
@@ -390,7 +391,6 @@
 ;; Compilation of HLL actors
 
 ;; TODO: track
-;; TODO: clean way of spawning low-level actors from hll
 ;; TODO: default to hll
 
 (begin-for-syntax
