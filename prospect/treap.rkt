@@ -188,7 +188,7 @@
   (let walk ((n (treap-root t)) (acc '()))
     (match n
       [(L) acc]
-      [(N k _ _ left right) (walk left (cons k (walk right acc)))])))
+      [(N _ v _ left right) (walk left (cons v (walk right acc)))])))
 
 (define (treap-fold t f seed)
   (let walk ((n (treap-root t)) (acc seed))
