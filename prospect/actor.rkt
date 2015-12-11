@@ -284,6 +284,11 @@
   (define continuation-table (actor-state-continuation-table s))
   (define continuation (hash-ref continuation-table callee-id #f))
   (define new-table (hash-remove continuation-table callee-id))
+  ;; (log-info "invoke-stored-continuation self=~a callee=~a values=~v k=~v"
+  ;;           (actor-state-self-id s)
+  ;;           callee-id
+  ;;           reply-values
+  ;;           continuation)
   (handle-actor-syscall (transition (struct-copy actor-state s [continuation-table new-table])
                                     '())
                         (apply continuation (actor-state-variables s) reply-values)))
