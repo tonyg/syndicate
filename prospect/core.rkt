@@ -52,6 +52,9 @@
 
          transition-bind
          sequence-transitions
+         sequence-transitions*
+         sequence-transitions0
+         sequence-transitions0*
 
          world-handle-event
          clean-transition
