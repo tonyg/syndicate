@@ -3,6 +3,8 @@
 (provide gen:prospect-pretty-printable
          prospect-pretty-print
 
+         prospect-pretty-print->string
+
          exn->string ;; required from exn-util.rkt
          string-indent
          indented-port-output)
@@ -21,6 +23,11 @@
               [(lambda (x) #t)
                (define (prospect-pretty-print v [p (current-output-port)])
                  (pretty-write v p))]))
+
+(define (prospect-pretty-print->string v)
+  (define p (open-output-string))
+  (prospect-pretty-print v p)
+  (get-output-string p))
 
 (define (string-indent amount s)
   (define pad (make-string amount #\space))
