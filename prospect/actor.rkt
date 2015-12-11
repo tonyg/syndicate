@@ -11,17 +11,22 @@
          assert!
          retract!
          send!
-         quit!
+         return!
+         return/no-link-result!
 
          ;; forall
 
+         %%boot
+
          ;;----------------------------------------
          (struct-out actor-state)
+         pretty-print-actor-state
          )
 
 (require (for-syntax racket/base))
 (require (for-syntax racket/sequence))
 (require "support/dsl.rkt")
+(require "pretty.rkt")
 
 (define&provide-dsl-helper-syntaxes "state/until/forever form"
   [on
@@ -44,7 +49,8 @@
 (require racket/set)
 (require racket/match)
 
-(require "core.rkt")
+(require (except-in "core.rkt" assert)
+         (rename-in "core.rkt" [assert core:assert]))
 (require "route.rkt")
 (require "mux.rkt")
 
@@ -64,7 +70,7 @@
 ;; An Instruction is one of
 ;; - (patch-instruction Patch (Void -> Instruction))
 ;; - (action-instruction Action (Void -> Instruction))
-;; - (quit-instruction (Option Exn) (Listof Any))
+;; - (return-instruction (Option (Listof Any)))
 ;; - (spawn-instruction LinkageKind (Symbol Symbol -> Spawn) (Void -> Instruction))
 ;; - (script-complete-instruction Variables)
 ;; and represents a side-effect for an actor to take in its
@@ -77,7 +83,7 @@
 ;;
 ;; Patch Instructions are issued when the actor uses `assert!` and
 ;; `retract!`. Action instructions are issued when the actor uses
-;; `do!`, and quit instructions when `quit!` is called.
+;; `do!`, and return instructions when `return!` is called.
 ;; Script-complete instructions are automatically issued when a Script
 ;; terminates successfully.
 ;;
@@ -95,7 +101,7 @@
 ;;
 (struct patch-instruction (patch k) #:transparent)
 (struct action-instruction (action k) #:transparent)
-(struct quit-instruction (maybe-exn result-values) #:transparent)
+(struct return-instruction (result-values) #:transparent)
 (struct spawn-instruction (linkage-kind action-fn k) #:transparent)
 (struct script-complete-instruction (variables) #:transparent)
 
@@ -110,7 +116,10 @@
                      pending-patch      ;; (Option Patch) - aggregate patch being accumulated
                      mux                ;; Mux
                      )
-  #:prefab)
+  #:transparent
+  #:methods gen:prospect-pretty-printable
+  [(define (prospect-pretty-print s [p (current-output-port)])
+     (pretty-print-actor-state s p))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Linkage protocol
@@ -149,7 +158,10 @@
 (define (reply-to k)
   (lambda reply-values
     (call-with-continuation-prompt (lambda ()
-                                     (with-handlers [((lambda (e) #t)
+                                     (apply k reply-values)
+                                     (error 'reply-to "Script returned directly")
+                                     ;; TODO: v
+                                     #;(with-handlers [((lambda (e) #t)
                                                       (lambda (exn)
                                                         (call-in-raw-context/abort
                                                          (lambda () (quit-instruction exn '())))))]
@@ -168,32 +180,43 @@
    prompt))
 
 ;; Returns void
-(define (assert! P)
+(define (assert! P #:meta-level [meta-level 0])
   (call-in-raw-context
-   (lambda (k) (patch-instruction (patch (pattern->matcher #t P) (matcher-empty)) k))))
+   (lambda (k) (patch-instruction (core:assert P #:meta-level meta-level) k))))
 
 ;; Returns void
-(define (retract! P)
+(define (retract! P #:meta-level [meta-level 0])
   (call-in-raw-context
-   (lambda (k) (patch-instruction (patch (matcher-empty) (pattern->matcher #t P)) k))))
+   (lambda (k) (patch-instruction (retract P #:meta-level meta-level) k))))
 
 ;; Returns void
-(define (send! M) (do! (message M)))
+(define (send! M #:meta-level [meta-level 0])
+  (do! (message (prepend-at-meta M meta-level))))
 
 ;; Returns void
 (define (do! A)
   (call-in-raw-context
    (lambda (k) (action-instruction A k))))
 
-;; Does not return
-(define (quit! #:exception [maybe-exn #f] . result-values)
+;; Does not return to caller; instead, terminates the current actor
+;; after sending a link-result to the calling actor.
+(define (return! . result-values)
   (call-in-raw-context/abort
-   (lambda () (quit-instruction maybe-exn result-values))))
+   (lambda () (return-instruction result-values))))
+
+;; Does not return to caller; instead, terminates the current actor
+;; without sending a link-result to the calling actor.
+(define (return/no-link-result!)
+  (call-in-raw-context/abort
+   (lambda () (return-instruction #f))))
 
 ;; Returns new variables, plus values from spawned actor if any.
 (define (spawn! linkage-kind action-fn)
   (call-in-raw-context
    (lambda (k) (spawn-instruction linkage-kind action-fn k))))
+
+;; TODO: syntax-classes for #:init and #:collect; then use these in state, until, forever etc.
+;; TODO: syntax-class for #:meta-level and use it everywhere
 
 ;; Syntax for spawning a 'call-linked actor.
 (define-syntax (state stx)
@@ -225,7 +248,7 @@
 (define-syntax (actor stx)
   (syntax-parse stx
     [(_ I ...)
-     (expand-state 'actor #'(I ... (quit!)) #'() #'() #'() #'())]))
+     (expand-state 'actor #'(I ... (return/no-link-result!)) #'() #'() #'() #'())]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Main behavior of HLL actors
@@ -295,6 +318,14 @@
                                         (script-complete-instruction new-variables)))))
                          (void))))
 
+(define (%%boot thunk)
+  (match ((reply-to (lambda (dummy)
+                      (thunk)
+                      (error '%%boot "Reached end of boot thunk")))
+          (void))
+    [(spawn-instruction 'actor action-fn _get-next-instr)
+     (action-fn (gensym 'root-actor) (gensym 'boot-actor))]))
+
 ;; Transition Instruction -> Transition
 (define (handle-actor-syscall t instr)
   (match instr
@@ -307,18 +338,22 @@
                                                  perform-pending-patch
                                                  (lambda (s) (transition s a)))
                            (get-next-instr (void)))]
-    [(quit-instruction maybe-exn result-values)
-     (log-error "Ignoring result-values: ~v" result-values)
+    [(return-instruction result-values)
      (sequence-transitions t
                            perform-pending-patch
-                           (lambda (s) (quit #:exception maybe-exn)))]
+                           (lambda (s)
+                             (if result-values
+                                 (quit (message (link-result (actor-state-caller-id s)
+                                                             (actor-state-self-id s)
+                                                             result-values)))
+                                 (quit))))]
     [(spawn-instruction linkage-kind action-fn get-next-instr)
      (define blocking? (eq? linkage-kind 'call))
      (define next-t
        (sequence-transitions t
                              perform-pending-patch
                              (lambda (s)
-                               (define callee-id (gensym 'actor))
+                               (define callee-id (gensym linkage-kind))
                                (transition (if blocking?
                                                (store-continuation s callee-id get-next-instr)
                                                s)
@@ -339,6 +374,11 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compilation of HLL actors
+
+;; TODO: track
+;; TODO: don't store aggregates for ongoings; instead, use the record of their interests in the mux
+;; TODO: clean way of spawning low-level actors from hll
+;; TODO: default to hll
 
 (begin-for-syntax
   (define (expand-state linkage-kind init-actions binding-names binding-inits ongoings edges)
@@ -378,15 +418,22 @@
     (define (mapply v fs) (map (lambda (f) (f v)) fs))
 
     (define (make-run-script-call state-stx I-stxs)
-      #`(run-script #,state-stx (match-lambda
-                                  [(vector #,@binding-names)
-                                   (call-with-values (lambda () #,@I-stxs) vector)])))
+      (if (zero? binding-count)
+          #`(run-script #,state-stx (match-lambda
+                                      [(vector)
+                                       #,@I-stxs
+                                       (vector)]))
+          #`(run-script #,state-stx (match-lambda
+                                      [(vector #,@binding-names)
+                                       (call-with-values (lambda () #,@I-stxs)
+                                                         vector)]))))
 
     (define (add-assertion-maintainer! endpoint-index
                                        retract-stx
                                        assert-stx
                                        pat-stx
-                                       maybe-Pred-stx)
+                                       maybe-Pred-stx
+                                       L-stx)
       (define aggregate-index (allocate-aggregate! #'(matcher-empty)))
       (box-adjoin! assertion-maintainers
                    (lambda (evt-stx)
@@ -400,20 +447,23 @@
                                        (matcher-empty))
                                  #`(pattern->matcher #t #,pat-stx)))
                          (and (not (eq? old-assertions new-assertions))
-                              ((extend-pending-patch #,endpoint-index
-                                                     (patch-seq (#,retract-stx old-assertions)
-                                                                (#,assert-stx new-assertions)))
+                              ((extend-pending-patch
+                                #,endpoint-index
+                                (patch-seq (#,retract-stx (embedded-matcher old-assertions)
+                                                          #:meta-level #,L-stx)
+                                           (#,assert-stx (embedded-matcher new-assertions)
+                                                         #:meta-level #,L-stx)))
                                (struct-copy actor-state s
                                             [aggregates (hash-set (actor-state-aggregates s)
                                                                   #,aggregate-index
                                                                   new-assertions)])))))))
 
-    (define (analyze-asserted-or-retracted! endpoint-index asserted? P-stx I-stxs)
+    (define (analyze-asserted-or-retracted! endpoint-index asserted? P-stx I-stxs L-stx)
       (define-values (proj-stx pat match-pat bindings) (analyze-pattern P-stx))
-      (add-assertion-maintainer! endpoint-index #'unsub #'sub pat #f)
+      (add-assertion-maintainer! endpoint-index #'unsub #'sub pat #f L-stx)
       (add-event-handler!
        (lambda (evt-stx)
-         #`(let ((proj #,proj-stx))
+         #`(let ((proj (compile-projection (prepend-at-meta #,proj-stx #,L-stx))))
              (lambda (s)
                (match #,evt-stx
                  [(? #,(if asserted? #'patch/added? #'patch/removed?) p)
@@ -428,20 +478,31 @@
                      (lambda (s) #,(make-run-script-call #'s I-stxs))))]
                  [_ #f]))))))
 
+    (define (prepend-at-meta-stx stx level)
+      (if (zero? level)
+          stx
+          #`(at-meta #,(prepend-at-meta-stx stx (- level 1)))))
+
+    (define (analyze-message-subscription! endpoint-index P-stx I-stxs L-stx)
+      (define-values (proj pat match-pat bindings) (analyze-pattern P-stx))
+      (add-assertion-maintainer! endpoint-index #'unsub #'sub pat #f L-stx)
+      (add-event-handler!
+       (lambda (evt-stx)
+         #`(lambda (s)
+             (match #,evt-stx
+               [(message #,(prepend-at-meta-stx match-pat (syntax-e L-stx)))
+                #,(make-run-script-call #'s I-stxs)]
+               [_ #f])))))
+
     (define (analyze-event! index E-stx I-stxs)
       (syntax-parse E-stx
         #:literals [asserted retracted message rising-edge]
-        [(asserted P)  (analyze-asserted-or-retracted! index #t #'P I-stxs)]
-        [(retracted P) (analyze-asserted-or-retracted! index #f #'P I-stxs)]
-        [(message P)
-         (define-values (proj pat match-pat bindings) (analyze-pattern #'P))
-         (add-assertion-maintainer! index #'unsub #'sub pat #f)
-         (add-event-handler!
-          (lambda (evt-stx)
-            #`(lambda (s)
-                (match #,evt-stx
-                  [(message #,match-pat) #,(make-run-script-call #'s I-stxs)]
-                  [_ #f]))))]
+        [(asserted P #:meta-level L) (analyze-asserted-or-retracted! index #t #'P I-stxs #'L)]
+        [(asserted P)                (analyze-asserted-or-retracted! index #t #'P I-stxs #'0)]
+        [(retracted P #:meta-level L) (analyze-asserted-or-retracted! index #f #'P I-stxs #'L)]
+        [(retracted P)                (analyze-asserted-or-retracted! index #f #'P I-stxs #'0)]
+        [(message P #:meta-level L) (analyze-message-subscription! index #'P I-stxs #'L)]
+        [(message P)                (analyze-message-subscription! index #'P I-stxs #'0)]
         [(rising-edge Pred)
          ;; TODO: more kinds of Pred than just expr
          (define aggregate-index (allocate-aggregate! #'#f))
@@ -460,9 +521,9 @@
                           #,(make-run-script-call #'s I-stxs)
                           (transition s '())))))))]))
 
-    (define (analyze-assertion! index Pred-stx P-stx)
+    (define (analyze-assertion! index Pred-stx P-stx L-stx)
       (define-values (proj pat match-pat bindings) (analyze-pattern P-stx))
-      (add-assertion-maintainer! index #'retract #'assert pat Pred-stx))
+      (add-assertion-maintainer! index #'retract #'core:assert pat Pred-stx L-stx))
 
     (define (analyze-tracks! index track-spec-stxs I-stxs)
       (error 'analyze-tracks! "unimplemented"))
@@ -485,10 +546,14 @@
         #:literals [on assert track]
         [(on E I ...)
          (analyze-event! ongoing-index #'E #'(I ...))]
+        [(assert #:when Pred P #:meta-level L)
+         (analyze-assertion! ongoing-index #'Pred #'P #'L)]
         [(assert #:when Pred P)
-         (analyze-assertion! ongoing-index #'Pred #'P)]
+         (analyze-assertion! ongoing-index #'Pred #'P #'0)]
+        [(assert P #:meta-level L)
+         (analyze-assertion! ongoing-index #'#t #'P #'L)]
         [(assert P)
-         (analyze-assertion! ongoing-index #'#t #'P)]
+         (analyze-assertion! ongoing-index #'#t #'P #'0)]
         [(track [track-spec ...] I ...)
          (void)]))
 
@@ -497,7 +562,7 @@
           (edge-index (in-naturals (length (syntax->list ongoings))))]
       (syntax-parse edge
         [(E I ...)
-         (analyze-event! edge-index #'E #'((call-with-values (lambda () I ...) quit!)))]))
+         (analyze-event! edge-index #'E #'((call-with-values (lambda () I ...) return!)))]))
 
     ;; ...and generic linkage-related behaviors.
     (add-event-handler!
@@ -508,7 +573,6 @@
       #`(lambda (self-id caller-id)
           (<spawn>
            (lambda ()
-             ;; ActorState -> Transition
              (define ((maintain-assertions e) s)
                (sequence-transitions0 s #,@(mapply #'e (unbox assertion-maintainers))))
 
@@ -539,7 +603,7 @@
                (define initial-subs
                  #,(if (eq? linkage-kind 'call)
                        #`(patch-seq sub-to-callees
-                                    (assert (link-active caller-id self-id)))
+                                    (core:assert (link-active caller-id self-id)))
                        #`sub-to-callees))
                ((extend-pending-patch *linkage-label* initial-subs) s))
 
@@ -678,6 +742,35 @@
                    '()))]))
 
   )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (pretty-print-actor-state s [p (current-output-port)])
+  (match-define
+    (actor-state continuation-table caller-id self-id variables aggregates pending-patch mux)
+    s)
+  (fprintf p "ACTOR id ~a (caller-id ~a):\n" self-id caller-id)
+  (fprintf p " - ~a pending continuations\n" (hash-count continuation-table))
+  (fprintf p " - variables:\n")
+  (for ((v variables))
+    (fprintf p "    - ")
+    (display (indented-port-output 6 (lambda (p) (prospect-pretty-print v p)) #:first-line? #f) p)
+    (newline p))
+  (fprintf p " - aggregates:\n")
+  (for (((index a) (in-hash aggregates)))
+    (define leader (format "    - ~a: " index))
+    (fprintf p "~a" leader)
+    (display (indented-port-output #:first-line? #f
+                                   (string-length leader)
+                                   (lambda (p) (prospect-pretty-print a p)))
+             p)
+    (newline p))
+  (fprintf p " - pending-patch:\n")
+  (display (indented-port-output 3 (lambda (p) (prospect-pretty-print pending-patch p))) p)
+  (newline p)
+  (fprintf p " - ")
+  (display (indented-port-output 3 (lambda (p) (prospect-pretty-print mux p)) #:first-line? #f) p)
+  (newline p))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
