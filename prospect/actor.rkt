@@ -63,7 +63,7 @@
 ;; An Aggregates is a (Hashtable Nat Any), storing implicit state of
 ;; an actor, including tracked and implicit aggregates.
 
-;; A Script is a (Variables -> Variables). It is to be executed inside
+;; A Script is a (-> Variables). It is to be executed inside
 ;; the special syndicate-hll prompt, and so may have Instruction
 ;; side-effects.
 
@@ -312,7 +312,7 @@
 (define (run-script s script)
   (handle-actor-syscall (transition s '())
                         ((reply-to (lambda (dummy)
-                                     (define new-variables (script (actor-state-variables s)))
+                                     (define new-variables (script))
                                      (call-in-raw-context/abort
                                       (lambda ()
                                         (script-complete-instruction new-variables)))))
@@ -424,16 +424,18 @@
 
     (define (mapply v fs) (map (lambda (f) (f v)) fs))
 
-    (define (make-run-script-call state-stx I-stxs)
-      (if (zero? binding-count)
-          #`(run-script #,state-stx (match-lambda
-                                      [(vector)
-                                       #,@I-stxs
-                                       (vector)]))
-          #`(run-script #,state-stx (match-lambda
-                                      [(vector #,@binding-names)
-                                       (call-with-values (lambda () #,@I-stxs)
-                                                         vector)]))))
+    (define (make-run-script-call outer-expr-stx state-stx I-stxs)
+      (cond
+        [(zero? binding-count)
+         #`(run-script #,state-stx (lambda ()
+                                     #,@I-stxs
+                                     (vector)))]
+        [(stx-null? I-stxs)
+         (raise-syntax-error #f "Empty expression sequence not permitted" outer-expr-stx I-stxs)]
+        [else
+         #`(run-script #,state-stx (lambda ()
+                                     (call-with-values (lambda () #,@I-stxs)
+                                                       vector)))]))
 
     (define (add-assertion-maintainer! endpoint-index
                                        assert-stx
@@ -479,8 +481,11 @@
                                                     #'(patch-added p)
                                                     #'(patch-removed p))
                                               proj)))]
-                     (match-define (list #,@bindings) entry)
-                     (lambda (s) #,(make-run-script-call #'s I-stxs))))]
+                     (lambda (s)
+                       (match (actor-state-variables s)
+                         [(vector #,@binding-names)
+                          (match-define (list #,@bindings) entry)
+                          #,(make-run-script-call outer-expr-stx #'s I-stxs)]))))]
                  [_ #f]))))))
 
     (define (prepend-at-meta-stx stx level)
@@ -494,10 +499,12 @@
       (add-event-handler!
        (lambda (evt-stx)
          #`(lambda (s)
-             (match #,evt-stx
-               [(message #,(prepend-at-meta-stx match-pat (syntax-e L-stx)))
-                #,(make-run-script-call #'s I-stxs)]
-               [_ #f])))))
+             (match (actor-state-variables s)
+               [(vector #,@binding-names)
+                (match #,evt-stx
+                  [(message #,(prepend-at-meta-stx match-pat (syntax-e L-stx)))
+                   #,(make-run-script-call outer-expr-stx #'s I-stxs)]
+                  [_ #f])])))))
 
     (define (analyze-event! index E-stx I-stxs)
       (syntax-parse E-stx
@@ -514,6 +521,7 @@
          (add-event-handler!
           (lambda (evt-stx)
             #`(lambda (s)
+                (match-define (vector #,@binding-names) (actor-state-variables s))
                 (define old-val (hash-ref (actor-state-aggregates s) #,aggregate-index))
                 (define new-val Pred)
                 (if (eq? old-val new-val)
@@ -523,7 +531,7 @@
                                                                 #,aggregate-index
                                                                 new-val)])))
                       (if new-val
-                          #,(make-run-script-call #'s I-stxs)
+                          #,(make-run-script-call E-stx #'s I-stxs)
                           (transition s '())))))))]))
 
     (define (analyze-assertion! index Pred-stx outer-expr-stx P-stx L-stx)
@@ -608,9 +616,15 @@
                ((extend-pending-patch *linkage-label* initial-subs) s))
 
              (define (run-init-actions s)
-               (run-script s (lambda (vs)
-                               #,@init-actions
-                               vs)))
+               (match (actor-state-variables s)
+                 [(vector #,@binding-names)
+                  ;; TODO: At the moment we are *not* letting the
+                  ;; init-actions update the variables. Is this the
+                  ;; right thing?
+                  ;; TODO: what about intermediate (state)s? How are the variables updated?
+                  (run-script s (lambda ()
+                                  #,@init-actions
+                                  (vector #,@binding-names)))]))
 
              (list behavior
                    (sequence-transitions0 initial-state
