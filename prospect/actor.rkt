@@ -215,34 +215,36 @@
   (call-in-raw-context
    (lambda (k) (spawn-instruction linkage-kind action-fn k))))
 
-;; TODO: syntax-classes for #:init and #:collect; then use these in state, until, forever etc.
-;; TODO: syntax-class for #:meta-level and use it everywhere
+(begin-for-syntax
+  (define-splicing-syntax-class init
+    (pattern (~seq #:init [I ...]))
+    (pattern (~seq) #:attr [I 1] '()))
+
+  (define-splicing-syntax-class bindings
+    (pattern (~seq #:collect [(id init) ...]))
+    (pattern (~seq) #:attr [id 1] '() #:attr [init 1] '())))
 
 ;; Syntax for spawning a 'call-linked actor.
 (define-syntax (state stx)
   (syntax-parse stx
-    [(_ #:init [I ...] [#:collect [(id init) ...] O ...] [E Oe ...] ...)
-     (expand-state 'call #'(I ...) #'(id ...) #'(init ...) #'(O ...) #'([E Oe ...] ...))]
-    [(_ [#:collect [(id init) ...] O ...] [E Oe ...] ...)
-     (expand-state 'call #'() #'(id ...) #'(init ...) #'(O ...) #'([E Oe ...] ...))]
-    [(_ #:init [I ...] [O ...] [E Oe ...] ...)
-     (expand-state 'call #'(I ...) #'() #'() #'(O ...) #'([E Oe ...] ...))]
-    [(_ [O ...] [E Oe ...] ...)
-     (expand-state 'call #'() #'() #'() #'(O ...) #'([E Oe ...] ...))]))
+    [(_ init:init [bs:bindings O ...] [E Oe ...] ...)
+     (expand-state 'call #'(init.I ...) #'(bs.id ...) #'(bs.init ...) #'(O ...) #'([E Oe ...] ...))]))
 
 ;; Sugar
-(define-syntax until
-  (syntax-rules ()
-    [(_ E #:collect [] O ...)
-     (state [#:collect [] O ...] [E (void)])]
-    [(_ E #:collect [(id init) ...] O ...)
-     (state [#:collect [(id init) ...] O ...] [E (values id ...)])]
-    [(_ E O ...)
-     (state [O ...] [E (void)])]))
+(define-syntax (until stx)
+  (syntax-parse stx
+    [(_ E init:init bs:bindings O ...)
+     (if (stx-null? #'(bs.id ...))
+         #'(state #:init [init.I ...] [#:collect [] O ...]
+                  [E (void)])
+         #'(state #:init [init.I ...] [#:collect [(bs.id bs.init) ...] O ...]
+                  [E (values bs.id ...)]))]))
 
 ;; Sugar
-(define-syntax-rule (forever O ...)
-  (state [O ...]))
+(define-syntax (forever stx)
+  (syntax-parse stx
+    [(_ init:init bs:bindings O ...)
+     #'(state #:init [init.I ...] [#:collect [(bs.id bs.init) ...] O ...])]))
 
 ;; Spawn actors with 'actor linkage
 (define-syntax (actor stx)
@@ -381,6 +383,14 @@
 ;; TODO: default to hll
 
 (begin-for-syntax
+  (define-splicing-syntax-class when-pred
+    (pattern (~seq #:when Pred))
+    (pattern (~seq) #:attr Pred #'#t))
+
+  (define-splicing-syntax-class meta-level
+    (pattern (~seq #:meta-level level))
+    (pattern (~seq) #:attr level #'0))
+
   (define (expand-state linkage-kind init-actions binding-names binding-inits ongoings edges)
     ;; ----------------------------------------
     (define binding-count (length (syntax->list binding-names)))
@@ -497,12 +507,9 @@
     (define (analyze-event! index E-stx I-stxs)
       (syntax-parse E-stx
         #:literals [asserted retracted message rising-edge]
-        [(asserted P #:meta-level L) (analyze-asserted-or-retracted! index #t #'P I-stxs #'L)]
-        [(asserted P)                (analyze-asserted-or-retracted! index #t #'P I-stxs #'0)]
-        [(retracted P #:meta-level L) (analyze-asserted-or-retracted! index #f #'P I-stxs #'L)]
-        [(retracted P)                (analyze-asserted-or-retracted! index #f #'P I-stxs #'0)]
-        [(message P #:meta-level L) (analyze-message-subscription! index #'P I-stxs #'L)]
-        [(message P)                (analyze-message-subscription! index #'P I-stxs #'0)]
+        [(asserted P L:meta-level) (analyze-asserted-or-retracted! index #t #'P I-stxs #'L.level)]
+        [(retracted P L:meta-level) (analyze-asserted-or-retracted! index #f #'P I-stxs #'L.level)]
+        [(message P L:meta-level) (analyze-message-subscription! index #'P I-stxs #'L.level)]
         [(rising-edge Pred)
          ;; TODO: more kinds of Pred than just expr
          (define aggregate-index (allocate-aggregate! #'#f))
@@ -546,14 +553,8 @@
         #:literals [on assert track]
         [(on E I ...)
          (analyze-event! ongoing-index #'E #'(I ...))]
-        [(assert #:when Pred P #:meta-level L)
-         (analyze-assertion! ongoing-index #'Pred #'P #'L)]
-        [(assert #:when Pred P)
-         (analyze-assertion! ongoing-index #'Pred #'P #'0)]
-        [(assert P #:meta-level L)
-         (analyze-assertion! ongoing-index #'#t #'P #'L)]
-        [(assert P)
-         (analyze-assertion! ongoing-index #'#t #'P #'0)]
+        [(assert w:when-pred P L:meta-level)
+         (analyze-assertion! ongoing-index #'w.Pred #'P #'L.level)]
         [(track [track-spec ...] I ...)
          (void)]))
 
