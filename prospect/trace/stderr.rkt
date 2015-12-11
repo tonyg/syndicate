@@ -198,8 +198,8 @@
                 (define newpid (mux-next-pid (world-mux old-w)))
                 (define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
                 (define interests (mux-interests-of (world-mux new-w) newpid))
-                (define behavior (hash-ref (world-behaviors new-w) newpid))
-                (define state (hash-ref (world-states new-w) newpid))
+                (define behavior (hash-ref (world-behaviors new-w) newpid '#:missing-behavior))
+                (define state (hash-ref (world-states new-w) newpid '#:missing-state))
                 (with-color BRIGHT-GREEN
                   (output "~a ~v spawned from ~a (~a total processes now)\n"
                           newpidstr
