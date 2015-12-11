@@ -5,6 +5,7 @@
 (require racket/match)
 (require "core.rkt")
 (require "drivers/timer.rkt")
+(require "pretty.rkt")
 
 (provide (except-out (struct-out demand-matcher) demand-matcher)
 	 (rename-out [make-demand-matcher demand-matcher])
@@ -23,7 +24,10 @@
 			decrease-handler        ;; ChangeHandler
                         current-demand          ;; (Setof (Listof Any))
                         current-supply)         ;; (Setof (Listof Any))
-	#:transparent)
+  #:transparent
+  #:methods gen:prospect-pretty-printable
+  [(define (prospect-pretty-print s [p (current-output-port)])
+     (pretty-print-demand-matcher s p))])
 
 ;; A ChangeHandler is a ((Constreeof Action) Any* -> (Constreeof Action)).
 ;; It is called with an accumulator of actions so-far-computed as its
@@ -140,3 +144,19 @@
           (patch-seq (patch base-interests (matcher-empty))
                      (patch-seq* (map projection->pattern projections))
                      (sub (timer-expired timer-id ?))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (pretty-print-demand-matcher s [p (current-output-port)])
+  (match-define (demand-matcher demand-spec
+                                supply-spec
+                                increase-handler
+                                decrease-handler
+                                current-demand
+                                current-supply)
+    s)
+  (fprintf p "DEMAND MATCHER:\n")
+  (fprintf p " - demand-spec: ~v\n" demand-spec)
+  (fprintf p " - supply-spec: ~v\n" supply-spec)
+  (fprintf p " - demand: ~v\n" current-demand)
+  (fprintf p " - supply: ~v\n" current-supply))

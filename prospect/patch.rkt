@@ -40,12 +40,17 @@
 (require racket/match)
 (require "route.rkt")
 (require "tset.rkt")
+(require "pretty.rkt")
 (module+ test (require rackunit))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Patches
-(struct patch (added removed) #:prefab)
+(struct patch (added removed)
+  #:transparent
+  #:methods gen:prospect-pretty-printable
+  [(define (prospect-pretty-print d [p (current-output-port)])
+     (pretty-print-patch d p))])
 
 ;; Claims, Interests, Locations, and Advertisements
 (struct observe (claim) #:prefab)

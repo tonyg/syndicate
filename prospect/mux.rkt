@@ -10,7 +10,8 @@
          mux-route-message
          mux-interests-of
          compute-patches
-         compute-affected-pids)
+         compute-affected-pids
+         pretty-print-mux)
 
 (require racket/set)
 (require racket/match)
@@ -18,6 +19,7 @@
 (require "patch.rkt")
 (require "trace.rkt")
 (require "tset.rkt")
+(require "pretty.rkt")
 
 ;; A PID is a Nat.
 ;; A Label is a PID or 'meta.
@@ -25,7 +27,11 @@
 (struct mux (next-pid ;; PID
              routing-table ;; (Matcherof (Setof Label))
              interest-table ;; (HashTable Label Matcher)
-             ) #:transparent)
+             )
+  #:transparent
+  #:methods gen:prospect-pretty-printable
+  [(define (prospect-pretty-print m [p (current-output-port)])
+     (pretty-print-mux m p))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -100,3 +106,14 @@
 
 (define (mux-interests-of m label)
   (hash-ref (mux-interest-table m) label (matcher-empty)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (pretty-print-mux m [p (current-output-port)])
+  (match-define (mux next-pid routing-table interest-table) m)
+  (fprintf p "MUX:\n")
+  (fprintf p " - ~a labelled entities with claims\n" (hash-count interest-table))
+  (fprintf p " - next label: ~a\n" next-pid)
+  (fprintf p " - routing-table:\n")
+  (display (indented-port-output 3 (lambda (p) (pretty-print-matcher routing-table p))) p)
+  (newline p))
