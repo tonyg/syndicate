@@ -38,7 +38,7 @@ Just a sketch, at the moment.
                  Patterns, P := ... ;; uses $var as binder
 
 	(define-syntax-rule (until B E O ...)
-	  (state [B O ...] [E (final-values-of B)]))
+	  (state [B O ...] [E (values)]))
 
     (define-syntax-rule (forever B O ...)
 	  (state [B O ...]))
@@ -47,13 +47,15 @@ Note also that `falling-edge` is encodable using `rising-edge` and
 `not`, and that `forall` is encodable using `exists` and `not`.
 
 `state` has the `B` bindings visible in the `I`s, and returns the
-value of the final `I` from the `E` exit branch that was chosen.
+value(s) of the final `I` from the `E` exit branch that was chosen
+*prepended* to the values of the calling actor's variables at the time
+of `state` termination.
 
 There are four kinds of actor-spawning `I`s: `actor`, `network`,
 `state` and `background`. Neither `actor`, `network` nor `background`
 yield a value; only `state` does so. However, both `state` and
 `background` link to their invoking contexts, because `state` may
-return a value or crash, and `background` may crash. Actors using
+return values or crash, and `background` may crash. Actors using
 `state` and `background` must therefore have a special continuation
 table in their private state to link them to their `state` and
 `background` logical-children-but-physical-siblings. The link

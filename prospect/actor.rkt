@@ -227,11 +227,7 @@
 (define-syntax (until stx)
   (syntax-parse stx
     [(_ E init:init bs:bindings O ...)
-     (if (stx-null? #'(bs.id ...))
-         #'(state #:init [init.I ...] [#:collect [] O ...]
-                  [E (void)])
-         #'(state #:init [init.I ...] [#:collect [(bs.id bs.init) ...] O ...]
-                  [E (values bs.id ...)]))]))
+     #'(state #:init [init.I ...] [#:collect [(bs.id bs.init) ...] O ...] [E (values)])]))
 
 ;; Sugar
 (define-syntax (forever stx)
@@ -291,7 +287,8 @@
   ;;           continuation)
   (handle-actor-syscall (transition (struct-copy actor-state s [continuation-table new-table])
                                     '())
-                        (apply continuation (actor-state-variables s) reply-values)))
+                        (apply continuation
+                               (append reply-values (vector->list (actor-state-variables s))))))
 
 ;; ActorState -> Transition
 (define (perform-pending-patch s)
