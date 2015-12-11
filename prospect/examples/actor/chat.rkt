@@ -34,16 +34,11 @@
                         (send! (shutdown))
                         (send! (says user input-string)))))))
 
-(%%boot
+(actor-body->spawn-action
  (lambda ()
-   (actor
-
-    (perform-core-action! (spawn-tcp-driver))
-
-    (network (define us (tcp-listener 5000))
-             (until (message (shutdown))
-                    (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
-                    (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
-                        (spawn-session them us))))
-
-    )))
+   (perform-core-action! (spawn-tcp-driver))
+   (network (define us (tcp-listener 5000))
+            (until (message (shutdown))
+                   (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
+                   (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
+                       (spawn-session them us))))))

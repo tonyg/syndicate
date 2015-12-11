@@ -17,7 +17,7 @@
 
          ;; forall
 
-         %%boot
+         actor-body->spawn-action
 
          ;;----------------------------------------
          (struct-out actor-state)
@@ -330,9 +330,9 @@
                                         (script-complete-instruction new-variables)))))
                          (void))))
 
-(define (%%boot thunk)
+(define (actor-body->spawn-action thunk)
   (match ((reply-to (lambda (dummy)
-                      (thunk)
+                      (actor (thunk))
                       (error '%%boot "Reached end of boot thunk")))
           (void))
     [(spawn-instruction 'actor action-fn _get-next-instr)
