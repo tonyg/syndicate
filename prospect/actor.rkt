@@ -647,8 +647,8 @@
                                           perform-pending-patch
                                           run-init-actions))))))
 
-    (local-require racket/pretty)
-    (pretty-print (syntax->datum action-fn-stx))
+    ;; (local-require racket/pretty)
+    ;; (pretty-print (syntax->datum action-fn-stx))
 
     #`(spawn! '#,linkage-kind #,action-fn-stx))
   )
