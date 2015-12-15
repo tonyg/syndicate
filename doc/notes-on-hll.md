@@ -2,46 +2,46 @@
 
 Just a sketch, at the moment.
 
-	Instantaneous actions, I := (actor I ...)
-	                            (network I ...)
-							    (state [B O ...] [E I ...] ...)
-								(background I ...)
-								(assert! P)
-								(retract! P)
-								(send! P)
-								(flush!)              ;; ???
-								expr
+    Instantaneous actions, I := (actor I ...)
+                                (network I ...)
+                                (state [B O ...] [E I ...] ...)
+                                (background I ...)
+                                (assert! P)
+                                (retract! P)
+                                (send! P)
+                                (flush!)              ;; ???
+                                expr
         Optional Bindings, B := ;; nothing, or
-			                    #:collect [(id I) ...]
-		  Ongoing actions, O := (on E I ...)
-								(once E I ...)        ;; ???
-								(assert P)
-								(assert #:when Pred P)
-								(track [x Agg] I ...)
-								(begin O ...)         ;; ??? begin isn't quite right
-			Predicates, Pred := (not Pred)        ;; -- NOT YET IMPLEMENTED
-								(exists P Pred)   ;; -- NOT YET IMPLEMENTED
-								(forall P Pred)   ;; -- NOT YET IMPLEMENTED
-								expr
-				   Events, E := (asserted P)
-								(retracted P)
-								(message P)
-								(rising-edge Pred)
-								(falling-edge Pred)
+                                #:collect [(id I) ...]
+          Ongoing actions, O := (on E I ...)
+                                (once E I ...)        ;; ???
+                                (assert P)
+                                (assert #:when Pred P)
+                                (track [x Agg] I ...)
+                                (begin O ...)         ;; ??? begin isn't quite right
+            Predicates, Pred := (not Pred)        ;; -- NOT YET IMPLEMENTED
+                                (exists P Pred)   ;; -- NOT YET IMPLEMENTED
+                                (forall P Pred)   ;; -- NOT YET IMPLEMENTED
+                                expr
+                   Events, E := (asserted P)
+                                (retracted P)
+                                (message P)
+                                (rising-edge Pred)
+                                (falling-edge Pred)
              Aggregates, Agg := (count expr P)
-			                    (set expr P)
-								(hash k_expr v_expr P)
-								(project P)
-								(single-value expr P)
-								(single-value expr P #:default def_expr)
-								Pred
+                                (set expr P)
+                                (hash k_expr v_expr P)
+                                (project P)
+                                (single-value expr P)
+                                (single-value expr P #:default def_expr)
+                                Pred
                  Patterns, P := ... ;; uses $var as binder
 
-	(define-syntax-rule (until B E O ...)
-	  (state [B O ...] [E (values)]))
+    (define-syntax-rule (until B E O ...)
+      (state [B O ...] [E (values)]))
 
     (define-syntax-rule (forever B O ...)
-	  (state [B O ...]))
+      (state [B O ...]))
 
 Note also that `falling-edge` is encodable using `rising-edge` and
 `not`, and that `forall` is encodable using `exists` and `not`.
