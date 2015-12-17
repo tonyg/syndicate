@@ -392,6 +392,7 @@
 
 ;; TODO: track
 ;; TODO: default to hll
+;; TODO: some better means of keeping track of nested network levels
 
 (begin-for-syntax
   (define-splicing-syntax-class when-pred
