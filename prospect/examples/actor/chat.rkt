@@ -37,7 +37,7 @@
 (actor-body->spawn-action
  (lambda ()
    (perform-core-action! (spawn-tcp-driver))
-   (network (define us (tcp-listener 5000))
+   (network (define us (tcp-listener 5999))
             (until (message (shutdown))
                    (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
                    (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
