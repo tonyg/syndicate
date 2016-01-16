@@ -27,8 +27,9 @@
        (assert (observe (account ?))))
 
 (spawn (lambda (e s)
-         (and (patch/added? e)
-              (quit (list (message (alter-balance-by +100))
-                          (message (alter-balance-by -30))))))
+         (if (and (patch? e) (matcher-non-empty? (patch-added e)))
+             (quit (list (message (alter-balance-by +100))
+                         (message (alter-balance-by -30))))
+             #f))
        (void)
        (assert (observe (observe (alter-balance-by ?)))))
