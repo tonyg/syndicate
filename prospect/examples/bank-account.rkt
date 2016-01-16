@@ -13,7 +13,7 @@
                                    (assert (account new-balance))))]
            [_ #f]))
        0
-       (patch-seq (sub (alter-balance-by ?))
+       (patch-seq (assert (observe (alter-balance-by ?)))
                   (assert (account 0))))
 
 (spawn (lambda (e s)
@@ -24,7 +24,11 @@
             #f]
            [_ #f]))
        (void)
-       (sub (account ?)))
+       (assert (observe (account ?))))
 
-(message (alter-balance-by +100))
-(message (alter-balance-by -30))
+(spawn (lambda (e s)
+         (and (patch/added? e)
+              (quit (list (message (alter-balance-by +100))
+                          (message (alter-balance-by -30))))))
+       (void)
+       (assert (observe (observe (alter-balance-by ?)))))
