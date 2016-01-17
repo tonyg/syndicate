@@ -70,6 +70,13 @@
                       (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
                       tcp-proxy-process)
 
-(spawn-demand-matcher (tcp-remote-open (?!))
-                      (tcp-local-open (?!))
-                      spawn-session)
+(spawn (lambda (e s)
+         (if (patch? e)
+             (transition s
+                         (for/list [(id (matcher-project/set/single
+                                         (patch-added e)
+                                         (compile-projection (tcp-remote-open (?!)))))]
+                           (spawn-session id)))
+             #f))
+       (void)
+       (sub (tcp-remote-open ?)))
