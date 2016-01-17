@@ -583,8 +583,8 @@
     (for [(edge (in-list (syntax->list edges)))
           (edge-index (in-naturals (length (syntax->list ongoings))))]
       (syntax-parse edge
-        [(E I ...)
-         (analyze-event! edge-index #'E #'((call-with-values (lambda () I ...) return!)))]))
+        [(E I0 I ...)
+         (analyze-event! edge-index #'E #'((call-with-values (lambda () I0 I ...) return!)))]))
 
     ;; ...and generic linkage-related behaviors.
     (add-event-handler!
