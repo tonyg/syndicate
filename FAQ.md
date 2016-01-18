@@ -164,8 +164,8 @@
                          (compile-projection (?! `(posn ,? ,?))))
     ```
     with the same example yields `(set (list ('posn 2 3))`.
-  - `matcher-project/set/single` is like calling `set-first` on the result of
-  `matcher-project/set`
+  - `matcher-project/set/single` is like mapping `car` over the result of
+  `matcher-project/set`. See also `project-assertions`.
   - `patch-project/set` uses `values` to return the result of matching a projection
   against both the added and removed bits of a patch.
 

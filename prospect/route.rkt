@@ -50,6 +50,7 @@
 	 matcher-key-set/single
          matcher-project/set
          matcher-project/set/single
+         project-assertions ;; composition of matcher-project/set/single with compile-projection
 
 	 ;; Printing and Serialization
 	 pretty-print-matcher
@@ -817,6 +818,10 @@
   (matcher-key-set (matcher-project arg ...)))
 (define-syntax-rule (matcher-project/set/single arg ...)
   (matcher-key-set/single (matcher-project arg ...)))
+
+;; Ultra-convenience form.
+(define (project-assertions m . ps)
+  (matcher-project/set/single m (compile-projection* ps)))
 
 ;; struct-type -> Symbol
 ;; Extract just the name of the given struct-type.

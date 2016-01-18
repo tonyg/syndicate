@@ -73,9 +73,8 @@
 (spawn (lambda (e s)
          (if (patch? e)
              (transition s
-                         (for/list [(id (matcher-project/set/single
-                                         (patch-added e)
-                                         (compile-projection (tcp-remote-open (?!)))))]
+                         (for/list [(id (project-assertions (patch-added e)
+                                                            (tcp-remote-open (?!))))]
                            (spawn-session id)))
              #f))
        (void)

@@ -18,9 +18,7 @@
 (spawn (lambda (e s)
          (match e
            [(patch added removed)
-            (transition s (for/list [(v (matcher-project/set/single
-                                         added
-                                         (compile-projection (box-state (?!)))))]
+            (transition s (for/list [(v (project-assertions added (box-state (?!))))]
                             (log-info "client: learned that box's value is now ~v" v)
                             (message (set-box (+ v 1)))))]
            [_ #f]))

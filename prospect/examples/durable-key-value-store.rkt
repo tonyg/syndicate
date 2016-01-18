@@ -129,7 +129,7 @@
   (spawn (lambda (e s)
            (match e
              [(? patch? p)
-              (define n (matcher-project/set/single (patch-added p) (compile-projection (?!))))
+              (define n (project-assertions (patch-added p) (?!)))
               (for [(b n)] (printf "binding update: ~v\n" b))
               #f]
              [_ #f]))

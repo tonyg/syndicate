@@ -19,7 +19,7 @@
 (spawn (lambda (e s)
          (match e
            [(patch added removed)
-            (for [(balance (matcher-project/set/single added (compile-projection (account (?!)))))]
+            (for [(balance (project-assertions added (account (?!))))]
               (printf "Balance changed to ~a\n" balance))
             #f]
            [_ #f]))

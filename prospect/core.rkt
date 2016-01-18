@@ -29,6 +29,7 @@
          matcher-project
          matcher-project/set
          matcher-project/set/single
+         project-assertions
 
          event?
          action?
