@@ -2,34 +2,27 @@
 ;; Hello-worldish "bank account" example.
 
 (struct account (balance) #:prefab)
-(struct alter-balance-by (amount) #:prefab)
+(struct deposit (amount) #:prefab)
 
-(spawn (lambda (e balance)
-         (match e
-           [(message (alter-balance-by amount))
-            (define new-balance (+ balance amount))
-            (transition new-balance
-                        (patch-seq (retract (account balance))
-                                   (assert (account new-balance))))]
-           [_ #f]))
-       0
-       (patch-seq (assert (observe (alter-balance-by ?)))
-                  (assert (account 0))))
+(define (manager e balance)
+  (match e
+    [(message (deposit amount))
+     (transition (+ balance amount) (patch-seq (retract (account balance))
+                                               (assert (account (+ balance amount)))))]
+    [_ #f]))
 
-(spawn (lambda (e s)
-         (match e
-           [(patch added removed)
-            (for [(balance (project-assertions added (account (?!))))]
-              (printf "Balance changed to ~a\n" balance))
-            #f]
-           [_ #f]))
-       (void)
-       (assert (observe (account ?))))
+(define (observer e _)
+  (when (patch? e)
+    (for [(balance (project-assertions (patch-added e) (account (?!))))]
+      (printf "Balance changed to ~a\n" balance)))
+  #f)
 
-(spawn (lambda (e s)
-         (if (and (patch? e) (matcher-non-empty? (patch-added e)))
-             (quit (list (message (alter-balance-by +100))
-                         (message (alter-balance-by -30))))
-             #f))
-       (void)
-       (assert (observe (observe (alter-balance-by ?)))))
+(define (updater e _)
+  (if (and (patch? e) (matcher-non-empty? (patch-added e)))
+      (quit (list (message (deposit +100))
+                  (message (deposit -30))))
+      #f))
+
+(spawn manager 0 (patch-seq (assert (observe (deposit ?))) (assert (account 0))))
+(spawn observer (void) (assert (observe (account ?))))
+(spawn updater (void) (assert (observe (observe (deposit ?)))))
