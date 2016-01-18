@@ -50,8 +50,8 @@
 (require racket/set)
 (require racket/match)
 
-(require (except-in "core.rkt" assert)
-         (rename-in "core.rkt" [assert core:assert]))
+(require (except-in "core.rkt" assert network)
+         (rename-in "core.rkt" [assert core:assert] [network core:network]))
 (require "route.rkt")
 (require "mux.rkt")
 
@@ -249,7 +249,7 @@
      (expand-state 'network
                    #'(I
                       ...
-                      (perform-core-action! (quit-world))
+                      (perform-core-action! (quit-network))
                       (return/no-link-result!))
                    #'()
                    #'()
@@ -371,7 +371,7 @@
                                                (store-continuation s callee-id get-next-instr)
                                                s)
                                            (if (eq? linkage-kind 'network)
-                                               (spawn-world spawn-action)
+                                               (spawn-network spawn-action)
                                                spawn-action)))))
      (if blocking?
          next-t

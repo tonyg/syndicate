@@ -3,12 +3,12 @@
 
 (provide (struct-out message)
          (except-out (struct-out quit) quit)
-         (struct-out quit-world)
+         (struct-out quit-network)
          (rename-out [quit <quit>])
          (except-out (struct-out spawn) spawn)
          (rename-out [spawn <spawn>])
          (struct-out transition)
-         (struct-out world)
+         (struct-out network)
 
          (struct-out seal)
 
@@ -44,11 +44,11 @@
          unpub
 
          (rename-out [make-quit quit])
-         make-world
-         spawn-world
+         make-network
+         spawn-network
          (rename-out [spawn-process spawn])
          spawn/stateless
-         make-spawn-world
+         make-spawn-network
 
          transition-bind
          sequence-transitions
@@ -56,10 +56,10 @@
          sequence-transitions0
          sequence-transitions0*
 
-         world-handle-event
+         network-handle-event
          clean-transition
 
-         pretty-print-world)
+         pretty-print-network)
 
 (require racket/set)
 (require racket/match)
@@ -77,7 +77,7 @@
 
 ;; Actions ⊃ Events
 (struct spawn (boot) #:prefab)
-(struct quit-world () #:prefab) ;; NB. An action. Compare (quit), a Transition.
+(struct quit-network () #:prefab) ;; NB. An action. Compare (quit), a Transition.
 
 ;; A Behavior is a ((Option Event) Any -> Transition): a function
 ;; mapping an Event (or, in the #f case, a poll signal) and a
@@ -87,7 +87,7 @@
 ;;  - #f, a signal from a Process that it is inert and need not be
 ;;        scheduled until some Event relevant to it arrives; or,
 ;;  - a (transition Any (Constreeof Action)), a new Process state to
-;;        be held by its World and a sequence of Actions for the World
+;;        be held by its Network and a sequence of Actions for the Network
 ;;        to take on the transitioning Process's behalf.
 ;;  - a (quit (Option Exn) (Constreeof Action)), signalling that the
 ;;        Process should never again be handed an event, and that any
@@ -102,16 +102,16 @@
 ;; A Label is a PID or 'meta.
 
 ;; VM private states
-(struct world (mux ;; Multiplexer
-               pending-action-queue ;; (Queueof (Cons Label (U Action 'quit)))
-               runnable-pids ;; (Setof PID)
-               behaviors ;; (HashTable PID Behavior)
-               states ;; (HashTable PID Any)
-               )
+(struct network (mux ;; Multiplexer
+                 pending-action-queue ;; (Queueof (Cons Label (U Action 'quit)))
+                 runnable-pids ;; (Setof PID)
+                 behaviors ;; (HashTable PID Behavior)
+                 states ;; (HashTable PID Any)
+                 )
   #:transparent
   #:methods gen:prospect-pretty-printable
   [(define (prospect-pretty-print w [p (current-output-port)])
-     (pretty-print-world w p))])
+     (pretty-print-network w p))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Seals are used by protocols to prevent the routing tries from
@@ -122,7 +122,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (event? x) (or (patch? x) (message? x)))
-(define (action? x) (or (event? x) (spawn? x) (quit-world? x)))
+(define (action? x) (or (event? x) (spawn? x) (quit-network? x)))
 
 (define (prepend-at-meta pattern level)
   (if (zero? level)
@@ -170,8 +170,8 @@
   (filter (lambda (x) (and (action? x) (not (patch-empty? x)))) (flatten actions)))
 
 (define (send-event e pid w)
-  (define behavior (hash-ref (world-behaviors w) pid #f))
-  (define old-state (hash-ref (world-states w) pid #f))
+  (define behavior (hash-ref (network-behaviors w) pid #f))
+  (define old-state (hash-ref (network-states w) pid #f))
   (if (not behavior)
       w
       (begin
@@ -194,7 +194,7 @@
                           (enqueue-actions (disable-process pid exn w) pid (list 'quit)))))))
 
 (define (update-state w pid s)
-  (struct-copy world w [states (hash-set (world-states w) pid s)]))
+  (struct-copy network w [states (hash-set (network-states w) pid s)]))
 
 (define (send-event/guard delta pid w)
   (if (patch-empty? delta)
@@ -206,9 +206,9 @@
     (log-error "Process ~a died with exception:\n~a"
                (cons pid (trace-pid-stack))
                (exn->string exn)))
-  (struct-copy world w
-               [behaviors (hash-remove (world-behaviors w) pid)]
-               [states (hash-remove (world-states w) pid)]))
+  (struct-copy network w
+               [behaviors (hash-remove (network-behaviors w) pid)]
+               [states (hash-remove (network-states w) pid)]))
 
 (define (invoke-process pid thunk k-ok k-exn)
   (define-values (ok? result)
@@ -222,12 +222,12 @@
       (k-exn result)))
 
 (define (mark-pid-runnable w pid)
-  (struct-copy world w [runnable-pids (set-add (world-runnable-pids w) pid)]))
+  (struct-copy network w [runnable-pids (set-add (network-runnable-pids w) pid)]))
 
 (define (enqueue-actions w label actions)
-  (struct-copy world w
+  (struct-copy network w
     [pending-action-queue
-     (queue-append-list (world-pending-action-queue w)
+     (queue-append-list (network-pending-action-queue w)
                         (for/list [(a actions)] (cons label a)))]))
 
 (define (make-quit #:exception [exn #f] . actions)
@@ -249,20 +249,20 @@
     [(? quit? q) q]
     [actions (transition state actions)]))
 
-(define-syntax-rule (spawn-world boot-action ...)
-  (make-spawn-world (lambda () (list boot-action ...))))
+(define-syntax-rule (spawn-network boot-action ...)
+  (make-spawn-network (lambda () (list boot-action ...))))
 
-(define (make-world boot-actions)
-  (world (mux)
-         (list->queue (for/list ((a (in-list (clean-actions boot-actions)))) (cons 'meta a)))
-         (set)
-         (hash)
-         (hash)))
+(define (make-network boot-actions)
+  (network (mux)
+           (list->queue (for/list ((a (in-list (clean-actions boot-actions)))) (cons 'meta a)))
+           (set)
+           (hash)
+           (hash)))
 
-(define (make-spawn-world boot-actions-thunk)
+(define (make-spawn-network boot-actions-thunk)
   (spawn (lambda ()
-           (list world-handle-event
-                 (transition (make-world (boot-actions-thunk)) '())))))
+           (list network-handle-event
+                 (transition (make-network (boot-actions-thunk)) '())))))
 
 (define (transition-bind k t0)
   (match t0
@@ -293,10 +293,10 @@
        [(? transition? t) (sequence-transitions* t rest)])]))
 
 (define (inert? w)
-  (and (queue-empty? (world-pending-action-queue w))
-       (set-empty? (world-runnable-pids w))))
+  (and (queue-empty? (network-pending-action-queue w))
+       (set-empty? (network-runnable-pids w))))
 
-(define (world-handle-event e w)
+(define (network-handle-event e w)
   (if (or e (not (inert? w)))
       (sequence-transitions (transition w '())
                             (inject-event e)
@@ -312,8 +312,8 @@
               '()))
 
 (define (perform-actions w)
-  (for/fold ([wt (transition (struct-copy world w [pending-action-queue (make-queue)]) '())])
-      ((entry (in-list (queue->list (world-pending-action-queue w)))))
+  (for/fold ([wt (transition (struct-copy network w [pending-action-queue (make-queue)]) '())])
+      ((entry (in-list (queue->list (network-pending-action-queue w)))))
     #:break (quit? wt) ;; TODO: should a quit action be delayed until the end of the turn?
     (match-define [cons label a] entry)
     (trace-internal-action label a (transition-state wt))
@@ -337,19 +337,20 @@
                        (match-define (list behavior initial-transition) results)
                        (create-process w behavior initial-transition))
                      (lambda (exn)
-                       (log-error "Spawned process in world ~a died with exception:\n~a"
+                       (log-error "Spawned process in network ~a died with exception:\n~a"
                                   (trace-pid-stack)
                                   (exn->string exn))
                        (transition w '())))]
     ['quit
-     (define-values (new-mux _label delta delta-aggregate) (mux-remove-stream (world-mux w) label))
+     (define-values (new-mux _label delta delta-aggregate)
+       (mux-remove-stream (network-mux w) label))
      ;; behavior & state in w already removed by disable-process
      (deliver-patches w new-mux label delta delta-aggregate)]
-    [(quit-world)
+    [(quit-network)
      (make-quit)]
     [(? patch? delta-orig)
      (define-values (new-mux _label delta delta-aggregate)
-       (mux-update-stream (world-mux w) label delta-orig))
+       (mux-update-stream (network-mux w) label delta-orig))
      (deliver-patches w new-mux label delta delta-aggregate)]
     [(and m (message body))
      (when (observe? body)
@@ -360,7 +361,7 @@
               (at-meta? body)) ;; it relates to envt, not local
          (transition w (message (at-meta-claim body)))
          (transition (for/fold [(w w)]
-                               [(pid (in-list (mux-route-message (world-mux w) body)))]
+                               [(pid (in-list (mux-route-message (network-mux w) body)))]
                        (send-event m pid w))
                      '()))]))
 
@@ -385,9 +386,9 @@
             [(cons (? patch? p) rest) (values p rest)]
             [other (values empty-patch other)]))
         (define-values (new-mux new-pid delta delta-aggregate)
-          (mux-add-stream (world-mux w) initial-patch))
-        (let* ((w (struct-copy world w
-                               [behaviors (hash-set (world-behaviors w)
+          (mux-add-stream (network-mux w) initial-patch))
+        (let* ((w (struct-copy network w
+                               [behaviors (hash-set (network-behaviors w)
                                                     new-pid
                                                     behavior)]))
                (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions)))
@@ -395,25 +396,25 @@
 
 (define (deliver-patches w new-mux acting-label delta delta-aggregate)
   (define-values (patches meta-action)
-    (compute-patches (world-mux w) new-mux acting-label delta delta-aggregate))
-  (transition (for/fold [(w (struct-copy world w [mux new-mux]))]
+    (compute-patches (network-mux w) new-mux acting-label delta delta-aggregate))
+  (transition (for/fold [(w (struct-copy network w [mux new-mux]))]
                         [(entry (in-list patches))]
                 (match-define (cons label event) entry)
                 (send-event/guard event label w))
               meta-action))
 
 (define (step-children w)
-  (define runnable-pids (world-runnable-pids w))
+  (define runnable-pids (network-runnable-pids w))
   (if (set-empty? runnable-pids)
-      #f ;; world is inert.
-      (transition (for/fold [(w (struct-copy world w [runnable-pids (set)]))]
+      #f ;; network is inert.
+      (transition (for/fold [(w (struct-copy network w [runnable-pids (set)]))]
                             [(pid (in-set runnable-pids))]
                     (send-event #f pid w))
 		  '())))
 
-(define (pretty-print-world w [p (current-output-port)])
-  (match-define (world mux qs runnable behaviors states) w)
-  (fprintf p "WORLD:\n")
+(define (pretty-print-network w [p (current-output-port)])
+  (match-define (network mux qs runnable behaviors states) w)
+  (fprintf p "NETWORK:\n")
   (fprintf p " - ~a queued actions\n" (queue-length qs))
   (fprintf p " - ~a runnable pids ~a\n" (set-count runnable) (set->list runnable))
   (fprintf p " - ~a live processes\n" (hash-count states))
@@ -438,10 +439,10 @@
   (define (step* w)
     (let loop ((w w) (actions '()))
       (pretty-print w)
-      (match (world-handle-event #f w)
+      (match (network-handle-event #f w)
         [#f (values w #f (flatten actions))]
         [(quit exn new-actions) (values w exn (flatten (cons actions new-actions)))]
         [(transition new-w new-actions) (loop new-w (cons actions new-actions))])))
 
-  (step* (make-world '()))
+  (step* (make-network '()))
   )

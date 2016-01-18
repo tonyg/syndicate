@@ -1,5 +1,5 @@
 #lang prospect
-;; Demonstrates quit-world.
+;; Demonstrates quit-network.
 
 (require (only-in racket/port read-bytes-line-evt))
 
@@ -9,9 +9,9 @@
              [(message (at-meta (at-meta (external-event _ (list #"quit")))))
               (printf "Quitting just the leaf actor.\n")
               (quit)]
-             [(message (at-meta (at-meta (external-event _ (list #"quit-world")))))
+             [(message (at-meta (at-meta (external-event _ (list #"quit-network")))))
               (printf "Terminating the whole network.\n")
-              (transition s (quit-world))]
+              (transition s (quit-network))]
              [_ #f]))
          (void)
          (sub (external-event (read-bytes-line-evt (current-input-port) 'any) ?)
@@ -31,6 +31,6 @@
          (void)
          (sub-to-alarm)))
 
-(printf "Type 'quit' or 'quit-world'.\n")
-(spawn-world (spawn-command-listener)
-             (spawn-ticker))
+(printf "Type 'quit' or 'quit-network'.\n")
+(spawn-network (spawn-command-listener)
+               (spawn-ticker))

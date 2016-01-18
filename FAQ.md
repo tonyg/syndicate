@@ -2,7 +2,7 @@
 
 * How do I run a prospect program?
   - `#lang prospect` collects actions (`spawn`s) from module toplevel and
-  uses them as boot actions for a ground-level world. The alternative
+  uses them as boot actions for a ground-level network. The alternative
   is to use a different #lang, and to call `run-ground` yourself; see an
   example in prospect/examples/example-plain.rkt.
 
@@ -20,7 +20,7 @@
     p - lifecycle events (spawns, crashes, and quits)  
     a - process actions  
     g - dataspace contents  
-    Adding 'W' will show whole world-states too. Remove each individual
+    Adding 'N' will show whole network-states too. Remove each individual
     character to turn off the corresponding trace facility; the default
     value of the variable is just the empty-string.
 
@@ -68,7 +68,7 @@
   (spawn/stateless (lambda (event) ... (list action ...))
                    initial-action ...)
   ;; network of actors
-  (spawn-world boot-action ...)
+  (spawn-network boot-action ...)
   ```
 
 * How do actors at different levels communicate?
@@ -190,10 +190,10 @@
 
 * I used `spawn` but the actor isn't being created. What happened?
   - The only two ways to spawn a process are to (a) supply the spawn instruction in
-  that world's boot-actions, or (b) have some already-existing actor supply the
+  that network's boot-actions, or (b) have some already-existing actor supply the
   spawn instruction in response to some event it receives. Note that calling `spawn`
   constructs a structure which is perhaps eventually interpreted by the containing
-  world of an actor; it doesn't really "do" anything directly.
+  network of an actor; it doesn't really "do" anything directly.
 
 * Why does `patch-seq` exist? Aren't all the actions in a transition effectively `patch-seq`d together?
   - Effectively, yes, that is what happens. The difference is in the
@@ -217,15 +217,15 @@
                    \
                    net3
   ```
-  - use `spawn-world`:
+  - use `spawn-network`:
   ```racket
   #lang prospect
-  (spawn-world <net1-spawns> ...)
-  (spawn-world <net2-spawns> ...
-               (spawn-world <net3-spawns> ...))
+  (spawn-network <net1-spawns> ...)
+  (spawn-network <net2-spawns> ...
+                 (spawn-network <net3-spawns> ...))
   ```
-  `spawn-world` expands into a regular `spawn` with an event-handler and
-  state corresponding to a whole VM. The arguments to spawn-world are
+  `spawn-network` expands into a regular `spawn` with an event-handler and
+  state corresponding to a whole VM. The arguments to spawn-network are
   actions to take at boot time in the new VM.
 
 * What is the outcome if I do `(assert X)` and then later `(patch-seq (retract ?) assert X)`?

@@ -46,10 +46,10 @@
 	       (exn->string exn)))
   (record-trace-event 'process-step-result (list (cons-pid pid) e beh st exn t)))
 
-;; (Option PID) Action World -> Void
+;; (Option PID) Action Network -> Void
 (define (trace-internal-action pid a w)
   (record-trace-event 'internal-action (list (cons-pid pid) a w)))
 
-;; (Option PID) Action World Transition -> Void
+;; (Option PID) Action Network Transition -> Void
 (define (trace-internal-action-result pid a w t)
   (record-trace-event 'internal-action-result (list (cons-pid pid) a w t)))

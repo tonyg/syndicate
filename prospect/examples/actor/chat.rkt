@@ -30,7 +30,7 @@
                 (assert (advertise (tcp-channel us them _)) #:meta-level 1)
                 (on (message (tcp-channel them us $bs) #:meta-level 1)
                     (define input-string (string-trim (bytes->string/utf-8 bs)))
-                    (if (equal? input-string "quit-world")
+                    (if (equal? input-string "quit-network")
                         (send! (shutdown))
                         (send! (says user input-string)))))))
 

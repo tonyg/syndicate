@@ -27,8 +27,8 @@
 	    #f)]
     [_ #f]))
 
-(spawn-world (spawn r (void) (sub ?))
-             (spawn b 0 '()))
+(spawn-network (spawn r (void) (sub ?))
+               (spawn b 0 '()))
 
 (define (echoer e s)
   (match e

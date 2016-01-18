@@ -6,7 +6,7 @@ Network-inspired extensions to a functional core represent imperative
 actions as values, giving side-effects locality and enabling
 composition of communicating processes.
 
-Collaborating actors are grouped within task-specific *worlds* (a.k.a.
+Collaborating actors are grouped within task-specific *networks* (a.k.a.
 virtual machines) to scope their interactions. Conversations between
 actors are multi-party (using a publish/subscribe medium), and actors
 can easily participate in many such conversations at once.
@@ -14,15 +14,15 @@ can easily participate in many such conversations at once.
 Prospect makes *presence* notifications an integral part of pub/sub
 through its *shared dataspaces*, akin to
 [tuplespaces](https://en.wikipedia.org/wiki/Tuple_space). Each shared
-dataspace doubles as the pub/sub subscription table for its world.
+dataspace doubles as the pub/sub subscription table for its network.
 Actors react to *state change notifications* reporting changes in a
 dataspace, including new subscriptions created by peers and removal of
 subscriptions when a peer exits or crashes. State change notifications
 serve to communicate changes in demand for and supply of services,
-both within a single world and across nested layers of
-worlds-within-worlds. Programs can give up responsibility for
+both within a single network and across nested layers of
+networks-within-networks. Programs can give up responsibility for
 maintaining shared state and for scoping group communications, letting
-their containing world take on those burdens.
+their containing network take on those burdens.
 
 ## The code
 

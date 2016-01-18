@@ -1,5 +1,5 @@
 #lang racket/base
-;; Breaking the infinite tower of nested Worlds, connecting to the "real" world at the fracture line.
+;; Breaking the infinite tower of nested Networks, connecting to the "real world" at the fracture line.
 
 (require racket/async-channel)
 (require racket/set)
@@ -43,7 +43,7 @@
 
 ;; Projection
 ;; Used to extract event descriptors and results from subscriptions
-;; from the ground VM's contained World.
+;; from the ground VM's contained Network.
 (define event-projection (compile-projection (observe (external-event (?!) ?))))
 
 ;; Interests -> (Listof RacketEvent)
@@ -66,10 +66,10 @@
   (handle-evt (system-idle-evt) (lambda _ #f)))
 
 ;; Action* -> Void
-;; Runs a ground VM, booting the outermost World with the given Actions.
+;; Runs a ground VM, booting the outermost Network with the given Actions.
 (define (run-ground . boot-actions)
   (let await-interrupt ((inert? #f)
-                        (w (make-world boot-actions))
+                        (w (make-network boot-actions))
                         (interests (matcher-empty)))
     ;; (log-info "GROUND INTERESTS:\n~a" (matcher->pretty-string interests))
     (if (and inert? (matcher-empty? interests))
@@ -79,9 +79,9 @@
                         (current-ground-event-async-channel)
                         (if inert? never-evt idle-handler)
                         (extract-active-events interests))))
-          (trace-process-step e #f world-handle-event w)
-          (define resulting-transition (clean-transition (world-handle-event e w)))
-          (trace-process-step-result e #f world-handle-event w #f resulting-transition)
+          (trace-process-step e #f network-handle-event w)
+          (define resulting-transition (clean-transition (network-handle-event e w)))
+          (trace-process-step-result e #f network-handle-event w #f resulting-transition)
 	  (match resulting-transition
 	    [#f ;; inert
 	     (await-interrupt #t w interests)]

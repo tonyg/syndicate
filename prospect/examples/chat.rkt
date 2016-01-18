@@ -18,8 +18,8 @@
            (match e
              [(message (at-meta (tcp-channel _ _ bs)))
               (define input-string (string-trim (bytes->string/utf-8 bs)))
-              (if (equal? input-string "quit-world")
-                  (quit-world)
+              (if (equal? input-string "quit-network")
+                  (quit-network)
                   (message `(,user says ,input-string)))]
              [(message `(,who says ,what))
               (say who "says: ~a" what)]
@@ -40,7 +40,7 @@
           ))))
 
 (spawn-tcp-driver)
-(spawn-world
+(spawn-network
  (spawn-demand-matcher (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
                        (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
 		       #:meta-level 1
