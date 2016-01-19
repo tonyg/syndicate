@@ -76,31 +76,32 @@
 ;; Action* -> Void
 ;; Runs a ground VM, booting the outermost Network with the given Actions.
 (define (run-ground . boot-actions)
+  (define event-chan (make-async-channel))
+  (define action-chan (make-async-channel))
+  (fork-network 0 (clean-actions boot-actions) event-chan action-chan)
   (let await-interrupt ((inert? #f)
-                        (w (make-network boot-actions))
                         (interests (trie-empty)))
     ;; (log-info "GROUND INTERESTS:\n~a" (trie->pretty-string interests))
     (if (and inert? (trie-empty? interests))
 	(begin (log-info "run-ground: Terminating because inert")
 	       (void))
-	(let ((e (apply sync
+        (let ((e/a (apply sync
                         (current-ground-event-async-channel)
+                        action-chan
                         (if inert? never-evt idle-handler)
                         (extract-active-events interests))))
-          (trace-process-step e #f network-handle-event w)
-          (define resulting-transition (clean-transition (network-handle-event e w)))
-          (trace-process-step-result e #f network-handle-event w #f resulting-transition)
-	  (match resulting-transition
-	    [#f ;; inert
-	     (await-interrupt #t w interests)]
-	    [(transition w actions)
-	     (let process-actions ((actions actions) (interests interests))
-	       (match actions
-		 ['() (await-interrupt #f w interests)]
-		 [(cons a actions)
-		  (match a
-                    [(? patch? p)
-                     (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
-		    [_
-		     (log-warning "run-ground: ignoring useless meta-action ~v" a)
-		     (process-actions actions interests)])]))])))))
+          (match e/a
+            [#f
+             ;; system is idle
+             (await-interrupt #t interests)]
+            [(? event? e)
+             (async-channel-put event-chan e)
+             (await-interrupt #f interests)]
+            [(cons pid a)
+             (match a
+               [(? patch? p)
+                (define new-interests (apply-patch interests (label-patch p (datum-tset 'root))))
+                (await-interrupt #f new-interests)]
+               [_
+                (log-warning "run-ground: ignoring useless meta-action ~v" a)
+                (await-interrupt #f interests)])])))))

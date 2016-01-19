@@ -163,7 +163,7 @@
                    (prospect-pretty-print (transition-state t) (current-error-port)))))))]
 	[('internal-action (list pids a old-w))
          (define pidstr (format-pids pids))
-         (define oldcount (hash-count (network-behaviors old-w)))
+         (define oldcount (hash-count (network-event-channels old-w)))
          (match a
            [(? spawn?)
             ;; Handle this in internal-action-result
@@ -193,15 +193,15 @@
          (when (transition? t)
            (define new-w (transition-state t))
            (define pidstr (format-pids pids))
-           (define newcount (hash-count (network-behaviors new-w)))
+           (define newcount (hash-count (network-event-channels new-w)))
            (match a
              [(? spawn?)
               (when (or show-process-lifecycle? show-actions?)
                 (define newpid (mux-next-pid (network-mux old-w)))
                 (define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
                 (define interests (mux-interests-of (network-mux new-w) newpid))
-                (define behavior (hash-ref (network-behaviors new-w) newpid '#:missing-behavior))
-                (define state (hash-ref (network-states new-w) newpid '#:missing-state))
+                (define behavior '#:missing-behavior)
+                (define state '#:missing-state)
                 (with-color BRIGHT-GREEN
                   (output "~a ~v spawned from ~a (~a total processes now)\n"
                           newpidstr
