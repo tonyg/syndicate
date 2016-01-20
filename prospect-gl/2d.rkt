@@ -11,7 +11,7 @@
          update-scene
          update-sprites
          spawn-keyboard-integrator
-         2d-world)
+         2d-network)
 
 (require data/order)
 (require data/splay-tree)
@@ -30,13 +30,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Shared state maintained by world. Describes current window dimensions.
+;; Shared state maintained by network. Describes current window dimensions.
 (struct window (width height) #:transparent)
 
-;; Message sent by world. Describes frame about to be rendered.
+;; Message sent by network. Describes frame about to be rendered.
 (struct frame-event (counter timestamp elapsed-ms target-frame-rate) #:transparent)
 
-;; Message sent by world. Describes a key event. Key is a sealed
+;; Message sent by network. Describes a key event. Key is a sealed
 ;; key-event%. `press?` is #t when the key is pressed (or
 ;; autorepeated!), and #f when it is released.
 (struct key-event (code press? key) #:transparent)
@@ -214,7 +214,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define world-canvas%
+(define network-canvas%
   (class canvas%
     (inherit refresh with-gl-context swap-gl-buffers)
 
@@ -236,7 +236,7 @@
     (define postlude empty-instructions)
     (define fullscreen? #f)
 
-    (define world (make-world boot-actions))
+    (define network (make-network boot-actions))
     (define event-queue (make-queue))
 
     (define target-frame-rate 60)
@@ -259,7 +259,7 @@
       (enqueue! event-queue e))
 
     (define (deliver-event e)
-      (clean-transition (world-handle-event e world)))
+      (clean-transition (network-handle-event e network)))
 
     (define (quiesce!)
       (let loop ((txn #f) (need-poll? #t))
@@ -268,8 +268,8 @@
            (if (queue-empty? event-queue)
                (when need-poll? (loop (deliver-event #f) #f))
                (loop (deliver-event (dequeue! event-queue)) #t))]
-          [(transition new-world actions)
-           (set! world new-world)
+          [(transition new-network actions)
+           (set! network new-network)
            (for-each process-action! actions)
            (loop #f #t)])))
 
@@ -370,19 +370,19 @@
 
     (super-new (style '(gl no-autoclear)))))
 
-(define (2d-world #:width [width #f]
-                  #:height [height #f]
-                  . boot-actions)
+(define (2d-network #:width [width #f]
+                    #:height [height #f]
+                    . boot-actions)
   (define frame (new frame%
                      [style '(fullscreen-button)]
                      [label "prospect-gl"]
                      [width (or width 640)]
                      [height (or height 480)]))
-  (define c (new world-canvas%
+  (define c (new network-canvas%
                  [parent frame]
                  [boot-actions boot-actions]))
   (unless (send (send (send c get-dc) get-gl-context) ok?)
-    (error '2d-world "OpenGL context failed to initialize"))
+    (error '2d-network "OpenGL context failed to initialize"))
   (send c focus)
   (send frame show #t)
   (yield 'wait))
