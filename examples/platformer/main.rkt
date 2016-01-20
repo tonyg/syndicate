@@ -848,17 +848,17 @@
 ;; LevelTerminationMonitor
 ;;
 ;; When the player vanishes from the board, or LevelCompleted is seen,
-;; kills the world.
+;; kills the network.
 
 (define (spawn-level-termination-monitor)
   (spawn (lambda (e s)
            (match e
              [(? patch/removed?)
               (log-info "Player died! Terminating level.")
-              (transition s (quit-world))]
+              (transition s (quit-network))]
              [(message (at-meta (level-completed)))
               (log-info "Level completed! Terminating level.")
-              (transition s (quit-world))]
+              (transition s (quit-network))]
              [_ #f]))
          (void)
          (patch-seq (sub (game-piece-configuration player-id ? ? ?))
@@ -897,7 +897,7 @@
                      #:level-size [level-size-vec (vector 4000 2000)]
                      #:scene [scene grassland-backdrop]
                      . actions)
-  (spawn-world
+  (spawn-network
    (and scene (spawn-background-image level-size-vec scene))
    (spawn-display-controller level-size-vec)
    (spawn-physics-engine)
@@ -969,10 +969,10 @@
 
 (define game-level 3) ;; used to specify meta-level to reach external I/O
 
-(2d-world #:width 600 #:height 400
-          (spawn-keyboard-integrator)
-          (spawn-scene-manager)
-          (spawn-world (spawn-score-keeper)
-                       (spawn-level-spawner 0)
-                       )
+(2d-network #:width 600 #:height 400
+            (spawn-keyboard-integrator)
+            (spawn-scene-manager)
+            (spawn-network (spawn-score-keeper)
+                           (spawn-level-spawner 0)
+                           )
           )
