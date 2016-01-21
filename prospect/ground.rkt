@@ -12,6 +12,7 @@
 
 (provide (struct-out external-event)
          send-ground-message
+         send-ground-patch
 	 run-ground)
 
 ;;---------------------------------------------------------------------------
@@ -26,6 +27,13 @@
 ;; Sends a message at the ground-VM metalevel.
 (define (send-ground-message body)
   (async-channel-put (current-ground-event-async-channel) (message body)))
+
+;; Patch -> Void
+;; Injects a patch into the ground-VM metalevel. It will appear to be
+;; asserted by the environment in general. The obligation is on the caller
+;; to ensure that patches do not interfere between drivers.
+(define (send-ground-patch p)
+  (async-channel-put (current-ground-event-async-channel) p))
 
 ;;---------------------------------------------------------------------------
 ;; Communication via RacketEvents
