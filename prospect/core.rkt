@@ -19,16 +19,16 @@
 	 wildcard?
 	 ?!
 	 (struct-out capture)
-	 pretty-print-matcher
-	 matcher->pretty-string
-	 matcher-non-empty?
-	 matcher-empty?
-         matcher-empty
+	 pretty-print-trie
+	 trie->pretty-string
+	 trie-non-empty?
+	 trie-empty?
+         trie-empty
 	 projection->pattern
          compile-projection
-         matcher-project
-         matcher-project/set
-         matcher-project/set/single
+         trie-project
+         trie-project/set
+         trie-project/set/single
          project-assertions
 
          event?
@@ -132,20 +132,20 @@
 
 (define (observe-at-meta pattern level)
   (if (zero? level)
-      (pattern->matcher #t (observe pattern))
-      (matcher-union
-       (pattern->matcher #t (observe (prepend-at-meta pattern level)))
-       (pattern->matcher #t (at-meta (embedded-matcher (observe-at-meta pattern (- level 1))))))))
+      (pattern->trie #t (observe pattern))
+      (trie-union
+       (pattern->trie #t (observe (prepend-at-meta pattern level)))
+       (pattern->trie #t (at-meta (embedded-trie (observe-at-meta pattern (- level 1))))))))
 
 (define (assert pattern #:meta-level [level 0])
-  (patch (pattern->matcher #t (prepend-at-meta pattern level)) (matcher-empty)))
+  (patch (pattern->trie #t (prepend-at-meta pattern level)) (trie-empty)))
 (define (retract pattern #:meta-level [level 0])
-  (patch (matcher-empty) (pattern->matcher #t (prepend-at-meta pattern level))))
+  (patch (trie-empty) (pattern->trie #t (prepend-at-meta pattern level))))
 
 (define (sub pattern #:meta-level [level 0])
-  (patch (observe-at-meta pattern level) (matcher-empty)))
+  (patch (observe-at-meta pattern level) (trie-empty)))
 (define (unsub pattern #:meta-level [level 0])
-  (patch (matcher-empty) (observe-at-meta pattern level)))
+  (patch (trie-empty) (observe-at-meta pattern level)))
 
 (define (pub pattern #:meta-level [level 0]) (assert (advertise pattern) #:meta-level level))
 (define (unpub pattern #:meta-level [level 0]) (retract (advertise pattern) #:meta-level level))
@@ -428,7 +428,7 @@
     (newline p)
     (fprintf p "      process ~a, behavior ~v, CLAIMS:\n" pid (hash-ref behaviors pid #f))
     (display (indented-port-output 6 (lambda (p)
-                                       (pretty-print-matcher (mux-interests-of mux pid) p)))
+                                       (pretty-print-trie (mux-interests-of mux pid) p)))
              p)
     (newline p)))
 

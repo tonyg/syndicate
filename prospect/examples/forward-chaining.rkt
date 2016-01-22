@@ -29,7 +29,7 @@
              [(? patch/removed?)
               (printf "Retracting ~v because dependencies ~v vanished\n"
                       record
-                      (set->list (matcher-project/set (patch-removed e) (compile-projection (?!)))))
+                      (set->list (trie-project/set (patch-removed e) (compile-projection (?!)))))
               (quit)]
              [(message `(retract ,(== record)))
               (printf "Retracting ~v because we were told to explicitly\n" record)
@@ -48,7 +48,7 @@
          (match e
            [(? patch?)
             (transition s
-                        (for/list [(AB (matcher-project/set
+                        (for/list [(AB (trie-project/set
                                         (patch-added e)
                                         (compile-projection `(parent ,(?!) ,(?!)))))]
                           (match-define (list A B) AB)
@@ -62,7 +62,7 @@
          (match e
            [(? patch?)
             (transition s
-                        (for/list [(AC (matcher-project/set
+                        (for/list [(AC (trie-project/set
                                         (patch-added e)
                                         (compile-projection `(parent ,(?!) ,(?!)))))]
                           (match-define (list A C) AC)
@@ -70,19 +70,19 @@
                           (spawn (lambda (e s)
                                    (define removed-parents
                                      (and (patch? e)
-                                          (matcher-project (patch-removed e)
-                                                           (compile-projection
-                                                            `(parent ,(?!) ,(?!))))))
-                                   (if (matcher-non-empty? removed-parents)
+                                          (trie-project (patch-removed e)
+							(compile-projection
+							 `(parent ,(?!) ,(?!))))))
+                                   (if (trie-non-empty? removed-parents)
                                        (begin
                                          (printf
                                           "Inductive step for ~v retracted because of removal ~v\n"
                                           `(parent ,A ,C)
-                                          (matcher-key-set removed-parents))
+                                          (trie-key-set removed-parents))
                                          (quit))
                                        (and (patch? e)
                                             (transition s
-                                                        (for/list [(CB (matcher-project/set
+                                                        (for/list [(CB (trie-project/set
                                                                         (patch-added e)
                                                                         (compile-projection
                                                                          `(ancestor ,(?!) ,(?!)))))]
@@ -111,8 +111,8 @@
 ;;                                  (match e
 ;;                                    [(? patch/removed?) (quit)]
 ;;                                    [(? patch?)
-;;                                     (define new-facts (matcher-union old-facts (patch-added e)))
-;;                                     (define triples (matcher-project/set new-facts
+;;                                     (define new-facts (trie-union old-facts (patch-added e)))
+;;                                     (define triples (trie-project/set new-facts
 ;;                                                                          (compile-projection
 ;;                                                                           `(,(?!) ,(?!) ,(?!)))))
 ;;                                     (printf "Learned new facts: ~v\n" triples)
@@ -127,7 +127,7 @@
 ;;                                                           `(ancestor ,A ,B))
 ;;                                                   (assert `(ancestor ,A ,B))))]
 ;;                                    [_ #f]))
-;;                                (matcher-empty)
+;;                                (trie-empty)
 ;;                                (patch-seq
 ;;                                 (sub `(parent ,A ,B))
 ;;                                 (sub `(parent ,A ,?))

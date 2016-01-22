@@ -17,9 +17,9 @@
 
 (define-generics prospect-pretty-printable
   (prospect-pretty-print prospect-pretty-printable [port])
-  #:defaults ([(lambda (x) (and (not (eq? x #f)) (matcher? x)))
+  #:defaults ([(lambda (x) (and (not (eq? x #f)) (trie? x)))
                (define (prospect-pretty-print m [p (current-output-port)])
-                 (pretty-print-matcher m p))]
+                 (pretty-print-trie m p))]
               [(lambda (x) #t)
                (define (prospect-pretty-print v [p (current-output-port)])
                  (pretty-write v p))]))

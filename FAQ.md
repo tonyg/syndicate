@@ -24,16 +24,16 @@
     character to turn off the corresponding trace facility; the default
     value of the variable is just the empty-string.
 
-  - For a more fine-grained approach, there are several ways to print specific patches/matchers inside your program:
+  - For a more fine-grained approach, there are several ways to print specific patches/tries inside your program:
 
     ```racket
-    pretty-print-patch     ;; (patch matcher matcher)
-    pretty-print-matcher   ;; matchers *are* tries
+    pretty-print-patch     ;; (patch trie trie)
+    pretty-print-trie
     patch->pretty-string
-    matcher->pretty-string
-    matcher->abstract-graph
+    trie->pretty-string
+    trie->abstract-graph
     abstract-graph->dot
-    matcher->dot           ;; handy for visualizing the trie structure
+    trie->dot           ;; handy for visualizing the trie structure
     ```
 * How do spawned processes communicate with one another?
 
@@ -130,42 +130,42 @@
 
 
 * How do I get the assertions out of a patch?
-  - A patch consists of two matchers, added and removed
-  - To get assertions out of a matcher, you have to decide what sort of assertions
+  - A patch consists of two tries, added and removed
+  - To get assertions out of a trie, you have to decide what sort of assertions
   you are interested in, compile a pattern for those assertions, and pass that
-  along with the matcher to `matcher-project/set`.
-  - `matcher-project/set` takes a matcher and a pattern and returns a set of lists
+  along with the trie to `trie-project/set`.
+  - `trie-project/set` takes a trie and a pattern and returns a set of lists
   - Say you are in interested in assertions of the shape `('posn x y)`.
     * compile the pattern using ```(compile-projection `(posn ,(?!) ,(?!)))```
     * the `(?!)` is for **capturing** the matched value. Use `?` if you want to
       match but don't care about the actual value.
-    * the lists returned by `matcher-project/set` contain the captured values in
+    * the lists returned by `trie-project/set` contain the captured values in
       order.
   - Say we are receiving a patch p where the assertion `('posn 2 3)` was added.
   - The result of
 
     ```racket
-    (matcher-project/set (patch-added p)
-                         (compile-projection `(posn ,(?!) ,(?!))))
+    (trie-project/set (patch-added p)
+                      (compile-projection `(posn ,(?!) ,(?!))))
     ```
     would be `(set (list 2 3))`.
   - If we only cared about the y position, we could instead do
 
     ```racket
-    (matcher-project/set (patch-added p)
-                         (compile-projection `(posn ,? ,(?!))))
+    (trie-project/set (patch-added p)
+                      (compile-projection `(posn ,? ,(?!))))
     ```
     and get the result `(set (list 3))`.
   - an entire structure can be captured by passing a pattern as an argument to
     `(?!)`.
 
     ```racket
-    (matcher-project/set (patch-added p)
-                         (compile-projection (?! `(posn ,? ,?))))
+    (trie-project/set (patch-added p)
+                      (compile-projection (?! `(posn ,? ,?))))
     ```
     with the same example yields `(set (list ('posn 2 3))`.
-  - `matcher-project/set/single` is like mapping `car` over the result of
-  `matcher-project/set`. See also `project-assertions`.
+  - `trie-project/set/single` is like mapping `car` over the result of
+  `trie-project/set`. See also `project-assertions`.
   - `patch-project/set` uses `values` to return the result of matching a projection
   against both the added and removed bits of a patch.
 

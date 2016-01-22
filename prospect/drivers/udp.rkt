@@ -59,7 +59,7 @@
   (spawn (lambda (e s)
 	   (match e
              [(? patch? p)
-              (cond [(matcher-empty? (patch-removed p)) #f] ;; peer hasn't quit yet: do nothing.
+              (cond [(trie-empty? (patch-removed p)) #f] ;; peer hasn't quit yet: do nothing.
                     [else (channel-put control-ch 'quit)
                           (quit)])]
 	     [(message (at-meta (? udp-packet? p)))

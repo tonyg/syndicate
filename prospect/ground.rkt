@@ -57,7 +57,7 @@
 ;; Interests -> (Listof RacketEvent)
 ;; Projects out the active event subscriptions from the given interests.
 (define (extract-active-events interests)
-  (define es (matcher-project/set/single interests event-projection))
+  (define es (trie-project/set/single interests event-projection))
   ;; TODO: how should the following error be handled, ideally?
   ;; In principle, security restrictions should make it impossible.
   ;; But absent those, what should be done? Should an offending
@@ -78,9 +78,9 @@
 (define (run-ground . boot-actions)
   (let await-interrupt ((inert? #f)
                         (w (make-network boot-actions))
-                        (interests (matcher-empty)))
-    ;; (log-info "GROUND INTERESTS:\n~a" (matcher->pretty-string interests))
-    (if (and inert? (matcher-empty? interests))
+                        (interests (trie-empty)))
+    ;; (log-info "GROUND INTERESTS:\n~a" (trie->pretty-string interests))
+    (if (and inert? (trie-empty? interests))
 	(begin (log-info "run-ground: Terminating because inert")
 	       (void))
 	(let ((e (apply sync

@@ -57,7 +57,7 @@
          (for/fold [(count count)
                     (actions-rev '())
                     (interrupt-clearing-patch empty-patch)]
-                   [(expiry (matcher-project/set/single added expiry-projection))]
+                   [(expiry (trie-project/set/single added expiry-projection))]
            (values (- count 1)
                    (cons (message expiry) actions-rev)
                    (patch-seq interrupt-clearing-patch

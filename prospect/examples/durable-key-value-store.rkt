@@ -87,7 +87,7 @@
              [(? patch? p)
               (define-values (added-observations removed-observations)
                 (patch-project/set/single p observation-projector))
-              (define added-updates (matcher-project/set/single (patch-added p) update-projector))
+              (define added-updates (trie-project/set/single (patch-added p) update-projector))
               (transition-bind (adjust-observations added-observations removed-observations)
                                (for/fold [(t (transition old-state '()))]
                                          [(suggestion (in-set added-updates))]
@@ -105,7 +105,7 @@
   (spawn (lambda (e s)
            (match e
              [(? patch? p)
-              (match (set->list (matcher-project/set/single (patch-added p) binding-projector))
+              (match (set->list (trie-project/set/single (patch-added p) binding-projector))
                 ['() #f]
                 [(list (binding _ (== epoch) (== version) _)) #f]
                 [(list (binding _ (== epoch) (== (+ version 1)) (== value))) (quit (on-complete))]

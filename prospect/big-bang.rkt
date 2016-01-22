@@ -68,8 +68,8 @@
                                                                   removed)))
                               (lambda (w1 w2) (< (window-z w1) (window-z w2))))]
                [halted? (or (and (bb-halted? b)
-                                 (not (matcher-match-value (patch-removed p) 'stop #f)))
-                            (matcher-match-value (patch-added p) 'stop #f))]))
+                                 (not (trie-lookup (patch-removed p) 'stop #f)))
+                            (trie-lookup (patch-added p) 'stop #f))]))
 
 (define (deliver b e)
   (clean-transition (network-handle-event e (bb-network b))))

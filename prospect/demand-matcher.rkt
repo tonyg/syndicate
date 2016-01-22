@@ -14,7 +14,7 @@
 	 on-claim)
 
 ;; A DemandMatcher keeps track of demand for services based on some
-;; Projection over a Matcher, as well as a collection of functions
+;; Projection over a Trie, as well as a collection of functions
 ;; that can be used to increase supply in response to increased
 ;; demand, or handle a sudden drop in supply for which demand still
 ;; exists.
@@ -58,10 +58,10 @@
 
   (when (not added-demand) (error 'demand-matcher "Wildcard demand of ~v:\n~a"
                                   demand-spec
-                                  (matcher->pretty-string (patch-added p))))
+                                  (trie->pretty-string (patch-added p))))
   (when (not added-supply) (error 'demand-matcher "Wildcard supply of ~v:\n~a"
                                   supply-spec
-                                  (matcher->pretty-string (patch-added p))))
+                                  (trie->pretty-string (patch-added p))))
 
   (set! supply (set-union supply added-supply))
   (set! demand (set-subtract demand removed-demand))
@@ -107,8 +107,8 @@
                     (sub (projection->pattern supply-spec) #:meta-level meta-level)
                     (pub (projection->pattern supply-spec) #:meta-level meta-level))))
 
-;; (Matcher (Option (Setof (Listof Value))) ... -> (Option (Constreeof Action)))
-;;    Matcher Projection ...
+;; (Trie (Option (Setof (Listof Value))) ... -> (Option (Constreeof Action)))
+;;    Trie Projection ...
 ;; -> Action
 ;; Spawns a process that observes the given projections. Any time the
 ;; environment's interests change in a relevant way, calls
@@ -127,7 +127,7 @@
       [(? patch? p)
        (define new-aggregate (update-interests current-aggregate p))
        (define projection-results
-         (map (lambda (p) (matcher-project/set new-aggregate p)) projections))
+         (map (lambda (p) (trie-project/set new-aggregate p)) projections))
        (define maybe-spawn (apply check-and-maybe-spawn-fn
                                   new-aggregate
                                   projection-results))
@@ -140,8 +140,8 @@
   (list
    (when timeout-msec (message (set-timer timer-id timeout-msec 'relative)))
    (spawn on-claim-handler
-          (matcher-empty)
-          (patch-seq (patch base-interests (matcher-empty))
+          (trie-empty)
+          (patch-seq (patch base-interests (trie-empty))
                      (patch-seq* (map projection->pattern projections))
                      (sub (timer-expired timer-id ?))))))
 

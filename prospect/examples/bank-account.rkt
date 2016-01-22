@@ -18,7 +18,7 @@
   #f)
 
 (define (updater e _)
-  (if (and (patch? e) (matcher-non-empty? (patch-added e)))
+  (if (and (patch? e) (trie-non-empty? (patch-added e)))
       (quit (list (message (deposit +100))
                   (message (deposit -30))))
       #f))

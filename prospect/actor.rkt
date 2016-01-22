@@ -273,7 +273,7 @@
     [(? patch/removed? p)
      (define continuation-table (actor-state-continuation-table s))
      (define quit?
-       (for/or [(callee-id (matcher-project/set/single (patch-removed p) link-active-projection))]
+       (for/or [(callee-id (trie-project/set/single (patch-removed p) link-active-projection))]
          (hash-has-key? continuation-table callee-id)))
      (if quit? ;; TODO: raise exception instead? Signal the cause of the quit somehow?
          (quit)
@@ -471,13 +471,13 @@
                            #,(if maybe-Pred-stx
                                  #`(if #,maybe-Pred-stx
                                        (compute-new-assertions)
-                                       (matcher-empty))
+                                       (trie-empty))
                                  #`(compute-new-assertions)))
                          (and (not (eq? old-assertions new-assertions))
                               ((extend-pending-patch
                                 #,endpoint-index
-                                (patch-seq (patch (matcher-empty) old-assertions)
-                                           (patch new-assertions (matcher-empty))))
+                                (patch-seq (patch (trie-empty) old-assertions)
+                                           (patch new-assertions (trie-empty))))
                                s))))))
 
     (define (analyze-asserted-or-retracted! endpoint-index asserted? outer-expr-stx P-stx I-stxs L-stx)
@@ -491,7 +491,7 @@
                  [(? #,(if asserted? #'patch/added? #'patch/removed?) p)
                   (sequence-transitions0*
                    s
-                   (for/list [(entry (in-set (matcher-project/set
+                   (for/list [(entry (in-set (trie-project/set
                                               #,(if asserted?
                                                     #'(patch-added p)
                                                     #'(patch-removed p))

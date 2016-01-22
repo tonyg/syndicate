@@ -38,7 +38,7 @@
 (define (meta-label? x) (eq? x 'meta))
 
 (define (make-mux)
-  (mux 0 (matcher-empty) (hash)))
+  (mux 0 (trie-empty) (hash)))
 
 (define (mux-add-stream m initial-patch)
   (define new-pid (mux-next-pid m))
@@ -47,7 +47,7 @@
                      initial-patch))
 
 (define (mux-remove-stream m label)
-  (mux-update-stream m label (patch (matcher-empty) (pattern->matcher #t ?))))
+  (mux-update-stream m label (patch (trie-empty) (pattern->trie #t ?))))
 
 (define (mux-update-stream m label delta-orig)
   (define old-interests (mux-interests-of m label))
@@ -60,7 +60,7 @@
   (define new-routing-table (apply-patch old-routing-table delta))
   (values (struct-copy mux m
                        [routing-table new-routing-table]
-                       [interest-table (if (matcher-empty? new-interests)
+                       [interest-table (if (trie-empty? new-interests)
                                            (hash-remove (mux-interest-table m) label)
                                            (hash-set (mux-interest-table m) label new-interests))])
           label
@@ -91,21 +91,21 @@
                 (compute-aggregate-patch delta label old-routing-table #:remove-meta? #t)))))
 
 (define (compute-affected-pids routing-table delta)
-  (define cover (matcher-union (patch-added delta) (patch-removed delta)))
-  (matcher-match-matcher cover
-                         (matcher-step routing-table struct:observe)
-                         #:seed (datum-tset)
-                         #:combiner (lambda (v1 v2 acc) (tset-union v2 acc))
-                         #:left-short (lambda (v r acc)
-                                        (tset-union acc (success-value (matcher-step r EOS))))))
+  (define cover (trie-union (patch-added delta) (patch-removed delta)))
+  (trie-match-trie cover
+		   (trie-step routing-table struct:observe)
+		   #:seed (datum-tset)
+		   #:combiner (lambda (v1 v2 acc) (tset-union v2 acc))
+		   #:left-short (lambda (v r acc)
+				  (tset-union acc (success-value (trie-step r EOS))))))
 
 (define (mux-route-message m body)
-  (if (matcher-match-value (mux-routing-table m) body #f) ;; some other stream has declared body
+  (if (trie-lookup (mux-routing-table m) body #f) ;; some other stream has declared body
       '()
-      (tset->list (matcher-match-value (mux-routing-table m) (observe body) (datum-tset)))))
+      (tset->list (trie-lookup (mux-routing-table m) (observe body) (datum-tset)))))
 
 (define (mux-interests-of m label)
-  (hash-ref (mux-interest-table m) label (matcher-empty)))
+  (hash-ref (mux-interest-table m) label (trie-empty)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -115,5 +115,5 @@
   (fprintf p " - ~a labelled entities with claims\n" (hash-count interest-table))
   (fprintf p " - next label: ~a\n" next-pid)
   (fprintf p " - routing-table:\n")
-  (display (indented-port-output 3 (lambda (p) (pretty-print-matcher routing-table p))) p)
+  (display (indented-port-output 3 (lambda (p) (pretty-print-trie routing-table p))) p)
   (newline p))

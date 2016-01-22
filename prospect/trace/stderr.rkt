@@ -175,9 +175,9 @@
                 (output "~a exiting (~a total processes remain)\n"
                         pidstr
                         (- oldcount 1)))
-              (unless (matcher-empty? interests)
+              (unless (trie-empty? interests)
                 (output "~a's final interests:\n" pidstr)
-                (pretty-print-matcher interests (current-error-port))))]
+                (pretty-print-trie interests (current-error-port))))]
            [(quit-network)
             (with-color BRIGHT-RED
               (output "Process ~a performed a quit-network.\n" pidstr))]
@@ -211,9 +211,9 @@
                 (unless (boring-state? state)
                   (output "~a's initial state:\n" newpidstr)
                   (prospect-pretty-print state (current-error-port)))
-                (unless (matcher-empty? interests)
+                (unless (trie-empty? interests)
                   (output "~a's initial interests:\n" newpidstr)
-                  (pretty-print-matcher interests (current-error-port))))]
+                  (pretty-print-trie interests (current-error-port))))]
              [_
               ;; other cases handled in internal-action
               (void)])
@@ -223,7 +223,7 @@
              (when (not (equal? old-table new-table))
                (with-color BRIGHT-BLUE
                  (output "~a's routing table:\n" (format-pids (cdr pids)))
-                 (pretty-print-matcher new-table (current-error-port))))))])
+                 (pretty-print-trie new-table (current-error-port))))))])
       (loop))))
 
 (void (when (not (set-empty? flags))

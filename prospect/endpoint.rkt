@@ -152,7 +152,7 @@
                                             [endpoints
                                              (hash-remove (endpoint-group-endpoints g) eid)])
                                eid
-                               (patch (matcher-empty) (pattern->matcher #t ?)))]
+                               (patch (trie-empty) (pattern->trie #t ?)))]
     [(as-endpoint other-eid inner-endpoint-action)
      (interpret-endpoint-actions cumulative-patch actions g other-eid inner-endpoint-action)]))
 
@@ -177,4 +177,4 @@
   (fprintf p " - ~a endpoints\n" (hash-count endpoints))
   (fprintf p " - next eid: ~a\n" (mux-next-pid mux))
   (fprintf p " - routing table:\n")
-  (pretty-print-matcher (mux-routing-table mux) p))
+  (pretty-print-trie (mux-routing-table mux) p))
