@@ -303,15 +303,15 @@
       (flush-texture-cache!))
 
     (define (process-stop-requests! p)
-      (when (matcher-match-value (patch-added p) 'stop #f)
+      (when (trie-lookup (patch-added p) 'stop #f)
         (send (send this get-top-level-window) show #f)))
 
     (define (process-fullscreen-requests! p)
       (define changed? #f)
-      (when (matcher-match-value (patch-removed p) 'fullscreen #f)
+      (when (trie-lookup (patch-removed p) 'fullscreen #f)
         (set! changed? #t)
         (set! fullscreen? #f))
-      (when (matcher-match-value (patch-added p) 'fullscreen #f)
+      (when (trie-lookup (patch-added p) 'fullscreen #f)
         (set! changed? #t)
         (set! fullscreen? #t))
       (when changed?
