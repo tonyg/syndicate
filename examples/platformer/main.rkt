@@ -319,7 +319,7 @@
   (define backdrop (rectangle 1 1 "solid" "white"))
 
   (define (update-window-size s p)
-    (define added (matcher-project/set/single (patch-added p) window-projection1))
+    (define added (trie-project/set/single (patch-added p) window-projection1))
     (for/fold [(s s)] [(w added)]
       (match-define (window width height) w)
       (struct-copy scene-manager-state s [size (vector width height)])))
@@ -381,8 +381,8 @@
   (define (piece-imp s id) (hash-ref (physics-state-impulses s) id (lambda () (vector 0 0))))
 
   (define ((remove-game-piece-configurations p) s)
-    (define removed (matcher-project/set/single (patch-removed p)
-                                                game-piece-configuration-projection))
+    (define removed (trie-project/set/single (patch-removed p)
+					     game-piece-configuration-projection))
     (transition
      (for/fold [(s s)] [(g removed)]
        (define id (game-piece-configuration-id g))
@@ -395,8 +395,8 @@
        (retract (position id ? ?)))))
 
   (define ((add-game-piece-configurations p) s)
-    (define added (matcher-project/set/single (patch-added p)
-                                              game-piece-configuration-projection))
+    (define added (trie-project/set/single (patch-added p)
+					   game-piece-configuration-projection))
     (transition
      (for/fold [(s s)] [(g added)]
        (match-define (game-piece-configuration id initial-position _ _) g)
@@ -614,7 +614,7 @@
 
   (define ((monitor-position-change p) s)
     (define s1
-      (for/fold [(s s)] [(pos (matcher-project/set/single (patch-added p) position-projection))]
+      (for/fold [(s s)] [(pos (trie-project/set/single (patch-added p) position-projection))]
         (match-define (position _ hitbox-top-left _) pos)
         (struct-copy player-state s [pos hitbox-top-left])))
     (transition s1 (sprite-update s1)))
@@ -745,13 +745,13 @@
                                                  0)))))
 
   (define ((monitor-level-size-change p) s)
-    (transition (for/fold [(s s)] [(vec (matcher-project/set/single (patch-added p)
-                                                                    level-size-projection))]
+    (transition (for/fold [(s s)] [(vec (trie-project/set/single (patch-added p)
+								 level-size-projection))]
                   (struct-copy enemy-state s [level-size vec]))
                 '()))
 
   (define ((monitor-position-change p) s)
-    (define positions (matcher-project/set/single (patch-added p) position-projection))
+    (define positions (trie-project/set/single (patch-added p) position-projection))
     (and (not (set-empty? positions))
          (match (set-first positions)
            [(position _ (and top-left (vector left top)) (vector width height))
@@ -772,7 +772,7 @@
   (define ((damage-contacts p) s)
     (define-values (to-damage squashed?)
       (for/fold [(to-damage '()) (squashed? #f)]
-                [(t (matcher-project/set/single (patch-added p) touching-projection))]
+                [(t (trie-project/set/single (patch-added p) touching-projection))]
         (match-define (touching who _ side) t)
         (if (eq? side 'top)
             (values to-damage #t)
@@ -809,7 +809,7 @@
   (match-define (vector level-width level-height) level-size-vec)
 
   (define ((update-window-size p) s)
-    (define added (matcher-project/set/single (patch-added p) window-projection3))
+    (define added (trie-project/set/single (patch-added p) window-projection3))
     (transition (for/fold [(s s)] [(w added)]
                   (match-define (window width height) w)
                   (vector width height))
@@ -819,7 +819,7 @@
     (min (max 0 (- pos (/ viewport 2))) (- limit viewport)))
 
   (define ((update-scroll-offset-from-player-position p) s)
-    (define player-positions (matcher-project/set/single (patch-added p) position-projection))
+    (define player-positions (trie-project/set/single (patch-added p) position-projection))
     (and (not (set-empty? player-positions))
          (let ((player-position (set-first player-positions)))
            (match-define (vector ww wh) s)
