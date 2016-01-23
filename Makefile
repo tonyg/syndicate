@@ -1,5 +1,5 @@
 PACKAGENAME=prospect
-COLLECTS=prospect
+COLLECTS=prospect prospect-monolithic
 
 all: setup
 
