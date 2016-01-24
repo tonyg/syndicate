@@ -421,6 +421,7 @@
   (fprintf p " - ~a live processes\n" (hash-count states))
   (fprintf p " - ")
   (display (indented-port-output 3 (lambda (p) (prospect-pretty-print mux p)) #:first-line? #f) p)
+  (newline p)
   (for ([pid (set-union (hash-keys (mux-interest-table mux)) (hash-keys states))])
     (fprintf p " ---- process ~a, behavior ~v, STATE:\n" pid (hash-ref behaviors pid #f))
     (define state (hash-ref states pid #f))
