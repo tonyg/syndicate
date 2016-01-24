@@ -7,7 +7,7 @@
 (require "arp.rkt")
 (require "ip.rkt")
 ;; (require "tcp.rkt")
-;; (require "udp.rkt")
+(require "udp.rkt")
 
 ;;(log-events-and-actions? #t)
 
@@ -16,7 +16,7 @@
 (spawn-arp-driver)
 (spawn-ip-driver)
 ;; (spawn-tcp-driver)
-;; (spawn-udp-driver)
+(spawn-udp-driver)
 (spawn-demo-config)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -66,7 +66,7 @@
                         spawn-session)
   )
 
-#;(let ()
+(let ()
   (spawn (lambda (e s)
 	   (match e
 	     [(message (udp-packet src dst body))
