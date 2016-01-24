@@ -74,7 +74,9 @@
   (values (for/list [(pid (tset->list affected-pids))]
             (cons pid (scn (biased-intersection new-routing-table (mux-interests-of new-m pid)))))
           (and (not (meta-label? label))
-               (drop-scn (scn (strip-interests new-routing-table))))))
+               (drop-scn (scn (trie-subtract (strip-interests new-routing-table)
+                                             (mux-interests-of new-m 'meta)
+                                             #:combiner (lambda (a b) #f)))))))
 
 (define (compute-affected-pids routing-table cover)
   (trie-match-trie cover
