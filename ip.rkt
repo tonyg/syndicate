@@ -130,11 +130,10 @@
   (define host-route-projector (compile-projection (host-route (?!) ? ?)))
   (define gateway-route-projector (compile-projection (gateway-route (?!) (?!) ? ?)))
   (define net-route-projector (compile-projection (net-route (?!) (?!) ?)))
-  (define gateway-arp-projector (compile-projection
-                                 (arp-query IPv4-ethertype
-                                            gateway-addr
-                                            (?! (ethernet-interface interface-name ?))
-                                            (?!))))
+  (define gateway-arp-projector (arp-query IPv4-ethertype
+                                           gateway-addr
+                                           (?! (ethernet-interface interface-name ?))
+                                           (?!)))
 
   (define (covered-by-some-other-route? addr routes)
     (for/or ([r (in-set routes)])
@@ -148,8 +147,9 @@
 	      (define host-ips (trie-project/set/single g host-route-projector))
 	      (define gw-nets+netmasks (trie-project/set g gateway-route-projector))
 	      (define net-nets+netmasks (trie-project/set g net-route-projector))
-	      (define gw-ip+hwaddr (let ((vs (trie-project/set g gateway-arp-projector)))
-				     (and vs (not (set-empty? vs)) (set-first vs))))
+	      (define gw-ip+hwaddr
+                (let ((vs (trie-project/set g (compile-projection gateway-arp-projector))))
+                  (and vs (not (set-empty? vs)) (set-first vs))))
 	      (when (and gw-ip+hwaddr (not (gateway-route-state-gateway-hwaddr s)))
 		(log-info "Discovered gateway ~a at ~a on interface ~a."
 			  (ip-address->hostname gateway-addr)
