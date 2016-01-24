@@ -6,7 +6,7 @@
 (require "ethernet.rkt")
 (require "arp.rkt")
 (require "ip.rkt")
-;; (require "tcp.rkt")
+(require "tcp.rkt")
 (require "udp.rkt")
 
 ;;(log-events-and-actions? #t)
@@ -15,13 +15,13 @@
 (spawn-ethernet-driver)
 (spawn-arp-driver)
 (spawn-ip-driver)
-;; (spawn-tcp-driver)
+(spawn-tcp-driver)
 (spawn-udp-driver)
 (spawn-demo-config)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-#;(let ()
+(let ()
   (local-require racket/set racket/string)
 
   (define (spawn-session them us)
@@ -60,10 +60,11 @@
             (advertisement (tcp-channel us them ?) #:meta-level 1) ;; we will write to remote client
             ))))
 
-  (spawn-demand-matcher (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
-                        (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
-                        #:meta-level 1
-                        spawn-session)
+  (spawn-network
+   (spawn-demand-matcher (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
+                         (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
+                         #:meta-level 1
+                         spawn-session))
   )
 
 (let ()

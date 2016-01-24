@@ -44,22 +44,32 @@
 		    data)
 	#:prefab)
 
+;; (tcp-port-allocation Number (U TcpHandle TcpListener))
+(struct tcp-port-allocation (port handle) #:prefab)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User-accessible driver startup
 
 (define (spawn-tcp-driver)
-  (list (spawn-demand-matcher (tcp-channel ? (?! (tcp-listener ?)) ?)
-			      #:demand-is-subscription? #t
-			      #:demand-level 1
-			      #:supply-level 2
+  (list (spawn-demand-matcher (advertise (observe (tcp-channel ? (?! (tcp-listener ?)) ?)))
+                              (advertise (advertise (tcp-channel ? (?! (tcp-listener ?)) ?)))
 			      (lambda (server-addr)
 				(match-define (tcp-listener port) server-addr)
 				;; TODO: have listener shut down once user-level listener does
+                                (spawn (lambda (e s) #f)
+                                       (void)
+                                       (assertion (tcp-port-allocation port server-addr)))
 				(spawn-demand-matcher
-				 (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-address ? port)) ?)
+				 (advertise (tcp-channel (?! (tcp-address ? ?))
+                                                         (?! (tcp-address ? port))
+                                                         ?))
+                                 (observe (tcp-channel (?! (tcp-address ? ?))
+                                                       (?! (tcp-address ? port))
+                                                       ?))
 				 (spawn-relay server-addr))))
-	(spawn-demand-matcher (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?)
-			      allocate-port-and-spawn-socket)
+	(spawn-demand-matcher (advertise (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
+                              (observe (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
+                              allocate-port-and-spawn-socket)
 	(spawn-tcp-port-allocator)
 	(spawn-kernel-tcp-driver)))
 
@@ -67,44 +77,32 @@
 ;; Port allocation
 
 (define (spawn-tcp-port-allocator)
-  (define project-active-connections (project-pubs (tcp-packet #f (?!) (?!) ? ? ? ? ? ? ? ?)))
-  ;; We have to have gestalt observing listeners at level 3 so that
-  ;; we're not mistaken for listener supply! We still project out at
-  ;; level 1 (instead of level 2, as would be natural for a level 3
-  ;; observer gestalt) though.
-  (define listeners-p (project-subs #:level 1 (tcp-channel ? (tcp-listener (?!)) ?)))
-  (define listeners-g (pub #:level 3 (tcp-channel ? (tcp-listener ?) ?)))
   (spawn-port-allocator 'tcp
-			(list (projection->gestalt project-active-connections) listeners-g)
+                        (subscription (tcp-port-allocation ? ?))
 			(lambda (g local-ips)
-			  (define listener-ports (gestalt-project/single g listeners-p))
-			  (define active-connection-ports
-			    (for/set [(e (gestalt-project/keys g project-active-connections))
-				      #:when (set-member? local-ips (car e))]
-			      (cadr e)))
-			  (set-union listener-ports active-connection-ports))))
+                          (project-assertions g (tcp-port-allocation (?!) ?)))))
 
 (define (allocate-port-and-spawn-socket local-addr remote-addr)
-  (send (port-allocation-request
-	 'tcp
-	 (lambda (port local-ips)
-	   ;; TODO: Choose a sensible IP address for the outbound
-	   ;; connection. We don't have enough information to do this
-	   ;; well at the moment, so just pick some available local IP
-	   ;; address.
-	   ;;
-	   ;; Interesting note: In some sense, the right answer is
-	   ;; "?". This would give us a form of mobility, where IP
-	   ;; addresses only route to a given bucket-of-state and ONLY
-	   ;; the port number selects a substate therein. That's not
-	   ;; how TCP is defined however so we can't do that.
-	   (define appropriate-ip (set-first local-ips))
-	   (define appropriate-host (ip-address->hostname appropriate-ip))
-	   (match-define (tcp-address remote-host remote-port) remote-addr)
-	   (define remote-ip (ip-string->ip-address remote-host))
-	   (list
-	    ((spawn-relay local-addr) remote-addr (tcp-address appropriate-host port))
-	    (spawn-state-vector remote-ip remote-port appropriate-ip port))))))
+  (message (port-allocation-request
+            'tcp
+            (lambda (port local-ips)
+              ;; TODO: Choose a sensible IP address for the outbound
+              ;; connection. We don't have enough information to do this
+              ;; well at the moment, so just pick some available local IP
+              ;; address.
+              ;;
+              ;; Interesting note: In some sense, the right answer is
+              ;; "?". This would give us a form of mobility, where IP
+              ;; addresses only route to a given bucket-of-state and ONLY
+              ;; the port number selects a substate therein. That's not
+              ;; how TCP is defined however so we can't do that.
+              (define appropriate-ip (set-first local-ips))
+              (define appropriate-host (ip-address->hostname appropriate-ip))
+              (match-define (tcp-address remote-host remote-port) remote-addr)
+              (define remote-ip (ip-string->ip-address remote-host))
+              (list
+               ((spawn-relay local-addr) remote-addr (tcp-address appropriate-host port))
+               (spawn-state-vector remote-ip remote-port appropriate-ip port))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Relay between kernel-level and user-level
@@ -113,33 +111,40 @@
 
 (define ((spawn-relay local-user-addr) remote-addr local-tcp-addr)
   (define timer-name (list 'spawn-relay local-tcp-addr remote-addr))
-  (define local-peer-traffic (pub (tcp-channel remote-addr local-user-addr ?) #:level 1))
-  (define remote-peer-traffic (sub (tcp-channel remote-addr local-tcp-addr ?) #:level 1))
+  (define local-peer-traffic (?! (observe (tcp-channel remote-addr local-user-addr ?))))
+  (define remote-peer-traffic (?! (advertise (tcp-channel remote-addr local-tcp-addr ?))))
   (list
-   (send (set-timer timer-name relay-peer-wait-time-msec 'relative))
+   (message (set-timer timer-name relay-peer-wait-time-msec 'relative))
    (spawn (lambda (e state)
 	    (match e
-	      [(routing-update g)
-	       (define local-peer-absent? (gestalt-empty? (gestalt-filter g local-peer-traffic)))
-	       (define remote-peer-absent? (gestalt-empty? (gestalt-filter g remote-peer-traffic)))
+	      [(scn g)
+	       (define local-peer-absent?
+                 (trie-empty? (trie-project g (compile-projection local-peer-traffic))))
+	       (define remote-peer-absent?
+                 (trie-empty? (trie-project g (compile-projection remote-peer-traffic))))
 	       (define new-state (+ (if local-peer-absent? 0 1) (if remote-peer-absent? 0 1)))
-	       (transition new-state (when (< new-state state) (quit)))]
-	      [(message (tcp-channel (== local-user-addr) (== remote-addr) bs) _ _)
-	       (transition state (send (tcp-channel local-tcp-addr remote-addr bs)))]
-	      [(message (tcp-channel (== remote-addr) (== local-tcp-addr) bs) _ _)
-	       (transition state (send (tcp-channel remote-addr local-user-addr bs)))]
-	      [(message (timer-expired _ _) _ _)
+               (if (< new-state state)
+                   (quit)
+                   (transition new-state '()))]
+	      [(message (tcp-channel (== local-user-addr) (== remote-addr) bs))
+	       (transition state (message (tcp-channel local-tcp-addr remote-addr bs)))]
+	      [(message (tcp-channel (== remote-addr) (== local-tcp-addr) bs))
+	       (transition state (message (tcp-channel remote-addr local-user-addr bs)))]
+	      [(message (timer-expired _ _))
 	       #:when (< state 2) ;; we only care if we're not fully connected
 	       (error 'spawn-relay "TCP relay process timed out waiting for peer")]
 	      [_ #f]))
 	  0
-	  (gestalt-union local-peer-traffic
-			 remote-peer-traffic
-			 (sub (tcp-channel remote-addr local-tcp-addr ?))
-			 (sub (tcp-channel local-user-addr remote-addr ?))
-			 (pub (tcp-channel remote-addr local-user-addr ?))
-			 (pub (tcp-channel local-tcp-addr remote-addr ?))
-			 (sub (timer-expired timer-name ?))))))
+	  (scn/union (subscription (projection->pattern local-peer-traffic))
+                     (subscription (projection->pattern remote-peer-traffic))
+                     (assertion (tcp-port-allocation (tcp-address-port local-tcp-addr)
+                                                     local-user-addr))
+                     (subscription (tcp-channel remote-addr local-tcp-addr ?))
+                     (subscription (tcp-channel local-user-addr remote-addr ?))
+                     (advertisement (tcp-channel remote-addr local-user-addr ?))
+                     (advertisement (tcp-channel local-tcp-addr remote-addr ?))
+                     (subscription (timer-expired timer-name ?))))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Codec & kernel-level driver
@@ -215,15 +220,16 @@
 			   (when spawn-needed? (spawn-state-vector src-ip src-port
 								   dst-ip dst-port))
 			   ;; TODO: get packet to the new state-vector process somehow
-			   (send packet)))))
+			   (message packet)))))
 	   (else #f))))
       (else #f)))
 
-  (define statevec-projection (project-subs (tcp-packet ? (?!) (?!) (?!) (?!) ? ? ? ? ? ?)))
+  (define statevec-projection
+    (compile-projection (observe (tcp-packet ? (?!) (?!) (?!) (?!) ? ? ? ? ? ?))))
 
   (define (analyze-gestalt g s)
     (define local-ips (gestalt->local-ip-addresses g))
-    (define statevecs (gestalt-project/keys g statevec-projection))
+    (define statevecs (trie-project/set g statevec-projection))
     (log-info "gestalt yielded statevecs ~v and local-ips ~v" statevecs local-ips)
     (transition (struct-copy codec-state s
 		  [local-ips local-ips]
@@ -277,27 +283,26 @@
 				      0
 				      PROTOCOL-TCP
 				      ((bit-string-byte-count payload) :: integer bytes 2)))
-    (transition s (send (ip-packet #f src-ip dst-ip PROTOCOL-TCP #""
-				   (ip-checksum 16 payload #:pseudo-header pseudo-header)))))
+    (transition s (message (ip-packet #f src-ip dst-ip PROTOCOL-TCP #""
+                                      (ip-checksum 16 payload #:pseudo-header pseudo-header)))))
 
   (spawn (lambda (e s)
 	   (match e
-	     [(routing-update g)
+	     [(scn g)
 	      (analyze-gestalt g s)]
-	     [(message (ip-packet source-if src dst _ _ body) _ _)
+	     [(message (ip-packet source-if src dst _ _ body))
 	      #:when (and source-if ;; source-if == #f iff packet originates locally
 			  (set-member? (codec-state-local-ips s) dst))
 	      (analyze-incoming-packet src dst body s)]
-	     [(message (? tcp-packet? p) _ _)
+	     [(message (? tcp-packet? p))
 	      #:when (not (tcp-packet-from-wire? p))
 	      (deliver-outbound-packet p s)]
 	     [_ #f]))
 	 (codec-state (set) (set))
-	 (gestalt-union (pub (ip-packet #f ? ? PROTOCOL-TCP ? ?))
-			(sub (ip-packet ? ? ? PROTOCOL-TCP ? ?))
-			(sub (tcp-packet #f ? ? ? ? ? ? ? ? ? ?))
-			(pub (tcp-packet #t ? ? ? ? ? ? ? ? ? ?) #:level 1)
-			observe-local-ip-addresses-gestalt)))
+	 (scn/union (subscription (ip-packet ? ? ? PROTOCOL-TCP ? ?))
+                    (subscription (tcp-packet #f ? ? ? ? ? ? ? ? ? ?))
+                    (subscription (observe (tcp-packet #t ? ? ? ? ? ? ? ? ? ?)))
+                    observe-local-ip-addresses-gestalt)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Per-connection state vector process
@@ -359,27 +364,25 @@
   (define (seq> a b)
     (< (seq- a b) #x80000000))
 
-  (define local-peer-detector (pub (tcp-channel src dst ?) #:level 1))
-  (define listener-detector (pub (tcp-channel ? (tcp-listener dst-port) ?) #:level 3))
-  ;; ^ see comment in spawn-tcp-port-allocator for why level 3 instead of level 2
+  (define local-peer-detector (?! (observe (tcp-channel src dst ?))))
+  (define listener-detector (?! (observe (advertise (tcp-channel ? (tcp-listener dst-port) ?)))))
 
   ;; ConnState -> Gestalt
   (define (compute-gestalt s)
     (define worldward-facing-gestalt
-      (gestalt-union (sub (tcp-packet #t src-ip src-port dst-ip dst-port ? ? ? ? ? ?))
-		     (pub (tcp-packet #f dst-ip dst-port src-ip src-port ? ? ? ? ? ?))))
+      (subscription (tcp-packet #t src-ip src-port dst-ip dst-port ? ? ? ? ? ?)))
     (define appward-facing-gestalt
-      (gestalt-union
-       local-peer-detector
-       listener-detector
-       (sub (tcp-channel dst src ?))
+      (assertion-set-union
+       (subscription (projection->pattern local-peer-detector))
+       (subscription (projection->pattern listener-detector))
+       (subscription (tcp-channel dst src ?))
        (if (and (conn-state-syn-acked? s)
 		(not (buffer-finished? (conn-state-inbound s))))
-	   (pub (tcp-channel src dst ?))
-	   (gestalt-empty))))
-    (gestalt-union (sub (timer-expired (timer-name ?) ?))
-		   worldward-facing-gestalt
-		   appward-facing-gestalt))
+	   (advertisement (tcp-channel src dst ?))
+	   (trie-empty))))
+    (assertion-set-union (subscription (timer-expired (timer-name ?) ?))
+                         worldward-facing-gestalt
+                         appward-facing-gestalt))
 
   ;; ConnState -> Transition
   (define (deliver-inbound-locally s)
@@ -391,7 +394,7 @@
 			[inbound (struct-copy buffer b
 				   [data #""]
 				   [seqn (seq+ (buffer-seqn b) (bytes-length chunk))])])
-		      (send (tcp-channel src dst chunk))))))
+		      (message (tcp-channel src dst chunk))))))
 
   ;; (Setof Symbol) -> ConnState -> Transition
   (define ((check-fin flags) s)
@@ -404,7 +407,7 @@
 				  [seqn (seq+ (buffer-seqn b) 1)] ;; reliable: count fin as a byte
 				  [finished? #t])])))
 	  (log-info "Closing inbound stream.")
-	  (transition new-s (routing-update (compute-gestalt new-s))))
+	  (transition new-s (scn (compute-gestalt new-s))))
 	(transition s '())))
 
   ;; Boolean SeqNum -> ConnState -> Transition
@@ -422,7 +425,7 @@
 					  (positive? dist))]))
 	  (transition new-s
 		      (when (and (not (conn-state-syn-acked? s)) (positive? dist))
-			(routing-update (compute-gestalt new-s)))))))
+			(scn (compute-gestalt new-s)))))))
 
   ;; Nat -> ConnState -> Transition
   (define ((update-outbound-window peer-window) s)
@@ -474,13 +477,13 @@
 						(s ,s)
 						(flags ,flags)))
 		  (flush-output)
-		  (send (tcp-packet #f dst-ip dst-port src-ip src-port
-				    (buffer-seqn b)
-				    (or ackn 0)
-				    flags
-				    window
-				    #""
-				    chunk)))))
+		  (message (tcp-packet #f dst-ip dst-port src-ip src-port
+                                       (buffer-seqn b)
+                                       (or ackn 0)
+                                       flags
+                                       window
+                                       #""
+                                       chunk)))))
 
   ;; ConnState -> Transition
   (define (bump-activity-time s)
@@ -490,19 +493,20 @@
 
   ;; ConnState -> Transition
   (define (quit-when-done s)
-    (transition s (when (and (buffer-finished? (conn-state-outbound s))
-			     (buffer-finished? (conn-state-inbound s))
-			     (all-output-acknowledged? s)
-			     (> (- (current-inexact-milliseconds)
-				   (conn-state-latest-activity-time s))
-				(* 2 1000 maximum-segment-lifetime-sec)))
-		    (quit))))
+    (if (and (buffer-finished? (conn-state-outbound s))
+             (buffer-finished? (conn-state-inbound s))
+             (all-output-acknowledged? s)
+             (> (- (current-inexact-milliseconds)
+                   (conn-state-latest-activity-time s))
+                (* 2 1000 maximum-segment-lifetime-sec)))
+        (quit)
+        #f))
 
   ;; Action
   (define send-set-transmit-check-timer
-    (send (set-timer (timer-name 'transmit-check)
-		     transmit-check-interval-msec
-		     'relative)))
+    (message (set-timer (timer-name 'transmit-check)
+                        transmit-check-interval-msec
+                        'relative)))
 
   ;; SeqNum SeqNum ConnState -> Transition
   (define (reset seqn ackn s)
@@ -511,16 +515,13 @@
 		 dst-port
 		 (ip-address->hostname src-ip)
 		 src-port)
-    (transition s
-		(list
-		 (send (tcp-packet #f dst-ip dst-port src-ip src-port
-				   seqn
-				   ackn
-				   (set 'ack 'rst)
-				   0
-				   #""
-				   #""))
-		 (quit))))
+    (quit (message (tcp-packet #f dst-ip dst-port src-ip src-port
+                               seqn
+                               ackn
+                               (set 'ack 'rst)
+                               0
+                               #""
+                               #""))))
 
   ;; ConnState -> Transition
   (define (close-outbound-stream s)
@@ -533,10 +534,12 @@
   (define (state-vector-behavior e s)
     (define old-ackn (buffer-seqn (conn-state-inbound s)))
     (match e
-      [(routing-update g)
-       (log-info "State vector routing-update:\n~a" (gestalt->pretty-string g))
-       (define local-peer-present? (not (gestalt-empty? (gestalt-filter g local-peer-detector))))
-       (define listening? (not (gestalt-empty? (gestalt-filter g listener-detector))))
+      [(scn g)
+       (log-info "State vector routing-update:\n~a" (trie->pretty-string g))
+       (define local-peer-present?
+         (trie-non-empty? (trie-project g (compile-projection local-peer-detector))))
+       (define listening?
+         (trie-non-empty? (trie-project g (compile-projection listener-detector))))
        (define new-s (struct-copy conn-state s [listener-listening? listening?]))
        (cond
 	[(and local-peer-present? (not (conn-state-local-peer-seen? s)))
@@ -548,13 +551,12 @@
 			       bump-activity-time
 			       quit-when-done)]
 	[else (transition new-s '())])]
-      [(message (tcp-packet #t _ _ _ _ seqn ackn flags window options data) _ _)
+      [(message (tcp-packet #t _ _ _ _ seqn ackn flags window options data))
        (define expected (next-expected-seqn s))
        (define is-syn? (set-member? flags 'syn))
        (define is-fin? (set-member? flags 'fin))
        (cond
-	[(set-member? flags 'rst)
-	 (transition s (quit))]
+	[(set-member? flags 'rst) (quit)]
 	[(and (not expected)	 ;; no syn yet
 	      (or (not is-syn?)	 ;; and this isn't it
 		  (and (not (conn-state-listener-listening? s)) ;; or it is, but no listener...
@@ -578,7 +580,7 @@
 			       (send-outbound old-ackn)
 			       bump-activity-time
 			       quit-when-done)])]
-      [(message (tcp-channel _ _ bs) _ _)
+      [(message (tcp-channel _ _ bs))
        ;; (log-info "GOT MORE STUFF TO DELIVER ~v" bs)
        (sequence-transitions (transition (struct-copy conn-state s
 					   [outbound (buffer-push (conn-state-outbound s) bs)])
@@ -586,7 +588,7 @@
 			     (send-outbound old-ackn)
 			     bump-activity-time
 			     quit-when-done)]
-      [(message (timer-expired (== (timer-name 'transmit-check)) _) _ _)
+      [(message (timer-expired (== (timer-name 'transmit-check)) _))
        (sequence-transitions (transition s send-set-transmit-check-timer)
 			     (send-outbound old-ackn)
 			     quit-when-done)]
@@ -611,4 +613,4 @@
 			     #f)))
      (spawn state-vector-behavior
 	    state0
-	    (compute-gestalt state0)))))
+	    (scn (compute-gestalt state0))))))
