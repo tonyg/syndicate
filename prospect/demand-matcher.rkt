@@ -127,7 +127,7 @@
       [(? patch? p)
        (define new-aggregate (update-interests current-aggregate p))
        (define projection-results
-         (map (lambda (p) (trie-project/set new-aggregate p)) projections))
+         (map (lambda (p) (trie-project/set new-aggregate (compile-projection p))) projections))
        (define maybe-spawn (apply check-and-maybe-spawn-fn
                                   new-aggregate
                                   projection-results))
@@ -142,7 +142,7 @@
    (spawn on-claim-handler
           (trie-empty)
           (patch-seq (patch base-interests (trie-empty))
-                     (patch-seq* (map projection->pattern projections))
+                     (patch-seq* (map (lambda (p) (sub projection->pattern)) projections))
                      (sub (timer-expired timer-id ?))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
