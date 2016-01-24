@@ -8,9 +8,9 @@
 
 (require racket/set)
 (require racket/match)
-(require minimart)
-(require minimart/drivers/timer)
-(require minimart/demand-matcher)
+(require prospect-monolithic)
+(require prospect-monolithic/drivers/timer)
+(require prospect-monolithic/demand-matcher)
 (require bitsyntax)
 
 (require "dump-bytes.rkt")

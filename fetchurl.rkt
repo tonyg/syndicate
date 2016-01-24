@@ -1,7 +1,7 @@
-#lang minimart
+#lang prospect-monolithic
 
-(require minimart/demand-matcher)
-(require minimart/drivers/timer)
+(require prospect-monolithic/demand-matcher)
+(require prospect-monolithic/drivers/timer)
 (require "demo-config.rkt")
 (require "ethernet.rkt")
 (require "arp.rkt")

@@ -6,8 +6,6 @@
 	 broadcast-ethernet-address
 	 interface-names
 	 spawn-ethernet-driver
-	 ethernet-hwaddr-projection
-	 gestalt->hwaddr
 	 ethernet-packet-pattern
 	 lookup-ethernet-hwaddr)
 
@@ -15,8 +13,8 @@
 (require racket/match)
 (require racket/async-channel)
 
-(require minimart)
-(require minimart/demand-matcher)
+(require prospect-monolithic)
+(require prospect-monolithic/demand-matcher)
 
 (require packet-socket)
 (require bitsyntax)
@@ -33,8 +31,8 @@
 (log-info "Device names: ~a" interface-names)
 
 (define (spawn-ethernet-driver)
-  (spawn-demand-matcher (ethernet-packet (ethernet-interface (?!) ?) #t ? ? ? ?)
-			#:demand-is-subscription? #t
+  (spawn-demand-matcher (observe (ethernet-packet (ethernet-interface (?!) ?) #t ? ? ? ?))
+                        (ethernet-interface (?!) ?)
 			spawn-interface-tap))
 
 (define (spawn-interface-tap interface-name)
@@ -50,22 +48,21 @@
     (thread (lambda () (interface-packet-read-loop interface h control-ch)))
     (spawn (lambda (e h)
 	     (match e
-	       [(routing-update g)
-
-		(if (gestalt-empty? g)
+               [(scn g)
+		(if (trie-empty? g)
 		    (begin (async-channel-put control-ch 'quit)
-			   (transition #f (quit)))
+                           (quit))
 		    (begin (async-channel-put control-ch 'unblock)
 			   #f))]
-	       [(message (? ethernet-packet? p) 1 #f) ;; from metalevel 1
+	       [(message (at-meta (? ethernet-packet? p)))
 		;; (log-info "Interface ~a inbound packet ~a -> ~a (type 0x~a)"
 		;; 	  (ethernet-interface-name (ethernet-packet-interface p))
 		;; 	  (pretty-bytes (ethernet-packet-source p))
 		;; 	  (pretty-bytes (ethernet-packet-destination p))
 		;; 	  (number->string (ethernet-packet-ethertype p) 16))
 		;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
-		(transition h (send p))]
-	       [(message (? ethernet-packet? p) 0 #f) ;; from metalevel 0
+		(transition h (message p))]
+	       [(message (? ethernet-packet? p))
 		;; (log-info "Interface ~a OUTBOUND packet ~a -> ~a (type 0x~a)"
 		;; 	  (ethernet-interface-name (ethernet-packet-interface p))
 		;; 	  (pretty-bytes (ethernet-packet-source p))
@@ -76,10 +73,10 @@
 		#f]
 	       [_ #f]))
 	   h
-	   (gestalt-union (pub (ethernet-packet interface #t ? ? ? ?))
-			  (pub (ethernet-packet interface #t ? ? ? ?) #:level 1)
-			  (sub (ethernet-packet interface #f ? ? ? ?))
-			  (sub (ethernet-packet interface #t ? ? ? ?) #:meta-level 1)))]))
+           (scn/union (assertion interface)
+                      (subscription (ethernet-packet interface #f ? ? ? ?))
+                      (subscription (observe (ethernet-packet interface #t ? ? ? ?)))
+                      (subscription (ethernet-packet interface #t ? ? ? ?) #:meta-level 1)))]))
 
 (define (interface-packet-read-loop interface h control-ch)
   (define (blocked)
@@ -120,29 +117,17 @@
 	       (ethertype :: integer bytes 2)
 	       (body :: binary))))
 
-(define (ethernet-hwaddr-projection interface-name)
-  (project-pubs (ethernet-packet (ethernet-interface interface-name (?!)) #t ? ? ? ?)))
-
-(define (gestalt->hwaddr g interface-name)
-  (define hwaddrs (gestalt-project/single g (ethernet-hwaddr-projection interface-name)))
-  (case (set-count hwaddrs)
-    [(0) #f]
-    [(1) (set-first hwaddrs)]
-    [else
-     (log-warning "gestalt->hwaddr: multiple addresses for interface ~a: ~v" interface-name hwaddrs)
-     (set-first hwaddrs)]))
-
 (define (ethernet-packet-pattern interface-name from-wire? ethertype)
   (ethernet-packet (ethernet-interface interface-name ?) from-wire? ? ? ethertype ?))
 
-(define (lookup-ethernet-hwaddr base-gestalt interface-name k)
-  (on-gestalt #:timeout-msec 5000
-	      #:on-timeout (lambda ()
-			     (log-info "Lookup of ethernet interface ~v failed" interface-name)
-			     '())
-	      (lambda (_g hwaddrss)
-		(and (not (set-empty? hwaddrss))
-		     (let ((hwaddr (car (set-first hwaddrss))))
-		       (k hwaddr))))
-	      base-gestalt
-	      (ethernet-hwaddr-projection interface-name)))
+(define (lookup-ethernet-hwaddr base-interests interface-name k)
+  (on-claim #:timeout-msec 5000
+            #:on-timeout (lambda ()
+                           (log-info "Lookup of ethernet interface ~v failed" interface-name)
+                           '())
+            (lambda (_g hwaddrss)
+              (and (not (set-empty? hwaddrss))
+                   (let ((hwaddr (car (set-first hwaddrss))))
+                     (k hwaddr))))
+            base-interests
+            (ethernet-interface interface-name (?!))))

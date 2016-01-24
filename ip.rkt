@@ -13,9 +13,9 @@
 (require racket/set)
 (require racket/match)
 (require (only-in racket/string string-split))
-(require minimart)
-(require minimart/drivers/timer)
-(require minimart/demand-matcher)
+(require prospect-monolithic)
+(require prospect-monolithic/drivers/timer)
+(require prospect-monolithic/demand-matcher)
 (require bitsyntax)
 
 (require "dump-bytes.rkt")
@@ -53,32 +53,23 @@
 
 (define broadcast-ip-address (bytes 255 255 255 255))
 
-(define local-ip-address-projector (project-pubs (host-route (?!) ? ?)))
-(define (gestalt->local-ip-addresses g) (gestalt-project/single g local-ip-address-projector))
-(define observe-local-ip-addresses-gestalt (sub (host-route ? ? ?) #:level 2))
+(define local-ip-address-projector (compile-projection (host-route (?!) ? ?)))
+(define (gestalt->local-ip-addresses g) (trie-project/set/single g local-ip-address-projector))
+(define observe-local-ip-addresses-gestalt (subscription (host-route ? ? ?)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (spawn-ip-driver)
   (list
    (spawn-demand-matcher (host-route (?!) (?!) (?!))
-			 #:supply-level 1
+                         (route-up (host-route (?!) (?!) (?!)))
 			 spawn-host-route)
    (spawn-demand-matcher (gateway-route (?!) (?!) (?!) (?!))
-			 #:supply-level 1
+                         (route-up (gateway-route (?!) (?!) (?!) (?!)))
 			 spawn-gateway-route)
    (spawn-demand-matcher (net-route (?!) (?!) (?!))
-			 #:supply-level 1
+                         (route-up (net-route (?!) (?!) (?!)))
 			 spawn-net-route)))
-
-(define (host-route-supply ip-addr netmask interface-name)
-  (sub (host-route ip-addr netmask interface-name) #:level 1))
-
-(define (gateway-route-supply network-addr netmask gateway-addr interface-name)
-  (sub (gateway-route network-addr netmask gateway-addr interface-name) #:level 1))
-
-(define (net-route-supply network-addr netmask link)
-  (sub (net-route network-addr netmask link) #:level 1))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Local IP route
@@ -86,15 +77,14 @@
 (define (spawn-host-route my-address netmask interface-name)
   (list
    (let ((network-addr (apply-netmask my-address netmask)))
-     (spawn-normal-ip-route (host-route-supply my-address netmask interface-name)
+     (spawn-normal-ip-route (host-route my-address netmask interface-name)
 			    network-addr
 			    netmask
 			    interface-name))
    (spawn (lambda (e s)
 	    (match e
-	      [(routing-update g)
-	       (transition s (when (gestalt-empty? g) (quit)))]
-	      [(message (ip-packet _ peer-address _ _ _ body) _ _)
+	      [(scn (? trie-empty?)) (quit)]
+	      [(message (ip-packet _ peer-address _ _ _ body))
 	       (bit-string-case body
 		 ([ type code (checksum :: integer bytes 2) (rest :: binary) ] ;; TODO: check cksum
 		  (case type
@@ -106,12 +96,12 @@
 						     code
 						     (0 :: integer bytes 2) ;; TODO
 						     (rest :: binary)))
-		     (transition s (send (ip-packet #f
-						    my-address
-						    peer-address
-						    PROTOCOL-ICMP
-						    #""
-						    (ip-checksum 2 reply-data0))))]
+		     (transition s (message (ip-packet #f
+                                                       my-address
+                                                       peer-address
+                                                       PROTOCOL-ICMP
+                                                       #""
+                                                       (ip-checksum 2 reply-data0))))]
 		    [else
 		     (log-info "ICMP ~a/~a (cksum ~a) to ~a from ~a:\n~a"
 			       type
@@ -124,10 +114,10 @@
 		 (else #f))]
 	      [_ #f]))
 	  (void)
-	  (gestalt-union (pub (ip-packet ? my-address ? PROTOCOL-ICMP ? ?))
-			 (sub (ip-packet ? ? my-address PROTOCOL-ICMP ? ?))
-			 (pub (arp-assertion IPv4-ethertype my-address interface-name))
-			 (host-route-supply my-address netmask interface-name)))))
+          (scn/union (advertisement (ip-packet ? my-address ? PROTOCOL-ICMP ? ?))
+                     (subscription (ip-packet ? ? my-address PROTOCOL-ICMP ? ?))
+                     (assertion (arp-assertion IPv4-ethertype my-address interface-name))
+                     (subscription (host-route my-address netmask interface-name))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Gateway IP route
@@ -135,15 +125,16 @@
 (struct gateway-route-state (routes gateway-interface gateway-hwaddr) #:transparent)
 
 (define (spawn-gateway-route network netmask gateway-addr interface-name)
-  (define gestalt-for-supply (gateway-route-supply network netmask gateway-addr interface-name))
+  (define the-route (gateway-route network netmask gateway-addr interface-name))
 
-  (define host-route-projector (project-subs (host-route (?!) ? ?)))
-  (define gateway-route-projector (project-subs (gateway-route (?!) (?!) ? ?)))
-  (define net-route-projector (project-subs (net-route (?!) (?!) ?)))
-  (define gateway-arp-projector (project-pubs (arp-query IPv4-ethertype
-							 gateway-addr
-							 (?! (ethernet-interface interface-name ?))
-							 (?!))))
+  (define host-route-projector (compile-projection (host-route (?!) ? ?)))
+  (define gateway-route-projector (compile-projection (gateway-route (?!) (?!) ? ?)))
+  (define net-route-projector (compile-projection (net-route (?!) (?!) ?)))
+  (define gateway-arp-projector (compile-projection
+                                 (arp-query IPv4-ethertype
+                                            gateway-addr
+                                            (?! (ethernet-interface interface-name ?))
+                                            (?!))))
 
   (define (covered-by-some-other-route? addr routes)
     (for/or ([r (in-set routes)])
@@ -153,25 +144,27 @@
 
   (spawn (lambda (e s)
 	   (match e
-	     [(routing-update g)
-	      (define host-ips (gestalt-project/single g host-route-projector))
-	      (define gw-nets+netmasks (gestalt-project/keys g gateway-route-projector))
-	      (define net-nets+netmasks (gestalt-project/keys g net-route-projector))
-	      (define gw-ip+hwaddr (let ((vs (gestalt-project/keys g gateway-arp-projector)))
+	     [(scn g)
+	      (define host-ips (trie-project/set/single g host-route-projector))
+	      (define gw-nets+netmasks (trie-project/set g gateway-route-projector))
+	      (define net-nets+netmasks (trie-project/set g net-route-projector))
+	      (define gw-ip+hwaddr (let ((vs (trie-project/set g gateway-arp-projector)))
 				     (and vs (not (set-empty? vs)) (set-first vs))))
 	      (when (and gw-ip+hwaddr (not (gateway-route-state-gateway-hwaddr s)))
 		(log-info "Discovered gateway ~a at ~a on interface ~a."
 			  (ip-address->hostname gateway-addr)
 			  (ethernet-interface-name (car gw-ip+hwaddr))
 			  (pretty-bytes (cadr gw-ip+hwaddr))))
-	      (transition (gateway-route-state
-			   (set-union (for/set ([ip host-ips]) (list ip 32))
-				      gw-nets+netmasks
-				      net-nets+netmasks)
-			   (and gw-ip+hwaddr (car gw-ip+hwaddr))
-			   (and gw-ip+hwaddr (cadr gw-ip+hwaddr)))
-			  (when (gestalt-empty? (gestalt-filter g gestalt-for-supply)) (quit)))]
-	     [(message (? ip-packet? p) _ _)
+              (if (trie-empty? (project-assertions g (?! the-route)))
+                  (quit)
+                  (transition (gateway-route-state
+                               (set-union (for/set ([ip host-ips]) (list ip 32))
+                                          gw-nets+netmasks
+                                          net-nets+netmasks)
+                               (and gw-ip+hwaddr (car gw-ip+hwaddr))
+                               (and gw-ip+hwaddr (cadr gw-ip+hwaddr)))
+                              '()))]
+	     [(message (? ip-packet? p))
 	      (define gw-if (gateway-route-state-gateway-interface s))
 	      (when (not gw-if)
 		(log-warning "Gateway hwaddr for ~a not known, packet dropped."
@@ -181,42 +174,39 @@
 		   (not (covered-by-some-other-route? (ip-packet-destination p)
 						      (gateway-route-state-routes s)))
 		   (transition s
-			       (send (ethernet-packet gw-if
-						      #f
-						      (ethernet-interface-hwaddr gw-if)
-						      (gateway-route-state-gateway-hwaddr s)
-						      IPv4-ethertype
-						      (format-ip-packet p)))))]
+			       (message (ethernet-packet gw-if
+                                                         #f
+                                                         (ethernet-interface-hwaddr gw-if)
+                                                         (gateway-route-state-gateway-hwaddr s)
+                                                         IPv4-ethertype
+                                                         (format-ip-packet p)))))]
 	     [_ #f]))
 	 (gateway-route-state (set) #f #f)
-	 (gestalt-union gestalt-for-supply
-
-			(sub (ip-packet ? ? ? ? ? ?))
-			(pub (ip-packet ? ? ? ? ? ?))
-
-			observe-local-ip-addresses-gestalt
-			(sub (net-route ? ? ?) #:level 2)
-			(sub (gateway-route ? ? ? ?) #:level 2)
-			(projection->gestalt gateway-arp-projector))))
+         (scn/union (subscription the-route)
+                    (assertion (route-up the-route))
+                    (subscription (ip-packet ? ? ? ? ? ?))
+                    observe-local-ip-addresses-gestalt
+                    (subscription (net-route ? ? ?))
+                    (subscription (gateway-route ? ? ? ?))
+                    (subscription (projection->pattern gateway-arp-projector)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; General net route
 
 (define (spawn-net-route network-addr netmask link)
-  (spawn-normal-ip-route (net-route-supply network-addr netmask link) network-addr netmask link))
+  (spawn-normal-ip-route (net-route network-addr netmask link) network-addr netmask link))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Normal IP route
 
-(define (spawn-normal-ip-route gestalt-for-supply network netmask interface-name)
+(define (spawn-normal-ip-route the-route network netmask interface-name)
   (spawn (lambda (e s)
 	   (match e
-	     [(routing-update g)
-	      (transition s (when (gestalt-empty? g) (quit)))]
-	     [(message (ethernet-packet _ _ _ _ _ body) _ _)
+	     [(scn (? trie-empty?)) (quit)]
+	     [(message (ethernet-packet _ _ _ _ _ body))
 	      (define p (parse-ip-packet interface-name body))
-	      (and p (transition s (send p)))]
-	     [(message (? ip-packet? p) _ _)
+	      (and p (transition s (message p)))]
+	     [(message (? ip-packet? p))
 	      (define destination (ip-packet-destination p))
 	      (and (not (equal? (ip-packet-source-interface p) interface-name))
 		   (ip-address-in-subnet? destination network netmask)
@@ -224,23 +214,21 @@
 		    s
 		    (lookup-arp destination
 				(ethernet-interface interface-name ?)
-				(gestalt-empty)
+                                (trie-empty)
 				(lambda (interface destination-hwaddr)
-				  (send (ethernet-packet interface
-							 #f
-							 (ethernet-interface-hwaddr interface)
-							 destination-hwaddr
-							 IPv4-ethertype
-							 (format-ip-packet p)))))))]
+				  (message (ethernet-packet interface
+                                                            #f
+                                                            (ethernet-interface-hwaddr interface)
+                                                            destination-hwaddr
+                                                            IPv4-ethertype
+                                                            (format-ip-packet p)))))))]
 	     [_ #f]))
 	 (void)
-	 (gestalt-union gestalt-for-supply
-			(sub (ethernet-packet-pattern interface-name #t IPv4-ethertype))
-			(sub (ethernet-packet-pattern interface-name #t IPv4-ethertype) #:level 1)
-			(pub (ethernet-packet-pattern interface-name #f IPv4-ethertype))
-			(pub (arp-interface interface-name))
-			(sub (ip-packet ? ? ? ? ? ?))
-			(pub (ip-packet ? ? ? ? ? ?)))))
+         (scn/union (subscription the-route)
+                    (assertion (route-up the-route))
+                    (subscription (ethernet-packet-pattern interface-name #t IPv4-ethertype))
+                    (assertion (arp-interface interface-name))
+                    (subscription (ip-packet ? ? ? ? ? ?)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -313,25 +301,25 @@
   full-packet)
 
 (define (lookup-arp ipaddr query-interface-pattern base-gestalt k)
-  (on-gestalt (lambda (_g arp-results)
-		(if (not arp-results)
-		    (error 'ip "Someone has published a wildcard arp result")
-		    (and (not (set-empty? arp-results))
-			 (match (set-first arp-results)
-			   [(list interface hwaddr)
-			    (log-info "ARP lookup yielded ~a on ~a for ~a"
-				      (pretty-bytes hwaddr)
-				      (ethernet-interface-name interface)
-				      (ip-address->hostname ipaddr))
-			    (when (> (set-count arp-results) 1)
-			      (log-warning "Ambiguous ARP result for ~a: ~v"
-					   (ip-address->hostname ipaddr)
-					   arp-results))
-			    (k interface hwaddr)]))))
-	      base-gestalt
-	      (project-pubs (arp-query IPv4-ethertype ipaddr (?! query-interface-pattern) (?!)))
-	      #:timeout-msec 5000
-	      #:on-timeout (lambda ()
-			     (log-warning "ARP lookup of ~a failed, packet dropped"
-					  (ip-address->hostname ipaddr))
-			     '())))
+  (on-claim (lambda (_g arp-results)
+              (if (not arp-results)
+                  (error 'ip "Someone has published a wildcard arp result")
+                  (and (not (set-empty? arp-results))
+                       (match (set-first arp-results)
+                         [(list interface hwaddr)
+                          (log-info "ARP lookup yielded ~a on ~a for ~a"
+                                    (pretty-bytes hwaddr)
+                                    (ethernet-interface-name interface)
+                                    (ip-address->hostname ipaddr))
+                          (when (> (set-count arp-results) 1)
+                            (log-warning "Ambiguous ARP result for ~a: ~v"
+                                         (ip-address->hostname ipaddr)
+                                         arp-results))
+                          (k interface hwaddr)]))))
+            base-gestalt
+            (arp-query IPv4-ethertype ipaddr (?! query-interface-pattern) (?!))
+            #:timeout-msec 5000
+            #:on-timeout (lambda ()
+                           (log-warning "ARP lookup of ~a failed, packet dropped"
+                                        (ip-address->hostname ipaddr))
+                           '())))

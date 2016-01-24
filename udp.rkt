@@ -10,8 +10,8 @@
 
 (require racket/set)
 (require racket/match)
-(require minimart)
-(require minimart/demand-matcher)
+(require prospect-monolithic)
+(require prospect-monolithic/demand-matcher)
 (require bitsyntax)
 
 (require "dump-bytes.rkt")
