@@ -127,7 +127,7 @@
 (define (spawn-gateway-route network netmask gateway-addr interface-name)
   (define the-route (gateway-route network netmask gateway-addr interface-name))
 
-  (define host-route-projector (compile-projection (host-route (?!) ? ?)))
+  (define host-route-projector (compile-projection (host-route (?!) (?!) ?)))
   (define gateway-route-projector (compile-projection (gateway-route (?!) (?!) ? ?)))
   (define net-route-projector (compile-projection (net-route (?!) (?!) ?)))
   (define gateway-arp-projector (arp-query IPv4-ethertype
@@ -144,7 +144,7 @@
   (spawn (lambda (e s)
 	   (match e
 	     [(scn g)
-	      (define host-ips (trie-project/set/single g host-route-projector))
+	      (define host-ips+netmasks (trie-project/set g host-route-projector))
 	      (define gw-nets+netmasks (trie-project/set g gateway-route-projector))
 	      (define net-nets+netmasks (trie-project/set g net-route-projector))
 	      (define gw-ip+hwaddr
@@ -158,7 +158,7 @@
               (if (trie-empty? (project-assertions g (?! the-route)))
                   (quit)
                   (transition (gateway-route-state
-                               (set-union (for/set ([ip host-ips]) (list ip 32))
+                               (set-union host-ips+netmasks
                                           gw-nets+netmasks
                                           net-nets+netmasks)
                                (and gw-ip+hwaddr (car gw-ip+hwaddr))
