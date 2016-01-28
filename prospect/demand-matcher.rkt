@@ -96,12 +96,14 @@
                               supply-spec
 			      increase-handler
 			      [decrease-handler unexpected-supply-decrease]
+                              #:name [name #f]
 			      #:meta-level [meta-level 0])
   (define d (make-demand-matcher (compile-projection (prepend-at-meta demand-spec meta-level))
                                  (compile-projection (prepend-at-meta supply-spec meta-level))
 				 (lambda (acs . rs) (cons (apply increase-handler rs) acs))
 				 (lambda (acs . rs) (cons (apply decrease-handler rs) acs))))
-  (spawn demand-matcher-handle-event
+  (spawn #:name name
+         demand-matcher-handle-event
 	 d
          (patch-seq (sub (projection->pattern demand-spec) #:meta-level meta-level)
                     (sub (projection->pattern supply-spec) #:meta-level meta-level)
@@ -118,6 +120,7 @@
 ;; quits.
 (define (on-claim #:timeout-msec [timeout-msec #f]
                   #:on-timeout [timeout-handler (lambda () '())]
+                  #:name [name #f]
                   check-and-maybe-spawn-fn
                   base-interests
                   . projections)
@@ -139,7 +142,8 @@
       [_ #f]))
   (list
    (when timeout-msec (message (set-timer timer-id timeout-msec 'relative)))
-   (spawn on-claim-handler
+   (spawn #:name name
+          on-claim-handler
           (trie-empty)
           (patch-seq (patch base-interests (trie-empty))
                      (patch-seq* (map (lambda (p) (sub projection->pattern)) projections))
