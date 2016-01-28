@@ -238,7 +238,9 @@
   (syntax-rules ()
     [(_ #:name name-exp behavior-exp initial-state-exp initial-action-tree-exp)
      (spawn (lambda ()
-              (list (procedure-rename behavior-exp name-exp)
+              (list (let ((name name-exp)
+                          (beh behavior-exp))
+                      (if name (procedure-rename beh name) beh))
                     (transition initial-state-exp initial-action-tree-exp))))]
     [(_ behavior-exp initial-state-exp initial-action-tree-exp)
      (spawn (lambda ()
