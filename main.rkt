@@ -80,10 +80,10 @@
 	 (void)
 	 (scn (subscription (udp-packet ? (udp-listener 6667) ?)))))
 
-#;(let ()
+(let ()
   (define (spawn-session them us)
     (list
-     (send 'bump)
+     (message 'bump)
      (spawn (lambda (e s)
 	      (match e
 		[(message `(counter ,counter))
@@ -97,8 +97,7 @@
 			     "TCP/IP stack</a>.</p>\n"
 			     "<p>There have been ~a requests prior to this one.</p>")
 			    counter)))
-		 (transition s (list (message #:meta-level 1 (tcp-channel us them response))
-				     (quit)))]
+		 (quit (message (at-meta (tcp-channel us them response))))]
 		[_ #f]))
 	    (void)
 	    (scn/union (subscription `(counter ,?))
@@ -106,11 +105,11 @@
                        (subscription (advertise (tcp-channel them us ?)) #:meta-level 1)
                        (advertisement (tcp-channel us them ?) #:meta-level 1)))))
 
-  (spawn-world
+  (spawn-network
    (spawn (lambda (e counter)
 	    (match e
-	      [(message 'bump _ _)
-	       (transition (+ counter 1) (send `(counter ,counter)))]
+	      [(message 'bump)
+	       (transition (+ counter 1) (message `(counter ,counter)))]
 	      [_ #f]))
 	  0
 	  (scn (subscription 'bump)))
