@@ -239,11 +239,16 @@
 (define (make-quit #:exception [exn #f] . actions)
   (quit exn actions))
 
-(define-syntax-rule (spawn-process behavior-exp initial-state-exp initial-action-tree-exp)
-  (spawn (lambda ()
-           (local-require racket/contract)
-           (list behavior-exp
-                 (transition initial-state-exp initial-action-tree-exp)))))
+(define-syntax spawn-process
+  (syntax-rules ()
+    [(_ #:name name-exp behavior-exp initial-state-exp initial-action-tree-exp)
+     (spawn (lambda ()
+              (list (procedure-rename behavior-exp name-exp)
+                    (transition initial-state-exp initial-action-tree-exp))))]
+    [(_ behavior-exp initial-state-exp initial-action-tree-exp)
+     (spawn (lambda ()
+              (list behavior-exp
+                    (transition initial-state-exp initial-action-tree-exp))))]))
 
 (define-syntax-rule (spawn/stateless behavior-exp initial-action-tree-exp)
   (spawn-process (stateless-behavior-wrap behavior-exp)
