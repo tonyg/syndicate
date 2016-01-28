@@ -14,7 +14,8 @@
 (struct port-allocator-state (used-ports local-ips) #:transparent)
 
 (define (spawn-port-allocator allocator-type observer-gestalt compute-used-ports)
-  (spawn (lambda (e s)
+  (spawn #:name (string->symbol (format "port-allocator:~a" allocator-type))
+         (lambda (e s)
 	   (match e
 	     [(scn g)
 	      (define local-ips (or (gestalt->local-ip-addresses g) (set)))

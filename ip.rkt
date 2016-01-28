@@ -301,7 +301,8 @@
   full-packet)
 
 (define (lookup-arp ipaddr query-interface-pattern base-gestalt k)
-  (on-claim (lambda (_g arp-results)
+  (on-claim #:name (string->symbol (format "lookup-arp:~a" (ip-address->hostname ipaddr)))
+            (lambda (_g arp-results)
               (if (not arp-results)
                   (error 'ip "Someone has published a wildcard arp result")
                   (and (not (set-empty? arp-results))

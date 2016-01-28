@@ -51,16 +51,20 @@
 ;; User-accessible driver startup
 
 (define (spawn-tcp-driver)
-  (list (spawn-demand-matcher (advertise (observe (tcp-channel ? (?! (tcp-listener ?)) ?)))
+  (list (spawn-demand-matcher #:name 'tcp-inbound-driver
+                              (advertise (observe (tcp-channel ? (?! (tcp-listener ?)) ?)))
                               (advertise (advertise (tcp-channel ? (?! (tcp-listener ?)) ?)))
 			      (lambda (server-addr)
 				(match-define (tcp-listener port) server-addr)
 				;; TODO: have listener shut down once user-level listener does
                                 (list
-                                 (spawn (lambda (e s) #f)
+                                 (spawn #:name (string->symbol
+                                                (format "tcp-listener-port-reservation:~a" port))
+                                        (lambda (e s) #f)
                                         (void)
                                         (scn (assertion (tcp-port-allocation port server-addr))))
                                  (spawn-demand-matcher
+                                  #:name (string->symbol (format "tcp-listener:~a" port))
                                   (advertise (tcp-channel (?! (tcp-address ? ?))
                                                           (?! (tcp-address ? port))
                                                           ?))
@@ -68,7 +72,8 @@
                                                         (?! (tcp-address ? port))
                                                         ?))
                                   (spawn-relay server-addr)))))
-	(spawn-demand-matcher (advertise (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
+	(spawn-demand-matcher #:name 'tcp-outbound-driver
+                              (advertise (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
                               (observe (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
                               allocate-port-and-spawn-socket)
 	(spawn-tcp-port-allocator)
@@ -116,7 +121,11 @@
   (define remote-peer-traffic (?! (advertise (tcp-channel remote-addr local-tcp-addr ?))))
   (list
    (message (set-timer timer-name relay-peer-wait-time-msec 'relative))
-   (spawn (lambda (e state)
+   (spawn #:name (string->symbol (format "tcp-relay:~v:~v:~v"
+                                         local-user-addr
+                                         remote-addr
+                                         local-tcp-addr))
+          (lambda (e state)
 	    (match e
 	      [(scn g)
 	       (define local-peer-absent?
@@ -287,7 +296,8 @@
     (transition s (message (ip-packet #f src-ip dst-ip PROTOCOL-TCP #""
                                       (ip-checksum 16 payload #:pseudo-header pseudo-header)))))
 
-  (spawn (lambda (e s)
+  (spawn #:name 'kernel-tcp-driver
+         (lambda (e s)
 	   (match e
 	     [(scn g)
 	      (analyze-gestalt g s)]
@@ -612,6 +622,12 @@
 			     (current-inexact-milliseconds)
 			     #f
 			     #f)))
-     (spawn state-vector-behavior
+     (spawn #:name
+            (string->symbol (format "tcp-state-vector:~a:~a:~a:~a"
+                                    (ip-address->hostname src-ip)
+                                    src-port
+                                    (ip-address->hostname dst-ip)
+                                    dst-port))
+            state-vector-behavior
 	    state0
 	    (scn (compute-gestalt state0))))))
