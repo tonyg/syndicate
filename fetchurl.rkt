@@ -27,21 +27,23 @@
 
   (spawn (lambda (e seen-peer?)
 	   (match e
-	     [(routing-update g)
-	      (define peer-present? (not (gestalt-empty? g)))
-	      (transition (or seen-peer? peer-present?)
-			  (if (and (not peer-present?) seen-peer?)
-			      (quit)
-			      (send (tcp-channel
-				     local-handle
-				     remote-handle
-				     #"GET / HTTP/1.0\r\nHost: stockholm.ccs.neu.edu\r\n\r\n"))))]
-	     [(message (tcp-channel _ _ bs) _ _)
+	     [(scn g)
+	      (define peer-present? (trie-non-empty? g))
+              (if (and (not peer-present?) seen-peer?)
+                  (begin (printf "URL fetcher exiting.\n")
+                         (quit))
+                  (transition (or seen-peer? peer-present?)
+			      (message
+                               (tcp-channel
+                                local-handle
+                                remote-handle
+                                #"GET / HTTP/1.0\r\nHost: stockholm.ccs.neu.edu\r\n\r\n"))))]
+	     [(message (tcp-channel _ _ bs))
 	      (printf "----------------------------------------\n~a\n" bs)
 	      (printf "----------------------------------------\n")
 	      #f]
 	     [_ #f]))
 	 #f
-	 (gestalt-union (pub (tcp-channel local-handle remote-handle ?))
-			(sub (tcp-channel remote-handle local-handle ?))
-			(sub (tcp-channel remote-handle local-handle ?) #:level 1))))
+	 (scn/union (advertisement (tcp-channel local-handle remote-handle ?))
+                    (subscription (tcp-channel remote-handle local-handle ?))
+                    (subscription (advertise (tcp-channel remote-handle local-handle ?))))))
