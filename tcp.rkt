@@ -327,7 +327,10 @@
 (struct conn-state (outbound ;; buffer
 		    inbound ;; buffer
 		    syn-acked? ;; boolean
-		    latest-activity-time ;; from current-inexact-milliseconds
+		    latest-peer-activity-time ;; from current-inexact-milliseconds
+                    ;; ^ the most recent time we heard from our peer
+                    user-timeout-base-time ;; from current-inexact-milliseconds
+                    ;; ^ when the index of the first outbound unacknowledged byte changed
 		    local-peer-seen? ;; boolean
 		    listener-listening?) ;; boolean
 	#:transparent)
@@ -336,6 +339,9 @@
 (define inbound-buffer-limit 65535)
 (define maximum-segment-size 536) ;; bytes
 (define maximum-segment-lifetime-sec (* 2 60)) ;; two minutes; 2MSL is TIME-WAIT timeout
+(define user-timeout-msec (* 5 60 1000)) ;; per RFC 793, this should be per-connection, but I
+        ;; cheat; RFC 793 says "the present global default is five minutes", which is
+        ;; reasonable to be getting on with
 
 (define (spawn-state-vector src-ip src-port dst-ip dst-port)
   (define src (tcp-address (ip-address->hostname src-ip) src-port))
@@ -433,6 +439,7 @@
 	       (dist (seq- ackn base)))
 	  (define remaining-data (bit-string-drop (buffer-data b) (* dist 8))) ;; bit offset!
 	  (define new-s (struct-copy conn-state s
+                          [user-timeout-base-time (current-inexact-milliseconds)]
 			  [outbound (struct-copy buffer b [data remaining-data] [seqn ackn])]
 			  [syn-acked? (or (conn-state-syn-acked? s)
 					  (positive? dist))]))
@@ -499,21 +506,38 @@
                                        chunk)))))
 
   ;; ConnState -> Transition
-  (define (bump-activity-time s)
+  (define (bump-peer-activity-time s)
     (transition (struct-copy conn-state s
-		  [latest-activity-time (current-inexact-milliseconds)])
+		  [latest-peer-activity-time (current-inexact-milliseconds)])
 		'()))
+
+  ;; ConnState Number -> Boolean
+  (define (heard-from-peer-within-msec? s msec)
+    (<= (- (current-inexact-milliseconds) (conn-state-latest-peer-activity-time s)) msec))
+
+  ;; ConnState -> Boolean
+  (define (user-timeout-expired? s)
+    (and (not (all-output-acknowledged? s))
+         (> (- (current-inexact-milliseconds) (conn-state-user-timeout-base-time s))
+            user-timeout-msec)))
 
   ;; ConnState -> Transition
   (define (quit-when-done s)
-    (if (and (buffer-finished? (conn-state-outbound s))
-             (buffer-finished? (conn-state-inbound s))
-             (all-output-acknowledged? s)
-             (> (- (current-inexact-milliseconds)
-                   (conn-state-latest-activity-time s))
-                (* 2 1000 maximum-segment-lifetime-sec)))
-        (quit)
-        #f))
+    (cond
+      [(and (buffer-finished? (conn-state-outbound s))
+            (buffer-finished? (conn-state-inbound s))
+            (all-output-acknowledged? s)
+            (not (heard-from-peer-within-msec? s (* 2 1000 maximum-segment-lifetime-sec))))
+       ;; Everything is cleanly shut down, and we just need to wait a while for unexpected
+       ;; packets before we release the state vector.
+       (quit)]
+      [(user-timeout-expired? s)
+       ;; We've been plaintively retransmitting for user-timeout-msec without hearing anything
+       ;; back; this is a crude approximation of the real condition for TCP_USER_TIMEOUT, but
+       ;; it will do for now? TODO
+       (log-info "TCP_USER_TIMEOUT fired.")
+       (quit)]
+      [else #f]))
 
   ;; Action
   (define send-set-transmit-check-timer
@@ -564,7 +588,6 @@
 	 (log-info "Closing outbound stream.")
 	 (sequence-transitions (close-outbound-stream new-s)
 			       (send-outbound old-ackn)
-			       bump-activity-time
 			       quit-when-done)]
 	[else (transition new-s '())])]
       [(message (tcp-packet #t _ _ _ _ seqn ackn flags window options data))
@@ -594,17 +617,26 @@
 			       (discard-acknowledged-outbound (set-member? flags 'ack) ackn)
 			       (update-outbound-window window)
 			       (send-outbound old-ackn)
-			       bump-activity-time
+			       bump-peer-activity-time
 			       quit-when-done)])]
       [(message (tcp-channel _ _ bs))
        ;; (log-info "GOT MORE STUFF TO DELIVER ~v" bs)
        (sequence-transitions (transition (struct-copy conn-state s
+                                           [user-timeout-base-time
+                                            ;; Only move user-timeout-base-time if there wasn't
+                                            ;; already some outstanding output.
+                                            (if (all-output-acknowledged? s)
+                                                (current-inexact-milliseconds)
+                                                (conn-state-user-timeout-base-time s))]
 					   [outbound (buffer-push (conn-state-outbound s) bs)])
 					 '())
 			     (send-outbound old-ackn)
-			     bump-activity-time
 			     quit-when-done)]
       [(message (timer-expired (== (timer-name 'transmit-check)) _))
+       ;; TODO: I am abusing this timer for multiple tasks. Notably, this is a (crude) means of
+       ;; retransmitting outbound data as well as a means of checking for an expired
+       ;; TCP_USER_TIMEOUT. A better design would have separate timers and a more fine-grained
+       ;; approach.
        (sequence-transitions (transition s send-set-transmit-check-timer)
 			     (send-outbound old-ackn)
 			     quit-when-done)]
@@ -618,13 +650,13 @@
     (inexact->exact (truncate (* #x100000000 (random)))))
 
   ;; TODO accept input from user process
-  ;; TODO append a dummy byte at FIN position in outbound buffer
   (list
    send-set-transmit-check-timer
    (let ((state0 (conn-state (buffer #"!" initial-outbound-seqn 0 #f) ;; dummy data at SYN position
 			     (buffer #"" #f inbound-buffer-limit #f)
 			     #f
 			     (current-inexact-milliseconds)
+                             (current-inexact-milliseconds)
 			     #f
 			     #f)))
      (spawn #:name
