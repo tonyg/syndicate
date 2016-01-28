@@ -20,7 +20,6 @@
                        (assertion (host-route (bytes 192 168 1 222) 24 "wlan0")))]
            ["stockholm.ccs.neu.edu"
             (scn/union (assertion (host-route (bytes 129 10 115 94) 24 "eth0"))
-                       (assertion (host-route (bytes 192 168 56 222) 24 "vboxnet0"))
                        (assertion (gateway-route (bytes 0 0 0 0) 0 (bytes 129 10 115 1) "eth0")))]
            [else
             (error 'spawn-demo-config "No setup for hostname ~a" (gethostname))])))
