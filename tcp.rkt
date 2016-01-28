@@ -536,10 +536,13 @@
 
   ;; ConnState -> Transition
   (define (close-outbound-stream s)
+    (define b (conn-state-outbound s))
     (transition
-     (struct-copy conn-state s
-       [outbound (struct-copy buffer (buffer-push (conn-state-outbound s) #"!") ;; dummy FIN byte
-		   [finished? #t])])
+     (if (buffer-finished? b)
+         s
+         (struct-copy conn-state s
+                      [outbound (struct-copy buffer (buffer-push b #"!") ;; dummy FIN byte
+                                             [finished? #t])]))
      '()))
 
   (define (state-vector-behavior e s)
