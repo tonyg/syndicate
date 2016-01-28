@@ -426,9 +426,11 @@
     (if (not ack?)
 	(transition s '())
 	(let* ((b (conn-state-outbound s))
+               (base (buffer-seqn b))
 	       (limit (seq+ (buffer-seqn b) (bit-string-byte-count (buffer-data b))))
 	       (ackn (if (seq> ackn limit) limit ackn))
-	       (dist (seq- ackn (buffer-seqn b))))
+               (ackn (if (seq> base ackn) base ackn))
+	       (dist (seq- ackn base)))
 	  (define remaining-data (bit-string-drop (buffer-data b) (* dist 8))) ;; bit offset!
 	  (define new-s (struct-copy conn-state s
 			  [outbound (struct-copy buffer b [data remaining-data] [seqn ackn])]
