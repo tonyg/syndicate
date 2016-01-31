@@ -6,6 +6,7 @@ module.exports = require("./syndicate.js");
 // module.exports.WebSocket = require("./websocket-driver.js");
 module.exports.Reflect = require("./reflect.js");
 
+module.exports.Patch = require("./patch.js");
 // module.exports.Ground = require("./ground.js").Ground;
 // module.exports.Actor = require("./actor.js").Actor;
 // module.exports.Spy = require("./spy.js").Spy;

@@ -164,6 +164,24 @@ describe("projections", function () {
   });
 });
 
+describe("subtraction", function () {
+  it("should basically work", function () {
+    checkPrettyTrie(r.subtract(r.compilePattern(true, r.__),
+			       r.compilePattern(true, 3),
+			       function (v1, v2) { return null; }),
+		    [" ★ >{true}",
+		     " 3::: nothing"]);
+    checkPrettyTrie(r.subtract(r.compilePattern(true, r.__),
+			       r.compilePattern(true, [3]),
+			       function (v1, v2) { return null; }),
+		    [" ★ >{true}",
+		     " < ★...> >{true}",
+		     "   > >{true}",
+		     "   3 ★...> >{true}",
+		     "     >::: nothing"]);
+  });
+});
+
 describe("subtract after union", function () {
   var R1 = r.compilePattern(Immutable.Set(['A']), [r.__, "B"]);
   var R2 = r.compilePattern(Immutable.Set(['B']), ["A", r.__]);

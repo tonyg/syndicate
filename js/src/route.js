@@ -47,7 +47,7 @@ function $Success(value) {
 $Success.prototype.equals = function (other) {
   if (!(other instanceof $Success)) return false;
   return Immutable.is(this.value, other.value);
-}
+};
 
 function $WildcardSequence(trie) {
   this.trie = trie;
@@ -56,10 +56,10 @@ function $WildcardSequence(trie) {
 $WildcardSequence.prototype.equals = function (other) {
   if (!(other instanceof $WildcardSequence)) return false;
   return Immutable.is(this.trie, other.trie);
-}
+};
 
 function is_emptyTrie(m) {
-  return Object.is(m, emptyTrie);
+  return Immutable.is(m, emptyTrie);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -149,7 +149,8 @@ function matchPattern(v, p) {
 }
 
 function rupdate(r, key, k) {
-  if (is_emptyTrie(k)) {
+  var oldWild = r.get(__, emptyTrie);
+  if (Immutable.is(k, oldWild)) {
     return r.remove(key);
   } else {
     return r.set(key, k);
@@ -158,6 +159,10 @@ function rupdate(r, key, k) {
 
 function rlookup(r, key) {
   return r.get(key, emptyTrie);
+}
+
+function rlookupWild(r, key) {
+  return r.get(key, false);
 }
 
 function is_keyOpen(k) {
@@ -174,17 +179,17 @@ function is_keyNormal(k) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-var unionSuccesses = function (v1, v2) {
+var unionSuccessesDefault = function (v1, v2) {
   if (v1 === true) return v2;
   if (v2 === true) return v1;
   return v1.union(v2);
 };
 
-var intersectSuccesses = function (v1, v2) {
+var intersectSuccessesDefault = function (v1, v2) {
   return v1;
 };
 
-var subtractSuccesses = function (v1, v2) {
+var subtractSuccessesDefault = function (v1, v2) {
   var r = v1.subtract(v2);
   if (r.isEmpty()) return null;
   return r;
@@ -204,7 +209,8 @@ function expandWildseq(r) {
   return union(rwild(rwildseq(r)), rseq(EOA, r));
 }
 
-function union(o1, o2) {
+function union(o1, o2, unionSuccessesOpt) {
+  var unionSuccesses = unionSuccessesOpt || unionSuccessesDefault;
   return merge(o1, o2);
 
   function merge(o1, o2) {
@@ -223,8 +229,14 @@ function union(o1, o2) {
       r2 = expandWildseq(r2.trie);
     }
 
-    if (r1 instanceof $Success && r2 instanceof $Success) {
-      return rsuccess(unionSuccesses(r1.value, r2.value));
+    if (r1 instanceof $Success) {
+      if (r2 instanceof $Success) {
+	return rsuccess(unionSuccesses(r1.value, r2.value));
+      } else {
+	die("Route.union: left short!");
+      }
+    } else if (r2 instanceof $Success) {
+      die("Route.union: right short!");
     }
 
     var w = merge(rlookup(r1, __), rlookup(r2, __));
@@ -270,7 +282,11 @@ function unionN() {
   return acc;
 }
 
-function intersect(o1, o2) {
+function intersect(o1, o2, intersectSuccessesOpt, leftShortOpt) {
+  var intersectSuccesses = intersectSuccessesOpt || intersectSuccessesDefault;
+  var leftShort = leftShortOpt || function (v, r) {
+    die("Route.intersect: left side short!");
+  };
   return walk(o1, o2);
 
   function walkFlipped(r2, r1) { return walk(r1, r2); }
@@ -292,8 +308,12 @@ function intersect(o1, o2) {
       r2 = expandWildseq(r2.trie);
     }
 
-    if (r1 instanceof $Success && r2 instanceof $Success) {
-      return rsuccess(intersectSuccesses(r1.value, r2.value));
+    if (r1 instanceof $Success) {
+      if (r2 instanceof $Success) {
+	return rsuccess(intersectSuccesses(r1.value, r2.value));
+      } else {
+	return leftShort(r1.value, r2);
+      }
     }
 
     var w1 = rlookup(r1, __);
@@ -332,7 +352,7 @@ function intersect(o1, o2) {
       if (is_emptyTrie(w2)) {
 	r2.forEach(function (val, key) { examineKey(key) });
       } else {
-	target = rupdateInplace(target, __, w);
+	target = rupdate(target, __, w);
 	r1.forEach(function (val, key) { examineKey(key) });
 	r2.forEach(function (val, key) { examineKey(key) });
       }
@@ -351,11 +371,13 @@ function intersect(o1, o2) {
   }
 }
 
-// Removes r2's mappings from r1. Assumes r2 has previously been
-// union'd into r1. The subtractSuccesses function should return
-// null to signal "no remaining success values".
-function subtract(o1, o2) {
+// The subtractSuccesses function should return null to signal "no
+// remaining success values".
+function subtract(o1, o2, subtractSuccessesOpt) {
+  var subtractSuccesses = subtractSuccessesOpt || subtractSuccessesDefault;
   return walk(o1, o2);
+
+  function walkFlipped(r2, r1) { return walk(r1, r2); }
 
   function walk(r1, r2) {
     if (is_emptyTrie(r1)) {
@@ -386,11 +408,16 @@ function subtract(o1, o2) {
 
     function examineKey(key) {
       if (key !== __) {
-	var k1 = rlookup(r1, key);
-	var k2 = rlookup(r2, key);
+	var k1 = rlookupWild(r1, key);
+	var k2 = rlookupWild(r2, key);
 	var updatedK;
-	if (is_emptyTrie(k2)) {
-	  updatedK = walkWild(key, k1, w2);
+	if (!k1) {
+	  if (!k2) {
+	    return;
+	  }
+	  updatedK = walkWild(key, k2, w1, walkFlipped);
+	} else if (!k2) {
+	  updatedK = walkWild(key, k1, w2, walk);
 	} else {
 	  updatedK = walk(k1, k2);
 	}
@@ -404,15 +431,10 @@ function subtract(o1, o2) {
 	  target = rupdate(target, key,
 			   ((updatedK instanceof $WildcardSequence) &&
 			    Immutable.is(updatedK.trie, w))
-			   ? emptyTrie
+			   ? w
 			   : updatedK);
-	} else if (is_keyClose(key)) {
-	  // We take care of this case later, after the
-	  // target is fully constructed/rebuilt.
-	  target = rupdate(target, key, updatedK);
 	} else {
-	  target = rupdate(target, key,
-			   (Immutable.is(updatedK, w) ? emptyTrie : updatedK));
+	  target = rupdate(target, key, updatedK);
 	}
       }
     }
@@ -455,14 +477,14 @@ function subtract(o1, o2) {
     return target;
   }
 
-  function walkWild(key, k, w) {
+  function walkWild(key, k, w, walker) {
     if (is_emptyTrie(w)) return k;
-    if (is_keyOpen(key)) return walk(k, rwildseq(w));
+    if (is_keyOpen(key)) return walker(k, rwildseq(w));
     if (is_keyClose(key)) {
-      if (w instanceof $WildcardSequence) return walk(k, w.trie);
+      if (w instanceof $WildcardSequence) return walker(k, w.trie);
       return k;
     }
-    return walk(k, w);
+    return walker(k, w);
   }
 }
 
@@ -619,6 +641,13 @@ function appendTrie(m, mTailFn) {
     });
     return target;
   }
+}
+
+function trieStep(m, key) {
+  if (is_emptyTrie(m)) return emptyTrie;
+  if (m instanceof $WildcardSequence) return (is_keyClose(key) ? m.trie : m);
+  if (m instanceof $Success) return emptyTrie;
+  return rlookupWild(m, key) || rlookup(m, __);
 }
 
 function relabel(m, f) {
@@ -812,11 +841,11 @@ function project(m, compiledProjection) {
       if (key !== __) {
 	if (is_keyOpen(key)) {
 	  function cont2(mk2) { return captureNested(mk2, cont); }
-	  rupdateInplace(target, key, captureNested(mk, cont2));
+	  target = rupdate(target, key, captureNested(mk, cont2));
 	} else if (is_keyClose(key)) {
-	  rupdateInplace(target, key, cont(mk));
+	  target = rupdate(target, key, cont(mk));
 	} else {
-	  rupdateInplace(target, key, captureNested(mk, cont));
+	  target = rupdate(target, key, captureNested(mk, cont));
 	}
       }
     });
@@ -953,7 +982,7 @@ function prettyTrie(m, initialIndent) {
     }
 
     if (m.size === 0) {
-      acc.push("::: no further matches possible");
+      acc.push("::: nothing");
       return;
     }
 
@@ -971,6 +1000,7 @@ function prettyTrie(m, initialIndent) {
 	if (key === __) key = '★';
 	else if (key === SOA) key = '<';
 	else if (key === EOA) key = '>';
+	else if (key instanceof $Special) key = key.name;
 	else key = JSON.stringify(key);
 	acc.push(key);
 	walk(i + key.length + 1, k);
@@ -985,19 +1015,24 @@ function prettyTrie(m, initialIndent) {
 ///////////////////////////////////////////////////////////////////////////
 
 module.exports.__ = __;
+module.exports.SOA = SOA;
+module.exports.EOA = SOA;
 module.exports.$Capture = $Capture;
+module.exports.$Special = $Special;
 module.exports._$ = _$;
 module.exports.is_emptyTrie = is_emptyTrie;
 module.exports.emptyTrie = emptyTrie;
 module.exports.embeddedTrie = embeddedTrie;
 module.exports.compilePattern = compilePattern;
 module.exports.matchPattern = matchPattern;
+module.exports._union = union;
 module.exports.union = unionN;
 module.exports.intersect = intersect;
 module.exports.subtract = subtract;
 module.exports.matchValue = matchValue;
 module.exports.matchTrie = matchTrie;
 module.exports.appendTrie = appendTrie;
+module.exports.trieStep = trieStep;
 module.exports.relabel = relabel;
 module.exports.compileProjection = compileProjection;
 module.exports.projectionToPattern = projectionToPattern;
