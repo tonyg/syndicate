@@ -1,0 +1,29 @@
+{
+  "name": "syndicate-js",
+  "version": "0.0.0",
+  "description": "Syndicate in the browser",
+  "homepage": "https://github.com/tonyg/syndicate",
+  "main": "src/main.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/tonyg/syndicate"
+  },
+  "scripts": {
+    "clean": "rm -f dist/*",
+    "build-debug": "browserify src/main.js -d -s Syndicate -o dist/syndicate.js",
+    "build-min": "browserify src/main.js -s Syndicate -o dist/_syndicate.js && uglifyjs dist/_syndicate.js -o dist/syndicate.min.js && rm dist/_syndicate.js",
+    "build": "npm run build-debug && npm run build-min",
+    "watch": "watchify src/main.js -d -s Syndicate -o dist/syndicate.js",
+    "test": "mocha",
+    "prepublish": "npm run build"
+  },
+  "author": "Tony Garnock-Jones <tonyg@ccs.neu.edu>",
+  "devDependencies": {
+    "watchify": "^3.7.0",
+    "uglify-js": "^2.6.1",
+    "browserify": "^13.0.0",
+    "mocha": "^2.4.5",
+    "expect.js": "^0.3.1",
+    "immutable": "^3.7.6"
+  }
+}
