@@ -1,9 +1,13 @@
 var Immutable = require("immutable");
 
-var __ = "__"; /* wildcard marker */
+function $Special(name) {
+  this.name = name;
+}
 
-var SOA = "__["; // start of array
-var EOA = "__]"; // end of array
+var __ = new $Special("wildcard"); /* wildcard marker */
+
+var SOA = new $Special("["); // start of array
+var EOA = new $Special("]"); // end of array
 
 function die(message) {
   throw new Error(message);
@@ -33,8 +37,8 @@ function isCapture(x) { return x instanceof $Capture || x === _$; }
 function captureName(x) { return x instanceof $Capture ? x.name : null; }
 function capturePattern(x) { return x instanceof $Capture ? x.pattern : __; }
 
-var SOC = "__{{"; // start of capture
-var EOC = "__}}"; // end of capture
+var SOC = new $Special("{"); // start of capture
+var EOC = new $Special("}"); // end of capture
 
 function $Success(value) {
   this.value = value;
