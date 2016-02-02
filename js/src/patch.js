@@ -106,7 +106,7 @@ Patch.prototype.limit = function (bound) {
 };
 
 var metaLabelSet = Immutable.Set(["meta"]);
-Patch.prototype.computeAggregate = function (label, base, removeMeta) {
+Patch.prototype.computeAggregate = function (label, base, removeMeta /* optional flag */) {
   return new Patch(Route.subtract(this.added, base, addCombiner),
 		   Route.subtract(this.removed, base, removeCombiner));
 
