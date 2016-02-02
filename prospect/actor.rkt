@@ -22,6 +22,8 @@
          ;;----------------------------------------
          (struct-out actor-state)
          pretty-print-actor-state
+
+         (for-syntax analyze-pattern)
          )
 
 (require (for-syntax racket/base))
@@ -707,9 +709,9 @@
     (and (identifier? stx)
          (char=? (string-ref (symbol->string (syntax-e stx)) 0) #\$)))
 
-  (define (undollar stx)
+  (define (undollar stx ctx)
     (and (dollar-id? stx)
-         (datum->syntax stx (string->symbol (substring (symbol->string (syntax-e stx)) 1)))))
+         (datum->syntax ctx (string->symbol (substring (symbol->string (syntax-e stx)) 1)))))
 
   ;; Syntax -> (Values Projection AssertionSetPattern MatchPattern (ListOf Identifier))
   (define (analyze-pattern outer-expr-stx pat-stx0)
@@ -723,7 +725,7 @@
 
         [$v
          (dollar-id? #'$v)
-         (with-syntax [(v (undollar #'$v))]
+         (with-syntax [(v (undollar #'$v outer-expr-stx))]
            (values #'(?!)
                    #'?
                    #'v
