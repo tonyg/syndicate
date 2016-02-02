@@ -20,6 +20,10 @@ function observe(p) { return [$Observe, p]; }
 function atMeta(p) { return [$AtMeta, p]; }
 function advertise(p) { return [$Advertise, p]; }
 
+function isObserve(p) { return p[0] === $Observe; }
+function isAtMeta(p) { return p[0] === $AtMeta; }
+function isAdvertise(p) { return p[0] === $Advertise; }
+
 function prependAtMeta(p, level) {
   while (level--) {
     p = atMeta(p);
@@ -220,6 +224,9 @@ module.exports.$Advertise = $Advertise;
 module.exports.observe = observe;
 module.exports.atMeta = atMeta;
 module.exports.advertise = advertise;
+module.exports.isObserve = isObserve;
+module.exports.isAtMeta = isAtMeta;
+module.exports.isAdvertise = isAdvertise;
 
 module.exports.prependAtMeta = prependAtMeta;
 module.exports.observeAtMeta = observeAtMeta;
