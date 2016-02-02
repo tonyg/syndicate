@@ -10,6 +10,7 @@ function Patch(added, removed) {
 }
 
 var emptyPatch = new Patch(Route.emptyTrie, Route.emptyTrie);
+var removeEverythingPatch = new Patch(Route.emptyTrie, Route.compilePattern(true, __));
 
 var $Observe = new Route.$Special("$Observe");
 var $AtMeta = new Route.$Special("$AtMeta");
@@ -206,6 +207,7 @@ function prettyPatch(p) {
 
 module.exports.Patch = Patch;
 module.exports.emptyPatch = emptyPatch;
+module.exports.removeEverythingPatch = removeEverythingPatch;
 
 module.exports.$Observe = $Observe;
 module.exports.$AtMeta = $AtMeta;
