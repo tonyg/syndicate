@@ -543,8 +543,11 @@ function matchValue(r, v) {
   return failureResult;
 }
 
-function matchTrie(o1, o2, seed) {
+function matchTrie(o1, o2, seed, leftShortOpt) {
   var acc = typeof seed === 'undefined' ? Immutable.Set() : seed; // variable updated imperatively
+  var leftShort = leftShortOpt || function (v, r, acc) {
+    die("Route.matchTrie: left side short!");
+  };
   walk(o1, o2);
   return acc;
 
@@ -563,9 +566,15 @@ function matchTrie(o1, o2, seed) {
       r2 = expandWildseq(r2.trie);
     }
 
-    if (r1 instanceof $Success && r2 instanceof $Success) {
-      acc = matchTrieSuccesses(r1.value, r2.value, acc);
+    if (r1 instanceof $Success) {
+      if (r2 instanceof $Success) {
+	acc = matchTrieSuccesses(r1.value, r2.value, acc);
+      } else {
+	acc = leftShort(r1.value, r2, acc);
+      }
       return;
+    } else if (r2 instanceof $Success) {
+      die("Route.matchTrie: right side short!");
     }
 
     var w1 = rlookup(r1, __);
