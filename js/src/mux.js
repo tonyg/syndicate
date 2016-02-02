@@ -42,16 +42,17 @@ Mux.prototype.updateStream = function (pid, unclampedPatch) {
 	   deltaAggregate: deltaAggregate };
 };
 
-function computePatches(oldMux, newMux, updateStreamResult) {
+function computeEvents(oldMux, newMux, updateStreamResult) {
   var actingPid = updateStreamResult.pid;
   var delta = updateStreamResult.delta;
   var deltaAggregate = updateStreamResult.deltaAggregate;
   var oldRoutingTable = oldMux.routingTable;
   var newRoutingTable = newMux.routingTable;
-  var affectedPids = computeAffectedPids(oldRoutingTable, delta).remove("meta");
+  var affectedPids = computeAffectedPids(oldRoutingTable, delta).add(actingPid).remove("meta");
   return {
     eventMap: Immutable.Map().withMutations(function (result) {
       affectedPids.forEach(function (pid) {
+	var patchForPid;
 	if (pid === actingPid) {
 	  var part1 = new Patch.Patch(Patch.biasedIntersection(newRoutingTable, delta.added),
 				      Patch.biasedIntersection(oldRoutingTable, delta.removed));
@@ -59,9 +60,12 @@ function computePatches(oldMux, newMux, updateStreamResult) {
 							       newMux.interestsOf(pid)),
 				      Patch.biasedIntersection(deltaAggregate.removed,
 							       oldMux.interestsOf(pid)));
-	  results.set(pid, part1.unsafeUnion(part2));
+	  patchForPid = part1.unsafeUnion(part2);
 	} else {
-	  result.set(pid, updateStreamResult.deltaAggregate.viewFrom(oldMux.interestsOf(pid)));
+	  patchForPid = updateStreamResult.deltaAggregate.viewFrom(oldMux.interestsOf(pid));
+	}
+	if (patchForPid.isNonEmpty()) {
+	  result.set(pid, patchForPid);
 	}
       });
     }),
@@ -97,5 +101,5 @@ Mux.prototype.interestsOf = function (pid) {
 ///////////////////////////////////////////////////////////////////////////
 
 module.exports.Mux = Mux;
-module.exports.computePatches = computePatches;
+module.exports.computeEvents = computeEvents;
 module.exports.computeAffectedPids = computeAffectedPids;

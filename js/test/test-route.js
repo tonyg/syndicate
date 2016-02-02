@@ -408,3 +408,11 @@ describe("Projection with no captures", function () {
 		       [' "X" ★ >{["A"]}']);
   });
 });
+
+describe('trieStep', function () {
+  it('should expand wildcard when given SOA', function () {
+    expect(Immutable.is(r.trieStep(r.compilePattern(true, r.__), r.SOA),
+			r._testing.rwildseq(r._testing.rseq(r.EOA, r._testing.rsuccess(true)))))
+      .to.be(true);
+  });
+});

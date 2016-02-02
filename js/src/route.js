@@ -656,7 +656,12 @@ function trieStep(m, key) {
   if (is_emptyTrie(m)) return emptyTrie;
   if (m instanceof $WildcardSequence) return (is_keyClose(key) ? m.trie : m);
   if (m instanceof $Success) return emptyTrie;
-  return rlookupWild(m, key) || rlookup(m, __);
+  var result = rlookupWild(m, key);
+  if (result) return result;
+  var wildEdge = rlookup(m, __);
+  if (is_keyOpen(key)) return rwildseq(wildEdge);
+  if (is_keyClose(key)) return (wildEdge instanceof $WildcardSequence) ? wildEdge.trie : emptyTrie;
+  return wildEdge;
 }
 
 function relabel(m, f) {
@@ -1025,7 +1030,7 @@ function prettyTrie(m, initialIndent) {
 
 module.exports.__ = __;
 module.exports.SOA = SOA;
-module.exports.EOA = SOA;
+module.exports.EOA = EOA;
 module.exports.$Capture = $Capture;
 module.exports.$Special = $Special;
 module.exports._$ = _$;
@@ -1050,3 +1055,11 @@ module.exports.trieKeys = trieKeys;
 module.exports.trieKeysToObjects = trieKeysToObjects;
 module.exports.projectObjects = projectObjects;
 module.exports.prettyTrie = prettyTrie;
+
+// For testing
+module.exports._testing = {
+  rsuccess: rsuccess,
+  rseq: rseq,
+  rwild: rwild,
+  rwildseq: rwildseq
+};

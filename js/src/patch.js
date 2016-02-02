@@ -63,6 +63,11 @@ function unpub(p, metaLevel) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+Patch.prototype.equals = function (other) {
+  if (!(other instanceof Patch)) return false;
+  return Immutable.is(this.added, other.added) && Immutable.is(this.removed, other.removed);
+};
+
 Patch.prototype.isEmpty = function () {
   return this.added === Route.emptyTrie && this.removed === Route.emptyTrie;
 };
