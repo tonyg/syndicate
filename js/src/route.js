@@ -415,9 +415,19 @@ function subtract(o1, o2, subtractSuccessesOpt) {
 	  if (!k2) {
 	    return;
 	  }
-	  updatedK = walkWild(key, k2, w1, walkFlipped);
+	  // There is an entry in r2 but not r1 for our key.
+	  updatedK =
+	    is_emptyTrie(w1) ? emptyTrie :
+	    is_keyOpen(key) ? walk(rwildseq(w1), k2) :
+	    is_keyClose(key) ? ((w1 instanceof $WildcardSequence) ? walk(w1.trie, k2) : emptyTrie) :
+	    walk(w1, k2);
 	} else if (!k2) {
-	  updatedK = walkWild(key, k1, w2, walk);
+	  // There is an entry in r1 but not r2 for our key.
+	  updatedK =
+	    is_emptyTrie(w2) ? k1 :
+	    is_keyOpen(key) ? walk(k1, rwildseq(w2)) :
+	    is_keyClose(key) ? ((w2 instanceof $WildcardSequence) ? walk(k1, w2.trie) : k1) :
+	    walk(k1, w2);
 	} else {
 	  updatedK = walk(k1, k2);
 	}
@@ -475,16 +485,6 @@ function subtract(o1, o2, subtractSuccessesOpt) {
     }
 
     return target;
-  }
-
-  function walkWild(key, k, w, walker) {
-    if (is_emptyTrie(w)) return k;
-    if (is_keyOpen(key)) return walker(k, rwildseq(w));
-    if (is_keyClose(key)) {
-      if (w instanceof $WildcardSequence) return walker(k, w.trie);
-      return k;
-    }
-    return walker(k, w);
   }
 }
 

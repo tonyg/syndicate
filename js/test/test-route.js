@@ -180,6 +180,18 @@ describe("subtraction", function () {
 		     "   3 ★...> >{true}",
 		     "     >::: nothing"]);
   });
+
+  it("should be idempotent if the subtrahend doesn't overlap the minuend", function () {
+    checkPrettyTrie(r.compilePattern(true, 1),
+		    [' 1 >{true}']);
+    checkPrettyTrie(r.subtract(r.compilePattern(true, 1),
+			       r.compilePattern(true, 2)),
+		    [' 1 >{true}']);
+    checkPrettyTrie(r.subtract(r.compilePattern(true, 1),
+			       r.compilePattern(true, 2),
+			       function (v1, v2) { return null; }),
+		    [' 1 >{true}']);
+  });
 });
 
 describe("subtract after union", function () {

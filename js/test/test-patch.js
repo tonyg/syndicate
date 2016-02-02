@@ -92,6 +92,22 @@ describe('patch sequencing', function () {
 		      '                2::: nothing'],
     		     [' < $Observe < 1 2 > > >{true}']);
   });
+
+  it('works for longer chains of asserts and retracts', function () {
+    var rawPatch =
+	Patch.assert(1)
+	.andThen(Patch.retract(2))
+	.andThen(Patch.retract(3))
+	.andThen(Patch.assert(4))
+	.andThen(Patch.retract(99));
+      checkPrettyPatch(rawPatch,
+		       [' 1 >{true}',
+		        ' 4 >{true}'],
+		       [' 2 >{true}',
+		        ' 3 >{true}',
+		        ' 99 >{true}']);
+
+  });
 });
 
 describe('patch lifting', function () {
