@@ -7,10 +7,6 @@ var Patch = require('../src/patch.js');
 var __ = Route.__;
 var _$ = Route._$;
 
-function checkPrettyTrie(m, expected) {
-  expect(r.prettyTrie(m)).to.equal(expected.join('\n'));
-}
-
 function checkPrettyPatch(p, expectedAdded, expectedRemoved) {
   expect(Patch.prettyPatch(p)).to.equal(
     ('<<<<<<<< Removed:\n' + expectedRemoved.join('\n') +
