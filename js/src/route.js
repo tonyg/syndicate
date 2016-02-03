@@ -1,3 +1,5 @@
+"use strict";
+
 var Immutable = require("immutable");
 
 function $Special(name) {
@@ -240,37 +242,40 @@ function union(o1, o2, unionSuccessesOpt) {
     }
 
     var w = merge(rlookup(r1, __), rlookup(r2, __));
+    var target;
+
+    function examineKey(rA, key, rB) {
+      if ((key !== __) && !target.has(key)) {
+	var k = merge(rlookup(rA, key), rlookup(rB, key));
+	if (is_keyOpen(key)) {
+	  target = rupdate(target, key, merge(rwildseq(w), k));
+	} else if (is_keyClose(key)) {
+	  if (w instanceof $WildcardSequence) {
+	    target = rupdate(target, key, merge(w.trie, k));
+	  } else {
+	    target = rupdate(target, key, k);
+	  }
+	} else {
+	  target = rupdate(target, key, merge(w, k));
+	}
+      }
+    }
+
     if (is_emptyTrie(w)) {
       var smaller = r1.size < r2.size ? r1 : r2;
       var larger  = r1.size < r2.size ? r2 : r1;
-      var target = larger;
+      target = larger;
       smaller.forEach(function (val, key) {
 	var k = merge(rlookup(smaller, key), rlookup(larger, key));
 	target = rupdate(target, key, k);
       });
-      return target;
     } else {
-      var target = rwild(w);
-      function examineKey(rA, key, rB) {
-	if ((key !== __) && !target.has(key)) {
-	  var k = merge(rlookup(rA, key), rlookup(rB, key));
-	  if (is_keyOpen(key)) {
-	    target = rupdate(target, key, merge(rwildseq(w), k));
-	  } else if (is_keyClose(key)) {
-	    if (w instanceof $WildcardSequence) {
-	      target = rupdate(target, key, merge(w.trie, k));
-	    } else {
-	      target = rupdate(target, key, k);
-	    }
-	  } else {
-	    target = rupdate(target, key, merge(w, k));
-	  }
-	}
-      }
+      target = rwild(w);
       r1.forEach(function (val, key) { examineKey(r1, key, r2) });
       r2.forEach(function (val, key) { examineKey(r2, key, r1) });
-      return target;
     }
+
+    return target;
   }
 }
 
@@ -786,8 +791,9 @@ function project(m, compiledProjection) {
 	m.forEach(function (mk, key) {
 	  if (key !== __) {
 	    if (is_keyOpen(key)) {
-	      function cont(mk2) { return walk(isCapturing, mk2, nextIndex); }
-	      target = rupdate(target, key, captureNested(mk, cont));
+	      target = rupdate(target, key, captureNested(mk, function (mk2) {
+		return walk(isCapturing, mk2, nextIndex);
+	      }));
 	    } else if (is_keyClose(key)) {
 	      // do nothing
 	    } else {
@@ -800,8 +806,9 @@ function project(m, compiledProjection) {
 	m.forEach(function (mk, key) {
 	  if (key !== __) {
 	    if (is_keyOpen(key)) {
-	      function cont(mk2) { return walk(isCapturing, mk2, nextIndex); }
-	      target = union(target, skipNested(mk, cont));
+	      target = union(target, skipNested(mk, function (mk2) {
+		return walk(isCapturing, mk2, nextIndex);
+	      }));
 	    } else if (is_keyClose(key)) {
 	      // do nothing
 	    } else {
@@ -854,8 +861,9 @@ function project(m, compiledProjection) {
     m.forEach(function (mk, key) {
       if (key !== __) {
 	if (is_keyOpen(key)) {
-	  function cont2(mk2) { return captureNested(mk2, cont); }
-	  target = rupdate(target, key, captureNested(mk, cont2));
+	  target = rupdate(target, key, captureNested(mk, function (mk2) {
+	    return captureNested(mk2, cont);
+	  }));
 	} else if (is_keyClose(key)) {
 	  target = rupdate(target, key, cont(mk));
 	} else {
@@ -879,8 +887,9 @@ function project(m, compiledProjection) {
     m.forEach(function (mk, key) {
       if (key !== __) {
 	if (is_keyOpen(key)) {
-	  function cont2(mk2) { return skipNested(mk2, cont); }
-	  target = union(target, skipNested(mk, cont2));
+	  target = union(target, skipNested(mk, function (mk2) {
+	    return skipNested(mk2, cont)
+	  }));
 	} else if (is_keyClose(key)) {
 	  target = union(target, cont(mk));
 	} else {
@@ -906,15 +915,14 @@ function trieKeys(m) {
     m.forEach(function (mk, key) {
       var piece;
       if (is_keyOpen(key)) {
-	function seqK(vss, vsk) {
+	piece = walkSeq(mk, function (vss, vsk) {
 	  var acc = [];
 	  for (var i = 0; i < vss.length; i++) {
 	    var vs = vss[i];
 	    acc = acc.concat(k(transformSeqs(vs, key), vsk));
 	  }
 	  return acc;
-	}
-	piece = walkSeq(mk, seqK);
+	});
       } else if (is_keyClose(key)) {
 	die("trieKeys: internal error: unexpected key-close");
       } else {
@@ -936,7 +944,7 @@ function trieKeys(m) {
       if (is_keyClose(key)) {
 	piece = k([Immutable.List()], mk);
       } else {
-	function outerK(v, vk) {
+	piece = walk(rseq(key, mk), function (v, vk) {
 	  return walkSeq(vk, function (vss, vsk) {
 	    var acc = [];
 	    for (var i = 0; i < vss.length; i++) {
@@ -944,8 +952,7 @@ function trieKeys(m) {
 	    }
 	    return k(acc, vsk);
 	  });
-	}
-	piece = walk(rseq(key, mk), outerK);
+	});
       }
       if (piece === null) return null;
       acc = acc.concat(piece);

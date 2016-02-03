@@ -1,3 +1,5 @@
+"use strict";
+
 // Reflection on function formal parameter lists.
 // This module is based on Angular's "injector" code,
 // https://github.com/angular/angular.js/blob/master/src/auto/injector.js,

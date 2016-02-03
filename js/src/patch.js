@@ -1,3 +1,5 @@
+"use strict";
+
 var Route = require("./route.js");
 var Immutable = require("immutable");
 

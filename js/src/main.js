@@ -1,3 +1,5 @@
+"use strict";
+
 function copyKeys(keys, to, from) {
   for (var i = 0; i < keys.length; i++) {
     to[keys[i]] = from[keys[i]];

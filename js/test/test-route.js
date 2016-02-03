@@ -1,3 +1,5 @@
+"use strict";
+
 var Immutable = require('immutable');
 var expect = require('expect.js');
 var util = require('util');

@@ -1,3 +1,5 @@
+"use strict";
+
 var Immutable = require('immutable');
 var Syndicate = require('./syndicate.js');
 var Network = Syndicate.Network;

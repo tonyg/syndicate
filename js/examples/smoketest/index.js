@@ -1,3 +1,5 @@
+"use strict";
+
 var G;
 $(document).ready(function () {
     var Network = Syndicate.Network;

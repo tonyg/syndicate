@@ -1,3 +1,5 @@
+"use strict";
+
 var Reflect = require("./reflect.js");
 
 module.exports.extend = function (what, _with) {

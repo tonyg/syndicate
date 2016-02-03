@@ -1,3 +1,5 @@
+"use strict";
+
 var expect = require('expect.js');
 var Syndicate = require('../src/main.js');
 
