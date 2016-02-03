@@ -26,12 +26,11 @@ copyKeys(['emptyPatch',
 	  'observe', 'atMeta', 'advertise',
 	  'isObserve', 'isAtMeta', 'isAdvertise',
 	  'assert', 'retract', 'sub', 'unsub', 'pub', 'unpub',
-	  'patchSeq',
-	  'prettyPatch'],
+	  'patchSeq'],
 	 module.exports,
 	 module.exports.Patch);
 
-// module.exports.Ground = require("./ground.js").Ground;
+module.exports.Ground = require("./ground.js").Ground;
 // module.exports.Actor = require("./actor.js").Actor;
 // module.exports.Spy = require("./spy.js").Spy;
 // module.exports.WakeDetector = require("./wake-detector.js").WakeDetector;

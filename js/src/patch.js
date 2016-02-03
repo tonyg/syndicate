@@ -206,9 +206,9 @@ Patch.prototype.projectObjects = function (compiledProjection) {
 	  Route.projectObjects(this.removed, compiledProjection)];
 };
 
-function prettyPatch(p) {
-  return ("<<<<<<<< Removed:\n" + Route.prettyTrie(p.removed) +
-	  "======== Added:\n" + Route.prettyTrie(p.added) +
+Patch.prototype.pretty = function () {
+  return ("<<<<<<<< Removed:\n" + Route.prettyTrie(this.removed) +
+	  "======== Added:\n" + Route.prettyTrie(this.added) +
 	  ">>>>>>>>\n");
 }
 
@@ -240,4 +240,3 @@ module.exports.unpub = unpub;
 module.exports.patchSeq = patchSeq;
 module.exports.computePatch = computePatch;
 module.exports.biasedIntersection = biasedIntersection;
-module.exports.prettyPatch = prettyPatch;

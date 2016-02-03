@@ -87,7 +87,7 @@ function computeAffectedPids(routingTable, delta) {
 
 Mux.prototype.routeMessage = function (body) {
   if (Route.matchValue(this.routingTable, body) === null) {
-    return Route.matchValue(m.routingTable, Patch.observe(body)) || Immutable.Set();
+    return Route.matchValue(this.routingTable, Patch.observe(body)) || Immutable.Set();
   } else {
     // Some other stream has declared body
     return Immutable.Set();

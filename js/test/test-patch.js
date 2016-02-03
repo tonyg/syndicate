@@ -8,7 +8,7 @@ var __ = Route.__;
 var _$ = Route._$;
 
 function checkPrettyPatch(p, expectedAdded, expectedRemoved) {
-  expect(Patch.prettyPatch(p)).to.equal(
+  expect(p.pretty()).to.equal(
     ('<<<<<<<< Removed:\n' + expectedRemoved.join('\n') +
      '======== Added:\n' + expectedAdded.join('\n') +
      '>>>>>>>>\n'));

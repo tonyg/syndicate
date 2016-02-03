@@ -101,37 +101,43 @@ Network.exit = function (exn) {
   Network.current().kill(Network.activePid(), exn);
 };
 
-Network.terminateNetwork = function () {
+Network.exitNetwork = function () {
   Network.enqueueAction(terminateNetwork());
+};
+
+Network.inertBehavior = {
+  handleEvent: function (e) {}
 };
 
 // Instance methods
 
 Network.prototype.asChild = function (pid, f, omitLivenessCheck) {
+  var self = this;
   var p = this.processTable.get(pid, null);
   if (!omitLivenessCheck && (p === null)) {
     console.warn("Network.asChild eliding invocation of dead process", pid);
     return;
   }
 
-  return Network.withWorldStack(Network.stack.push({ network: this, activePid: pid }),
-				function () {
-				  try {
-				    return f(p);
-				  } catch (e) {
-				    this.kill(pid, e);
-				  }
-				});
+  return Network.withNetworkStack(
+    Network.stack.push({ network: this, activePid: pid }),
+    function () {
+      try {
+	return f(p);
+      } catch (e) {
+	self.kill(pid, e);
+      }
+    });
 };
 
 Network.prototype.kill = function (pid, exn) {
   if (exn && exn.stack) {
-    console.log("Process exited", pid, exn, exn.stack);
+    console.log("Process exiting", pid, exn, exn.stack);
   } else {
-    console.log("Process exited", pid, exn);
+    console.log("Process exiting", pid, exn);
   }
   var p = this.processTable.get(pid);
-  this.processTable = this.processTable.remove(pid);
+  this.processTable = this.processTable.set(pid, { behavior: Network.inertBehavior });
   if (p) {
     if (p.behavior.trapexit) {
       this.asChild(pid, function () { return p.behavior.trapexit(exn); }, true);
@@ -172,13 +178,14 @@ Network.prototype.enqueueAction = function (pid, action) {
 };
 
 Network.prototype.dispatchActions = function () {
+  var self = this;
   var actionQueue = this.pendingActions;
   this.pendingActions = Immutable.List();
   var alive = true;
   actionQueue.forEach(function (entry) {
     var pid = entry[0];
     var action = entry[1];
-    if (!this.interpretAction(pid, action)) {
+    if (!self.interpretAction(pid, action)) {
       alive = false;
       return false;
     }
@@ -191,19 +198,22 @@ Network.prototype.markRunnable = function (pid) {
 };
 
 Network.prototype.runRunnablePids = function () {
+  var self = this;
   var pidSet = this.runnablePids;
   this.runnablePids = Immutable.Set();
   pidSet.forEach(function (pid) {
-    var childBusy = this.asChild(pid, function (p) {
+    var childBusy = self.asChild(pid, function (p) {
       return p.behavior.step // exists, haven't called it yet
 	&& p.behavior.step();
     });
-    if (childBusy) this.markRunnable(pid);
+    if (childBusy) self.markRunnable(pid);
   });
   return true;
 };
 
 Network.prototype.interpretAction = function (pid, action) {
+  var self = this;
+
   switch (action.type) {
   case 'stateChange':
     var oldMux = this.mux.shallowCopy();
@@ -218,7 +228,7 @@ Network.prototype.interpretAction = function (pid, action) {
       Network.send(action.message[1]);
     } else {
       this.mux.routeMessage(action.message).forEach(function (pid) {
-	this.deliverEvent(pid, action);
+	self.deliverEvent(pid, action);
       });
     }
     return true;
@@ -240,6 +250,8 @@ Network.prototype.interpretAction = function (pid, action) {
   case 'terminate':
     var oldMux = this.mux.shallowCopy();
     this.deliverPatches(oldMux, this.mux.removeStream(pid));
+    console.log("Process exit complete", pid);
+    this.processTable = this.processTable.remove(pid);
     return true;
 
   case 'terminateNetwork':
@@ -254,15 +266,16 @@ Network.prototype.interpretAction = function (pid, action) {
 };
 
 Network.prototype.deliverPatches = function (oldMux, updateStreamResult) {
+  var self = this;
   var events = Mux.computeEvents(oldMux, this.mux, updateStreamResult);
   events.eventMap.forEach(function (patch, pid) {
-    this.deliverEvent(pid, stateChange(patch));
+    self.deliverEvent(pid, stateChange(patch));
   });
   events.metaEvents.forEach(Network.stateChange);
 };
 
 Network.prototype.deliverEvent = function (pid, event) {
-  var childBusy = this.asChild(pid, function (p) { return p.handleEvent(event); });
+  var childBusy = this.asChild(pid, function (p) { return p.behavior.handleEvent(event); });
   if (childBusy) this.markRunnable(pid);
 };
 

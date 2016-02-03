@@ -13,7 +13,7 @@ function checkPrettyTrie(m, expected) {
 }
 
 function checkPrettyPatch(p, expectedAdded, expectedRemoved) {
-  expect(Patch.prettyPatch(p)).to.equal(
+  expect(p.pretty()).to.equal(
     ('<<<<<<<< Removed:\n' + expectedRemoved.join('\n') +
      '======== Added:\n' + expectedAdded.join('\n') +
      '>>>>>>>>\n'));
