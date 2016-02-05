@@ -29,10 +29,8 @@
                 (on (message (tcp-channel them us $bs))
                     (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
 
-(actor-body->spawn-action
- (lambda ()
-   (perform-core-action! (spawn-tcp-driver))
-   (define us (tcp-listener 5999))
-   (forever (assert (advertise (observe (tcp-channel _ us _))))
-            (on (asserted (advertise (tcp-channel $them us _)))
-                (spawn-session them us)))))
+(spawn-tcp-driver)
+(define us (tcp-listener 5999))
+(forever (assert (advertise (observe (tcp-channel _ us _))))
+         (on (asserted (advertise (tcp-channel $them us _)))
+             (spawn-session them us)))

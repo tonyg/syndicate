@@ -24,6 +24,7 @@
          pretty-print-actor-state
 
          (for-syntax analyze-pattern)
+         syndicate-actor-prompt-tag-installed?
          )
 
 (require (for-syntax racket/base))
@@ -157,6 +158,9 @@
 
 (define prompt (make-continuation-prompt-tag 'syndicate-hll))
 
+(define (syndicate-actor-prompt-tag-installed?)
+  (continuation-prompt-available? prompt))
+
 ;; (Any ... -> Nothing) -> (Any ... -> Instruction)
 (define (reply-to k)
   (lambda reply-values
@@ -171,6 +175,9 @@
 
 ;; ((Any ... -> Instruction) -> Instruction)
 (define (call-in-raw-context proc)
+  (when (not (syndicate-actor-prompt-tag-installed?))
+    (error 'call-in-raw-context
+           "Attempt to invoke imperative Syndicate actor action outside actor context."))
   (call-with-composable-continuation
    (lambda (k) (abort-current-continuation prompt (lambda () (proc (reply-to k)))))
    prompt))
@@ -653,7 +660,10 @@
     ;; (local-require racket/pretty)
     ;; (pretty-print (syntax->datum action-fn-stx))
 
-    #`(spawn! '#,linkage-kind #,action-fn-stx))
+    #`(let ((do-spawn (lambda () (spawn! '#,linkage-kind #,action-fn-stx))))
+        (if (syndicate-actor-prompt-tag-installed?)
+            (do-spawn)
+            (actor-body->spawn-action do-spawn))))
   )
 
     ;; ;; Given a Pred, computes (and perhaps allocates):

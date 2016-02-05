@@ -30,10 +30,8 @@
                 (on (message (tcp-channel them us $bs) #:meta-level 1)
                     (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
 
-(actor-body->spawn-action
- (lambda ()
-   (perform-core-action! (spawn-tcp-driver))
-   (network (define us (tcp-listener 5999))
-            (forever (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
-                     (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
-                         (spawn-session them us))))))
+(spawn-tcp-driver)
+(network (define us (tcp-listener 5999))
+         (forever (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
+                  (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
+                      (spawn-session them us))))

@@ -34,22 +34,19 @@
                 (on (message (tcp-incoming-data id $bs))
                     (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
 
-(actor-body->spawn-action
- (lambda ()
-   (perform-core-action! (spawn-tcp-driver))
+(spawn-tcp-driver)
 
-   (define us (tcp-listener 5999))
-   (actor (forever (assert (advertise (observe (tcp-channel _ us _))))
-                   (on (asserted (advertise (tcp-channel $them us _)))
-                       (define id (seal (list them us)))
-                       (actor (state [(assert (tcp-remote-open id))
-                                      (on (message (tcp-channel them us $bs))
-                                          (send! (tcp-incoming-data id bs)))
-                                      (on (message (tcp-outgoing-data id $bs))
-                                          (send! (tcp-channel us them bs)))]
-                                [(retracted (advertise (tcp-channel them us _))) (void)]
-                                [(retracted (tcp-local-open id)) (void)])))))
+(define us (tcp-listener 5999))
+(actor (forever (assert (advertise (observe (tcp-channel _ us _))))
+                (on (asserted (advertise (tcp-channel $them us _)))
+                    (define id (seal (list them us)))
+                    (actor (state [(assert (tcp-remote-open id))
+                                   (on (message (tcp-channel them us $bs))
+                                       (send! (tcp-incoming-data id bs)))
+                                   (on (message (tcp-outgoing-data id $bs))
+                                       (send! (tcp-channel us them bs)))]
+                                  [(retracted (advertise (tcp-channel them us _))) (void)]
+                                  [(retracted (tcp-local-open id)) (void)])))))
 
-   (forever (on (asserted (tcp-remote-open $id))
-                (spawn-session id)))
-   ))
+(forever (on (asserted (tcp-remote-open $id))
+             (spawn-session id)))
