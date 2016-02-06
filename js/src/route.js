@@ -103,6 +103,14 @@ function compilePattern(v, p) {
       return rseq(SOA, acc);
     }
 
+    if (Immutable.List.isList(p)) {
+      acc = rseq(EOA, acc);
+      p.reverse().forEach(function (element) {
+	acc = walk(element, acc);
+      });
+      return rseq(SOA, acc);
+    }
+
     if (p instanceof $Embedded) {
       return appendTrie(p.trie, function (v) { return acc; });
     } else {
