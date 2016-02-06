@@ -20,7 +20,7 @@ copyKeys(['__', '_$', '$Capture', '$Special',
 module.exports.DemandMatcher = require('./demand-matcher.js').DemandMatcher;
 module.exports.Seal = require('./seal.js').Seal;
 
-// module.exports.DOM = require("./dom-driver.js");
+module.exports.DOM = require("./dom-driver.js");
 module.exports.JQuery = require("./jquery-driver.js");
 // module.exports.RoutingTableWidget = require("./routing-table-widget.js");
 // module.exports.WebSocket = require("./websocket-driver.js");
