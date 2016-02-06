@@ -18,6 +18,7 @@ copyKeys(['__', '_$', '$Capture', '$Special',
 	 module.exports.Route);
 
 module.exports.DemandMatcher = require('./demand-matcher.js').DemandMatcher;
+module.exports.Seal = require('./seal.js').Seal;
 
 // module.exports.DOM = require("./dom-driver.js");
 module.exports.JQuery = require("./jquery-driver.js");
