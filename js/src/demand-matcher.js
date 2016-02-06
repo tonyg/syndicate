@@ -21,8 +21,8 @@ function DemandMatcher(demandSpec, supplySpec, options) {
   this.supplySpec = supplySpec;
   this.demandPattern = Route.projectionToPattern(demandSpec);
   this.supplyPattern = Route.projectionToPattern(supplySpec);
-  this.demandProjection = Route.compileProjection(demandSpec);
-  this.supplyProjection = Route.compileProjection(supplySpec);
+  this.demandProjection = Route.compileProjection(Patch.prependAtMeta(demandSpec, this.metaLevel));
+  this.supplyProjection = Route.compileProjection(Patch.prependAtMeta(supplySpec, this.metaLevel));
   this.currentDemand = Immutable.Set();
   this.currentSupply = Immutable.Set();
 }
