@@ -4,7 +4,6 @@ var Immutable = require('immutable');
 var Route = require('./route.js');
 var Patch = require('./patch.js');
 var Mux = require('./mux.js');
-var Util = require('./util.js');
 
 /*---------------------------------------------------------------------------*/
 /* Events and Actions */
