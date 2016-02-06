@@ -17,8 +17,12 @@ copyKeys(['__', '_$', '$Capture', '$Special',
 	 module.exports,
 	 module.exports.Route);
 
+var Seal = require('./seal.js')
+copyKeys(['Seal', 'seal'],
+	 module.exports,
+	 Seal);
+
 module.exports.DemandMatcher = require('./demand-matcher.js').DemandMatcher;
-module.exports.Seal = require('./seal.js').Seal;
 module.exports.Ack = require('./ack.js').Ack;
 
 module.exports.RandomID = require('./randomid.js');

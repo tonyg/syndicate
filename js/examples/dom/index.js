@@ -4,6 +4,7 @@ $(document).ready(function () {
   var sub = Syndicate.sub;
   var assert = Syndicate.assert;
   var retract = Syndicate.retract;
+  var seal = Syndicate.seal;
   var __ = Syndicate.__;
   var _$ = Syndicate._$;
 
@@ -15,7 +16,7 @@ $(document).ready(function () {
     Network.spawn({
       boot: function () {
 	return assert(["DOM", "#clicker-holder", "clicker",
-		       ["button", ["span", [["style", "font-style: italic"]], "Click me!"]]])
+		       seal(["button", ["span", [["style", "font-style: italic"]], "Click me!"]])])
 	  .andThen(sub(["jQuery", "button.clicker", "click", __]));
       },
       handleEvent: function (e) {
@@ -34,8 +35,9 @@ $(document).ready(function () {
       updateState: function () {
 	Network.stateChange(retract(["DOM", __, __, __])
 			    .andThen(assert(["DOM", "#counter-holder", "counter",
-					     ["div",
-					      ["p", "The current count is: ", this.counter]]])));
+					     seal(["div",
+						   ["p", "The current count is: ",
+						    this.counter]])])));
       },
       handleEvent: function (e) {
 	if (e.type === "message" && e.message === "bump_count") {

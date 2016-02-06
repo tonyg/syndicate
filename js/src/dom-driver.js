@@ -2,6 +2,7 @@
 var Syndicate = require("./syndicate.js");
 var Patch = require("./patch.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
+var Seal = require('./seal.js').Seal;
 var Network = Syndicate.Network;
 var __ = Syndicate.__;
 var _$ = Syndicate._$;
@@ -122,7 +123,7 @@ DOMFragment.prototype.buildNodes = function () {
   var self = this;
   var nodes = [];
   $(self.selector).each(function (index, domNode) {
-    var n = self.interpretSpec(self.fragmentSpec.toJS());
+    var n = self.interpretSpec(self.fragmentSpec.sealContents);
     n.classList.add(self.fragmentClass);
     domNode.appendChild(n);
     nodes.push(n);
