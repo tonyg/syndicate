@@ -10,8 +10,7 @@ function checkPrettyTrie(m, expected) {
 }
 
 function checkTrieKeys(actual, expected) {
-  expect((Immutable.Set(actual).map(Immutable.List))
-	 .equals(Immutable.Set(expected).map(Immutable.List))).to.be(true);
+  expect(actual.equals(Immutable.Set(expected).map(Immutable.List))).to.be(true);
 }
 
 describe("basic pattern compilation", function () {
@@ -282,9 +281,9 @@ describe("trieKeys using multiple-values in projections", function () {
   });
 
   it("should be convertible into objects with $-indexed fields", function () {
-    expect(r.trieKeysToObjects(r.trieKeys(M2), proj))
+    expect(r.trieKeysToObjects(r.trieKeys(M2), proj).toArray())
       .to.eql([{'$0': 3, '$1': 4}, {'$0': 1, '$1': 2}, {'$0': 1, '$1': 3}]);
-    expect(r.projectObjects(M, proj))
+    expect(r.projectObjects(M, proj).toArray())
       .to.eql([{'$0': 3, '$1': 4}, {'$0': 1, '$1': 2}, {'$0': 1, '$1': 3}]);
   });
 });
@@ -295,14 +294,14 @@ describe("trieKeys using multiple-values in projections, with names", function (
 		  r.compilePattern(Immutable.Set(['B']), [3, 4]));
 
   it("should yield named fields", function () {
-    expect(r.projectObjects(M, r.compileProjection([r._$("fst"), r._$("snd")])))
+    expect(r.projectObjects(M, r.compileProjection([r._$("fst"), r._$("snd")])).toArray())
       .to.eql([{'fst': 3, 'snd': 4}, {'fst': 1, 'snd': 2}, {'fst': 1, 'snd': 3}]);
   });
 
   it("should yield numbered fields where names are missing", function () {
-    expect(r.projectObjects(M, r.compileProjection([r._$, r._$("snd")])))
+    expect(r.projectObjects(M, r.compileProjection([r._$, r._$("snd")])).toArray())
       .to.eql([{'$0': 3, 'snd': 4}, {'$0': 1, 'snd': 2}, {'$0': 1, 'snd': 3}]);
-    expect(r.projectObjects(M, r.compileProjection([r._$("fst"), r._$])))
+    expect(r.projectObjects(M, r.compileProjection([r._$("fst"), r._$])).toArray())
       .to.eql([{'fst': 3, '$1': 4}, {'fst': 1, '$1': 2}, {'fst': 1, '$1': 3}]);
   });
 });

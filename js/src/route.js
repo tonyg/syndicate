@@ -902,10 +902,10 @@ function project(m, compiledProjection) {
 }
 
 function trieKeys(m) {
-  if (is_emptyTrie(m)) return [];
+  if (is_emptyTrie(m)) return Immutable.Set();
   var result = walkSeq(m, function (vss, vsk) { return vss; });
   if (result === null) return null;
-  return result.map(function (vs) { return vs.toArray() });
+  return Immutable.Set(result);
 
   function walk(m, k) {
     if (m instanceof $WildcardSequence) return null;
@@ -968,16 +968,13 @@ function trieKeys(m) {
 
 function trieKeysToObjects(trieKeysResult, compiledProjection) {
   if (trieKeysResult === null) return null;
-  var result = [];
-  for (var i = 0; i < trieKeysResult.length; i++) {
-    var e = trieKeysResult[i];
+  return trieKeysResult.toList().map(function (e) {
     var d = {};
-    for (var j = 0; j < e.length; j++) {
-      d[compiledProjection.names[j] || ('$' + j)] = e[j];
-    }
-    result.push(d);
-  }
-  return result;
+    e.forEach(function (key, index) {
+      d[compiledProjection.names[index] || ('$' + index)] = key;
+    });
+    return d;
+  });
 }
 
 function projectObjects(m, compiledProjection) {
