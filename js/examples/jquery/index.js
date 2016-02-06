@@ -24,5 +24,8 @@ $(document).ready(function () {
 	}
       });
     });
+    G.network.onStateChange = function (mux, patch) {
+      $("#spy-holder").text(Syndicate.prettyTrie(mux.routingTable));
+    };
     G.startStepping();
 });

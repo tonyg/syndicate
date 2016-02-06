@@ -36,6 +36,7 @@ function Network(bootFn) {
   this.processTable = Immutable.Map(); // pid -> Behavior
   this.runnablePids = Immutable.Set(); // of pid
   this.mux = new Mux.Mux();
+  this.onStateChange = function (mux, deltaAggregate) {};
   this.asChild('meta', function () { return bootFn() }, true);
 }
 
@@ -273,6 +274,7 @@ Network.prototype.deliverPatches = function (oldMux, updateStreamResult) {
     self.deliverEvent(pid, stateChange(patch));
   });
   events.metaEvents.forEach(Network.stateChange);
+  this.onStateChange(this.mux, updateStreamResult.deltaAggregate);
 };
 
 Network.prototype.deliverEvent = function (pid, event) {
