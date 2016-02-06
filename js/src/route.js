@@ -966,15 +966,17 @@ function trieKeys(m) {
   }
 }
 
+function captureToObject(captures, compiledProjection) {
+  var d = {};
+  captures.forEach(function (key, index) {
+    d[compiledProjection.names[index] || ('$' + index)] = key;
+  });
+  return d;
+}
+
 function trieKeysToObjects(trieKeysResult, compiledProjection) {
   if (trieKeysResult === null) return null;
-  return trieKeysResult.toList().map(function (e) {
-    var d = {};
-    e.forEach(function (key, index) {
-      d[compiledProjection.names[index] || ('$' + index)] = key;
-    });
-    return d;
-  });
+  return trieKeysResult.toList().map(function (e) { return captureToObject(e, compiledProjection); });
 }
 
 function projectObjects(m, compiledProjection) {
@@ -1056,6 +1058,7 @@ module.exports.compileProjection = compileProjection;
 module.exports.projectionToPattern = projectionToPattern;
 module.exports.project = project;
 module.exports.trieKeys = trieKeys;
+module.exports.captureToObject = captureToObject;
 module.exports.trieKeysToObjects = trieKeysToObjects;
 module.exports.projectObjects = projectObjects;
 module.exports.prettyTrie = prettyTrie;
