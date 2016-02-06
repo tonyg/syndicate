@@ -21,10 +21,10 @@ Ground.prototype.step = function () {
 };
 
 Ground.prototype.checkPid = function (pid) {
-  if (pid !== -1) console.error('Weird pid in Ground markPidRunnable', pid);
+  if (pid !== -1) console.error('Weird pid in Ground', pid);
 };
 
-Ground.prototype.markPidRunnable = function (pid) {
+Ground.prototype.markRunnable = function (pid) {
   this.checkPid(pid);
   this.startStepping();
 };
