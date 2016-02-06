@@ -43,28 +43,37 @@ function observeAtMeta(p, level) {
   }
 }
 
+function _check(p) {
+  if (p instanceof Patch) {
+    throw new Error("Cannot construct patch pattern using an embedded patch");
+  }
+  return p;
+}
+
 function assert(p, metaLevel) {
-  return new Patch(Route.compilePattern(true, prependAtMeta(p, metaLevel || 0)), Route.emptyTrie);
+  return new Patch(Route.compilePattern(true, prependAtMeta(_check(p), metaLevel || 0)),
+		   Route.emptyTrie);
 }
 
 function retract(p, metaLevel) {
-  return new Patch(Route.emptyTrie, Route.compilePattern(true, prependAtMeta(p, metaLevel || 0)));
+  return new Patch(Route.emptyTrie,
+		   Route.compilePattern(true, prependAtMeta(_check(p), metaLevel || 0)));
 }
 
 function sub(p, metaLevel) {
-  return new Patch(observeAtMeta(p, metaLevel || 0), Route.emptyTrie);
+  return new Patch(observeAtMeta(_check(p), metaLevel || 0), Route.emptyTrie);
 }
 
 function unsub(p, metaLevel) {
-  return new Patch(Route.emptyTrie, observeAtMeta(p, metaLevel || 0));
+  return new Patch(Route.emptyTrie, observeAtMeta(_check(p), metaLevel || 0));
 }
 
 function pub(p, metaLevel) {
-  return assert(advertise(p), metaLevel);
+  return assert(advertise(_check(p)), metaLevel);
 }
 
 function unpub(p, metaLevel) {
-  return retract(advertise(p), metaLevel);
+  return retract(advertise(_check(p)), metaLevel);
 }
 
 ///////////////////////////////////////////////////////////////////////////
