@@ -291,5 +291,3 @@ module.exports.terminate = terminate;
 module.exports.terminateNetwork = terminateNetwork;
 
 module.exports.Network = Network;
-// module.exports.DemandMatcher = DemandMatcher;
-// module.exports.Deduplicator = Deduplicator;
