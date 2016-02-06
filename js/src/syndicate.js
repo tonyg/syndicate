@@ -87,8 +87,8 @@ Network.enqueueAction = function (action) {
   entry.network.enqueueAction(entry.activePid, action);
 };
 
-Network.send = function (body) {
-  Network.enqueueAction(message(body));
+Network.send = function (body, metaLevel) {
+  Network.enqueueAction(message(Patch.prependAtMeta(body, metaLevel || 0)));
 };
 
 Network.stateChange = function (patch) {
