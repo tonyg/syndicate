@@ -33,6 +33,8 @@ function DOMFragment(selector, fragmentClass, fragmentSpec, domWrapFunction, jQu
   this.fragmentSpec = fragmentSpec;
   this.domWrapFunction = domWrapFunction;
   this.jQueryWrapFunction = jQueryWrapFunction;
+  this.demandExists = false;
+  this.subscriptionEstablished = new Syndicate.Ack();
   this.nodes = this.buildNodes();
 }
 
@@ -45,22 +47,36 @@ DOMFragment.prototype.boot = function () {
 				       1,
 				       self.jQueryWrapFunction);
     Network.spawn({
+      demandExists: false,
+      subscriptionEstablished: new Syndicate.Ack(1),
       boot: function () {
+	this.subscriptionEstablished.arm();
 	return Patch.sub(Patch.advertise(specification), 1);
       },
       handleEvent: function (e) {
-	if (e.type === "stateChange" && e.patch.hasRemoved()) {
+	this.subscriptionEstablished.check(e);
+	if (e.type === "stateChange") {
+	  if (e.patch.hasAdded()) this.demandExists = true;
+	  if (e.patch.hasRemoved()) this.demandExists = false;
+	}
+	if (this.subscriptionEstablished.done && !this.demandExists) {
 	  Network.exitNetwork();
 	}
       }
     });
   }));
 
+  this.subscriptionEstablished.arm();
   return Patch.sub(specification).andThen(Patch.pub(specification));
 };
 
 DOMFragment.prototype.handleEvent = function (e) {
-  if (e.type === "stateChange" && e.patch.hasRemoved()) {
+  this.subscriptionEstablished.check(e);
+  if (e.type === "stateChange") {
+    if (e.patch.hasAdded()) this.demandExists = true;
+    if (e.patch.hasRemoved()) this.demandExists = false;
+  }
+  if (this.subscriptionEstablished.done && !this.demandExists) {
     for (var i = 0; i < this.nodes.length; i++) {
       var n = this.nodes[i];
       n.parentNode.removeChild(n);

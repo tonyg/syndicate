@@ -33,6 +33,17 @@ function prependAtMeta(p, level) {
   return p;
 }
 
+function stripAtMeta(p, level) {
+  while (level--) {
+    if (p.length === 2 && p[0] === $AtMeta) {
+      p = p[1];
+    } else {
+      return null;
+    }
+  }
+  return p;
+}
+
 function observeAtMeta(p, level) {
   if (level === 0) {
     return Route.compilePattern(true, observe(p));
@@ -240,6 +251,7 @@ module.exports.isAtMeta = isAtMeta;
 module.exports.isAdvertise = isAdvertise;
 
 module.exports.prependAtMeta = prependAtMeta;
+module.exports.stripAtMeta = stripAtMeta;
 module.exports.observeAtMeta = observeAtMeta;
 module.exports.assert = assert;
 module.exports.retract = retract;

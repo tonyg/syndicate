@@ -19,7 +19,9 @@ copyKeys(['__', '_$', '$Capture', '$Special',
 
 module.exports.DemandMatcher = require('./demand-matcher.js').DemandMatcher;
 module.exports.Seal = require('./seal.js').Seal;
+module.exports.Ack = require('./ack.js').Ack;
 
+module.exports.RandomID = require('./randomid.js');
 module.exports.DOM = require("./dom-driver.js");
 module.exports.JQuery = require("./jquery-driver.js");
 // module.exports.RoutingTableWidget = require("./routing-table-widget.js");
