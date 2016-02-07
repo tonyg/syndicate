@@ -229,9 +229,9 @@ Patch.prototype.projectObjects = function (compiledProjection) {
 };
 
 Patch.prototype.pretty = function () {
-  return ("<<<<<<<< Removed:\n" + Route.prettyTrie(this.removed) +
-	  "======== Added:\n" + Route.prettyTrie(this.added) +
-	  ">>>>>>>>\n");
+  return ("<<<<<<<< Removed:\n" + Route.prettyTrie(this.removed) + "\n" +
+	  "======== Added:\n" + Route.prettyTrie(this.added) + "\n" +
+	  ">>>>>>>>");
 }
 
 ///////////////////////////////////////////////////////////////////////////

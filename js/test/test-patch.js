@@ -11,9 +11,9 @@ var _$ = Route._$;
 
 function checkPrettyPatch(p, expectedAdded, expectedRemoved) {
   expect(p.pretty()).to.equal(
-    ('<<<<<<<< Removed:\n' + expectedRemoved.join('\n') +
-     '======== Added:\n' + expectedAdded.join('\n') +
-     '>>>>>>>>\n'));
+    ('<<<<<<<< Removed:\n' + expectedRemoved.join('\n') + '\n' +
+     '======== Added:\n' + expectedAdded.join('\n') + '\n' +
+     '>>>>>>>>'));
 }
 
 describe('basic patch compilation', function () {
