@@ -1,10 +1,11 @@
 // JQuery event driver
-var Syndicate = require("./syndicate.js");
 var Patch = require("./patch.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
-var Network = Syndicate.Network;
-var __ = Syndicate.__;
-var _$ = Syndicate._$;
+
+var Network_ = require("./network.js");
+var Network = Network_.Network;
+var __ = Network_.__;
+var _$ = Network_._$;
 
 function spawnJQueryDriver(baseSelector, metaLevel, wrapFunction) {
   metaLevel = metaLevel || 0;

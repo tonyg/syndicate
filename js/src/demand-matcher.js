@@ -1,5 +1,4 @@
 var Immutable = require('immutable');
-var Syndicate = require('./syndicate.js');
 var Route = require('./route.js');
 var Patch = require('./patch.js');
 var Util = require('./util.js');

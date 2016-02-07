@@ -1,11 +1,13 @@
 // DOM fragment display driver
-var Syndicate = require("./syndicate.js");
 var Patch = require("./patch.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
+var Ack = require('./ack.js').Ack;
 var Seal = require('./seal.js').Seal;
-var Network = Syndicate.Network;
-var __ = Syndicate.__;
-var _$ = Syndicate._$;
+
+var Network_ = require("./network.js");
+var Network = Network_.Network;
+var __ = Network_.__;
+var _$ = Network_._$;
 
 function spawnDOMDriver(domWrapFunction, jQueryWrapFunction) {
   domWrapFunction = domWrapFunction || defaultWrapFunction;
@@ -35,7 +37,7 @@ function DOMFragment(selector, fragmentClass, fragmentSpec, domWrapFunction, jQu
   this.domWrapFunction = domWrapFunction;
   this.jQueryWrapFunction = jQueryWrapFunction;
   this.demandExists = false;
-  this.subscriptionEstablished = new Syndicate.Ack();
+  this.subscriptionEstablished = new Ack();
   this.nodes = this.buildNodes();
 }
 
@@ -49,7 +51,7 @@ DOMFragment.prototype.boot = function () {
 				       self.jQueryWrapFunction);
     Network.spawn({
       demandExists: false,
-      subscriptionEstablished: new Syndicate.Ack(1),
+      subscriptionEstablished: new Ack(1),
       boot: function () {
 	this.subscriptionEstablished.arm();
 	return Patch.sub(Patch.advertise(specification), 1);

@@ -7,5 +7,5 @@ Source files in `src/`, from most general to most specific:
  - `reflect.js`: Reflection on function formal parameter lists.
  - `util.js`: Functions `extend` and `kwApply`.
  - `route.js`: Implementation of dataspace trie structure.
- - `syndicate.js`: Implementation of core leaf actors and networks.
+ - `network.js`: Implementation of core leaf actors and networks.
  - `main.js`: Main package entry point.

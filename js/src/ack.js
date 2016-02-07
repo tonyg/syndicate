@@ -1,7 +1,7 @@
 // Utility protocol for measuring when a stateChange takes effect.
 
 var RandomID = require('./randomid.js');
-var Syndicate = require('./syndicate.js');
+var Network = require('./network.js').Network;
 var Route = require('./route.js');
 var Patch = require('./patch.js');
 
@@ -14,12 +14,12 @@ function Ack(metaLevel, id) {
 }
 
 Ack.prototype.arm = function () {
-  Syndicate.Network.stateChange(Patch.sub([$Ack, this.id], this.metaLevel));
-  Syndicate.Network.send([$Ack, this.id], this.metaLevel);
+  Network.stateChange(Patch.sub([$Ack, this.id], this.metaLevel));
+  Network.send([$Ack, this.id], this.metaLevel);
 };
 
 Ack.prototype.disarm = function () {
-  Syndicate.Network.stateChange(Patch.unsub([$Ack, this.id], this.metaLevel));
+  Network.stateChange(Patch.unsub([$Ack, this.id], this.metaLevel));
 };
 
 Ack.prototype.check = function (e) {

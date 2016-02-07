@@ -6,7 +6,7 @@ function copyKeys(keys, to, from) {
   }
 }
 
-module.exports = require("./syndicate.js");
+module.exports = require("./network.js");
 
 module.exports.Route = require("./route.js");
 copyKeys(['__', '_$', '$Capture', '$Special',

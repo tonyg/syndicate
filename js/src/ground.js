@@ -1,8 +1,7 @@
 "use strict";
 
 var Immutable = require('immutable');
-var Syndicate = require('./syndicate.js');
-var Network = Syndicate.Network;
+var Network = require('./network.js').Network;
 
 function Ground(bootFn) {
   var self = this;
