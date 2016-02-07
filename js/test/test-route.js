@@ -62,7 +62,7 @@ describe("unions", function () {
 			       r.compilePattern(Immutable.Set(['W']), r.__)),
 		       [' ★ >{["W"]}',
 			' < ★ "A" ★...> >{["W"]}',
-			'         > >{["A","W"]}',
+			'         > >{["W","A"]}',
 			'     ★...> >{["W"]}',
 			'     > >{["W"]}',
 			'   > >{["W"]}']);
@@ -121,6 +121,16 @@ describe("unions", function () {
     checkPrettyTrie(m, [' < 2 > >{["A","B"]}',
 			   '   3 > >{["C"]}']);
   });
+
+  it('should work with subtraction and wildcards', function () {
+    var x = r.compilePattern(Immutable.Set(["A"]), [r.__]);
+    var y = r.compilePattern(Immutable.Set(["A"]), ["Y"]);
+    var z = r.compilePattern(Immutable.Set(["A"]), ["Z"]);
+    var expected = [' < "Y"::: nothing',
+		    '   ★ > >{["A"]}'];
+    checkPrettyTrie(r.subtract(r.union(x, z), y), expected);
+    checkPrettyTrie(r.union(r.subtract(x, y), z), expected);
+  });
 });
 
 describe("projections", function () {
@@ -132,7 +142,7 @@ describe("projections", function () {
 					   r.compilePattern(Immutable.Set(['B']), [['b']])),
 				   proj),
 		      [' < < ★ > > >{["A"]}',
-		       '     "b" > > >{["B","A"]}']);
+		       '     "b" > > >{["A","B"]}']);
     });
 
     it("should exclude things that lack the required structure", function () {
@@ -415,5 +425,17 @@ describe('trieStep', function () {
     expect(Immutable.is(r.trieStep(r.compilePattern(true, r.__), r.SOA),
 			r._testing.rwildseq(r._testing.rseq(r.EOA, r._testing.rsuccess(true)))))
       .to.be(true);
+  });
+});
+
+describe('intersect', function () {
+  it('should compute no-op patch limits properly', function () {
+    var x = r.compilePattern(Immutable.Set([0]), ["fieldContents", r.__, r.__]);
+    var y = r.compilePattern(Immutable.Set([0]), ["fieldContents", "initial", 7]);
+    checkPrettyTrie(r.subtract(x, y), [
+      ' < "fieldContents" ★ ★ > >{[0]}',
+      '                   "initial" ★ > >{[0]}',
+      '                             7::: nothing']);
+    checkPrettyTrie(r.intersect(r.subtract(x, y), y), ['::: nothing']);
   });
 });

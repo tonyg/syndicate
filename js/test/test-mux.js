@@ -262,18 +262,14 @@ describe('computeEvents', function () {
     var pid1 = oldM.addStream(Patch.assert(["fieldContents", "initial", 7])).pid;
     var pid2 = oldM.addStream(Patch.sub(["fieldContents", __, __])).pid;
     var newM = oldM.shallowCopy();
-    var updateStreamResult =
-	newM.updateStream(pid1,
-			  Patch.retract(["fieldContents", __, __])
-			  .andThen(Patch.assert(["fieldContents", "initial", 7])));
+    var unclampedPatch =
+	Patch.retract(["fieldContents", __, __])
+	.andThen(Patch.assert(["fieldContents", "initial", 7]));
+    var updateStreamResult = newM.updateStream(pid1, unclampedPatch);
     var events = Mux.computeEvents(oldM, newM, updateStreamResult);
 
-    it('should send an empty patch to the subscriber', function () {
-      expect(events.eventMap.size).to.be(1);
-      expect(events.eventMap.has(pid2)).to.be(true);
-      checkPrettyPatch(events.eventMap.get(pid2).strip(),
-		       ['::: nothing'],
-		       ['::: nothing']);
+    it('should send no patch to the subscriber', function () {
+      expect(events.eventMap.size).to.be(0);
     });
   });
 });

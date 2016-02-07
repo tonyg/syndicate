@@ -172,7 +172,12 @@ function rlookup(r, key) {
 }
 
 function rlookupWild(r, key) {
-  return r.get(key, false);
+  var result = r.get(key, false);
+  if (result) return result;
+  var wildEdge = rlookup(r, __);
+  if (is_keyOpen(key)) return rwildseq(wildEdge);
+  if (is_keyClose(key)) return (wildEdge instanceof $WildcardSequence) ? wildEdge.trie : emptyTrie;
+  return wildEdge;
 }
 
 function is_keyOpen(k) {
@@ -252,20 +257,9 @@ function union(o1, o2, unionSuccessesOpt) {
     var w = merge(rlookup(r1, __), rlookup(r2, __));
     var target;
 
-    function examineKey(rA, key, rB) {
+    function examineKey(key) {
       if ((key !== __) && !target.has(key)) {
-	var k = merge(rlookup(rA, key), rlookup(rB, key));
-	if (is_keyOpen(key)) {
-	  target = rupdate(target, key, merge(rwildseq(w), k));
-	} else if (is_keyClose(key)) {
-	  if (w instanceof $WildcardSequence) {
-	    target = rupdate(target, key, merge(w.trie, k));
-	  } else {
-	    target = rupdate(target, key, k);
-	  }
-	} else {
-	  target = rupdate(target, key, merge(w, k));
-	}
+	target = rupdate(target, key, merge(rlookupWild(r1, key), rlookupWild(r2, key)));
       }
     }
 
@@ -279,8 +273,8 @@ function union(o1, o2, unionSuccessesOpt) {
       });
     } else {
       target = rwild(w);
-      r1.forEach(function (val, key) { examineKey(r1, key, r2) });
-      r2.forEach(function (val, key) { examineKey(r2, key, r1) });
+      r1.forEach(function (val, key) { examineKey(key) });
+      r2.forEach(function (val, key) { examineKey(key) });
     }
 
     return target;
@@ -337,21 +331,7 @@ function intersect(o1, o2, intersectSuccessesOpt, leftShortOpt) {
 
     function examineKey(key) {
       if ((key !== __) && !target.has(key)) {
-	var k1 = rlookup(r1, key);
-	var k2 = rlookup(r2, key);
-	if (is_emptyTrie(k1)) {
-	  if (is_emptyTrie(k2)) {
-	    target = rupdate(target, key, emptyTrie);
-	  } else {
-	    target = rupdate(target, key, walkWild(walk, w1, key, k2));
-	  }
-	} else {
-	  if (is_emptyTrie(k2)) {
-	    target = rupdate(target, key, walkWild(walkFlipped, w2, key, k1));
-	  } else {
-	    target = rupdate(target, key, walk(k1, k2));
-	  }
-	}
+	target = rupdate(target, key, walk(rlookupWild(r1, key), rlookupWild(r2, key)));
       }
     }
 
@@ -371,16 +351,6 @@ function intersect(o1, o2, intersectSuccessesOpt, leftShortOpt) {
       }
     }
     return target;
-  }
-
-  function walkWild(walker, w, key, k) {
-    if (is_emptyTrie(w)) return emptyTrie;
-    if (is_keyOpen(key)) return walker(rwildseq(w), k);
-    if (is_keyClose(key)) {
-      if (w instanceof $WildcardSequence) return walker(w.trie, k);
-      return emptyTrie;
-    }
-    return walker(w, k);
   }
 }
 
@@ -423,27 +393,8 @@ function subtract(o1, o2, subtractSuccessesOpt) {
       if (key !== __) {
 	var k1 = rlookupWild(r1, key);
 	var k2 = rlookupWild(r2, key);
-	var updatedK;
-	if (!k1) {
-	  if (!k2) {
-	    return;
-	  }
-	  // There is an entry in r2 but not r1 for our key.
-	  updatedK =
-	    is_emptyTrie(w1) ? emptyTrie :
-	    is_keyOpen(key) ? walk(rwildseq(w1), k2) :
-	    is_keyClose(key) ? ((w1 instanceof $WildcardSequence) ? walk(w1.trie, k2) : emptyTrie) :
-	    walk(w1, k2);
-	} else if (!k2) {
-	  // There is an entry in r1 but not r2 for our key.
-	  updatedK =
-	    is_emptyTrie(w2) ? k1 :
-	    is_keyOpen(key) ? walk(k1, rwildseq(w2)) :
-	    is_keyClose(key) ? ((w2 instanceof $WildcardSequence) ? walk(k1, w2.trie) : k1) :
-	    walk(k1, w2);
-	} else {
-	  updatedK = walk(k1, k2);
-	}
+	var updatedK = walk(k1, k2);
+
 	// Here we ensure a "minimal" remainder in cases
 	// where after an erasure, a particular key's
 	// continuation is the same as the wildcard's
@@ -669,12 +620,7 @@ function trieStep(m, key) {
   if (is_emptyTrie(m)) return emptyTrie;
   if (m instanceof $WildcardSequence) return (is_keyClose(key) ? m.trie : m);
   if (m instanceof $Success) return emptyTrie;
-  var result = rlookupWild(m, key);
-  if (result) return result;
-  var wildEdge = rlookup(m, __);
-  if (is_keyOpen(key)) return rwildseq(wildEdge);
-  if (is_keyClose(key)) return (wildEdge instanceof $WildcardSequence) ? wildEdge.trie : emptyTrie;
-  return wildEdge;
+  return rlookupWild(m, key);
 }
 
 function relabel(m, f) {
