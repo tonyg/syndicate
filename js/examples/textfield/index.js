@@ -7,11 +7,21 @@ var Patch = Syndicate.Patch;
 var __ = Syndicate.__;
 var _$ = Syndicate._$;
 
+function escapeText(text) {
+  text = text.replace(/&/g, '&amp;');
+  text = text.replace(/</g, '&lt;');
+  text = text.replace(/>/g, '&gt;');
+  text = text.replace(/ /g, '&nbsp;');
+  return text;
+}
+
 function piece(text, pos, lo, hi, cls) {
   return "<span class='"+cls+"'>"+
     ((pos >= lo && pos < hi)
-     ? text.substring(lo, pos) + "<span class='cursor'></span>" + text.substring(pos, hi)
-     : text.substring(lo, hi))
+     ? (escapeText(text.substring(lo, pos)) +
+	"<span class='cursor'></span>" +
+	escapeText(text.substring(pos, hi)))
+     : escapeText(text.substring(lo, hi)))
     + "</span>";
 }
 
@@ -60,7 +70,6 @@ function spawnGui() {
     },
 
     updateDisplay: function () {
-      // BUG: escape text!
       var text = this.field ? this.field.text : "";
       var pos = this.field ? this.field.pos : 0;
       var highlight = this.highlight ? this.highlight.state : false;
