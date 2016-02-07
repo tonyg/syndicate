@@ -26,7 +26,7 @@
 (struct scn (trie) #:transparent
   #:methods gen:prospect-pretty-printable
   [(define (prospect-pretty-print d [p (current-output-port)])
-     (pretty-print-trie (scn-trie d)))])
+     (pretty-print-trie (scn-trie d) p))])
 
 ;; Claims, Interests, Locations, and Advertisements
 (struct observe (claim) #:prefab)
