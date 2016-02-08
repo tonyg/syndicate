@@ -410,12 +410,13 @@
 
 (define (deliver-scns w new-mux acting-label s aggregate-assertions)
   (define old-mux (network-mux w))
+  (define old-echo-cancelled-assertions (echo-cancelled-routing-table old-mux))
   (define-values (scns meta-action)
     (compute-scns old-mux new-mux acting-label s aggregate-assertions))
   (transition (for/fold [(w (struct-copy network w [mux new-mux]))]
                         [(entry (in-list scns))]
                 (match-define (cons label (and event (scn new-assertions))) entry)
-                (if (equal? (biased-intersection (mux-routing-table old-mux)
+                (if (equal? (biased-intersection old-echo-cancelled-assertions
                                                  (mux-interests-of old-mux label))
                             new-assertions)
                     w

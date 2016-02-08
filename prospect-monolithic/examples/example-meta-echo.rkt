@@ -1,16 +1,16 @@
 #lang prospect-monolithic
-;; Demonstrates a (hopefully soon historical!) bug in Syndicate.
+;; Test case for a historical bug in Syndicate.
 ;;
-;; When the bug exists, this program receives four SCN events in
+;; When the bug existed, this program receiveed four SCN events in
 ;; total, whereas it should receive only two.
 ;;
-;; While metamessages are "echo cancelled", and receivers only ever
-;; get one copy of a sent metamessage no matter how many metas there
-;; are, state changes are not (yet). Issuing a quick enough "pulse" of
-;; metaassertion while maintaining interest in it leads to an "echo":
+;; While metamessages were "echo cancelled", and receivers only ever
+;; got one copy of a sent metamessage no matter how many metas there
+;; were, state changes were not. Issuing a quick enough "pulse" of
+;; metaassertion while maintaining interest in it led to an "echo":
 ;; multiple receipts of the pulse.
 ;;
-;; The fix is to adjust the implementation of state change
+;; The fix was to adjust the implementation of state change
 ;; notifications to cancel the echo for metaassertions.
 
 (require prospect/pretty)

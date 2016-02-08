@@ -9,6 +9,7 @@
          mux-update-stream
          mux-route-message
          mux-interests-of
+         echo-cancelled-routing-table
          compute-scns
          compute-affected-pids
          pretty-print-mux)
@@ -65,14 +66,27 @@
           new-scn ;; unnecessary?
           aggregate-assertions))
 
+(define at-meta-everything (pattern->trie #t (at-meta ?)))
+(define only-meta (datum-tset 'meta))
+
+(define (echo-cancelled-routing-table m)
+  (trie-subtract (mux-routing-table m)
+                 at-meta-everything
+                 #:combiner (lambda (v1 v2)
+                              (if (tset-member? v1 'meta)
+                                  only-meta
+                                  #f))))
+
 (define (compute-scns old-m new-m label s aggregate-assertions)
   (define old-routing-table (mux-routing-table old-m))
   (define new-routing-table (mux-routing-table new-m))
+  (define echo-cancelled-assertions (echo-cancelled-routing-table new-m))
   (define affected-pids
     (let ((pids (compute-affected-pids old-routing-table aggregate-assertions))) ;; hmm
       (tset-remove (tset-add pids label) 'meta))) ;; TODO: removing meta is weird
   (values (for/list [(pid (tset->list affected-pids))]
-            (cons pid (scn (biased-intersection new-routing-table (mux-interests-of new-m pid)))))
+            (cons pid (scn (biased-intersection echo-cancelled-assertions
+                                                (mux-interests-of new-m pid)))))
           (and (not (meta-label? label))
                (drop-scn (scn (trie-relabel new-routing-table
                                             (lambda (v)
