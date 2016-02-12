@@ -439,3 +439,53 @@ describe('intersect', function () {
     checkPrettyTrie(r.intersect(r.subtract(x, y), y), ['::: nothing']);
   });
 });
+
+describe('triePruneBranch', function () {
+  it('should not affect empty trie', function () {
+    checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List([])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List([r.SOA])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List(["x"])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List([r.SOA, "x"])), ['::: nothing']);
+  });
+
+  it('should leave a hole in a full trie', function () {
+    var full = r.compilePattern(true, r.__);
+    checkPrettyTrie(r.triePruneBranch(full, Immutable.List([])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(full, Immutable.List([r.SOA])),
+		    [' ★ >{true}',
+		     ' <::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(full, Immutable.List(["x"])),
+		    [' ★ >{true}',
+		     ' "x"::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(full, Immutable.List([r.SOA, "x"])),
+		    [' ★ >{true}',
+		     ' < ★...> >{true}',
+		     '   > >{true}',
+		     '   "x"::: nothing']);
+  });
+
+  it('should prune in a finite tree and leave the rest alone', function () {
+    var A = r.compilePattern(true, ["y"])
+    var B = r.union(r.compilePattern(true, ["x"]), A);
+    var C = r.union(r.compilePattern(true, "z"), B);
+    checkPrettyTrie(r.triePruneBranch(A, Immutable.List([])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(B, Immutable.List([])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(C, Immutable.List([])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(A, Immutable.List(["z"])), [' < "y" > >{true}']);
+    checkPrettyTrie(r.triePruneBranch(B, Immutable.List(["z"])), [' < "x" > >{true}',
+								  '   "y" > >{true}']);
+    checkPrettyTrie(r.triePruneBranch(C, Immutable.List(["z"])), [' < "x" > >{true}',
+								  '   "y" > >{true}']);
+    checkPrettyTrie(r.triePruneBranch(A, Immutable.List([r.SOA])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(B, Immutable.List([r.SOA])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(C, Immutable.List([r.SOA])), [' "z" >{true}']);
+    checkPrettyTrie(r.triePruneBranch(A, Immutable.List([r.SOA, "x"])), [' < "y" > >{true}']);
+    checkPrettyTrie(r.triePruneBranch(B, Immutable.List([r.SOA, "x"])), [' < "y" > >{true}']);
+    checkPrettyTrie(r.triePruneBranch(C, Immutable.List([r.SOA, "x"])), [' < "y" > >{true}',
+									 ' "z" >{true}']);
+    checkPrettyTrie(r.triePruneBranch(A, Immutable.List([r.SOA, "y"])), ['::: nothing']);
+    checkPrettyTrie(r.triePruneBranch(B, Immutable.List([r.SOA, "y"])), [' < "x" > >{true}']);
+    checkPrettyTrie(r.triePruneBranch(C, Immutable.List([r.SOA, "y"])), [' < "x" > >{true}',
+									 ' "z" >{true}']);
+  });
+});

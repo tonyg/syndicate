@@ -423,33 +423,36 @@ function subtract(o1, o2, subtractSuccessesOpt) {
       r2.forEach(function (val, key) { examineKey(key) });
     }
 
-    // Here, the target is complete. If it has only two keys,
-    // one wild and one is_keyClose, and wild's continuation
-    // is a $WildcardSequence and the other continuation is
-    // identical to the sequence's continuation, then replace
-    // the whole thing with a nested $WildcardSequence.
-    // (We know w === rlookup(target, __) from before.)
-    //
-    // TODO: I suspect actually this applies even if there are
-    // more than two keys, so long as all their continuations
-    // are identical and there's at least one is_keyClose
-    // alongside a wild.
-    if (target.size === 2) {
-      var finalW = rlookup(target, __);
-      if (finalW instanceof $WildcardSequence) {
-	target.forEach(function (k, key) {
-	  if ((key !== __) && is_keyClose(key)) {
-	    if (Immutable.is(k, finalW.trie)) {
-	      target = finalW;
-	      return false; // terminate the iteration early
-	    }
-	  }
-	});
-      }
-    }
-
-    return target;
+    return collapseWildcardSequences(target);
   }
+}
+
+function collapseWildcardSequences(target) {
+  // Here, the target is complete. If it has only two keys,
+  // one wild and one is_keyClose, and wild's continuation
+  // is a $WildcardSequence and the other continuation is
+  // identical to the sequence's continuation, then replace
+  // the whole thing with a nested $WildcardSequence.
+  // (We know w === rlookup(target, __) from before.)
+  //
+  // TODO: I suspect actually this applies even if there are
+  // more than two keys, so long as all their continuations
+  // are identical and there's at least one is_keyClose
+  // alongside a wild.
+  if (target.size === 2) {
+    var finalW = rlookup(target, __);
+    if (finalW instanceof $WildcardSequence) {
+      target.forEach(function (k, key) {
+	if ((key !== __) && is_keyClose(key)) {
+	  if (Immutable.is(k, finalW.trie)) {
+	    target = finalW;
+	    return false; // terminate the iteration early
+	  }
+	}
+      });
+    }
+  }
+  return target;
 }
 
 // Returns null on failed match, otherwise the appropriate success
@@ -614,6 +617,20 @@ function appendTrie(m, mTailFn) {
     });
     return target;
   }
+}
+
+function triePruneBranch(m, keys) {
+  if (keys.isEmpty()) return emptyTrie;
+
+  if (is_emptyTrie(m)) return emptyTrie;
+  if (m instanceof $WildcardSequence) {
+    return collapseWildcardSequences(triePruneBranch(expandWildseq(m.trie), keys));
+  }
+  if (m instanceof $Success) return m;
+
+  var key = keys.first();
+  var rest = keys.shift();
+  return rupdate(m, key, triePruneBranch(rlookupWild(m, key), rest));
 }
 
 function trieStep(m, key) {
@@ -1006,6 +1023,7 @@ module.exports.subtract = subtract;
 module.exports.matchValue = matchValue;
 module.exports.matchTrie = matchTrie;
 module.exports.appendTrie = appendTrie;
+module.exports.triePruneBranch = triePruneBranch;
 module.exports.trieStep = trieStep;
 module.exports.relabel = relabel;
 module.exports.compileProjection = compileProjection;
