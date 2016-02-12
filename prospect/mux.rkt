@@ -81,7 +81,7 @@
 (define (compute-patches old-m new-m label delta delta-aggregate)
   (define delta-aggregate/no-echo
     (if (meta-label? label)
-        delta-aggregate
+        delta
         (patch (trie-prune-branch (patch-added delta-aggregate) struct:at-meta)
                (trie-prune-branch (patch-removed delta-aggregate) struct:at-meta))))
   (define old-routing-table (mux-routing-table old-m))
