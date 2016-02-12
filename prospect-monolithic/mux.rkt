@@ -82,7 +82,7 @@
   (define new-routing-table (mux-routing-table new-m))
   (define echo-cancelled-assertions (echo-cancelled-routing-table new-m))
   (define affected-pids
-    (let ((pids (compute-affected-pids old-routing-table aggregate-assertions))) ;; hmm
+    (let ((pids (compute-affected-pids old-routing-table aggregate-assertions)))
       (tset-remove (tset-add pids label) 'meta))) ;; TODO: removing meta is weird
   (values (for/list [(pid (tset->list affected-pids))]
             (cons pid (scn (biased-intersection echo-cancelled-assertions

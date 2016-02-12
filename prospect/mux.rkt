@@ -87,7 +87,7 @@
   (define old-routing-table (mux-routing-table old-m))
   (define new-routing-table (mux-routing-table new-m))
   (define affected-pids
-    (let ((pids (compute-affected-pids old-routing-table delta)))
+    (let ((pids (compute-affected-pids old-routing-table delta-aggregate/no-echo)))
       (tset-remove (tset-add pids label) 'meta))) ;; TODO: removing meta is weird
   (values (for/list [(pid (tset->list affected-pids))]
             (cond [(equal? pid label)
