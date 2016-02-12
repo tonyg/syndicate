@@ -32,6 +32,7 @@
 	 trie-match-trie
 	 trie-append
 	 trie-relabel
+         trie-prune-branch
 
 	 SOL
 	 SOV
@@ -604,6 +605,18 @@
       [(? treap?) (for/fold [(acc (rwild (walk (rlookup m ? #f))))]
 		      [(kv (treap-to-alist m)) #:when (not (eq? (car kv) ?))]
 		    (rupdate acc (car kv) (walk (cdr kv))))])))
+
+;; Trie Sigma -> Trie
+;; Outright removes tries reachable from m via edges labelled with s.
+;; Useful for removing (at-meta *) when the success value along that
+;; branch doesn't matter.
+(define (trie-prune-branch m s)
+  (match m
+    [#f #f]
+    [(wildcard-sequence k)
+     (collapse-wildcard-sequences (rupdate (expand-wildseq k) s (trie-empty)))]
+    [(success _) m]
+    [(? treap? h) (rupdate h s (trie-empty))]))
 
 ;; Trie Sigma -> Trie
 (define (trie-step m s)

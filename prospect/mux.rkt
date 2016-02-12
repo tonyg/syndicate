@@ -67,7 +67,23 @@
           delta
           delta-aggregate))
 
+(define at-meta-everything (pattern->trie #t (at-meta ?)))
+(define only-meta (datum-tset 'meta))
+
+(define (echo-cancelled-trie t)
+  (trie-subtract t
+                 at-meta-everything
+                 #:combiner (lambda (v1 v2)
+                              (if (tset-member? v1 'meta)
+                                  only-meta
+                                  #f))))
+
 (define (compute-patches old-m new-m label delta delta-aggregate)
+  (define delta-aggregate/no-echo
+    (if (meta-label? label)
+        delta-aggregate
+        (patch (trie-prune-branch (patch-added delta-aggregate) struct:at-meta)
+               (trie-prune-branch (patch-removed delta-aggregate) struct:at-meta))))
   (define old-routing-table (mux-routing-table old-m))
   (define new-routing-table (mux-routing-table new-m))
   (define affected-pids
@@ -77,15 +93,17 @@
             (cond [(equal? pid label)
                    (define feedback
                      (patch-union
-                      (patch (biased-intersection new-routing-table (patch-added delta))
-                             (biased-intersection old-routing-table (patch-removed delta)))
-                      (patch (biased-intersection (patch-added delta-aggregate)
+                      (patch (echo-cancelled-trie
+                              (biased-intersection new-routing-table (patch-added delta)))
+                             (echo-cancelled-trie
+                              (biased-intersection old-routing-table (patch-removed delta))))
+                      (patch (biased-intersection (patch-added delta-aggregate/no-echo)
                                                   (mux-interests-of new-m label))
-                             (biased-intersection (patch-removed delta-aggregate)
+                             (biased-intersection (patch-removed delta-aggregate/no-echo)
                                                   (mux-interests-of old-m label)))))
                    (cons label feedback)]
                   [else
-                   (cons pid (view-patch delta-aggregate (mux-interests-of old-m pid)))]))
+                   (cons pid (view-patch delta-aggregate/no-echo (mux-interests-of old-m pid)))]))
           (and (not (meta-label? label))
                (drop-patch
                 (compute-aggregate-patch delta label old-routing-table #:remove-meta? #t)))))
