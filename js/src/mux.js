@@ -44,27 +44,43 @@ Mux.prototype.updateStream = function (pid, unclampedPatch) {
 	   deltaAggregate: deltaAggregate };
 };
 
+var atMetaEverything = Route.compilePattern(true, Patch.atMeta(Route.__));
+var atMetaBranchKeys = Immutable.List([Route.SOA, Patch.$AtMeta]);
+var onlyMeta = Immutable.Set.of("meta");
+
+function echoCancelledTrie(t) {
+  return Route.subtract(t, atMetaEverything, function (v1, v2) {
+    return v1.has("meta") ? onlyMeta : null;
+  });
+}
+
 function computeEvents(oldMux, newMux, updateStreamResult) {
   var actingPid = updateStreamResult.pid;
   var delta = updateStreamResult.delta;
   var deltaAggregate = updateStreamResult.deltaAggregate;
+  var deltaAggregateNoEcho = (actingPid === "meta")
+      ? delta // because echo-cancellation means that meta-SCNs are always new information
+      : new Patch.Patch(Route.triePruneBranch(deltaAggregate.added, atMetaBranchKeys),
+			Route.triePruneBranch(deltaAggregate.removed, atMetaBranchKeys));
   var oldRoutingTable = oldMux.routingTable;
   var newRoutingTable = newMux.routingTable;
-  var affectedPids = computeAffectedPids(oldRoutingTable, delta).add(actingPid).remove("meta");
+  var affectedPids =
+      computeAffectedPids(oldRoutingTable, deltaAggregateNoEcho).add(actingPid).remove("meta");
   return {
     eventMap: Immutable.Map().withMutations(function (result) {
       affectedPids.forEach(function (pid) {
 	var patchForPid;
 	if (pid === actingPid) {
-	  var part1 = new Patch.Patch(Patch.biasedIntersection(newRoutingTable, delta.added),
-				      Patch.biasedIntersection(oldRoutingTable, delta.removed));
-	  var part2 = new Patch.Patch(Patch.biasedIntersection(deltaAggregate.added,
+	  var part1 = new Patch.Patch(
+	    echoCancelledTrie(Patch.biasedIntersection(newRoutingTable, delta.added)),
+	    echoCancelledTrie(Patch.biasedIntersection(oldRoutingTable, delta.removed)));
+	  var part2 = new Patch.Patch(Patch.biasedIntersection(deltaAggregateNoEcho.added,
 							       newMux.interestsOf(pid)),
-				      Patch.biasedIntersection(deltaAggregate.removed,
+				      Patch.biasedIntersection(deltaAggregateNoEcho.removed,
 							       oldMux.interestsOf(pid)));
 	  patchForPid = part1.unsafeUnion(part2);
 	} else {
-	  patchForPid = updateStreamResult.deltaAggregate.viewFrom(oldMux.interestsOf(pid));
+	  patchForPid = deltaAggregateNoEcho.viewFrom(oldMux.interestsOf(pid));
 	}
 	if (patchForPid.isNonEmpty()) {
 	  result.set(pid, patchForPid);
