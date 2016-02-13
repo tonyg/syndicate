@@ -776,7 +776,7 @@
                (values (cons pr1 pr)
                        (cons g1 g)
                        (cons m1 m)
-                       (append bs1 bs))))
+                       (append bs bs1))))
            (if (identifier? #'ctor)
                (values (cons #'ctor (reverse pr))
                        (cons #'ctor (reverse g))
