@@ -21,6 +21,16 @@
      outer-stx
      (list temp1 temp2 pat match-pat))))
 
+;; trie projection symbol -> (U set exn:fail?)
+;; tries to project the trie. If the resulting trie would be infinite, raise an
+;; error, using the third argument to describe the pattern being projected.
+;; If the resulting trie is finite, return it as a set.
+(define (project-finite t proj pat)
+  (define s? (trie-project/set t (compile-projection (?! proj))))
+  (unless s?
+    (error "pattern projection created infinite trie:" pat))
+  s?)
+
 (define-syntax (for-trie/fold stx)
   (syntax-case stx ()
     [(_ ([acc-id acc-init] ...)
@@ -31,8 +41,7 @@
      (with-syntax* ([(set-tmp loop-tmp proj-stx match-pat)
                      (helper #'pat_0 #'body)]
                     [new-acc (generate-temporary 'acc)])
-       #`(let ([set-tmp (trie-project/set trie_0
-                                          (compile-projection (?! proj-stx)))])
+       #`(let ([set-tmp (project-finite trie_0 proj-stx 'pat_0)])
            (for/fold/derived #,stx ([acc-id acc-init]
                                     ...)
              ([loop-tmp (in-set set-tmp)])
@@ -166,5 +175,14 @@
                                ([$x (make-trie 1 2 3)])
                   (void)
                   (+ acc x))
-                6))
+                6)
+  ;; projecting an infinite set out of an infinite trie raisies an error
+  (check-exn (lambda (e) (and (exn:fail? e) (not (exn:fail:contract? e))))
+             (lambda ()
+               (for-trie/list ([$x (pattern->trie 'x (projection->pattern ?))])
+                 x)))
+  ;; projecting something finite out is ok
+  (check-equal? (for-trie/list ([1 (pattern->trie 'x (projection->pattern ?))])
+                 1)
+                (list 1)))
 
