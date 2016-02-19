@@ -3,7 +3,8 @@
 (provide for-trie/list
          for-trie/set
          for-trie/patch
-         for-trie/fold)
+         for-trie/fold
+         for-trie)
 
 (require "core.rkt"
          (only-in "actor.rkt" analyze-pattern)
@@ -96,6 +97,15 @@
 
 (make-fold for-trie/patch patch-seq empty-patch)
 
+(define (ret-second a b) b)
+
+(make-fold for-trie-inner ret-second #f)
+
+(define-syntax (for-trie stx)
+  (syntax-case stx ()
+    [(_ more-stx ...)
+     #'(void (for-trie-inner more-stx ...))]))
+
 (module+ test
   (require rackunit)
   
@@ -184,5 +194,12 @@
   ;; projecting something finite out is ok
   (check-equal? (for-trie/list ([1 (pattern->trie 'x (projection->pattern ?))])
                  1)
-                (list 1)))
+                (list 1))
+  (let ([a-set (mutable-set)])
+    ;; for-trie results in (void)
+    (check-equal? (for-trie ([$x (make-trie 1 2 3 4)])
+                    (set-add! a-set x))
+                  (void))
+    ;; for-trie runs body for effects
+    (check-equal? a-set (mutable-set 1 2 3 4))))
 
