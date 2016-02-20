@@ -287,7 +287,7 @@
      (if quit? ;; TODO: raise exception instead? Signal the cause of the quit somehow?
          (quit)
          #f)]
-    [(message (link-result _ callee-id reply-values))
+    [(message (link-result (== (actor-state-self-id s)) callee-id reply-values))
      (invoke-stored-continuation s callee-id reply-values)]
     [_ #f]))
 
