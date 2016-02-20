@@ -288,6 +288,15 @@
          (quit)
          #f)]
     [(message (link-result (== (actor-state-self-id s)) callee-id reply-values))
+     ;; ^ NB. We, in principle, shouldn't need to check the
+     ;; link-result's caller against our own self-id here, because
+     ;; events should be routed to us only when generally falling
+     ;; within our interests. First, the current implementation
+     ;; overapproximates (though it could use a mux to be precise);
+     ;; second, *in principle*, overapproximation should perhaps be
+     ;; seen as OK, since routing may be able to be done much more
+     ;; efficiently by overapproximating interest slightly. Imagine
+     ;; using a bloom filter, for instance.
      (invoke-stored-continuation s callee-id reply-values)]
     [_ #f]))
 
