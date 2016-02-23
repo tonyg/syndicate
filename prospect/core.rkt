@@ -258,7 +258,7 @@
                                  other)]))
                      (match-lambda
                        [(network-boot-spec boot-actions)
-                        (create-network w boot-actions)]
+                        (transition (create-network w boot-actions) '())]
                        [(list behavior initial-transition)
                         (create-process w behavior initial-transition)])
                      (lambda (exn)
@@ -316,12 +316,15 @@
                [event-channels (hash-set (network-event-channels w) pid event-chan)]
                [action-channels (hash-set (network-action-channels w) pid action-chan)]))
 
-;; Network PID (Listof Action) -> Network
-(define (create-network w pid boot-actions)
+;; Network (Listof Action) -> Network
+(define (create-network w boot-actions)
+  (define-values (new-mux pid delta delta-aggregate)
+          (mux-add-stream (network-mux w) empty-patch))
   (define event-chan (make-async-channel))
   (define action-chan (make-async-channel))
   (fork-network pid boot-actions event-chan action-chan)
   (struct-copy network w
+               [mux new-mux]
                [event-channels (hash-set (network-event-channels w) pid event-chan)]
                [action-channels (hash-set (network-action-channels w) pid action-chan)]))
 
@@ -433,7 +436,7 @@
   (make-spawn-network (lambda () (list boot-action ...))))
 
 (define (make-spawn-network boot-actions-thunk)
-  (network-boot-spec (clean-actions (boot-actions-thunk))))
+  (spawn (lambda () (network-boot-spec (clean-actions (boot-actions-thunk))))))
 
 (define (transition-bind k t0)
   (match t0
