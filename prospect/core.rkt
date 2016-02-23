@@ -382,7 +382,9 @@
                         [(entry (in-list patches))]
                 (match-define (cons label event) entry)
                 (send-event/guard event label w))
-              meta-action))
+              (if (action? meta-action)
+                  meta-action
+                  '())))
 
 ;; PID Exception Network -> Network
 (define (disable-process cw pid exn)
