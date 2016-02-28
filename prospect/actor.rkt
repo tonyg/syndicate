@@ -728,9 +728,9 @@
     (and (identifier? stx)
          (char=? (string-ref (symbol->string (syntax-e stx)) 0) #\$)))
 
-  (define (undollar stx ctx)
+  (define (undollar stx)
     (and (dollar-id? stx)
-         (datum->syntax ctx (string->symbol (substring (symbol->string (syntax-e stx)) 1)))))
+         (datum->syntax stx (string->symbol (substring (symbol->string (syntax-e stx)) 1)))))
 
   ;; Syntax -> (Values Projection AssertionSetPattern MatchPattern (ListOf Identifier))
   (define (analyze-pattern outer-expr-stx pat-stx0)
@@ -744,7 +744,7 @@
 
         [$v
          (dollar-id? #'$v)
-         (with-syntax [(v (undollar #'$v outer-expr-stx))]
+         (with-syntax [(v (undollar #'$v))]
            (values #'(?!)
                    #'?
                    #'v
