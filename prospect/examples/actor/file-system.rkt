@@ -1,5 +1,6 @@
 #lang prospect
 ;; Toy file system, based on the example in the ESOP2016 submission.
+;; prospect/actor implementation.
 
 (require prospect/actor)
 (require prospect/drivers/timer)
