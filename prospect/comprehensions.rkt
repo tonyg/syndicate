@@ -111,7 +111,18 @@
     (for/fold ([acc (trie-empty)])
               ([v (in-list vs)])
       (trie-union acc (pattern->trie 'a v))))
-  
+
+  (struct foo (bar zot) #:prefab)
+
+  ;; This test should pass OK, since we're ignoring all the infinite
+  ;; dimensions, and just projecting out a finite one.
+  (check-equal? (for-trie/set ([(observe (foo $bar _))
+                                (make-trie (observe (foo 1 'a))
+                                           (observe (foo 2 'b))
+                                           (observe (foo 3 ?)))])
+                  bar)
+                (set 1 2 3))
+
   (check-equal? (for-trie/list ([$x (make-trie 1 2 3 4)]
                                 #:where (even? x))
                   (+ x 1))
