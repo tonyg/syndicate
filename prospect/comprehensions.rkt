@@ -37,7 +37,7 @@
       [(_ ([acc-id acc-init] ...)
           ()
           body ...)
-       #'(begin body ...)]
+       #'(let () body ...)]
       [(_ ([acc-id acc-init] ...)
           ((pat_0 trie_0)
            clauses ...)
@@ -78,7 +78,7 @@
            [(_ (clauses (... ...)) body (... ...))
             (with-syntax ([loop #'(for-trie/fold ([acc initial])
                                                  (clauses (... ...))
-                                    (folder (begin body (... ...)) acc))])
+                                    (folder (let () body (... ...)) acc))])
               (build-fold #'loop stx))]))]))
 
 (make-fold for-trie/list cons empty)
@@ -99,7 +99,7 @@
     [(_ (clauses ...) body ...)
      (with-syntax ([loop #'(for-trie/fold ([acc (void)])
                                           (clauses ...)
-                             (begin body ... acc))])
+                             (begin (let () body ...) acc))])
        (build-fold #'loop stx))]))
 
 (module+ test
@@ -122,6 +122,14 @@
                                            (observe (foo 3 ?)))])
                   bar)
                 (set 1 2 3))
+
+  ;; We should support internal definitions.
+  (check-equal? (for-trie/set ([(foo $bar $zot) (make-trie (foo 1 2)
+                                                           (foo 3 4)
+                                                           (foo 5 6))])
+                  (define sum (+ bar zot))
+                  sum)
+                (set 3 7 11))
 
   (check-equal? (for-trie/list ([$x (make-trie 1 2 3 4)]
                                 #:where (even? x))
