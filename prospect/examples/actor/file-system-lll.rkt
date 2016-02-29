@@ -36,34 +36,21 @@
   (match e
     [(? patch? p)
      (transition files
-                 (for/list [(name (project-assertions (patch-added p)
-                                                      (observe (file (?!) ?))))]
-                   (printf "At least one reader exists for ~v\n" name)
-                   (define initial-content (hash-ref files name #f))
-                   (spawn (file-observation-event-handler name)
-                          initial-content
-                          (patch-seq (core:assert (file name initial-content))
-                                     (sub (observe (file name ?)))
-                                     (sub (save (file name ?)))
-                                     (sub (delete name))))))]
+                 (for-trie/list [((observe (file $name _)) (patch-added p))]
+                   (let ()
+                     (printf "At least one reader exists for ~v\n" name)
+                     (define initial-content (hash-ref files name #f))
+                     (spawn (file-observation-event-handler name)
+                            initial-content
+                            (patch-seq (core:assert (file name initial-content))
+                                       (sub (observe (file name ?)))
+                                       (sub (save (file name ?)))
+                                       (sub (delete name)))))))]
     [(message (save (file name new-content)))
      (transition (hash-set files name new-content) '())]
     [(message (delete name))
      (transition (hash-remove files name) '())]
     [_ #f]))
-
-     ;; (transition files
-     ;;             (for-trie/list [((observe (file $name _))
-     ;;                              (patch-added p))]
-     ;;               (let ()
-     ;;                 (printf "At least one reader exists for ~v\n" name)
-     ;;                 (define initial-content (hash-ref files name #f))
-     ;;                 (spawn (file-observation-event-handler name)
-     ;;                        initial-content
-     ;;                        (patch-seq (core:assert (file name initial-content))
-     ;;                                   (sub (observe (file name ?)))
-     ;;                                   (sub (save (file name ?)))
-     ;;                                   (sub (delete name)))))))]
 
 (spawn file-system-event-handler
        (hash)
