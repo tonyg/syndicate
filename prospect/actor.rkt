@@ -578,8 +578,6 @@
       (define E-stx #`(asserted #,P-stx))
       (define-values (_proj _pat _match-pat _bindings instantiated) (analyze-pattern E-stx P-stx))
       (define I-stx #`(until (retracted #,instantiated) #,@O-stxs))
-      (local-require racket/pretty)
-      (pretty-print (syntax->datum I-stx))
       (analyze-event! index E-stx #`(#,I-stx)))
 
     (define (analyze-assertion! index Pred-stx outer-expr-stx P-stx L-stx)
