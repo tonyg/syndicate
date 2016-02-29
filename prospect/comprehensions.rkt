@@ -19,14 +19,14 @@
     (match-define (list temp1 temp2) (generate-temporaries #'(tmp1 tmp2)))
     (define-values (proj-stx pat match-pat bindings)
       (analyze-pattern outer-stx pat-stx))
-    (list temp1 temp2 pat match-pat)))
+    (list temp1 temp2 proj-stx bindings)))
 
 ;; trie projection symbol -> (U set exn:fail?)
 ;; tries to project the trie. If the resulting trie would be infinite, raise an
 ;; error, using the third argument to describe the pattern being projected.
 ;; If the resulting trie is finite, return it as a set.
 (define (project-finite t proj pat)
-  (define s? (trie-project/set t (compile-projection (?! proj))))
+  (define s? (trie-project/set t (compile-projection proj)))
   (unless s?
     (error "pattern projection created infinite trie:" pat))
   s?)
@@ -51,7 +51,7 @@
                                         ...)
                  ([loop-tmp (in-set #,set-tmp)])
                  (match loop-tmp
-                   [(list #,match-pat)
+                   [(list #,@match-pat)
                     #,(build-fold
                        #`(_ ([acc-id acc-id]
                              ...)
