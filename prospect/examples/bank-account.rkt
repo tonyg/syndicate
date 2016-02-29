@@ -12,9 +12,8 @@
     [_ #f]))
 
 (define (observer e _)
-  (when (patch? e)
-    (for-trie ([(account $balance) (patch-added e)])
-      (printf "Balance changed to ~a\n" balance)))
+  (when (patch? e) (for [(balance (project-assertions (patch-added e) (account (?!))))]
+                     (printf "Balance changed to ~a\n" balance)))
   #f)
 
 (define (updater e _)
