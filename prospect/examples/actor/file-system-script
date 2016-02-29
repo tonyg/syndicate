@@ -1,0 +1,14 @@
+write a hello
+write b world
+open a
+open a
+write a goodbye
+open b
+delete a
+close a
+write a another text
+open a
+close b
+delete b
+delete a
+close a

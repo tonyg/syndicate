@@ -1,8 +1,7 @@
 #lang prospect
 ;; Toy file system, based on the example in the ESOP2016 submission.
-;; Low-level implementation.
+;; prospect/actor implementation, without subconversation.
 
-(require (only-in prospect [assert core:assert]))
 (require prospect/actor)
 (require prospect/drivers/timer)
 (require (only-in racket/port read-bytes-line-evt))
@@ -15,48 +14,25 @@
 
 (spawn-timer-driver)
 
-(define (update-file old-content name new-content)
-  (transition new-content
-              (patch-seq (retract (file name old-content))
-                         (core:assert (file name new-content)))))
-
-(define ((file-observation-event-handler name) e content)
-  (match e
-    [(? patch? p)
-     (if (set-empty? (project-assertions (patch-removed p) (observe (file (?!) ?))))
-         #f
-         (begin (printf "No remaining readers exist for ~v\n" name)
-                (quit)))]
-    [(message (save (file (== name) new-content)))
-     (update-file content name new-content)]
-    [(message (delete (== name)))
-     (update-file content name #f)]
-    [_ #f]))
-
-(define (file-system-event-handler e files)
-  (match e
-    [(? patch? p)
-     (transition files
-                 (for-trie/list [((observe (file $name _)) (patch-added p))]
-                   (printf "At least one reader exists for ~v\n" name)
-                   (define initial-content (hash-ref files name #f))
-                   (spawn (file-observation-event-handler name)
-                          initial-content
-                          (patch-seq (core:assert (file name initial-content))
-                                     (sub (observe (file name ?)))
-                                     (sub (save (file name ?)))
-                                     (sub (delete name))))))]
-    [(message (save (file name new-content)))
-     (transition (hash-set files name new-content) '())]
-    [(message (delete name))
-     (transition (hash-remove files name) '())]
-    [_ #f]))
-
-(spawn file-system-event-handler
-       (hash)
-       (patch-seq (sub (observe (file ? ?)))
-                  (sub (save (file ? ?)))
-                  (sub (delete ?))))
+(actor (forever #:collect [(files (hash)) (monitored (set))]
+                (on (asserted (observe (file $name _)))
+                    (printf "At least one reader exists for ~v\n" name)
+                    (assert! (file name (hash-ref files name #f)))
+                    (values files (set-add monitored name)))
+                (on (retracted (observe (file $name _)))
+                    (printf "No remaining readers exist for ~v\n" name)
+                    (retract! (file name (hash-ref files name #f)))
+                    (values files (set-remove monitored name)))
+                (on (message (save (file $name $content)))
+                    (when (set-member? monitored name)
+                      (retract! (file name (hash-ref files name #f)))
+                      (assert! (file name content)))
+                    (values (hash-set files name content) monitored))
+                (on (message (delete $name))
+                    (when (set-member? monitored name)
+                      (retract! (file name (hash-ref files name #f)))
+                      (assert! (file name #f)))
+                    (values (hash-remove files name) monitored))))
 
 (define (sleep sec)
   (define timer-id (gensym 'sleep))
