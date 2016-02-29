@@ -17,7 +17,7 @@
   ; (SyntaxOf TempVar TempVar Projection-Pattern Match-Pattern)
   (define (helper pat-stx outer-stx)
     (match-define (list temp1 temp2) (generate-temporaries #'(tmp1 tmp2)))
-    (define-values (proj-stx pat match-pat bindings)
+    (define-values (proj-stx pat match-pat bindings _instantiated)
       (analyze-pattern outer-stx pat-stx))
     (list temp1 temp2 proj-stx bindings)))
 

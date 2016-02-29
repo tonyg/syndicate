@@ -14,6 +14,7 @@ Just a sketch, at the moment.
         Optional Bindings, B := ;; nothing, or
                                 #:collect [(id I) ...]
           Ongoing actions, O := (on E I ...)
+                                (during P O ...)
                                 (once E I ...)        ;; ???
                                 (assert P)
                                 (assert #:when Pred P)
@@ -100,6 +101,15 @@ it's used, to conditionally `assert` a set, so I've added `#:when` to
 Note that `exists` (and so `forall`) are tricky because of the nested
 `Pred`. For now, I'm not implementing them -- we'll see how painful it
 is to use `track` and plain-old `expr` `Pred`s instead.
+
+`during` is a quasi-macro, with defining equation
+
+    (during P O ...) === (on (asserted P)
+                             (until (retracted P')
+                                    O ...))
+
+where `P'` is like `P` but with all the binders in `P` instantiated
+with their values at the time the `until` is started.
 
 ## Examples
 

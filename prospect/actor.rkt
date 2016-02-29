@@ -34,6 +34,7 @@
 
 (define&provide-dsl-helper-syntaxes "state/until/forever form"
   [on
+   during
    assert
    track
 
@@ -223,6 +224,10 @@
     (pattern (~seq #:init [I ...]))
     (pattern (~seq) #:attr [I 1] '()))
 
+  (define-splicing-syntax-class done
+    (pattern (~seq #:done [I ...]))
+    (pattern (~seq) #:attr [I 1] '()))
+
   (define-splicing-syntax-class bindings
     (pattern (~seq #:collect [(id init) ...]))
     (pattern (~seq) #:attr [id 1] '() #:attr [init 1] '())))
@@ -236,8 +241,8 @@
 ;; Sugar
 (define-syntax (until stx)
   (syntax-parse stx
-    [(_ E init:init bs:bindings O ...)
-     #'(state #:init [init.I ...] [#:collect [(bs.id bs.init) ...] O ...] [E (values)])]))
+    [(_ E init:init done:done bs:bindings O ...)
+     #'(state #:init [init.I ...] [#:collect [(bs.id bs.init) ...] O ...] [E done.I ... (values)])]))
 
 ;; Sugar
 (define-syntax (forever stx)
@@ -499,7 +504,8 @@
                                s))))))
 
     (define (analyze-asserted-or-retracted! endpoint-index asserted? outer-expr-stx P-stx I-stxs L-stx)
-      (define-values (proj-stx pat match-pat bindings) (analyze-pattern outer-expr-stx P-stx))
+      (define-values (proj-stx pat match-pat bindings _instantiated)
+        (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! endpoint-index #'sub pat #f L-stx)
       (add-event-handler!
        (lambda (evt-stx)
@@ -527,7 +533,8 @@
           #`(at-meta #,(prepend-at-meta-stx stx (- level 1)))))
 
     (define (analyze-message-subscription! endpoint-index outer-expr-stx P-stx I-stxs L-stx)
-      (define-values (proj pat match-pat bindings) (analyze-pattern outer-expr-stx P-stx))
+      (define-values (proj pat match-pat bindings _instantiated)
+        (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! endpoint-index #'sub pat #f L-stx)
       (add-event-handler!
        (lambda (evt-stx)
@@ -567,8 +574,17 @@
                           #,(make-run-script-call E-stx #'s I-stxs)
                           (transition s '())))))))]))
 
+    (define (analyze-during! index P-stx O-stxs)
+      (define E-stx #`(asserted #,P-stx))
+      (define-values (_proj _pat _match-pat _bindings instantiated) (analyze-pattern E-stx P-stx))
+      (define I-stx #`(until (retracted #,instantiated) #,@O-stxs))
+      (local-require racket/pretty)
+      (pretty-print (syntax->datum I-stx))
+      (analyze-event! index E-stx #`(#,I-stx)))
+
     (define (analyze-assertion! index Pred-stx outer-expr-stx P-stx L-stx)
-      (define-values (proj pat match-pat bindings) (analyze-pattern outer-expr-stx P-stx))
+      (define-values (proj pat match-pat bindings _instantiated)
+        (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! index #'core:assert pat Pred-stx L-stx))
 
     (define (analyze-tracks! index track-spec-stxs I-stxs)
@@ -589,9 +605,11 @@
     (for [(ongoing (in-list (syntax->list ongoings)))
           (ongoing-index (in-naturals))]
       (syntax-parse ongoing
-        #:literals [on assert track]
+        #:literals [on during assert track]
         [(on E I ...)
          (analyze-event! ongoing-index #'E #'(I ...))]
+        [(during P O ...)
+         (analyze-during! ongoing-index #'P #'(O ...))]
         [(assert w:when-pred P L:meta-level)
          (analyze-assertion! ongoing-index #'w.Pred ongoing #'P #'L.level)]
         [(track [track-spec ...] I ...)
@@ -732,15 +750,15 @@
     (and (dollar-id? stx)
          (datum->syntax stx (string->symbol (substring (symbol->string (syntax-e stx)) 1)))))
 
-  ;; Syntax -> (Values Projection AssertionSetPattern MatchPattern (ListOf Identifier))
+  ;; Syntax -> (Values Projection AssertionSetPattern MatchPattern (ListOf Identifier) Syntax)
   (define (analyze-pattern outer-expr-stx pat-stx0)
     (let walk ((pat-stx pat-stx0))
       (syntax-case pat-stx ($ ? quasiquote unquote quote)
         ;; Extremely limited support for quasiquoting and quoting
         [(quasiquote (unquote p)) (walk #'p)]
         [(quasiquote (p ...)) (walk #'(list (quasiquote p) ...))]
-        [(quasiquote p) (values #''p #''p #''p '())]
-        [(quote p) (values #''p #''p #''p '())]
+        [(quasiquote p) (values #''p #''p #''p '() #''p)]
+        [(quote p) (values #''p #''p #''p '() #''p)]
 
         [$v
          (dollar-id? #'$v)
@@ -748,17 +766,19 @@
            (values #'(?!)
                    #'?
                    #'v
-                   (list #'v)))]
+                   (list #'v)
+                   #'v))]
 
         [($ v p)
          (let ()
-           (define-values (pr g m bs) (walk #'p))
+           (define-values (pr g m bs _ins) (walk #'p))
            (when (not (null? bs))
              (raise-syntax-error #f "nested bindings not supported" outer-expr-stx pat-stx))
            (values #`(?! #,pr)
                    g
                    #`(and v #,m)
-                   (list #'v)))]
+                   (list #'v)
+                   #'v))]
 
         [(? pred? p)
          ;; TODO: support pred? in asserted/retracted as well as message events
@@ -770,31 +790,35 @@
                                     "Predicate '?' matching only supported in message events"
                                     outer-expr-stx
                                     pat-stx)])
-           (define-values (pr g m bs) (walk #'p))
+           (define-values (pr g m bs ins) (walk #'p))
            (values pr
                    g
                    #`(? pred? #,m)
-                   bs))]
+                   bs
+                   ins))]
 
         [(ctor p ...)
          (let ()
            (define parts (if (identifier? #'ctor) #'(p ...) #'(ctor p ...)))
-           (define-values (pr g m bs)
-             (for/fold [(pr '()) (g '()) (m '()) (bs '())] [(p (syntax->list parts))]
-               (define-values (pr1 g1 m1 bs1) (walk p))
+           (define-values (pr g m bs ins)
+             (for/fold [(pr '()) (g '()) (m '()) (bs '()) (ins '())] [(p (syntax->list parts))]
+               (define-values (pr1 g1 m1 bs1 ins1) (walk p))
                (values (cons pr1 pr)
                        (cons g1 g)
                        (cons m1 m)
-                       (append bs bs1))))
+                       (append bs bs1)
+                       (cons ins1 ins))))
            (if (identifier? #'ctor)
                (values (cons #'ctor (reverse pr))
                        (cons #'ctor (reverse g))
                        (cons #'ctor (reverse m))
-                       bs)
+                       bs
+                       (cons #'ctor (reverse ins)))
                (values (reverse pr)
                        (reverse g)
                        (reverse m)
-                       bs)))]
+                       bs
+                       (reverse ins))))]
 
         [?
          (raise-syntax-error #f
@@ -808,11 +832,13 @@
              (values #'?
                      #'?
                      #'_
-                     '())
+                     '()
+                     #'_)
              (values #'non-pair
                      #'non-pair
                      #'(== non-pair)
-                     '()))])))
+                     '()
+                     #'non-pair))])))
 
   )
 
@@ -855,11 +881,12 @@
 
   (begin-for-syntax
     (define (analyze-and-print pat-stx)
-      (let-values (((pr g m bs) (analyze-pattern pat-stx pat-stx)))
+      (let-values (((pr g m bs ins) (analyze-pattern pat-stx pat-stx)))
         (pretty-print `((pr ,(map syntax->datum pr))
                         (g ,(map syntax->datum g))
                         (m ,(map syntax->datum m))
-                        (bs ,(map syntax->datum bs))))))
+                        (bs ,(map syntax->datum bs))
+                        (ins ,(map syntax->datum ins))))))
 
     #;(analyze-and-print #'`(hello ,$who)))
 
@@ -867,6 +894,11 @@
    #'(actor
       (until (rising-edge (= count 10))
              #:collect [(count 0)]
+             (during `(present ,$p)
+                     #:collect [(utterance-count 0)]
+                     (on (message `(says ,p ,$what))
+                         (println "(~a) ~a says: ~a" utterance-count p what)
+                         (+ utterance-count 1)))
              (on (message `(hello ,$who))
                  (println "Got hello: ~a" who)
                  (+ count 1))))))
