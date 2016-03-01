@@ -15,7 +15,7 @@
                      (printf "Balance changed to ~a\n" balance))))
 
 (define (updater e _)
-  (when (and (patch? e) (trie-non-empty? (patch-added e)))
+  (when (patch/added? e)
     (quit (list (message (deposit +100))
                 (message (deposit -30))))))
 
