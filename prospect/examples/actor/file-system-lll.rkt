@@ -21,7 +21,7 @@
                          (core:assert (file name new-content)))))
 
 (define ((file-observation-event-handler name) e content)
-  (match e
+  (match-event e
     [(? patch? p)
      (if (set-empty? (project-assertions (patch-removed p) (observe (file (?!) ?))))
          #f
@@ -30,11 +30,10 @@
     [(message (save (file (== name) new-content)))
      (update-file content name new-content)]
     [(message (delete (== name)))
-     (update-file content name #f)]
-    [_ #f]))
+     (update-file content name #f)]))
 
 (define (file-system-event-handler e files)
-  (match e
+  (match-event e
     [(? patch? p)
      (transition files
                  (for-trie/list [((observe (file $name _)) (patch-added p))]
@@ -49,8 +48,7 @@
     [(message (save (file name new-content)))
      (transition (hash-set files name new-content) '())]
     [(message (delete name))
-     (transition (hash-remove files name) '())]
-    [_ #f]))
+     (transition (hash-remove files name) '())]))
 
 (spawn file-system-event-handler
        (hash)
