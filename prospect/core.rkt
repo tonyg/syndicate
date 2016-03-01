@@ -33,6 +33,7 @@
 
          event?
          action?
+         match-event
 
          meta-label?
 
@@ -125,6 +126,11 @@
 (define (event? x) (or (patch? x) (message? x)))
 (define (action? x) (or (event? x) (spawn? x) (quit-network? x)))
 
+(define-syntax-rule (match-event e clause ...)
+  (match e
+    clause ...
+    [_ #f]))
+
 (define (prepend-at-meta pattern level)
   (if (zero? level)
       pattern
@@ -153,19 +159,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (general-transition? v)
-  (or (not v) (transition? v) (quit? v)))
+  (or (not v) (transition? v) (quit? v) (void? v)))
 
 (define (ensure-transition v)
   (if (general-transition? v)
       v
-      (raise (exn:fail:contract (format "Expected transition, quit or #f; got ~v" v)
+      (raise (exn:fail:contract (format "Expected transition, quit, #f or (void); got ~v" v)
 				(current-continuation-marks)))))
 
 (define (clean-transition t)
   (match t
     [#f #f]
     [(quit exn actions) (quit exn (clean-actions actions))]
-    [(transition state actions) (transition state (clean-actions actions))]))
+    [(transition state actions) (transition state (clean-actions actions))]
+    [(? void?) #f]))
 
 (define (clean-actions actions)
   (filter (lambda (x) (and (action? x) (not (patch-empty? x)))) (flatten actions)))
