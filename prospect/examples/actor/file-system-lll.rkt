@@ -15,23 +15,6 @@
 
 (spawn-timer-driver)
 
-(define (update-file old-content name new-content)
-  (transition new-content
-              (patch-seq (retract (file name old-content))
-                         (core:assert (file name new-content)))))
-
-(define ((file-observation-event-handler name) e content)
-  (match-event e
-    [(? patch? p)
-     (if (set-empty? (project-assertions (patch-removed p) (observe (file (?!) ?))))
-         #f
-         (begin (printf "No remaining readers exist for ~v\n" name)
-                (quit)))]
-    [(message (save (file (== name) new-content)))
-     (update-file content name new-content)]
-    [(message (delete (== name)))
-     (update-file content name #f)]))
-
 (define (file-system-event-handler e files)
   (match-event e
     [(? patch? p)
@@ -55,6 +38,22 @@
        (patch-seq (sub (observe (file ? ?)))
                   (sub (save (file ? ?)))
                   (sub (delete ?))))
+
+(define (update-file old-content name new-content)
+  (transition new-content
+              (patch-seq (retract (file name old-content))
+                         (core:assert (file name new-content)))))
+
+(define ((file-observation-event-handler name) e content)
+  (match-event e
+    [(? patch? p)
+     (when (not (set-empty? (project-assertions (patch-removed p) (observe (file (?!) ?)))))
+       (printf "No remaining readers exist for ~v\n" name)
+       (quit))]
+    [(message (save (file (== name) new-content)))
+     (update-file content name new-content)]
+    [(message (delete (== name)))
+     (update-file content name #f)]))
 
 (define (sleep sec)
   (define timer-id (gensym 'sleep))
