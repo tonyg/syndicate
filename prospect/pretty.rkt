@@ -5,14 +5,14 @@
 
          prospect-pretty-print->string
 
-         exn->string ;; required from exn-util.rkt
+         exn->string ;; required from racket/exn
          string-indent
          indented-port-output)
 
 (require racket/generic)
 (require racket/pretty)
+(require racket/exn)
 (require (only-in racket/string string-join string-split))
-(require "exn-util.rkt")
 (require "route.rkt")
 
 (define-generics prospect-pretty-printable

@@ -1,9 +1,9 @@
 #lang racket/base
 
 (require racket/match)
+(require racket/exn)
 (require (prefix-in tcp: racket/tcp))
 (require (only-in racket/port read-bytes-avail!-evt))
-(require "../exn-util.rkt")
 (require "../main.rkt")
 (require "../demand-matcher.rkt")
 

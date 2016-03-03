@@ -42,7 +42,7 @@ This repository contains a [Racket](http://racket-lang.org/) package,
 
 ## Compiling and running the code
 
-You will need Racket version 6.2.x or later.
+You will need Racket version 6.3 or later.
 
 Once you have Racket installed, run
 
