@@ -131,9 +131,10 @@
                   sum)
                 (set 3 7 11))
 
-  (check-equal? (for-trie/list ([$x (make-trie 1 2 3 4)]
+  (check-equal? (sort (for-trie/list ([$x (make-trie 1 2 3 4)]
                                 #:where (even? x))
-                  (+ x 1))
+                        (+ x 1))
+                      <)
                 '(3 5))
   
   (check-equal? (for-trie/set ([$x (make-trie 1 2 3 4)]
@@ -221,4 +222,20 @@
                     (set-add! a-set x))
                   (void))
     ;; for-trie runs body for effects
-    (check-equal? a-set (mutable-set 1 2 3 4))))
+    (check-equal? a-set (mutable-set 1 2 3 4)))
+  ;; allow any number of #:where clauses
+  (check-equal? (for-trie/set ([$x (make-trie 1 2 3 4)]
+                               #:where (even? x)
+                               #:where #t
+                               [$y (make-trie 3 4 5 6)]
+                               #:where (< x y))
+                  x)
+                (set 2 4))
+  #;(check-equal? (for-trie/set (#:where #t
+                                       [$x (make-trie 1 2 3 4)]
+                                       #:where (even? x)
+                                       #:where #t
+                                       [$y (make-trie 3 4 5 6)]
+                                       #:where (< x y))
+                  x)
+                (set 2)))
