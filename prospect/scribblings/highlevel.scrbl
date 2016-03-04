@@ -103,6 +103,18 @@ termination event but before the @racket[until] actor exits.}
 The @racket[forever] behavior is analogous to a @racket[state] form with no
 termination events.}
 
+@defform[(during pat O ...)]{
+Runs the behaviors @racket[O ...] for the duration of each assertion matching
+@racket[pat].
+
+Roughly equivalent to
+@racket[(on (asserted pat)
+            (until (retracted pat)
+                   O ...))]
+where the @racket[pat] in the @racket[until] clause is specialized to the actual
+value matched by @racket[pat] in the @racket[asserted] clause.
+}
+
 @defform[(assert maybe-pred exp maybe-level)
          #:grammar
          [(maybe-pred (code:line)
