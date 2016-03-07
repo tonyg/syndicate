@@ -73,10 +73,6 @@
 
 (require rackunit)
 
-;; TODO: perhaps avoid the parameters on the fast-path, if they are
-;; causing measurable slowdown.
-;; TODO: should these even be parameterizable?
-
 ;; Constructs a structure type and a singleton instance of it.
 (define-syntax-rule (define-singleton-struct singleton-name struct-name print-representation)
   (begin
