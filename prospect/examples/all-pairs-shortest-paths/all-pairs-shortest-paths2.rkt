@@ -1,6 +1,8 @@
 #lang prospect
 ;; After Figure 1 in "Logic and lattices for distributed programming",
 ;; Conway et. al, UCB tech report, 2012
+;;
+;; Added path-seen set to ensure termination on input cycles.
 
 (require racket/set)
 (require prospect/actor)
