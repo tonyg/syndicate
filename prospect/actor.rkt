@@ -145,11 +145,11 @@
 ;;
 ;; A LinkActive is a (link-active Symbol Symbol), describing an
 ;; ongoing relationship between the indicated caller and callee.
-(struct link-active (caller-id callee-id) #:prefab)
+(struct link-active (caller-id callee-id) #:transparent)
 ;;
 ;; A LinkResult is a (link-result Symbol Symbol (Listof Any)),
 ;; describing the final values yielded by a callee to its caller.
-(struct link-result (caller-id callee-id values) #:prefab) ;; message
+(struct link-result (caller-id callee-id values) #:transparent) ;; message
 
 ;; Projection for observing LinkActive.
 (define link-active-projection (compile-projection (link-active ? (?!))))
