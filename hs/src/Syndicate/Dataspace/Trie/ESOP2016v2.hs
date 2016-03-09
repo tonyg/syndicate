@@ -1,6 +1,6 @@
 module Syndicate.Dataspace.Trie.ESOP2016v2 where
--- Close to the ESOP 2016 implementation of dataspace tries, but takes
--- a step toward efficiency by using collapse/update instead of dedup/distinct.
+-- Builds on ESOP2016.hs, but collapses additional redundancy from
+-- combine results by using collapse/update instead of dedup/distinct.
 
 import Prelude hiding (null, seq)
 import qualified Data.Map.Strict as Map

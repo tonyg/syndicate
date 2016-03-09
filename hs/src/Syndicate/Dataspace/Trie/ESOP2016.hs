@@ -1,6 +1,22 @@
 module Syndicate.Dataspace.Trie.ESOP2016 where
--- ESOP 2016 implementation of dataspace tries.
--- Includes bug fixes wrt the paper.
+-- Implementation of dataspace tries, following our ESOP 2016 paper,
+-- "Coordinated Concurrent Programming in Syndicate" (Tony
+-- Garnock-Jones and Matthias Felleisen).
+--
+-- Includes bug fixes wrt the paper:
+--
+--  - combine now has parameters leftEmpty and rightEmpty. In the
+--    paper, these were missing, and in some cases combine could fail
+--    to terminate, since it had missing "br(∅)" checks.
+--
+--  - we use the smart constructor `tl` throughout, to avoid
+--    constructing `Tl` atop an empty trie. In the paper, this can
+--    happen in the definition of `get` when `get(h,★)` is the empty
+--    trie, but σ=<< and no mapping for σ exists in h.
+--
+-- Also, there are problems with the algorithm as described; it is
+-- roughly correct, but does not collapse away as much redundancy as
+-- it could. These problems are remedied in ESOP2016v2.hs.
 
 import Prelude hiding (null, seq)
 import qualified Data.Map.Strict as Map
