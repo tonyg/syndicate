@@ -71,7 +71,7 @@
 ;; The singleton "empty" leaf sentinel
 (define L0 (L))
 
-(define (treap-empty o) (treap o L0 0))
+(define (treap-empty o) (canonicalize (treap o L0 0)))
 
 (define (treap-empty? t) (zero? (treap-size t)))
 
