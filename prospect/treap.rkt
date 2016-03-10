@@ -19,6 +19,7 @@
          treap-keys
          treap-values
          treap-fold
+         alist-to-treap
          treap-to-alist
          treap-has-key?
 
@@ -195,6 +196,10 @@
     (match n
       [(L) acc]
       [(N k v _ left right) (walk left (f (walk right acc) k v))])))
+
+(define (alist-to-treap order pairs)
+  (for/fold [(t (treap-empty order))] [(p (in-list pairs))]
+    (treap-insert t (car p) (cdr p))))
 
 (define (treap-to-alist t)
   (let walk ((n (treap-root t)) (acc '()))
