@@ -1019,7 +1019,7 @@
 	['() (void)]
 	[(list* message expectedstr rest)
 	 (define actualset (trie-lookup trie message (tset)))
-	 (printf "~v ==> ~v\n" message actualset)
+	 (printf "~v ==> ~v\n" message (tset->list actualset))
 	 (check-equal? actualset
 		       (apply tset (map (lambda (c) (string->symbol (string c)))
 					(string->list expectedstr))))
@@ -1030,6 +1030,27 @@
    (list 'z 'x) ""
    'foo ""
    (list (list 'z (list 'z))) "")
+
+  (let ((t (trie-subtract (pattern->trie SA ?) (pattern->trie SA (list 'a)))))
+    ;; I expected this test to fail, because of the way (get) in
+    ;; (trie-lookup) returns #f when there is no entry in the treap.
+    ;; The choice of #f as sentinel for "no entry" is potentially
+    ;; problematic, since it also means "empty trie". However, things
+    ;; work out for us because we have the EOS step that saves us!
+    ;; This means that when '(a) is presented as a value, at 'a it
+    ;; steps to the trie EOS->empty, and then when it steps through
+    ;; the EOS it retrieves #f (empty), mistakes it for a sentinel,
+    ;; retrieves the wildcard entry, which is also #f, and thus by
+    ;; coincidence does the right thing.
+    ;;
+    ;; TODO: probably the right thing to do is change (get) to return
+    ;; e.g. 'missing -- anything not in the domain of tries -- so it
+    ;; is unambiguous when a lookup fails.
+    (check-matches t
+                   'b "A"
+                   'a "A"
+                   (list 'b) "A"
+                   (list 'a) ""))
 
   (define (pretty-print-trie* m)
     (newline)
