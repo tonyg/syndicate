@@ -9,4 +9,9 @@
   (order 'hash-order
          any/c
          eq?
-         (lambda (a b) (< (eq-hash-code a) (eq-hash-code b)))))
+         (lambda (a b)
+           (define a-code (eq-hash-code a))
+           (define b-code (eq-hash-code b))
+           (or (< a-code b-code)
+               (and (= a-code b-code)
+                    (eq? (datum-order a b) '<))))))
