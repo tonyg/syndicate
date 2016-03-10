@@ -7,6 +7,10 @@
          (struct-out property-check-result:fail)
          (struct-out property-check-result:gave-up)
          (struct-out property-check-result:invalid-prop)
+         random-test:max-tests
+         random-test:max-rejected-ratio
+         random-test:index-limit
+         random-test:quiet?
          check-property*
          check-property
          reject-test
@@ -28,16 +32,22 @@
 (struct property-check-result:gave-up property-check-result:ok () #:transparent)
 (struct property-check-result:invalid-prop property-check-result:fail () #:transparent)
 
+(define random-test:max-tests (make-parameter 100))
+(define random-test:max-rejected-ratio (make-parameter 10))
+(define random-test:index-limit (make-parameter #f))
+(define random-test:quiet? (make-parameter #f))
+
 (define (summarise-check-count name n-tests n-rejected)
   (printf "\rChecking ~a; ~a tests / ~a rejected" name n-tests n-rejected)
   (flush-output))
 
 (define (check-property* prop
-                         #:max-tests [max-tests 100]
-                         #:max-rejected-ratio [max-rejected-ratio 10]
+                         #:max-tests [max-tests (random-test:max-tests)]
+                         #:max-rejected-ratio [max-rejected-ratio (random-test:max-rejected-ratio)]
                          #:min-rejected-tests [min-rejected-tests (* max-rejected-ratio max-tests)]
+                         #:index-limit [index-limit (random-test:index-limit)]
                          #:name [name (object-name prop)]
-                         #:quiet? [quiet? #f]
+                         #:quiet? [quiet? (random-test:quiet?)]
                          . enums)
   (define args/e (apply list/e enums))
   (begin0
@@ -53,7 +63,7 @@
            (unless quiet? (summarise-check-count name n-tests n-rejected))
            (property-check-result:ok name prop n-tests n-rejected)]
           [else
-           (define args-index (random-index args/e))
+           (define args-index (if index-limit (random index-limit) (random-index args/e)))
            (define args (from-nat args/e args-index))
            (with-handlers [[exn:fail:reject-test? (lambda (_exn) (loop n-tests (+ n-rejected 1)))]]
              (unless quiet? (summarise-check-count name n-tests n-rejected))
@@ -81,11 +91,12 @@
     (lambda () (fail-check message))))
 
 (define (check-property prop
-                        #:max-tests [max-tests 100]
-                        #:max-rejected-ratio [max-rejected-ratio 10]
+                        #:max-tests [max-tests (random-test:max-tests)]
+                        #:max-rejected-ratio [max-rejected-ratio (random-test:max-rejected-ratio)]
                         #:min-rejected-tests [min-rejected-tests (* max-rejected-ratio max-tests)]
+                        #:index-limit [index-limit (random-test:index-limit)]
                         #:name [name (object-name prop)]
-                        #:quiet? [quiet? #f]
+                        #:quiet? [quiet? (random-test:quiet?)]
                         . enums)
   ((current-check-around)
    (lambda ()
@@ -93,6 +104,7 @@
                            #:max-tests max-tests
                            #:max-rejected-ratio max-rejected-ratio
                            #:min-rejected-tests min-rejected-tests
+                           #:index-limit index-limit
                            #:name name
                            #:quiet? quiet?))
      (match result
