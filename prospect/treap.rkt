@@ -58,7 +58,15 @@
 
 (struct L () #:transparent)
 
-(struct treap (order root size) #:transparent)
+(struct treap (order root size)
+  #:transparent
+  #:methods gen:custom-write
+  [(define (write-proc v port mode)
+     (display "#<treap" port)
+     (for [(entry (in-list (treap-to-alist v)))]
+       (display " " port)
+       (display entry port))
+     (display ">" port))])
 
 ;; The singleton "empty" leaf sentinel
 (define L0 (L))
