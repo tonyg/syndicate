@@ -8,3 +8,5 @@
 	       "rackunit-lib"
 	       "htdp-lib"
 	       ))
+(define build-deps '("racket-doc"
+                     "scribble-lib"))
