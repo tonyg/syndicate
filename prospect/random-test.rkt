@@ -14,7 +14,8 @@
          check-property*
          check-property
          reject-test
-         ==>)
+         ==>
+         random-instance)
 
 (require racket/match)
 (require rackunit)
@@ -130,3 +131,6 @@
 
 (define-syntax-rule (==> precondition expr)
   (if (not precondition) (reject-test) expr))
+
+(define (random-instance e)
+  (from-nat e (random-index e)))
