@@ -7,6 +7,7 @@
 	       "profile-lib"
 	       "rackunit-lib"
 	       "htdp-lib"
+               "data-enumerate"
 	       ))
 (define build-deps '("racket-doc"
                      "scribble-lib"))
