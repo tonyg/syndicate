@@ -5,6 +5,8 @@
          (struct-out observe)
          (struct-out at-meta)
          (struct-out advertise)
+         observe-parenthesis
+         at-meta-parenthesis
          lift-scn
          drop-scn
          strip-interests
@@ -15,7 +17,7 @@
 
 (require racket/set)
 (require racket/match)
-(require "../prospect/route.rkt")
+(require "../prospect/trie.rkt")
 (require "../prospect/tset.rkt")
 (require "../prospect/pretty.rkt")
 (module+ test (require rackunit))
@@ -35,21 +37,20 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define at-meta-proj (compile-projection (at-meta (?!))))
+(define observe-parenthesis (open-parenthesis 1 struct:observe))
+(define at-meta-parenthesis (open-parenthesis 1 struct:at-meta))
 
 (define (lift-scn s)
-  (scn (pattern->trie #t (at-meta (embedded-trie (scn-trie s))))))
+  (scn (pattern->trie '<lift-scn> (at-meta (embedded-trie (scn-trie s))))))
 
 (define (drop-interests pi)
-  (trie-project pi at-meta-proj
-                   #:project-success (lambda (v) #t)
-                   #:combiner (lambda (v1 v2) #t)))
+  (trie-step pi at-meta-parenthesis))
 
 (define (drop-scn s)
   (scn (drop-interests (scn-trie s))))
 
 (define (strip-interests g)
-  (trie-relabel g (lambda (v) #t)))
+  (trie-relabel g (lambda (v) '<strip-interests>)))
 
 (define (label-interests g label)
   (trie-relabel g (lambda (v) label)))
@@ -62,6 +63,5 @@
 
 (define (biased-intersection object subject)
   (trie-intersect object
-		  (trie-step subject struct:observe)
-		  #:combiner (lambda (v1 v2) #t)
-		  #:left-short (lambda (v r) (trie-step r EOS))))
+		  (trie-step subject observe-parenthesis)
+		  #:combiner (lambda (v1 v2) (trie-success v1))))

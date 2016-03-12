@@ -5,7 +5,9 @@
          (struct-out observe)
          (struct-out at-meta)
          (struct-out advertise)
-         empty-patch
+         observe-parenthesis
+         at-meta-parenthesis
+         patch-empty
          patch-empty?
          patch-non-empty?
          patch/added?
@@ -39,7 +41,7 @@
 
 (require racket/set)
 (require racket/match)
-(require "route.rkt")
+(require "trie.rkt")
 (require "tset.rkt")
 (require "pretty.rkt")
 (module+ test (require rackunit))
@@ -58,11 +60,12 @@
 (struct at-meta (claim) #:prefab)
 (struct advertise (claim) #:prefab)
 
-(define empty-patch (patch (trie-empty) (trie-empty)))
+(define patch-empty (patch trie-empty trie-empty))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define at-meta-proj (compile-projection (at-meta (?!))))
+(define observe-parenthesis (open-parenthesis 1 struct:observe))
+(define at-meta-parenthesis (open-parenthesis 1 struct:at-meta))
 
 (define (patch-empty? p)
   (and (patch? p)
@@ -79,13 +82,11 @@
 
 (define (lift-patch p)
   (match-define (patch in out) p)
-  (patch (pattern->trie #t (at-meta (embedded-trie in)))
-         (pattern->trie #t (at-meta (embedded-trie out)))))
+  (patch (pattern->trie '<lift-patch> (at-meta (embedded-trie in)))
+         (pattern->trie '<lift-patch> (at-meta (embedded-trie out)))))
 
 (define (drop-interests pi)
-  (trie-project pi at-meta-proj
-                   #:project-success (lambda (v) #t)
-                   #:combiner (lambda (v1 v2) #t)))
+  (trie-step pi at-meta-parenthesis))
 
 (define (drop-patch p)
   (match-define (patch in out) p)
@@ -93,7 +94,7 @@
          (drop-interests out)))
 
 (define (strip-interests g)
-  (trie-relabel g (lambda (v) #t)))
+  (trie-relabel g (lambda (v) '<strip-interests>)))
 
 (define (label-interests g label)
   (trie-relabel g (lambda (v) label)))
@@ -114,8 +115,8 @@
 ;; arguments.
 (define (limit-patch p bound)
   (match-define (patch in out) p)
-  (patch (trie-subtract in bound #:combiner (lambda (v1 v2) #f))
-         (trie-intersect out bound #:combiner (lambda (v1 v2) v1))))
+  (patch (trie-subtract in bound #:combiner (lambda (v1 v2) trie-empty))
+         (trie-intersect out bound #:combiner (lambda (v1 v2) (trie-success v1)))))
 
 ;; Like limit-patch, but for use when the precise bound for p's label
 ;; isn't known (such as when a process terminates with remaining
@@ -171,8 +172,8 @@
     ;; keep the point in the case that the only interest present is
     ;; `'meta`-labeled interest.
     (if (and remove-meta? (eq? v2 only-meta-tset)) ;; N.B. relies on canonicity of v2 !
-        v1
-        #f))
+        (trie-success v1)
+        trie-empty))
   (define (rem-combiner v1 v2)
     ;; Keep only points where `p` would remove, where `label` interest
     ;; is present, and where no non-`label` interest is present. We
@@ -186,12 +187,15 @@
     ;; case), or when exactly `label` and `'meta` interest exists, and
     ;; in no other case.
     (if (= (tset-count v2) 1)
-        v1 ;; only `label` interest (previously established) exists here.
+        (trie-success v1) ;; only `label` interest (previously established) exists here.
         (if (and remove-meta?
                  (= (tset-count v2) 2)
                  (tset-member? v2 'meta))
-            v1 ;; remove-meta? is true, and exactly `label` and `'meta` interest exists here.
-            #f))) ;; other interest exists here, so we should discard this removed-point.
+            (trie-success v1)
+            ;; ^ remove-meta? is true, and exactly `label` and `'meta` interest exists here.
+            trie-empty
+            ;; ^ other interest exists here, so we should discard this removed-point.
+            )))
   (patch (trie-subtract (patch-added p) base #:combiner add-combiner)
          (trie-subtract (patch-removed p) base #:combiner rem-combiner)))
 
@@ -203,8 +207,8 @@
 ;; Like apply-patch, but for use by Tries leading to True.
 (define (update-interests base p)
   (match-define (patch in out) p)
-  (trie-union (trie-subtract base out #:combiner (lambda (v1 v2) #f)) in
-	      #:combiner (lambda (v1 v2) #t)))
+  (trie-union (trie-subtract base out #:combiner (lambda (v1 v2) trie-empty)) in
+	      #:combiner (lambda (v1 v2) (trie-success '<update-interests>))))
 
 (define (unapply-patch base p)
   (match-define (patch in out) p)
@@ -216,14 +220,14 @@
   (match-define (patch in1 out1) p1)
   (match-define (patch in2 out2) p2)
   (patch (update-interests in1 p2)
-         (trie-union (trie-subtract out1 in2 #:combiner (lambda (v1 v2) #f)) out2
-		     #:combiner (lambda (v1 v2) #t))))
+         (trie-union (trie-subtract out1 in2 #:combiner (lambda (v1 v2) trie-empty)) out2
+		     #:combiner (lambda (v1 v2) (trie-success '<compose-patch>)))))
 
 (define (patch-seq . patches) (patch-seq* patches))
 
 (define (patch-seq* patches)
   (match patches
-    ['() empty-patch]
+    ['() patch-empty]
     [(cons p rest) (compose-patch (patch-seq* rest) p)]))
 
 (define (compute-patch old-base new-base)
@@ -232,9 +236,8 @@
 
 (define (biased-intersection object subject)
   (trie-intersect object
-		  (trie-step subject struct:observe)
-		  #:combiner (lambda (v1 v2) #t)
-		  #:left-short (lambda (v r) (trie-step r EOS))))
+		  (trie-step subject observe-parenthesis)
+		  #:combiner (lambda (v1 v2) (trie-success v1))))
 
 (define (view-patch p interests)
   (patch (biased-intersection (patch-added p) interests)
@@ -248,9 +251,10 @@
   (match-define (patch in out) p)
   (patch (trie-project in spec) (trie-project out spec)))
 
-(define (patch-project/set p spec)
+(define (patch-project/set p spec #:take take-count)
   (match-define (patch in out) p)
-  (values (trie-project/set in spec) (trie-project/set out spec)))
+  (values (trie-project/set #:take take-count in spec)
+          (trie-project/set #:take take-count out spec)))
 
 (define (patch-project/set/single p spec)
   (match-define (patch in out) p)
@@ -269,7 +273,7 @@
 
 (module+ test
   (define (set->trie label xs)
-    (for/fold [(acc (trie-empty))] [(x (in-set xs))]
+    (for/fold [(acc trie-empty)] [(x (in-set xs))]
       (trie-union acc (pattern->trie label x))))
 
   ;; Retains only entries in R labelled with any subset of the labels in label-set.
@@ -282,7 +286,7 @@
 
   (define (sanity-check-examples)
     (define SP (tset 'P))
-    (define m0 (trie-empty))
+    (define m0 trie-empty)
     (define ma (pattern->trie SP 'a))
     (define mb (pattern->trie SP 'b))
     (define mc (pattern->trie SP 'c))
@@ -427,7 +431,7 @@
   (let* ((ma (set->trie (tset 'a) (set 1)))
          (mb (set->trie (tset 'b) (set 1)))
          (mmeta (set->trie (tset 'meta) (set 1)))
-         (R0 (trie-empty))
+         (R0 trie-empty)
          (R1 mmeta)
          (R2 mb)
          (R3 (trie-union mb mmeta))
@@ -435,9 +439,9 @@
          (R5 (trie-union ma mmeta))
          (R6 (trie-union ma mb))
          (R7 (trie-union (trie-union ma mb) mmeta))
-         (p0 empty-patch)
-         (p+ (patch (set->trie (tset 'a) (set 1)) (trie-empty)))
-         (p- (patch (trie-empty) (set->trie (tset 'a) (set 1)))))
+         (p0 patch-empty)
+         (p+ (patch (set->trie (tset 'a) (set 1)) trie-empty))
+         (p- (patch trie-empty (set->trie (tset 'a) (set 1)))))
     (check-equal? (compute-aggregate-patch p0 'a R0) p0)
     (check-equal? (compute-aggregate-patch p0 'a R1) p0)
     (check-equal? (compute-aggregate-patch p0 'a R2) p0)
@@ -472,31 +476,23 @@
     (check-equal? (compute-aggregate-patch p- 'a R7 #:remove-meta? #t) p0)
     )
 
-  (let ((m1 (set->trie #t (set 1 2)))
+  (let ((m1 (set->trie '<m1> (set 1 2)))
         (m2 (set->trie (tset 'a) (set 1 2)))
-        (p1 (patch (set->trie #t (set 2 3)) (trie-empty)))
-        (p2 (patch (set->trie (tset 'a) (set 2 3)) (trie-empty))))
-    (check-equal? (limit-patch p1 m1) (patch (set->trie #t (set 3)) (trie-empty)))
-    ;; This is false because the resulting patch has tset labelling:
-    (check-false (equal? (limit-patch p2 m1)
-                         (patch (set->trie #t (set 3)) (trie-empty))))
-    (check-equal? (limit-patch p1 m2)
-                  (patch (set->trie #t (set 3)) (trie-empty)))
-    (check-equal? (limit-patch p2 m2)
-                  (patch (set->trie (tset 'a) (set 3)) (trie-empty)))
+        (p1 (patch (set->trie '<p1> (set 2 3)) trie-empty))
+        (p2 (patch (set->trie (tset 'a) (set 2 3)) trie-empty)))
+    (check-equal? (limit-patch p1 m1) (patch (set->trie '<p1> (set 3)) trie-empty))
+    (check-equal? (limit-patch p1 m2) (patch (set->trie '<p1> (set 3)) trie-empty))
+    (check-equal? (limit-patch p2 m1) (patch (set->trie (tset 'a) (set 3)) trie-empty))
+    (check-equal? (limit-patch p2 m2) (patch (set->trie (tset 'a) (set 3)) trie-empty))
     )
 
-  (let ((m1 (set->trie #t (set 1 2)))
+  (let ((m1 (set->trie '<m1> (set 1 2)))
         (m2 (set->trie (tset 'a) (set 1 2)))
-        (p1 (patch (trie-empty) (set->trie #t (set 2 3))))
-        (p2 (patch (trie-empty) (set->trie (tset 'a) (set 2 3)))))
-    (check-equal? (limit-patch p1 m1) (patch (trie-empty) (set->trie #t (set 2))))
-    ;; This is false because the resulting patch has tset labelling:
-    (check-false (equal? (limit-patch p2 m1)
-                         (patch (trie-empty) (set->trie #t (set 2)))))
-    (check-equal? (limit-patch p1 m2)
-                  (patch (trie-empty) (set->trie #t (set 2))))
-    (check-equal? (limit-patch p2 m2)
-                  (patch (trie-empty) (set->trie (tset 'a) (set 2))))
+        (p1 (patch trie-empty (set->trie '<p1> (set 2 3))))
+        (p2 (patch trie-empty (set->trie (tset 'a) (set 2 3)))))
+    (check-equal? (limit-patch p1 m1) (patch trie-empty (set->trie '<p1> (set 2))))
+    (check-equal? (limit-patch p1 m2) (patch trie-empty (set->trie '<p1> (set 2))))
+    (check-equal? (limit-patch p2 m1) (patch trie-empty (set->trie (tset 'a) (set 2))))
+    (check-equal? (limit-patch p2 m2) (patch trie-empty (set->trie (tset 'a) (set 2))))
     )
   )

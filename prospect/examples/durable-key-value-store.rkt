@@ -21,8 +21,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define observation-projector (compile-projection (observe (binding (?!) ? ? ?))))
-(define update-projector (compile-projection (?! (update ? ? ? ?))))
+(define observation-projector (observe (binding (?!) ? ? ?)))
+(define update-projector (?! (update ? ? ? ?)))
 
 (struct db-state (epoch directory observed-keys) #:transparent)
 
@@ -99,7 +99,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define binding-projector (compile-projection (?! (binding ? ? ? ?))))
+(define binding-projector (?! (binding ? ? ? ?)))
 
 (define (async-update key epoch version value on-complete on-conflict)
   (spawn (lambda (e s)

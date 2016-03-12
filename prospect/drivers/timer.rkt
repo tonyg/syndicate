@@ -19,7 +19,7 @@
 (struct set-timer (label msecs kind) #:prefab)
 (struct timer-expired (label msecs) #:prefab)
 
-(define expiry-projection (compile-projection (at-meta (?! (timer-expired ? ?)))))
+(define expiry-projection (at-meta (?! (timer-expired ? ?))))
 
 (define (spawn-timer-driver)
   (define control-ch (make-channel))
@@ -56,7 +56,7 @@
        (define-values (new-count actions-rev interrupt-clearing-patch)
          (for/fold [(count count)
                     (actions-rev '())
-                    (interrupt-clearing-patch empty-patch)]
+                    (interrupt-clearing-patch patch-empty)]
                    [(expiry (trie-project/set/single added expiry-projection))]
            (values (- count 1)
                    (cons (message expiry) actions-rev)
@@ -84,7 +84,7 @@
 	    [t (handle-evt (timer-evt (pending-timer-deadline t))
 			   (lambda (now)
                              (send-ground-patch
-                              (for/fold [(interrupt-asserting-patch empty-patch)]
+                              (for/fold [(interrupt-asserting-patch patch-empty)]
                                         [(expiry (fire-timers! heap now))]
                                 (patch-seq interrupt-asserting-patch (assert expiry))))
 			     (loop)))])

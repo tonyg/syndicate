@@ -13,7 +13,7 @@
 (require racket/pretty)
 (require racket/exn)
 (require (only-in racket/string string-join string-split))
-(require "route.rkt")
+(require "trie.rkt")
 
 (define-generics prospect-pretty-printable
   (prospect-pretty-print prospect-pretty-printable [port])

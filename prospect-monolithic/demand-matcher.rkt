@@ -20,6 +20,8 @@
 ;; exists.
 (struct demand-matcher (demand-spec             ;; CompiledProjection
                         supply-spec             ;; CompiledProjection
+                        demand-spec-arity       ;; Natural
+                        supply-spec-arity       ;; Natural
 			increase-handler        ;; ChangeHandler
 			decrease-handler        ;; ChangeHandler
                         current-demand          ;; (Setof (Listof Any))
@@ -42,6 +44,8 @@
 (define (make-demand-matcher demand-spec supply-spec increase-handler decrease-handler)
   (demand-matcher demand-spec
                   supply-spec
+                  (projection-arity demand-spec)
+                  (projection-arity supply-spec)
                   increase-handler
                   decrease-handler
                   (set)
@@ -52,9 +56,16 @@
 ;; demand increase and decrease sets. Calls ChangeHandlers in response
 ;; to increased unsatisfied demand and decreased demanded supply.
 (define (demand-matcher-update d s new-scn)
-  (match-define (demand-matcher demand-spec supply-spec inc-h dec-h demand supply) d)
-  (define new-demand (trie-project/set (scn-trie new-scn) demand-spec))
-  (define new-supply (trie-project/set (scn-trie new-scn) supply-spec))
+  (match-define (demand-matcher demand-spec
+                                supply-spec
+                                demand-arity
+                                supply-arity
+                                inc-h
+                                dec-h
+                                demand
+                                supply) d)
+  (define new-demand (trie-project/set #:take demand-arity (scn-trie new-scn) demand-spec))
+  (define new-supply (trie-project/set #:take supply-arity (scn-trie new-scn) supply-spec))
   (define added-demand (set-subtract new-demand demand))
   (define removed-demand (set-subtract demand new-demand))
   (define added-supply (set-subtract new-supply supply))
@@ -102,8 +113,8 @@
 			      [decrease-handler unexpected-supply-decrease]
                               #:name [name #f]
 			      #:meta-level [meta-level 0])
-  (define d (make-demand-matcher (compile-projection (prepend-at-meta demand-spec meta-level))
-                                 (compile-projection (prepend-at-meta supply-spec meta-level))
+  (define d (make-demand-matcher (prepend-at-meta demand-spec meta-level)
+                                 (prepend-at-meta supply-spec meta-level)
 				 (lambda (acs . rs) (cons (apply increase-handler rs) acs))
 				 (lambda (acs . rs) (cons (apply decrease-handler rs) acs))))
   (spawn #:name name
@@ -133,7 +144,8 @@
     (match e
       [(scn new-aggregate)
        (define projection-results
-         (map (lambda (p) (trie-project/set new-aggregate (compile-projection p))) projections))
+         (map (lambda (p) (trie-project/set #:take (projection-arity p) new-aggregate p))
+              projections))
        (define maybe-spawn (apply check-and-maybe-spawn-fn
                                   new-aggregate
                                   projection-results))
@@ -158,8 +170,10 @@
 (define (pretty-print-demand-matcher s [p (current-output-port)])
   (match-define (demand-matcher demand-spec
                                 supply-spec
-                                increase-handler
-                                decrease-handler
+                                _demand-arity
+                                _supply-arity
+                                _increase-handler
+                                _decrease-handler
                                 current-demand
                                 current-supply)
     s)

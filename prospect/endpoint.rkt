@@ -15,7 +15,7 @@
 (require racket/set)
 (require racket/match)
 (require (only-in racket/list flatten))
-(require "route.rkt")
+(require "trie.rkt")
 (require "patch.rkt")
 (require "core.rkt")
 (require "mux.rkt")
@@ -54,7 +54,7 @@
 
 (define (boot-endpoint-group initial-state initial-actions)
   (define-values (final-cumulative-patch final-actions final-g)
-    (interpret-endpoint-actions empty-patch
+    (interpret-endpoint-actions patch-empty
                                 '()
                                 (make-endpoint-group initial-state)
                                 -1
@@ -88,7 +88,7 @@
 (define (sequence-handlers g tasks)
   (let/ec return
     (define-values (final-cumulative-patch final-actions final-g idle?)
-      (for/fold ([cumulative-patch empty-patch]
+      (for/fold ([cumulative-patch patch-empty]
                  [actions '()]
                  [g g]
                  [idle? #t])
@@ -125,14 +125,14 @@
   (match endpoint-action
     [(or (? message?)
          (? spawn?))
-     (values empty-patch
+     (values patch-empty
              (cons (incorporate-cumulative-patch actions cumulative-patch) endpoint-action)
              g)]
     [(? patch? p0)
      (interpret-endpoint-patch cumulative-patch actions g eid p0)]
     [(add-endpoint function)
      (define-values (new-mux new-eid _p _p-aggregate)
-       (mux-add-stream (endpoint-group-mux g) empty-patch))
+       (mux-add-stream (endpoint-group-mux g) patch-empty))
      (define-values (new-ep initial-transition) (function new-eid (endpoint-group-state g)))
      (interpret-endpoint-actions cumulative-patch
                                  actions
@@ -152,7 +152,7 @@
                                             [endpoints
                                              (hash-remove (endpoint-group-endpoints g) eid)])
                                eid
-                               (patch (trie-empty) (pattern->trie #t ?)))]
+                               (patch trie-empty (pattern->trie '<delete-endpoint> ?)))]
     [(as-endpoint other-eid inner-endpoint-action)
      (interpret-endpoint-actions cumulative-patch actions g other-eid inner-endpoint-action)]))
 

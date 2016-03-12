@@ -4,8 +4,12 @@
 
 ;; TODO: examples showing the idea.
 
-(provide (rename-out [success trie-success]
-                     [success? trie-success?]
+(require racket/contract)
+(provide combiner/c trie-combiner/c)
+
+(provide (contract-out (rename success trie-success (-> (not/c trie?) trie?)))
+         ;; (rename-out [success trie-success])
+         (rename-out [success? trie-success?]
                      [success-value trie-success-value])
 
          (rename-out [open-parenthesis <open-parenthesis>]
@@ -18,7 +22,7 @@
          (struct-out capture)
          ?!
 
-         (rename-out [empty trie-empty])
+         trie-empty
          trie?
          trie
          trie-empty?
@@ -35,10 +39,10 @@
          tset-union-combiner
          tset-subtract-combiner
 
-         trie-union
+         (contract-out [trie-union trie-combiner/c])
+         (contract-out [trie-intersect trie-combiner/c])
+         (contract-out [trie-subtract trie-combiner/c])
          trie-union-all
-         trie-intersect
-         trie-subtract
 
          trie-lookup
          trie-match-trie
@@ -150,14 +154,17 @@
 (define (?! [pattern ?]) (capture pattern))
 
 ;; Trie
-(define empty (canonicalize #f))
+(define trie-empty (canonicalize #f))
 
 ;; Any -> Boolean
 ;; Predicate recognising Tries.
 (define (trie? x)
-  (or (eq? x empty)
+  (or (eq? x trie-empty)
       (success? x)
       (branch? x)))
+
+(define combiner/c (-> any/c any/c trie?))
+(define trie-combiner/c (->* (trie? trie?) (#:combiner combiner/c) trie?))
 
 ;; Pattern Any {Pattern Any ...} -> Trie
 ;; Constructs a trie as the union of the given pattern/value pairings.
@@ -165,7 +172,7 @@
 (define (trie . args)
   (let loop ((args args))
     (match args
-      ['() empty]
+      ['() trie-empty]
       [(list* pat val rest) (trie-union (loop rest) (pattern->trie val pat))]
       [_ (error 'trie "Uneven argument list: expects equal numbers of patterns and values")])))
 
@@ -234,7 +241,7 @@
 ;; otherwise, returns the argument.
 (define (collapse r)
   (match r
-    [(branch (== empty-omap eq?) (== empty eq?) (== empty-smap eq?)) empty]
+    [(branch (== empty-omap eq?) (== trie-empty eq?) (== empty-smap eq?)) trie-empty]
     [_ r]))
 
 ;; Trie -> Trie
@@ -242,7 +249,7 @@
 ;; that is equivalent to the empty trie. Inverse of `collapse`.
 (define (expand r)
   (if (trie-empty? r)
-      (canonicalize (branch empty-omap empty empty-smap))
+      (canonicalize (branch empty-omap trie-empty empty-smap))
       r))
 
 ;; Sigma Trie -> Trie
@@ -250,12 +257,12 @@
 (define (rsigma e r)
   (if (trie-empty? r)
       r
-      (canonicalize (branch empty-omap empty (treap-insert empty-smap e r)))))
+      (canonicalize (branch empty-omap trie-empty (treap-insert empty-smap e r)))))
 
 ;; [ Sigma Trie ] ... -> Trie
 (define (rsigma-multi . ers)
   (canonicalize (branch empty-omap
-                        empty
+                        trie-empty
                         (let walk ((ers ers))
                           (match ers
                             [(list* e r rest) (treap-insert (walk rest) e r)]
@@ -287,7 +294,7 @@
   (if (trie-empty? r)
       r
       (canonicalize (branch (treap-insert empty-omap (canonical-open-parenthesis arity type) r)
-                            empty
+                            trie-empty
                             empty-smap))))
 
 ;; Natural Trie -> Trie
@@ -478,10 +485,10 @@
 ;; (Listof Trie) [#:combiner (Any Any -> Trie)] -> Trie
 ;; n-ary trie-union.
 (define (trie-union-all tries #:combiner [combiner tset-union-combiner])
-  (foldr (lambda (t acc) (trie-union t acc #:combiner combiner)) empty tries))
+  (foldr (lambda (t acc) (trie-union t acc #:combiner combiner)) trie-empty tries))
 
 ;; Any -> Trie
-(define (->empty t) empty)
+(define (->empty t) trie-empty)
 
 ;; Trie Trie -> Trie
 ;; Computes the intersection of the tries passed in. Treats them as multimaps by default.
@@ -489,13 +496,13 @@
   (define (combine-success r1 r2)
     (match* (r1 r2)
       [((success v1) (success v2)) (canonicalize (combiner v1 v2))]
-      [((? trie-empty?) _) empty]
-      [(_ (? trie-empty?)) empty]
+      [((? trie-empty?) _) trie-empty]
+      [(_ (? trie-empty?)) trie-empty]
       [(_ _) (asymmetric-trie-error 'trie-intersect r1 r2)]))
   (trie-combine combine-success ->empty ->empty ->empty ->empty re1 re2))
 
 (define (empty-tset-guard s)
-  (if (tset-empty? s) empty (success s)))
+  (if (tset-empty? s) trie-empty (success s)))
 
 (define (tset-subtract-combiner s1 s2)
   (empty-tset-guard (tset-subtract s1 s2)))
@@ -506,7 +513,7 @@
   (define (combine-success r1 r2)
     (match* (r1 r2)
       [((success v1) (success v2)) (canonicalize (combiner v1 v2))]
-      [((? trie-empty?) _) empty]
+      [((? trie-empty?) _) trie-empty]
       [(r (? trie-empty?)) r]
       [(_ _) (asymmetric-trie-error 'trie-subtract r1 r2)]))
   (trie-combine combine-success ->empty values values ->empty re1 re2))
@@ -551,7 +558,7 @@
           (walk vs1 (rlookup-sigma r (canonicalize v)))])]))
   (walk (list v) r))
 
-;; Trie Trie -> Value
+;; Trie Trie Value (Any Any Value -> Value) -> Value
 ;;
 ;; Similar to trie-lookup, but instead of a single key,
 ;; accepts a Trie serving as *multiple* simultaneously-examined
@@ -591,7 +598,7 @@
 (define (trie-append m0 m-tail-fn)
   (let walk ((m m0))
     (match m
-      [(? trie-empty?) empty]
+      [(? trie-empty?) trie-empty]
       [(success v) (canonicalize (m-tail-fn v))]
       [(branch os w0 h)
        (define w (walk w0))
@@ -611,7 +618,7 @@
 (define (trie-relabel t f)
   (trie-append t (lambda (v)
                    (match (f v)
-                     [#f empty]
+                     [#f trie-empty]
                      [result (success result)]))))
 
 ;; Trie (U OpenParenthesis Sigma) -> Trie
@@ -621,9 +628,9 @@
 (define (trie-prune-branch m key)
   (match* (m key)
     [((branch os w h) (open-parenthesis arity _))
-     (canonicalize (collapse (struct-copy branch m [opens (rupdate arity w os key empty)])))]
+     (canonicalize (collapse (struct-copy branch m [opens (rupdate arity w os key trie-empty)])))]
     [((branch os w h) _)
-     (canonicalize (collapse (struct-copy branch m [sigmas (rupdate 0 w h key empty)])))]
+     (canonicalize (collapse (struct-copy branch m [sigmas (rupdate 0 w h key trie-empty)])))]
     [(_ _) m]))
 
 ;; Trie (U OpenParenthesis Sigma) -> Trie
@@ -633,7 +640,7 @@
      (rlookup-open m key)]
     [((? branch?) _)
      (rlookup-sigma m key)]
-    [(_ _) empty]))
+    [(_ _) trie-empty]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Projection
@@ -734,7 +741,7 @@
             [other0
              (define other (canonicalize other0))
              (rsigma other (walk/capture (rlookup-sigma t other) specs-rest kont))])]
-         [_ empty])]))
+         [_ trie-empty])]))
 
   ;; Trie (Listof Projection) (Trie -> Trie) -> Trie
   ;; As walk/capture, but without capturing.
@@ -773,12 +780,12 @@
             [other0
              (define other (canonicalize other0))
              (walk (rlookup-sigma t other) specs-rest kont)])]
-         [_ empty])]))
+         [_ trie-empty])]))
 
   (walk whole-t (list whole-spec)
         (match-lambda
           [(success v) (canonicalize (project-success v))]
-          [_ empty])))
+          [_ trie-empty])))
 
 ;; ParenType (Listof Value) -> Value
 ;; Wraps a sequence of values in the given parenthesis type, reconstructing the "original" value.
@@ -1025,7 +1032,7 @@
 	 (walk rest)])))
 
   (check-matches
-   empty
+   trie-empty
    (list 'z 'x) ""
    'foo ""
    (list (list 'z (list 'z))) "")
@@ -1313,21 +1320,21 @@
   (check-requal? (intersect 123 ?) (rsigma 123 EAB))
   (check-requal? (intersect (list ? 2) (list 1 ?)) (rlist 2 (rsigma* 1 2 EAB)))
   (check-requal? (intersect (list 1 2) ?) (rlist 2 (rsigma* 1 2 EAB)))
-  (check-requal? (intersect 1 2) empty)
+  (check-requal? (intersect 1 2) trie-empty)
   (check-requal? (intersect (list 1 2) (list ? 2)) (rlist 2 (rsigma* 1 2 EAB)))
   (check-requal? (intersect (vector 1 2) (vector 1 2)) (rvector 2 (rsigma* 1 2 EAB)))
-  (check-requal? (intersect (vector 1 2) (vector 1 2 3)) empty)
+  (check-requal? (intersect (vector 1 2) (vector 1 2 3)) trie-empty)
 
-  (check-requal? (intersect (a 'a) (a 'b)) empty)
+  (check-requal? (intersect (a 'a) (a 'b)) trie-empty)
   (check-requal? (intersect (a 'a) (a 'a)) (ropen 1 struct:a (rsigma* 'a EAB)))
   (check-requal? (intersect (a 'a) (a ?)) (ropen 1 struct:a (rsigma* 'a EAB)))
   (check-requal? (intersect (a 'a) ?) (ropen 1 struct:a (rsigma* 'a EAB)))
-  (check-requal? (intersect (b 'a) (b 'b)) empty)
+  (check-requal? (intersect (b 'a) (b 'b)) trie-empty)
   (check-requal? (intersect (b 'a) (b 'a)) (ropen 1 struct:b (rsigma* 'a EAB)))
   (check-requal? (intersect (b 'a) (b ?)) (ropen 1 struct:b (rsigma* 'a EAB)))
   (check-requal? (intersect (b 'a) ?) (ropen 1 struct:b (rsigma* 'a EAB)))
 
-  (check-requal? (intersect (a 'a) (b 'a)) empty)
+  (check-requal? (intersect (a 'a) (b 'a)) trie-empty)
 
   (check-exn #px"Cannot match on treaps at present"
 	     (lambda ()
@@ -1584,8 +1591,7 @@
   (define full (trie ? default-label))
 
   (define positive-trie/e
-    (pam/e (lambda (pats) (foldr trie-union empty
-                                 (map (lambda (pat) (trie pat default-label)) pats)))
+    (pam/e (lambda (pats) (trie-union-all (map (lambda (pat) (trie pat default-label)) pats)))
            #:contract trie?
            (listof/e pattern/e)))
 
@@ -1664,7 +1670,7 @@
   (define (reconstruct t)
     (match-define `((added ,a ...) (removed ,r ...)) (trie->patterns t))
     (foldr (lambda (p t) (trie-subtract t (trie p default-label)))
-           (foldr (lambda (p t) (trie-union t (trie p default-label))) empty a)
+           (foldr (lambda (p t) (trie-union t (trie p default-label))) trie-empty a)
            r))
 
   ;; (newline) (for ((i 15)) (void (time (reconstruct (random-instance positive-trie/e)))))
@@ -1687,16 +1693,16 @@
                     complex-trie/e
                     complex-trie/e)
     (check-property #:name 'empty-is-identity-for-union
-                    (lambda (t) (and (requal? t (trie-union t empty))
-                                     (requal? t (trie-union empty t))))
+                    (lambda (t) (and (requal? t (trie-union t trie-empty))
+                                     (requal? t (trie-union trie-empty t))))
                     complex-trie/e)
     (check-property #:name 'full-is-zero-for-union
                     (lambda (t) (and (requal? full (trie-union t full))
                                      (requal? full (trie-union full t))))
                     complex-trie/e)
     (check-property #:name 'empty-is-zero-for-intersection
-                    (lambda (t) (and (requal? empty (trie-intersect t empty))
-                                     (requal? empty (trie-intersect empty t))))
+                    (lambda (t) (and (requal? trie-empty (trie-intersect t trie-empty))
+                                     (requal? trie-empty (trie-intersect trie-empty t))))
                     complex-trie/e)
     (check-property #:name 'full-is-identity-for-intersection
                     (lambda (t) (and (requal? t (trie-intersect t full))

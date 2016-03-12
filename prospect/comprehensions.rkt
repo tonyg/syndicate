@@ -26,7 +26,7 @@
 ;; error, using the third argument to describe the pattern being projected.
 ;; If the resulting trie is finite, return it as a set.
 (define (project-finite t proj pat)
-  (define s? (trie-project/set t (compile-projection proj)))
+  (define s? (trie-project/set #:take (projection-arity proj) t proj))
   (unless s?
     (error "pattern projection created infinite trie:" pat))
   s?)
@@ -88,7 +88,7 @@
 
 (make-fold for-trie/set set-folder (set))
 
-(make-fold for-trie/patch patch-seq empty-patch)
+(make-fold for-trie/patch patch-seq patch-empty)
 
 (define (ret-second a b) b)
 
@@ -105,14 +105,15 @@
 (module+ test
   (require rackunit)
   
-  (require "route.rkt")
+  (require "trie.rkt")
   
   (define (make-trie . vs)
-    (for/fold ([acc (trie-empty)])
+    (for/fold ([acc trie-empty])
               ([v (in-list vs)])
       (trie-union acc (pattern->trie 'a v))))
 
   (struct foo (bar zot) #:prefab)
+  (struct quasi-cons (car cdr) #:transparent)
 
   ;; This test should pass OK, since we're ignoring all the infinite
   ;; dimensions, and just projecting out a finite one.
@@ -141,12 +142,13 @@
                                #:where (even? x))
                   (+ x 1))
                 (set 3 5))
-  (check-equal? (for-trie/set ([(cons $x _) (make-trie 1 2 (list 0)
-                                                       (list 1 2 3)
-                                                       (cons 'x 'y)
-                                                       (cons 3 4)
-                                                       (cons 'a 'b)
-                                                       "x" 'foo)])
+  (check-equal? (for-trie/set ([(quasi-cons $x _)
+                                (make-trie 1 2 (list 0)
+                                           (list 1 2 3)
+                                           (quasi-cons 'x 'y)
+                                           (quasi-cons 3 4)
+                                           (quasi-cons 'a 'b)
+                                           "x" 'foo)])
                   x)
                 (set 'x 3 'a))
   (check-equal? (for-trie/fold ([acc 0])
@@ -163,9 +165,10 @@
   (let-values ([(acc1 acc2)
                 (for-trie/fold ([acc1 0]
                                 [acc2 0])
-                               ([(cons $x $y) (make-trie (cons 1 2)
-                                                         (cons 3 8)
-                                                         (cons 9 7))])
+                               ([(quasi-cons $x $y)
+                                 (make-trie (quasi-cons 1 2)
+                                            (quasi-cons 3 8)
+                                            (quasi-cons 9 7))])
                   (values (+ acc1 x)
                           (+ acc2 y)))])
     (check-equal? acc1 13)
@@ -178,24 +181,26 @@
                      (cons 3 4) (cons 3 5) (cons 3 6)))
   (let ([p (for-trie/patch ([$x (make-trie 1 2 3 4)])
              (retract x))])
-    (check-equal? (trie-project/set (patch-removed p) (compile-projection (?!)))
+    (check-equal? (trie-project/set #:take 1 (patch-removed p) (?!))
                   (set '(1) '(2) '(3) '(4))))
   (check-equal? (for-trie/set ([$x (make-trie 1 2 3)]
-                               [(cons x 3) (make-trie (cons 'x 'y)
-                                                      (cons 5 5)
-                                                      (cons 2 4)
-                                                      (cons 3 3)
-                                                      (cons 4 3))])
+                               [(quasi-cons x 3)
+                                (make-trie (quasi-cons 'x 'y)
+                                           (quasi-cons 5 5)
+                                           (quasi-cons 2 4)
+                                           (quasi-cons 3 3)
+                                           (quasi-cons 4 3))])
                   (cons x 4))
                 (set (cons 3 4)))
-  (check-equal? (for-trie/set ([(cons $x $x) (make-trie 'a 'b
-                                                        (cons 'x 'y)
-                                                        (cons 2 3)
-                                                        3 4
-                                                        'x
-                                                        (cons 1 1)
-                                                        "abc"
-                                                        (cons 'x 'x))])
+  (check-equal? (for-trie/set ([(quasi-cons $x $x)
+                                (make-trie 'a 'b
+                                           (quasi-cons 'x 'y)
+                                           (quasi-cons 2 3)
+                                           3 4
+                                           'x
+                                           (quasi-cons 1 1)
+                                           "abc"
+                                           (quasi-cons 'x 'x))])
                   x)
                 (set 1 'x))
   (check-equal? (for-trie/set ([$x (make-trie 1 2 3)])

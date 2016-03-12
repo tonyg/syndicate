@@ -14,6 +14,6 @@
          (if (patch? e)
              (transition (update-interests s e) '())
              #f))
-       (trie-empty)
+       trie-empty
        (patch-seq (assert ?)
                   (retract (at-meta ?))))

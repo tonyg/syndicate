@@ -15,7 +15,7 @@
 
 (require racket/set)
 (require racket/match)
-(require "route.rkt")
+(require "trie.rkt")
 (require "patch.rkt")
 (require "trace.rkt")
 (require "tset.rkt")
@@ -38,7 +38,7 @@
 (define (meta-label? x) (eq? x 'meta))
 
 (define (make-mux)
-  (mux 0 (trie-empty) (hash)))
+  (mux 0 trie-empty (hash)))
 
 (define (mux-add-stream m initial-patch)
   (define new-pid (mux-next-pid m))
@@ -47,7 +47,7 @@
                      initial-patch))
 
 (define (mux-remove-stream m label)
-  (mux-update-stream m label (patch (trie-empty) (pattern->trie #t ?))))
+  (mux-update-stream m label (patch trie-empty (pattern->trie '<mux-remove-stream> ?))))
 
 (define (mux-update-stream m label delta-orig)
   (define old-interests (mux-interests-of m label))
@@ -67,22 +67,22 @@
           delta
           delta-aggregate))
 
-(define at-meta-everything (pattern->trie #t (at-meta ?)))
+(define at-meta-everything (pattern->trie '<at-meta-everything> (at-meta ?)))
 
 (define (echo-cancelled-trie t)
   (trie-subtract t
                  at-meta-everything
                  #:combiner (lambda (v1 v2)
                               (if (tset-member? v1 'meta)
-                                  only-meta-tset
-                                  #f))))
+                                  (trie-success only-meta-tset)
+                                  trie-empty))))
 
 (define (compute-patches old-m new-m label delta delta-aggregate)
   (define delta-aggregate/no-echo
     (if (meta-label? label)
         delta
-        (patch (trie-prune-branch (patch-added delta-aggregate) struct:at-meta)
-               (trie-prune-branch (patch-removed delta-aggregate) struct:at-meta))))
+        (patch (trie-prune-branch (patch-added delta-aggregate) at-meta-parenthesis)
+               (trie-prune-branch (patch-removed delta-aggregate) at-meta-parenthesis))))
   (define old-routing-table (mux-routing-table old-m))
   (define new-routing-table (mux-routing-table new-m))
   (define affected-pids
@@ -110,11 +110,9 @@
 (define (compute-affected-pids routing-table delta)
   (define cover (trie-union (patch-added delta) (patch-removed delta)))
   (trie-match-trie cover
-		   (trie-step routing-table struct:observe)
+		   (trie-step routing-table observe-parenthesis)
 		   #:seed datum-tset-empty
-		   #:combiner (lambda (v1 v2 acc) (tset-union v2 acc))
-		   #:left-short (lambda (v r acc)
-				  (tset-union acc (success-value (trie-step r EOS))))))
+		   #:combiner (lambda (v1 v2 acc) (tset-union v2 acc))))
 
 (define (mux-route-message m body)
   (if (trie-lookup (mux-routing-table m) body #f) ;; some other stream has declared body
@@ -122,7 +120,7 @@
       (tset->list (trie-lookup (mux-routing-table m) (observe body) datum-tset-empty))))
 
 (define (mux-interests-of m label)
-  (hash-ref (mux-interest-table m) label (trie-empty)))
+  (hash-ref (mux-interest-table m) label trie-empty))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

@@ -14,7 +14,7 @@
 
          (all-from-out "patch.rkt")
 
-         ;; imported from route.rkt:
+         ;; imported from trie.rkt:
 	 ?
 	 wildcard?
 	 ?!
@@ -25,7 +25,7 @@
 	 trie-empty?
          trie-empty
 	 projection->pattern
-         compile-projection
+         projection-arity
          trie-project
          trie-project/set
          trie-project/set/single
@@ -67,7 +67,7 @@
 (require racket/match)
 (require (only-in racket/list flatten))
 (require "functional-queue.rkt")
-(require "route.rkt")
+(require "trie.rkt")
 (require "patch.rkt")
 (require "trace.rkt")
 (require "mux.rkt")
@@ -138,20 +138,20 @@
 
 (define (observe-at-meta pattern level)
   (if (zero? level)
-      (pattern->trie #t (observe pattern))
+      (pattern->trie '<observe-at-meta> (observe pattern))
       (trie-union
-       (pattern->trie #t (observe (prepend-at-meta pattern level)))
-       (pattern->trie #t (at-meta (embedded-trie (observe-at-meta pattern (- level 1))))))))
+       (pattern->trie '<observe-at-meta> (observe (prepend-at-meta pattern level)))
+       (pattern->trie '<observe-at-meta> (at-meta (embedded-trie (observe-at-meta pattern (- level 1))))))))
 
 (define (assert pattern #:meta-level [level 0])
-  (patch (pattern->trie #t (prepend-at-meta pattern level)) (trie-empty)))
+  (patch (pattern->trie '<assert> (prepend-at-meta pattern level)) trie-empty))
 (define (retract pattern #:meta-level [level 0])
-  (patch (trie-empty) (pattern->trie #t (prepend-at-meta pattern level))))
+  (patch trie-empty (pattern->trie '<retract> (prepend-at-meta pattern level))))
 
 (define (sub pattern #:meta-level [level 0])
-  (patch (observe-at-meta pattern level) (trie-empty)))
+  (patch (observe-at-meta pattern level) trie-empty))
 (define (unsub pattern #:meta-level [level 0])
-  (patch (trie-empty) (observe-at-meta pattern level)))
+  (patch trie-empty (observe-at-meta pattern level)))
 
 (define (pub pattern #:meta-level [level 0]) (assert (advertise pattern) #:meta-level level))
 (define (unpub pattern #:meta-level [level 0]) (retract (advertise pattern) #:meta-level level))
@@ -400,7 +400,7 @@
         (define-values (initial-patch remaining-initial-actions)
           (match initial-actions
             [(cons (? patch? p) rest) (values p rest)]
-            [other (values empty-patch other)]))
+            [other (values patch-empty other)]))
         (define-values (new-mux new-pid delta delta-aggregate)
           (mux-add-stream (network-mux w) initial-patch))
         (let* ((w (struct-copy network w

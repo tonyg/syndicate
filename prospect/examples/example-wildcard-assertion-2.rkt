@@ -16,7 +16,7 @@
          (if (patch? e)
              (transition (update-interests s e) '())
              #f))
-       (trie-empty)
+       trie-empty
        (sub ?))
 
 (spawn (lambda (e s)

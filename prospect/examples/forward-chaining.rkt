@@ -1,7 +1,7 @@
 #lang prospect
 
 (require racket/set)
-(require "../route.rkt")
+(require "../trie.rkt")
 (require "../demand-matcher.rkt")
 (require "../drivers/timer.rkt")
 
@@ -10,8 +10,7 @@
 (spawn (lambda (e old-count)
          (match e
            [(? patch?)
-            (define-values (in out)
-              (patch-project/set e (compile-projection `(parent ,(?!) ,(?!)))))
+            (define-values (in out) (patch-project/set #:take 2 e `(parent ,(?!) ,(?!))))
             (define new-count (+ old-count (set-count in) (- (set-count out))))
             (printf "New parent-record count: ~v\n" new-count)
             (transition new-count
@@ -29,7 +28,7 @@
              [(? patch/removed?)
               (printf "Retracting ~v because dependencies ~v vanished\n"
                       record
-                      (set->list (trie-project/set (patch-removed e) (compile-projection (?!)))))
+                      (set->list (trie-project/set/single (patch-removed e) (?!))))
               (quit)]
              [(message `(retract ,(== record)))
               (printf "Retracting ~v because we were told to explicitly\n" record)
@@ -48,9 +47,9 @@
          (match e
            [(? patch?)
             (transition s
-                        (for/list [(AB (trie-project/set
-                                        (patch-added e)
-                                        (compile-projection `(parent ,(?!) ,(?!)))))]
+                        (for/list [(AB (trie-project/set #:take 2
+                                                         (patch-added e)
+                                                         `(parent ,(?!) ,(?!))))]
                           (match-define (list A B) AB)
                           (insert-record `(ancestor ,A ,B)
                                          `(parent ,A ,B))))]
@@ -62,30 +61,28 @@
          (match e
            [(? patch?)
             (transition s
-                        (for/list [(AC (trie-project/set
-                                        (patch-added e)
-                                        (compile-projection `(parent ,(?!) ,(?!)))))]
+                        (for/list [(AC (trie-project/set #:take 2
+                                                         (patch-added e)
+                                                         `(parent ,(?!) ,(?!))))]
                           (match-define (list A C) AC)
                           (printf "Inductive step for ~v asserted\n" `(parent ,A ,C))
                           (spawn (lambda (e s)
                                    (define removed-parents
                                      (and (patch? e)
-                                          (trie-project (patch-removed e)
-							(compile-projection
-							 `(parent ,(?!) ,(?!))))))
+                                          (trie-project (patch-removed e) `(parent ,(?!) ,(?!)))))
                                    (if (trie-non-empty? removed-parents)
                                        (begin
                                          (printf
                                           "Inductive step for ~v retracted because of removal ~v\n"
                                           `(parent ,A ,C)
-                                          (trie-key-set removed-parents))
+                                          (trie-key-set #:take 2 removed-parents))
                                          (quit))
                                        (and (patch? e)
                                             (transition s
                                                         (for/list [(CB (trie-project/set
+                                                                        #:take 2
                                                                         (patch-added e)
-                                                                        (compile-projection
-                                                                         `(ancestor ,(?!) ,(?!)))))]
+                                                                        `(ancestor ,(?!) ,(?!))))]
                                                           (match-define (list _ B) CB)
                                                           (insert-record `(ancestor ,A ,B)
                                                                          `(parent ,A ,C)
@@ -112,9 +109,8 @@
 ;;                                    [(? patch/removed?) (quit)]
 ;;                                    [(? patch?)
 ;;                                     (define new-facts (trie-union old-facts (patch-added e)))
-;;                                     (define triples (trie-project/set new-facts
-;;                                                                          (compile-projection
-;;                                                                           `(,(?!) ,(?!) ,(?!)))))
+;;                                     (define triples (trie-project/set #:take 3 new-facts
+;;                                                                       `(,(?!) ,(?!) ,(?!))))
 ;;                                     (printf "Learned new facts: ~v\n" triples)
 ;;                                     (transition new-facts
 ;;                                                 (when (or (set-member? triples `(parent ,A ,B))
@@ -127,7 +123,7 @@
 ;;                                                           `(ancestor ,A ,B))
 ;;                                                   (assert `(ancestor ,A ,B))))]
 ;;                                    [_ #f]))
-;;                                (trie-empty)
+;;                                trie-empty
 ;;                                (patch-seq
 ;;                                 (sub `(parent ,A ,B))
 ;;                                 (sub `(parent ,A ,?))

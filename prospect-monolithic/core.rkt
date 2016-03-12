@@ -14,7 +14,7 @@
 
          (all-from-out "scn.rkt")
 
-         ;; imported from route.rkt:
+         ;; imported from trie.rkt:
 	 ?
 	 wildcard?
 	 ?!
@@ -25,7 +25,7 @@
 	 trie-empty?
          trie-empty
 	 projection->pattern
-         compile-projection
+         projection-arity
          trie-project
          trie-project/set
          trie-project/set/single
@@ -67,7 +67,7 @@
 (require racket/match)
 (require (only-in racket/list flatten))
 (require "../prospect/functional-queue.rkt")
-(require "../prospect/route.rkt")
+(require "../prospect/trie.rkt")
 (require "scn.rkt")
 (require "../prospect/trace.rkt")
 (require "mux.rkt")
@@ -133,13 +133,13 @@
 
 (define (observe-at-meta pattern level)
   (if (zero? level)
-      (pattern->trie #t (observe pattern))
+      (pattern->trie '<observe-at-meta> (observe pattern))
       (trie-union
-       (pattern->trie #t (observe (prepend-at-meta pattern level)))
-       (pattern->trie #t (at-meta (embedded-trie (observe-at-meta pattern (- level 1))))))))
+       (pattern->trie '<observe-at-meta> (observe (prepend-at-meta pattern level)))
+       (pattern->trie '<observe-at-meta> (at-meta (embedded-trie (observe-at-meta pattern (- level 1))))))))
 
 (define (assertion pattern #:meta-level [level 0])
-  (pattern->trie #t (prepend-at-meta pattern level)))
+  (pattern->trie '<assertion> (prepend-at-meta pattern level)))
 
 (define (subscription pattern #:meta-level [level 0])
   (observe-at-meta pattern level))
@@ -152,10 +152,10 @@
 
 (define (assertion-set-union* tries)
   (match tries
-    ['() (trie-empty)]
+    ['() trie-empty]
     [(cons t1 rest)
      (for/fold [(t1 t1)] [(t2 (in-list rest))]
-       (trie-union t1 t2 #:combiner (lambda (a b) #t)))]))
+       (trie-union t1 t2 #:combiner (lambda (a b) (trie-success '<assertion-set-union*>))))]))
 
 (define (scn/union . tries)
   (scn (assertion-set-union* tries)))
@@ -398,7 +398,7 @@
         (define-values (initial-scn remaining-initial-actions)
           (match initial-actions
             [(cons (? scn? s) rest) (values s rest)]
-            [other (values (scn (trie-empty)) other)]))
+            [other (values (scn trie-empty) other)]))
         (define-values (new-mux new-pid s aggregate-assertions)
           (mux-add-stream (network-mux w) initial-scn))
         (let* ((w (struct-copy network w

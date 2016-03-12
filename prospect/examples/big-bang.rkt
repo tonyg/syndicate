@@ -56,9 +56,7 @@
                            (match e
                              [(? patch? p)
                               (define-values (in out)
-                                (patch-project/set/single p
-                                                          (compile-projection
-                                                           (at-meta (?! (active-window ?))))))
+                                (patch-project/set/single p (at-meta (?! (active-window ?)))))
                               (transition s (update-window 'active-window-label 300 0
                                                            (text (format "~v" in) 22 "black")))]
                              [_ #f]))

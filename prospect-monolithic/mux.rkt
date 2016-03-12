@@ -16,7 +16,7 @@
 
 (require racket/set)
 (require racket/match)
-(require "../prospect/route.rkt")
+(require "../prospect/trie.rkt")
 (require "scn.rkt")
 (require "../prospect/trace.rkt")
 (require "../prospect/tset.rkt")
@@ -39,7 +39,7 @@
 (define (meta-label? x) (eq? x 'meta))
 
 (define (make-mux)
-  (mux 0 (trie-empty) (hash)))
+  (mux 0 trie-empty (hash)))
 
 (define (mux-add-stream m initial-scn)
   (define new-pid (mux-next-pid m))
@@ -48,7 +48,7 @@
                      initial-scn))
 
 (define (mux-remove-stream m label)
-  (mux-update-stream m label (scn (trie-empty))))
+  (mux-update-stream m label (scn trie-empty)))
 
 (define (mux-update-stream m label new-scn)
   (define old-interests (mux-interests-of m label))
@@ -66,7 +66,7 @@
           new-scn ;; unnecessary?
           aggregate-assertions))
 
-(define at-meta-everything (pattern->trie #t (at-meta ?)))
+(define at-meta-everything (pattern->trie '<at-meta-everything> (at-meta ?)))
 (define only-meta (datum-tset 'meta))
 
 (define (echo-cancelled-routing-table m)
@@ -74,8 +74,8 @@
                  at-meta-everything
                  #:combiner (lambda (v1 v2)
                               (if (tset-member? v1 'meta)
-                                  only-meta
-                                  #f))))
+                                  (trie-success only-meta)
+                                  trie-empty))))
 
 (define (compute-scns old-m new-m label s aggregate-assertions)
   (define old-routing-table (mux-routing-table old-m))
@@ -94,11 +94,9 @@
 
 (define (compute-affected-pids routing-table cover)
   (trie-match-trie cover
-		   (trie-step routing-table struct:observe)
+		   (trie-step routing-table observe-parenthesis)
 		   #:seed datum-tset-empty
-		   #:combiner (lambda (v1 v2 acc) (tset-union v2 acc))
-		   #:left-short (lambda (v r acc)
-				  (tset-union acc (success-value (trie-step r EOS))))))
+		   #:combiner (lambda (v1 v2 acc) (tset-union v2 acc))))
 
 (define (mux-route-message m body)
   (if (trie-lookup (mux-routing-table m) body #f) ;; some other stream has declared body
@@ -106,7 +104,7 @@
       (tset->list (trie-lookup (mux-routing-table m) (observe body) datum-tset-empty))))
 
 (define (mux-interests-of m label)
-  (hash-ref (mux-interest-table m) label (trie-empty)))
+  (hash-ref (mux-interest-table m) label trie-empty))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

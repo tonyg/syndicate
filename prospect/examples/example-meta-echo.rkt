@@ -1,7 +1,7 @@
 #lang prospect
 ;; Test case for a historical bug in Syndicate.
 ;;
-;; When the bug existed, this program receiveed four SCN events in
+;; When the bug existed, this program received four SCN events in
 ;; total, whereas it should receive only two.
 ;;
 ;; While metamessages were "echo cancelled", and receivers only ever

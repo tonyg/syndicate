@@ -135,35 +135,36 @@
   you are interested in, compile a pattern for those assertions, and pass that
   along with the trie to `trie-project/set`.
   - `trie-project/set` takes a trie and a pattern and returns a set of lists
-  - Say you are in interested in assertions of the shape `('posn x y)`.
-    * compile the pattern using ```(compile-projection `(posn ,(?!) ,(?!)))```
+  - Say you are in interested in assertions of the shape `(posn x y)` for all `x` and `y`
+    within some assertion-set `asserions`.
+    * call `(trie-project/set #:take 2 assertions (posn (?!) (?!)))`
     * the `(?!)` is for **capturing** the matched value. Use `?` if you want to
       match but don't care about the actual value.
     * the lists returned by `trie-project/set` contain the captured values in
       order.
-  - Say we are receiving a patch p where the assertion `('posn 2 3)` was added.
+    * the argument to `#:take` must match the number of captures in
+      the pattern. Use `projection-arity` if you don't statically know
+      this number.
+  - Say we are receiving a patch p where the assertion `(posn 2 3)` was added.
   - The result of
 
     ```racket
-    (trie-project/set (patch-added p)
-                      (compile-projection `(posn ,(?!) ,(?!))))
+    (trie-project/set #:take 2 (patch-added p) (posn (?!) (?!)))
     ```
     would be `(set (list 2 3))`.
   - If we only cared about the y position, we could instead do
 
     ```racket
-    (trie-project/set (patch-added p)
-                      (compile-projection `(posn ,? ,(?!))))
+    (trie-project/set #:take 1 (patch-added p) (posn ? (?!)))
     ```
     and get the result `(set (list 3))`.
   - an entire structure can be captured by passing a pattern as an argument to
     `(?!)`.
 
     ```racket
-    (trie-project/set (patch-added p)
-                      (compile-projection (?! `(posn ,? ,?))))
+    (trie-project/set #:take 1 (patch-added p) (?! (posn ? ?)))
     ```
-    with the same example yields `(set (list ('posn 2 3))`.
+    with the same example yields `(set (posn 2 3))`.
   - `trie-project/set/single` is like mapping `car` over the result of
   `trie-project/set`. See also `project-assertions`.
   - `patch-project/set` uses `values` to return the result of matching a projection

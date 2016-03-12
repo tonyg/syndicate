@@ -26,7 +26,7 @@
 (require (only-in racket/list flatten))
 
 (require "main.rkt")
-(require "route.rkt")
+(require "trie.rkt")
 
 ;;---------------------------------------------------------------------------
 
@@ -50,7 +50,7 @@
 
 (struct bb (network windows inbound outbound halted? x y) #:transparent)
 
-(define window-projection (compile-projection (?! (window ? ? ? ? ?))))
+(define window-projection (?! (window ? ? ? ? ?)))
 
 (define (inject b es)
   (interpret-actions (struct-copy bb b [inbound (append (bb-inbound b)
@@ -67,9 +67,11 @@
                                                     (set-subtract (list->set (bb-windows b))
                                                                   removed)))
                               (lambda (w1 w2) (< (window-z w1) (window-z w2))))]
-               [halted? (or (and (bb-halted? b)
-                                 (not (trie-lookup (patch-removed p) 'stop #f)))
-                            (trie-lookup (patch-added p) 'stop #f))]))
+               [halted? (if (or (and (bb-halted? b)
+                                     (not (trie-lookup (patch-removed p) 'stop #f)))
+                                (trie-lookup (patch-added p) 'stop #f))
+                            #t
+                            #f)]))
 
 (define (deliver b e)
   (clean-transition (network-handle-event e (bb-network b))))

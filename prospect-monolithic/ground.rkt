@@ -52,7 +52,7 @@
 ;; Projection
 ;; Used to extract event descriptors and results from subscriptions
 ;; from the ground VM's contained Network.
-(define event-projection (compile-projection (observe (external-event (?!) ?))))
+(define event-projection (observe (external-event (?!) ?)))
 
 ;; Interests -> (Listof RacketEvent)
 ;; Projects out the active event subscriptions from the given interests.
@@ -78,7 +78,7 @@
 (define (run-ground . boot-actions)
   (let await-interrupt ((inert? #f)
                         (w (make-network boot-actions))
-                        (interests (trie-empty)))
+                        (interests trie-empty))
     ;; (log-info "GROUND INTERESTS:\n~a" (trie->pretty-string interests))
     (if (and inert? (trie-empty? interests))
 	(begin (log-info "run-ground: Terminating because inert")

@@ -48,10 +48,9 @@
              [(message (says who what))
               (say who "says: ~a" what)]
              [(? patch? p)
-              (if (patch/removed? (patch-project p (compile-projection (tcp-remote-open id))))
+              (if (patch/removed? (patch-project p (tcp-remote-open id)))
                   (quit)
-                  (let-values (((arrived departed)
-                                (patch-project/set/single p (compile-projection (present (?!))))))
+                  (let-values (((arrived departed) (patch-project/set/single p (present (?!)))))
                     (list (for/list [(who arrived)] (say who "arrived."))
                           (for/list [(who departed)] (say who "departed.")))))]
              [#f #f]))

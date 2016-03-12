@@ -56,7 +56,7 @@
 
 (require (except-in "core.rkt" assert network)
          (rename-in "core.rkt" [assert core:assert] [network core:network]))
-(require "route.rkt")
+(require "trie.rkt")
 (require "mux.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -152,7 +152,7 @@
 (struct link-result (caller-id callee-id values) #:transparent) ;; message
 
 ;; Projection for observing LinkActive.
-(define link-active-projection (compile-projection (link-active ? (?!))))
+(define link-active-projection (link-active ? (?!)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Producing Instruction side-effects
@@ -494,13 +494,13 @@
                            #,(if maybe-Pred-stx
                                  #`(if #,maybe-Pred-stx
                                        (compute-new-assertions)
-                                       (trie-empty))
+                                       trie-empty)
                                  #`(compute-new-assertions)))
                          (and (not (eq? old-assertions new-assertions))
                               ((extend-pending-patch
                                 #,endpoint-index
-                                (patch-seq (patch (trie-empty) old-assertions)
-                                           (patch new-assertions (trie-empty))))
+                                (patch-seq (patch trie-empty old-assertions)
+                                           (patch new-assertions trie-empty)))
                                s))))))
 
     (define (analyze-asserted-or-retracted! endpoint-index asserted? outer-expr-stx P-stx I-stxs L-stx)
@@ -509,13 +509,15 @@
       (add-assertion-maintainer! endpoint-index #'sub pat #f L-stx)
       (add-event-handler!
        (lambda (evt-stx)
-         #`(let ((proj (compile-projection (prepend-at-meta #,proj-stx #,L-stx))))
+         #`(let* ((proj (prepend-at-meta #,proj-stx #,L-stx))
+                  (proj-arity (projection-arity proj)))
              (lambda (s)
                (match #,evt-stx
                  [(? #,(if asserted? #'patch/added? #'patch/removed?) p)
                   (sequence-transitions0*
                    s
                    (for/list [(entry (in-set (trie-project/set
+                                              #:take proj-arity
                                               #,(if asserted?
                                                     #'(patch-added p)
                                                     #'(patch-removed p))
