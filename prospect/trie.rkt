@@ -4,13 +4,16 @@
 
 ;; TODO: examples showing the idea.
 
-(provide (rename-out [success trie-success])
+(provide (rename-out [success trie-success]
+                     [success? trie-success?]
+                     [success-value trie-success-value])
 
          (rename-out [open-parenthesis <open-parenthesis>]
                      [canonical-open-parenthesis open-parenthesis])
          (except-out (struct-out open-parenthesis) open-parenthesis)
 
          ?
+         wildcard?
          (struct-out embedded-trie)
          (struct-out capture)
          ?!
