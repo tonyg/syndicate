@@ -122,6 +122,23 @@
   #:methods gen:custom-write
   [(define (write-proc v port mode) (pretty-print-trie v port #:with-parens #t))])
 (struct branch (opens wild sigmas) #:transparent
+  #:methods gen:equal+hash
+  [(define (equal-proc a b =?)
+     (match-define (branch os1 w1 h1) a)
+     (match-define (branch os2 w2 h2) b)
+     (and (eq? os1 os2)
+          (eq? w1 w2)
+          (eq? h1 h2)))
+   (define (hash-proc a h)
+     (match-define (branch os w h) a)
+     (+ (eq-hash-code a)
+        (eq-hash-code w)
+        (eq-hash-code h)))
+   (define (hash2-proc a h)
+     (match-define (branch os w h) a)
+     (bitwise-xor (eq-hash-code a)
+                  (eq-hash-code w)
+                  (eq-hash-code h)))]
   #:methods gen:custom-write
   [(define (write-proc v port mode) (pretty-print-trie v port #:with-parens #t))])
 
