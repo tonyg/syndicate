@@ -18,6 +18,7 @@
          label-patch
          limit-patch
          limit-patch/routing-table
+         only-meta-tset
          compute-aggregate-patch
          apply-patch
          update-interests
@@ -129,6 +130,8 @@
          (trie-intersect out bound
 			 #:combiner (lambda (v1 v2) (empty-tset-guard (tset-intersect v1 v2))))))
 
+(define only-meta-tset (datum-tset 'meta))
+
 ;; Entries labelled with `label` may already exist in `base`; the
 ;; patch `p` MUST already have been limited to add only where no
 ;; `label`-labelled portions of `base` exist, and to remove only where
@@ -167,7 +170,7 @@
     ;; ...except when `remove-meta?` is true. In that case, we need to
     ;; keep the point in the case that the only interest present is
     ;; `'meta`-labeled interest.
-    (if (and remove-meta? (equal? v2 (datum-tset 'meta)))
+    (if (and remove-meta? (eq? v2 only-meta-tset)) ;; N.B. relies on canonicity of v2 !
         v1
         #f))
   (define (rem-combiner v1 v2)

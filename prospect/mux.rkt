@@ -68,14 +68,13 @@
           delta-aggregate))
 
 (define at-meta-everything (pattern->trie #t (at-meta ?)))
-(define only-meta (datum-tset 'meta))
 
 (define (echo-cancelled-trie t)
   (trie-subtract t
                  at-meta-everything
                  #:combiner (lambda (v1 v2)
                               (if (tset-member? v1 'meta)
-                                  only-meta
+                                  only-meta-tset
                                   #f))))
 
 (define (compute-patches old-m new-m label delta delta-aggregate)
