@@ -8,16 +8,23 @@
 (define sentinel (cons #f #f))
 
 (define (canonicalize val)
-  (define b (hash-ref canonical-values
-		      val
-		      (lambda ()
-			(define new-b (make-weak-box val))
-			(hash-set! canonical-values val new-b)
-			#f)))
-  (if (not b)
-      (canonicalize val)
-      (let ((v (weak-box-value b sentinel)))
-	(if (eq? v sentinel) (canonicalize val) v))))
+  (cond
+    [(or (struct-type? val)
+         (symbol? val)
+         (fixnum? val))
+     ;; These values already have unique representations.
+     val]
+    [else
+     (define b (hash-ref canonical-values
+                         val
+                         (lambda ()
+                           (define new-b (make-weak-box val))
+                           (hash-set! canonical-values val new-b)
+                           #f)))
+     (if (not b)
+         (canonicalize val)
+         (let ((v (weak-box-value b sentinel)))
+           (if (eq? v sentinel) (canonicalize val) v)))]))
 
 (module+ test
   (require rackunit)
