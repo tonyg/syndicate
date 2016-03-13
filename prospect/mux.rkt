@@ -112,7 +112,7 @@
   (define cover (trie-union (patch-added delta) (patch-removed delta)))
   (trie-match-trie cover
 		   (trie-step routing-table struct:observe)
-		   #:seed (datum-tset)
+		   #:seed datum-tset-empty
 		   #:combiner (lambda (v1 v2 acc) (tset-union v2 acc))
 		   #:left-short (lambda (v r acc)
 				  (tset-union acc (success-value (trie-step r EOS))))))
@@ -120,7 +120,7 @@
 (define (mux-route-message m body)
   (if (trie-lookup (mux-routing-table m) body #f) ;; some other stream has declared body
       '()
-      (tset->list (trie-lookup (mux-routing-table m) (observe body) (datum-tset)))))
+      (tset->list (trie-lookup (mux-routing-table m) (observe body) datum-tset-empty))))
 
 (define (mux-interests-of m label)
   (hash-ref (mux-interest-table m) label (trie-empty)))

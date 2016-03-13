@@ -4,6 +4,7 @@
 
 (provide tset?
          datum-tset
+         datum-tset-empty
          make-tset
          tset-count
          tset-empty
@@ -71,6 +72,8 @@
 
 (define (tset-member? t k)
   (treap-has-key? t k))
+
+(define datum-tset-empty (datum-tset))
 
 (module+ test
   (require rackunit)
