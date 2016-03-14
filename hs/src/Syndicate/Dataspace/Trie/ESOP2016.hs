@@ -17,6 +17,14 @@ module Syndicate.Dataspace.Trie.ESOP2016 where
 -- Also, there are problems with the algorithm as described; it is
 -- roughly correct, but does not collapse away as much redundancy as
 -- it could. These problems are remedied in ESOP2016v2.hs.
+--
+-- Here is an example of a pair of inputs that could be given to
+-- combine() as written in the paper that would cause nontermination:
+--    combine (Tl (Ok (Set.singleton 1))) (Br Map.empty) f_union
+-- To see the nontermination, comment out the lines
+--    g r1 r2 | null r1 = dedup $ leftEmpty r2
+--    g r1 r2 | null r2 = dedup $ rightEmpty r1
+-- from combine below.
 
 import Prelude hiding (null, seq)
 import qualified Data.Map.Strict as Map
