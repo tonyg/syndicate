@@ -291,16 +291,15 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Various projections
 
-(define window-projection1 (compile-projection (at-meta (?! (window ? ?)))))
-(define window-projection3 (compile-projection (at-meta (at-meta (at-meta (?! (window ? ?)))))))
-(define scroll-offset-projection (compile-projection (scroll-offset (?!))))
-(define key-pressed-projection (compile-projection (at-meta (at-meta (key-pressed (?!))))))
-(define position-projection (compile-projection (?! (position ? ? ?))))
-(define impulse-projection (compile-projection (?! (impulse ? ?))))
-(define game-piece-configuration-projection
-  (compile-projection (?! (game-piece-configuration ? ? ? ?))))
-(define touching-projection (compile-projection (?! (touching ? ? ?))))
-(define level-size-projection (compile-projection (level-size (?!))))
+(define window-projection1 (at-meta (?! (window ? ?))))
+(define window-projection3 (at-meta (at-meta (at-meta (?! (window ? ?))))))
+(define scroll-offset-projection (scroll-offset (?!)))
+(define key-pressed-projection (at-meta (at-meta (key-pressed (?!)))))
+(define position-projection (?! (position ? ? ?)))
+(define impulse-projection (?! (impulse ? ?)))
+(define game-piece-configuration-projection (?! (game-piece-configuration ? ? ? ?)))
+(define touching-projection (?! (touching ? ? ?)))
+(define level-size-projection (level-size (?!)))
 
 (define (update-set-from-patch orig p projection)
   (define-values (added removed) (patch-project/set/single p projection))
