@@ -23,7 +23,7 @@
 (require (prefix-in pict: pict))
 
 (require prospect)
-(require prospect/route)
+(require prospect/trie)
 (require prospect/ground)
 
 (require "texture.rkt")
@@ -180,8 +180,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define scene-projection (compile-projection (?! (scene ? ?))))
-(define sprite-projection (compile-projection (?! (sprite ? ?))))
+(define scene-projection (?! (scene ? ?)))
+(define sprite-projection (?! (sprite ? ?)))
 
 (define sprite-order
   (order 'sprite-order

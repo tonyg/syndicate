@@ -4,8 +4,8 @@
 (require 2htdp/image)
 (require "../2d.rkt")
 
-(define window-projection (compile-projection (at-meta (?! (window ? ?)))))
-(define key-pressed-projection (compile-projection (key-pressed (?!))))
+(define window-projection (at-meta (?! (window ? ?))))
+(define key-pressed-projection (key-pressed (?!)))
 
 (define (spawn-background)
   (spawn (lambda (e s)
