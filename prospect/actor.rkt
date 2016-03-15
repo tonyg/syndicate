@@ -423,7 +423,7 @@
     (pattern (~seq) #:attr Pred #'#t))
 
   (define-splicing-syntax-class meta-level
-    (pattern (~seq #:meta-level level))
+    (pattern (~seq #:meta-level level:integer))
     (pattern (~seq) #:attr level #'0))
 
   (define (expand-state linkage-kind init-actions binding-names binding-inits ongoings edges)
@@ -530,13 +530,9 @@
                  [_ #f]))))))
 
     (define (prepend-at-meta-stx context-stx stx level)
-      (cond
-        [(not (number? level))
-         (raise-syntax-error #f "#:meta-level must be a literal constant number" context-stx)]
-        [(zero? level)
-         stx]
-        [else
-         #`(at-meta #,(prepend-at-meta-stx context-stx stx (- level 1)))]))
+      (if (zero? level)
+          stx
+          #`(at-meta #,(prepend-at-meta-stx context-stx stx (- level 1)))))
 
     (define (analyze-message-subscription! endpoint-index outer-expr-stx P-stx I-stxs L-stx)
       (define-values (proj pat match-pat bindings _instantiated)
