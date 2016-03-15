@@ -264,10 +264,12 @@
 ;; Trie -> Trie
 ;; Given a non-empty trie, returns it; otherwise, returns a branch
 ;; that is equivalent to the empty trie. Inverse of `collapse`.
-(define (expand r)
-  (if (trie-empty? r)
-      (canonicalize (branch empty-omap trie-empty empty-smap))
-      r))
+(define expand
+  (let ((canonical-expanded-empty (canonicalize (branch empty-omap trie-empty empty-smap))))
+    (lambda (r)
+      (if (trie-empty? r)
+          canonical-expanded-empty
+          r))))
 
 ;; Sigma Trie -> Trie
 ;; Prepends e to r, if r is non-empty.
