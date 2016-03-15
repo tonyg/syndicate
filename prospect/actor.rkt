@@ -529,10 +529,14 @@
                           #,(make-run-script-call outer-expr-stx #'s I-stxs)]))))]
                  [_ #f]))))))
 
-    (define (prepend-at-meta-stx stx level)
-      (if (zero? level)
-          stx
-          #`(at-meta #,(prepend-at-meta-stx stx (- level 1)))))
+    (define (prepend-at-meta-stx context-stx stx level)
+      (cond
+        [(not (number? level))
+         (raise-syntax-error #f "#:meta-level must be a literal constant number" context-stx)]
+        [(zero? level)
+         stx]
+        [else
+         #`(at-meta #,(prepend-at-meta-stx context-stx stx (- level 1)))]))
 
     (define (analyze-message-subscription! endpoint-index outer-expr-stx P-stx I-stxs L-stx)
       (define-values (proj pat match-pat bindings _instantiated)
@@ -544,7 +548,7 @@
              (match (actor-state-variables s)
                [(vector #,@binding-names)
                 (match #,evt-stx
-                  [(message #,(prepend-at-meta-stx match-pat (syntax-e L-stx)))
+                  [(message #,(prepend-at-meta-stx outer-expr-stx match-pat (syntax-e L-stx)))
                    #,(make-run-script-call outer-expr-stx #'s I-stxs)]
                   [_ #f])])))))
 
