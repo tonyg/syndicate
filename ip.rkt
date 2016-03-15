@@ -53,7 +53,7 @@
 
 (define broadcast-ip-address (bytes 255 255 255 255))
 
-(define local-ip-address-projector (compile-projection (host-route (?!) ? ?)))
+(define local-ip-address-projector (host-route (?!) ? ?))
 (define (gestalt->local-ip-addresses g) (trie-project/set/single g local-ip-address-projector))
 (define observe-local-ip-addresses-gestalt (subscription (host-route ? ? ?)))
 
@@ -127,9 +127,9 @@
 (define (spawn-gateway-route network netmask gateway-addr interface-name)
   (define the-route (gateway-route network netmask gateway-addr interface-name))
 
-  (define host-route-projector (compile-projection (host-route (?!) (?!) ?)))
-  (define gateway-route-projector (compile-projection (gateway-route (?!) (?!) ? ?)))
-  (define net-route-projector (compile-projection (net-route (?!) (?!) ?)))
+  (define host-route-projector (host-route (?!) (?!) ?))
+  (define gateway-route-projector (gateway-route (?!) (?!) ? ?))
+  (define net-route-projector (net-route (?!) (?!) ?))
   (define gateway-arp-projector (arp-query IPv4-ethertype
                                            gateway-addr
                                            (?! (ethernet-interface interface-name ?))
@@ -144,11 +144,11 @@
   (spawn (lambda (e s)
 	   (match e
 	     [(scn g)
-	      (define host-ips+netmasks (trie-project/set g host-route-projector))
-	      (define gw-nets+netmasks (trie-project/set g gateway-route-projector))
-	      (define net-nets+netmasks (trie-project/set g net-route-projector))
+	      (define host-ips+netmasks (trie-project/set #:take 2 g host-route-projector))
+	      (define gw-nets+netmasks (trie-project/set #:take 2 g gateway-route-projector))
+	      (define net-nets+netmasks (trie-project/set #:take 2 g net-route-projector))
 	      (define gw-ip+hwaddr
-                (let ((vs (trie-project/set g (compile-projection gateway-arp-projector))))
+                (let ((vs (trie-project/set #:take 2 g gateway-arp-projector)))
                   (and vs (not (set-empty? vs)) (set-first vs))))
 	      (when (and gw-ip+hwaddr (not (gateway-route-state-gateway-hwaddr s)))
 		(log-info "Discovered gateway ~a at ~a on interface ~a."
@@ -214,7 +214,7 @@
 		    s
 		    (lookup-arp destination
 				(ethernet-interface interface-name ?)
-                                (trie-empty)
+                                trie-empty
 				(lambda (interface destination-hwaddr)
 				  (message (ethernet-packet interface
                                                             #f

@@ -128,10 +128,8 @@
           (lambda (e state)
 	    (match e
 	      [(scn g)
-	       (define local-peer-absent?
-                 (trie-empty? (trie-project g (compile-projection local-peer-traffic))))
-	       (define remote-peer-absent?
-                 (trie-empty? (trie-project g (compile-projection remote-peer-traffic))))
+	       (define local-peer-absent? (trie-empty? (trie-project g local-peer-traffic)))
+	       (define remote-peer-absent? (trie-empty? (trie-project g remote-peer-traffic)))
 	       (define new-state (+ (if local-peer-absent? 0 1) (if remote-peer-absent? 0 1)))
                (if (< new-state state)
                    (quit)
@@ -234,12 +232,11 @@
 	   (else #f))))
       (else #f)))
 
-  (define statevec-projection
-    (compile-projection (observe (tcp-packet ? (?!) (?!) (?!) (?!) ? ? ? ? ? ?))))
+  (define statevec-projection (observe (tcp-packet ? (?!) (?!) (?!) (?!) ? ? ? ? ? ?)))
 
   (define (analyze-gestalt g s)
     (define local-ips (gestalt->local-ip-addresses g))
-    (define statevecs (trie-project/set g statevec-projection))
+    (define statevecs (trie-project/set #:take 4 g statevec-projection))
     (log-info "gestalt yielded statevecs ~v and local-ips ~v" statevecs local-ips)
     (transition (struct-copy codec-state s
 		  [local-ips local-ips]
@@ -396,7 +393,7 @@
        (if (and (conn-state-syn-acked? s)
 		(not (buffer-finished? (conn-state-inbound s))))
 	   (advertisement (tcp-channel src dst ?))
-	   (trie-empty))))
+	   trie-empty)))
     (assertion-set-union (subscription (timer-expired (timer-name ?) ?))
                          worldward-facing-gestalt
                          appward-facing-gestalt))
@@ -576,10 +573,8 @@
     (match e
       [(scn g)
        (log-info "State vector routing-update:\n~a" (trie->pretty-string g))
-       (define local-peer-present?
-         (trie-non-empty? (trie-project g (compile-projection local-peer-detector))))
-       (define listening?
-         (trie-non-empty? (trie-project g (compile-projection listener-detector))))
+       (define local-peer-present? (trie-non-empty? (trie-project g local-peer-detector)))
+       (define listening? (trie-non-empty? (trie-project g listener-detector)))
        (define new-s (struct-copy conn-state s [listener-listening? listening?]))
        (cond
 	[(and local-peer-present? (not (conn-state-local-peer-seen? s)))

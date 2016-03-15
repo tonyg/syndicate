@@ -26,8 +26,8 @@
 
   (define (spawn-session them us)
     (define user (gensym 'user))
-    (define remote-detector (compile-projection (at-meta (?!))))
-    (define peer-detector (compile-projection (advertise `(,(?!) says ,?))))
+    (define remote-detector (at-meta (?!)))
+    (define peer-detector (advertise `(,(?!) says ,?)))
     (define (send-to-remote fmt . vs)
       (message (at-meta (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs))))))
     (define (say who fmt . vs)

@@ -70,7 +70,7 @@
                (assertion (arp-interface-up interface-name))
                (subscription (arp-assertion ? ? interface-name))
                (subscription (observe (arp-query ? ? interface ?)))
-               (for/fold [(g (trie-empty))] [((k v) (in-hash cache))]
+               (for/fold [(g trie-empty)] [((k v) (in-hash cache))]
                  (assertion-set-union g (assertion (arp-query (cache-key-protocol k)
                                                               (cache-key-address k)
                                                               (cache-value-interface v)
@@ -157,15 +157,15 @@
 		      (compute-gestalt cache)))))
       (else #f)))
 
-  (define queries-projection (compile-projection (observe (arp-query (?!) (?!) ? ?))))
+  (define queries-projection (observe (arp-query (?!) (?!) ? ?)))
   (define (gestalt->queries g)
-    (for/set [(e (in-set (trie-project/set g queries-projection)))]
+    (for/set [(e (in-set (trie-project/set #:take 2 g queries-projection)))]
       (match-define (list ptype pa) e)
       (cache-key ptype pa)))
 
-  (define assertions-projection (compile-projection (arp-assertion (?!) (?!) ?)))
+  (define assertions-projection (arp-assertion (?!) (?!) ?))
   (define (gestalt->assertions g)
-    (for/set [(e (in-set (trie-project/set g assertions-projection)))]
+    (for/set [(e (in-set (trie-project/set #:take 2 g assertions-projection)))]
       (match-define (list ptype pa) e)
       (cache-key ptype pa)))
 

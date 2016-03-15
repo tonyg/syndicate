@@ -95,7 +95,7 @@
 	   (match e
 	     [(scn g)
 	      (define new-local-ips (gestalt->local-ip-addresses g))
-              (if (trie-empty? (trie-project g (compile-projection local-peer-detector)))
+              (if (trie-empty? (trie-project g local-peer-detector))
                   (quit)
                   (transition new-local-ips (scn (compute-gestalt new-local-ips))))]
 	     [(message (udp-packet (== local-user-addr) remote-addr bs))
