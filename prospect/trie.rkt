@@ -131,12 +131,12 @@
           (eq? h1 h2)))
    (define (hash-proc a h)
      (match-define (branch os w h) a)
-     (+ (eq-hash-code a)
+     (+ (eq-hash-code os)
         (eq-hash-code w)
         (eq-hash-code h)))
    (define (hash2-proc a h)
      (match-define (branch os w h) a)
-     (bitwise-xor (eq-hash-code a)
+     (bitwise-xor (eq-hash-code os)
                   (eq-hash-code w)
                   (eq-hash-code h)))]
   #:methods gen:custom-write
