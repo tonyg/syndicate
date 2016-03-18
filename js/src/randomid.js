@@ -8,13 +8,19 @@ if ((typeof window !== 'undefined') &&
     window.crypto.getRandomValues(buf);
     return btoa(String.fromCharCode.apply(null, buf)).replace(/=/g,'');
   };
-} else if ((typeof crypto !== 'undefined') &&
-	   (typeof crypto.randomBytes !== 'undefined')) {
-  randomId = function (byteCount) {
-    return crypto.randomBytes(byteCount).base64Slice().replace(/=/g,'');
-  };
 } else {
-  console.warn('No suitable implementation for RandomID.randomId available.');
+  var crypto;
+  try {
+    crypto = require('crypto');
+  } catch (e) {}
+  if ((typeof crypto !== 'undefined') &&
+      (typeof crypto.randomBytes !== 'undefined')) {
+    randomId = function (byteCount) {
+      return crypto.randomBytes(byteCount).base64Slice().replace(/=/g,'');
+    };
+  } else {
+    console.warn('No suitable implementation for RandomID.randomId available.');
+  }
 }
 
 module.exports.randomId = randomId;
