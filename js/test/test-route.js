@@ -351,6 +351,55 @@ describe("embedding tries in patterns", function () {
   });
 });
 
+describe("calls to matchPattern", function () {
+  it("should yield appropriately-named/-numbered fields", function () {
+    expect(r.matchPattern([1, 2, 3], [r.__, 2, r._$])).to.eql({'$0': 3, 'length': 1});
+    expect(r.matchPattern([1, 2, 3], [r.__, 2, r._$("three")])).to.eql({'three': 3, 'length': 1});
+    expect(r.matchPattern([1, 2, 3], [r._$, 2, r._$("three")]))
+      .to.eql({'$0': 1, 'three': 3, 'length': 2});
+    expect(r.matchPattern([1, 2, 3], [r._$("one"), 2, r._$]))
+      .to.eql({'one': 1, '$1': 3, 'length': 2});
+    expect(r.matchPattern([1, 2, 3], [r._$("one"), 2, r._$("three")]))
+      .to.eql({'one': 1, 'three': 3, 'length': 2});
+  });
+
+  it("should fail on value mismatch", function () {
+    expect(r.matchPattern([1, 2, 3], [r.__, 999, r._$("three")])).to.be(null);
+  });
+
+  it("should fail on array length mismatch", function () {
+    expect(r.matchPattern([1, 2, 3], [r.__, 2, r._$("three"), 4])).to.be(null);
+  });
+
+  it("matches substructure", function () {
+    expect(r.matchPattern([1, [2, 999], 3], [r._$("one"), r._$(null, [2, r.__]), r._$("three")]))
+      .to.eql({ one: 1, '$1': [ 2, 999 ], three: 3, length: 3 });
+    expect(r.matchPattern([1, [2, 999], 3], [r._$("one"), r._$("two", [2, r.__]), r._$("three")]))
+      .to.eql({ one: 1, two: [ 2, 999 ], three: 3, length: 3 });
+    expect(r.matchPattern([1, [999, 2], 3], [r._$("one"), r._$(null, [2, r.__]), r._$("three")]))
+      .to.be(null);
+    expect(r.matchPattern([1, [999, 2], 3], [r._$("one"), r._$("two", [2, r.__]), r._$("three")]))
+      .to.be(null);
+  });
+
+  it("matches nested captures", function () {
+    expect(r.matchPattern([1, [2, 999], 3], [r._$("one"), r._$(null, [2, r._$]), r._$("three")]))
+      .to.eql({ one: 1, '$2': 999, '$1': [ 2, 999 ], three: 3, length: 4 });
+    expect(r.matchPattern([1, [2, 999], 3], [r._$("one"), r._$("two", [2, r._$]), r._$("three")]))
+      .to.eql({ one: 1, '$2': 999, two: [ 2, 999 ], three: 3, length: 4 });
+  });
+
+  it("matches structures", function () {
+    var ctor = r.makeStructureConstructor('foo', ['bar', 'zot']);
+    expect(r.matchPattern(ctor(123, 234), ctor(r._$("bar"), r._$("zot"))))
+      .to.eql({ bar: 123, zot: 234, length: 2 });
+    expect(r.matchPattern(["foo", 123, 234], ctor(r._$("bar"), r._$("zot"))))
+      .to.eql({ bar: 123, zot: 234, length: 2 });
+    expect(r.matchPattern(ctor(123, 234), ["foo", r._$("bar"), r._$("zot")]))
+      .to.eql({ bar: 123, zot: 234, length: 2 });
+  });
+});
+
 describe("Projection with no captures", function () {
   it("should yield the empty sequence when there's a match", function () {
     var emptySequence = [' >{["A"]}'];

@@ -16,6 +16,19 @@ function makeStructureConstructor(label, argumentNames) {
   };
 }
 
+function isStructure(s) {
+  return !!(s.$SyndicateMeta$);
+}
+
+function structureToArray(s) {
+  var result = [s.$SyndicateMeta$.label];
+  var args = s.$SyndicateMeta$.arguments;
+  for (var i = 0; i < args.length; i++) {
+    result.push(s[args[i]]);
+  }
+  return result;
+}
+
 function $Special(name) {
   this.name = name;
 }
@@ -140,6 +153,48 @@ function compilePattern(v, p) {
     } else {
       return rseq(p, acc);
     }
+  }
+}
+
+function matchPattern(v, p) {
+  var captureCount = 0;
+  var result = {};
+  try {
+    walk(v, p);
+  } catch (e) {
+    if (e.matchPatternFailed) return null;
+    throw e;
+  }
+  result.length = captureCount;
+  return result;
+
+  function walk(v, p) {
+    if (p === v) return;
+
+    if (p === __) return;
+
+    if (isStructure(p)) { p = structureToArray(p); }
+    if (isStructure(v)) { v = structureToArray(v); }
+
+    if (Array.isArray(p) && Array.isArray(v) && p.length === v.length) {
+      for (var i = 0; i < p.length; i++) {
+        walk(v[i], p[i]);
+      }
+      return;
+    }
+
+    if (isCapture(p)) {
+      var thisCapture = captureCount++;
+      walk(v, capturePattern(p));
+      result[captureName(p) || ('$' + thisCapture)] = v;
+      return;
+    }
+
+    if (p instanceof $Embedded) {
+      die("$Embedded patterns not supported in matchPattern()");
+    }
+
+    throw {matchPatternFailed: true};
   }
 }
 
@@ -1033,6 +1088,7 @@ module.exports.is_emptyTrie = is_emptyTrie;
 module.exports.emptyTrie = emptyTrie;
 module.exports.embeddedTrie = embeddedTrie;
 module.exports.compilePattern = compilePattern;
+module.exports.matchPattern = matchPattern;
 module.exports._union = union;
 module.exports.union = unionN;
 module.exports.intersect = intersect;
