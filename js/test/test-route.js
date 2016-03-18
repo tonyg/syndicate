@@ -351,45 +351,6 @@ describe("embedding tries in patterns", function () {
   });
 });
 
-describe("calls to matchPattern", function () {
-  it("should yield appropriately-named/-numbered fields", function () {
-    expect(r.matchPattern([1, 2, 3], [r.__, 2, r._$])).to.eql({'$0': 3, 'length': 1});
-    expect(r.matchPattern([1, 2, 3], [r.__, 2, r._$("three")])).to.eql({'three': 3, 'length': 1});
-    expect(r.matchPattern([1, 2, 3], [r._$, 2, r._$("three")]))
-      .to.eql({'$0': 1, 'three': 3, 'length': 2});
-    expect(r.matchPattern([1, 2, 3], [r._$("one"), 2, r._$]))
-      .to.eql({'one': 1, '$1': 3, 'length': 2});
-    expect(r.matchPattern([1, 2, 3], [r._$("one"), 2, r._$("three")]))
-      .to.eql({'one': 1, 'three': 3, 'length': 2});
-  });
-
-  it("should fail on value mismatch", function () {
-    expect(r.matchPattern([1, 2, 3], [r.__, 999, r._$("three")])).to.be(null);
-  });
-
-  it("should fail on array length mismatch", function () {
-    expect(r.matchPattern([1, 2, 3], [r.__, 2, r._$("three"), 4])).to.be(null);
-  });
-
-  it("matches substructure", function () {
-    expect(r.matchPattern([1, [2, 999], 3], [r._$("one"), r._$(null, [2, r.__]), r._$("three")]))
-      .to.eql({ one: 1, '$1': [ 2, 999 ], three: 3, length: 3 });
-    expect(r.matchPattern([1, [2, 999], 3], [r._$("one"), r._$("two", [2, r.__]), r._$("three")]))
-      .to.eql({ one: 1, two: [ 2, 999 ], three: 3, length: 3 });
-    expect(r.matchPattern([1, [999, 2], 3], [r._$("one"), r._$(null, [2, r.__]), r._$("three")]))
-      .to.be(null);
-    expect(r.matchPattern([1, [999, 2], 3], [r._$("one"), r._$("two", [2, r.__]), r._$("three")]))
-      .to.be(null);
-  });
-
-  it("matches nested captures", function () {
-    expect(r.matchPattern([1, [2, 999], 3], [r._$("one"), r._$(null, [2, r._$]), r._$("three")]))
-      .to.eql({ one: 1, '$2': 999, '$1': [ 2, 999 ], three: 3, length: 4 });
-    expect(r.matchPattern([1, [2, 999], 3], [r._$("one"), r._$("two", [2, r._$]), r._$("three")]))
-      .to.eql({ one: 1, '$2': 999, two: [ 2, 999 ], three: 3, length: 4 });
-  });
-});
-
 describe("Projection with no captures", function () {
   it("should yield the empty sequence when there's a match", function () {
     var emptySequence = [' >{["A"]}'];
@@ -487,5 +448,31 @@ describe('triePruneBranch', function () {
     checkPrettyTrie(r.triePruneBranch(B, Immutable.List([r.SOA, "y"])), [' < "x" > >{true}']);
     checkPrettyTrie(r.triePruneBranch(C, Immutable.List([r.SOA, "y"])), [' < "x" > >{true}',
 									 ' "z" >{true}']);
+  });
+});
+
+describe('makeStructureConstructor', function () {
+  it('should produce the right metadata', function () {
+    var ctor = r.makeStructureConstructor('foo', ['bar', 'zot']);
+    var inst = ctor(123, 234);
+    expect(inst.$SyndicateMeta$.label).to.equal('foo');
+    expect(inst.$SyndicateMeta$.arguments).to.eql(['bar', 'zot']);
+  });
+
+  it('should produce the right instance data', function () {
+    var ctor = r.makeStructureConstructor('foo', ['bar', 'zot']);
+    var inst = ctor(123, 234);
+    expect(inst.bar).to.equal(123);
+    expect(inst.zot).to.equal(234);
+  });
+
+  it('should work with compilePattern and matchValue', function () {
+    var sA = Immutable.Set(["A"]);
+    var ctor = r.makeStructureConstructor('foo', ['bar', 'zot']);
+    var inst = ctor(123, 234);
+    var x = r.compilePattern(sA, ctor(123, r.__));
+    checkPrettyTrie(x, [' < "foo" 123 ★ > >{["A"]}']);
+    expect(r.matchValue(x, ctor(123, 234))).to.eql(sA);
+    expect(r.matchValue(x, ctor(234, 123))).to.eql(null);
   });
 });

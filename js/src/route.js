@@ -2,6 +2,20 @@
 
 var Immutable = require("immutable");
 
+function makeStructureConstructor(label, argumentNames) {
+  var $SyndicateMeta$ = {
+    label: label,
+    arguments: argumentNames
+  };
+  return function() {
+    var result = {"$SyndicateMeta$": $SyndicateMeta$};
+    for (var i = 0; i < argumentNames.length; i++) {
+      result[argumentNames[i]] = arguments[i];
+    }
+    return result;
+  };
+}
+
 function $Special(name) {
   this.name = name;
 }
@@ -111,50 +125,21 @@ function compilePattern(v, p) {
       return rseq(SOA, acc);
     }
 
+    if (p.$SyndicateMeta$) {
+      var args = p.$SyndicateMeta$.arguments;
+      acc = rseq(EOA, acc);
+      for (var i = args.length - 1; i >= 0; i--) {
+        acc = walk(p[args[i]], acc);
+      }
+      acc = rseq(p.$SyndicateMeta$.label, acc);
+      return rseq(SOA, acc);
+    }
+
     if (p instanceof $Embedded) {
       return appendTrie(p.trie, function (v) { return acc; });
     } else {
       return rseq(p, acc);
     }
-  }
-}
-
-function matchPattern(v, p) {
-  var captureCount = 0;
-  var result = {};
-  try {
-    walk(v, p);
-  } catch (e) {
-    if (e.matchPatternFailed) return null;
-    throw e;
-  }
-  result.length = captureCount;
-  return result;
-
-  function walk(v, p) {
-    if (p === v) return;
-
-    if (p === __) return;
-
-    if (Array.isArray(p) && Array.isArray(v) && p.length === v.length) {
-      for (var i = 0; i < p.length; i++) {
-	walk(v[i], p[i]);
-      }
-      return;
-    }
-
-    if (isCapture(p)) {
-      var thisCapture = captureCount++;
-      walk(v, capturePattern(p));
-      result[captureName(p) || ('$' + thisCapture)] = v;
-      return;
-    }
-
-    if (p instanceof $Embedded) {
-      die("$Embedded patterns not supported in matchPattern()");
-    }
-
-    throw {matchPatternFailed: true};
   }
 }
 
@@ -498,6 +483,18 @@ function matchValue(r, v) {
       } else {
 	r = rlookup(r, __);
       }
+    } else if (v.$SyndicateMeta$) {
+      if (r.has(SOA)) {
+        r = rlookup(r, SOA);
+        stack.push(vs);
+        vs = Immutable.List.of(v.$SyndicateMeta$.label);
+        var args = v.$SyndicateMeta$.arguments;
+        for (var i = 0; i < args.length; i++) {
+          vs = vs.push(v[args[i]]);
+        }
+      } else {
+        r = rlookup(r, __);
+      }
     } else {
       if (r.has(v)) {
 	r = rlookup(r, v);
@@ -683,6 +680,17 @@ function compileProjection(/* projection, projection, ... */) {
       return;
     }
 
+    if (p.$SyndicateMeta$) {
+      acc.push(SOA);
+      acc.push(p.$SyndicateMeta$.label);
+      var args = p.$SyndicateMeta$.arguments;
+      for (var i = 0; i < args.length; i++) {
+        walk(p[args[i]]);
+      }
+      acc.push(EOA);
+      return;
+    }
+
     if (p instanceof $Embedded) {
       die("Cannot embed trie in projection");
     } else {
@@ -701,6 +709,15 @@ function projectionToPattern(p) {
       var result = [];
       for (var i = 0; i < p.length; i++) {
 	result.push(walk(p[i]));
+      }
+      return result;
+    }
+
+    if (p.$SyndicateMeta$) {
+      var result = {"$SyndicateMeta$": p.$SyndicateMeta$};
+      var args = p.$SyndicateMeta$.arguments;
+      for (var i = 0; i < args.length; i++) {
+        result[args[i]] = walk(p[args[i]]);
       }
       return result;
     }
@@ -1010,12 +1027,12 @@ module.exports.SOA = SOA;
 module.exports.EOA = EOA;
 module.exports.$Capture = $Capture;
 module.exports.$Special = $Special;
+module.exports.makeStructureConstructor = makeStructureConstructor;
 module.exports._$ = _$;
 module.exports.is_emptyTrie = is_emptyTrie;
 module.exports.emptyTrie = emptyTrie;
 module.exports.embeddedTrie = embeddedTrie;
 module.exports.compilePattern = compilePattern;
-module.exports.matchPattern = matchPattern;
 module.exports._union = union;
 module.exports.union = unionN;
 module.exports.intersect = intersect;
