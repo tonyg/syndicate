@@ -26,7 +26,14 @@ ground network {
   }
 
   actor {
-    until {
+    state {
+      init {
+        console.log("Waiting for account.");
+      }
+      done {
+        console.log("Account became ready.");
+      }
+    } until {
       case asserted Syndicate.observe(deposit(_)) {
         :: deposit(+100);
         :: deposit(-30);

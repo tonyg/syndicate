@@ -49,6 +49,8 @@ function createFacet() {
 function Facet(actor) {
   this.actor = actor;
   this.endpoints = Immutable.Map();
+  this.initBlocks = Immutable.List();
+  this.doneBlocks = Immutable.List();
 }
 
 Facet.prototype.handleEvent = function(e) {
@@ -112,6 +114,16 @@ Facet.prototype.addEndpoint = function(endpoint) {
   return this; // for chaining
 };
 
+Facet.prototype.addInitBlock = function(thunk) {
+  this.initBlocks = this.initBlocks.push(thunk);
+  return this;
+};
+
+Facet.prototype.addDoneBlock = function(thunk) {
+  this.doneBlocks = this.doneBlocks.push(thunk);
+  return this;
+};
+
 Facet.prototype.refresh = function() {
   var facet = this;
   var aggregate = Patch.emptyPatch;
@@ -125,7 +137,9 @@ Facet.prototype.refresh = function() {
 };
 
 Facet.prototype.completeBuild = function() {
+  var facet = this;
   this.actor.addFacet(this);
+  this.initBlocks.forEach(function(b) { b.call(facet.actor.state); });
 };
 
 Facet.prototype.terminate = function() {
@@ -138,6 +152,7 @@ Facet.prototype.terminate = function() {
   Network.stateChange(aggregate);
   this.endpoints = Immutable.Map();
   this.actor.removeFacet(this);
+  this.doneBlocks.forEach(function(b) { b.call(facet.actor.state); });
 };
 
 //---------------------------------------------------------------------------
