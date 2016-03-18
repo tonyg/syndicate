@@ -52,45 +52,45 @@ describe("basic pattern compilation", function () {
 describe("unions", function () {
   it("should collapse common prefix wildcard", function () {
     checkPrettyTrie(r.union(r.compilePattern(Immutable.Set(['A']), [r.__, 'A']),
-			       r.compilePattern(Immutable.Set(['B']), [r.__, 'B'])),
-		       [' < ★ "A" > >{["A"]}',
-			'     "B" > >{["B"]}']);
+			    r.compilePattern(Immutable.Set(['B']), [r.__, 'B'])),
+		    [' < ★ "A" > >{["A"]}',
+		     '     "B" > >{["B"]}']);
   });
 
   it("should unroll wildcard unioned with nonwildcard", function () {
     checkPrettyTrie(r.union(r.compilePattern(Immutable.Set(['A']), [r.__, 'A']),
-			       r.compilePattern(Immutable.Set(['W']), r.__)),
-		       [' ★ >{["W"]}',
-			' < ★ "A" ★...> >{["W"]}',
-			'         > >{["W","A"]}',
-			'     ★...> >{["W"]}',
-			'     > >{["W"]}',
-			'   > >{["W"]}']);
+			    r.compilePattern(Immutable.Set(['W']), r.__)),
+		    [' ★ >{["W"]}',
+		     ' < ★ "A" ★...> >{["W"]}',
+		     '         > >{["W","A"]}',
+		     '     ★...> >{["W"]}',
+		     '     > >{["W"]}',
+		     '   > >{["W"]}']);
   });
 
   it("should properly multiply out", function () {
     checkPrettyTrie(r.union(r.compilePattern(Immutable.Set(['A']), [r.__, 2]),
-			       r.compilePattern(Immutable.Set(['C']), [1, 3]),
-			       r.compilePattern(Immutable.Set(['B']), [3, 4])),
-		       [' < ★ 2 > >{["A"]}',
-			'   1 2 > >{["A"]}',
-			'     3 > >{["C"]}',
-			'   3 2 > >{["A"]}',
-			'     4 > >{["B"]}']);
+			    r.compilePattern(Immutable.Set(['C']), [1, 3]),
+			    r.compilePattern(Immutable.Set(['B']), [3, 4])),
+		    [' < ★ 2 > >{["A"]}',
+		     '   1 2 > >{["A"]}',
+		     '     3 > >{["C"]}',
+		     '   3 2 > >{["A"]}',
+		     '     4 > >{["B"]}']);
 
     checkPrettyTrie(r.union(r.compilePattern(Immutable.Set(['C']), [1, 3]),
-			       r.compilePattern(Immutable.Set(['B']), [3, 4])),
-		       [' < 1 3 > >{["C"]}',
-			'   3 4 > >{["B"]}']);
+			    r.compilePattern(Immutable.Set(['B']), [3, 4])),
+		    [' < 1 3 > >{["C"]}',
+		     '   3 4 > >{["B"]}']);
 
     checkPrettyTrie(r.union(r.compilePattern(Immutable.Set(['A']), [r.__, 2]),
-			       r.compilePattern(Immutable.Set(['C']), [1, 3])),
+			    r.compilePattern(Immutable.Set(['C']), [1, 3])),
 		    [' < ★ 2 > >{["A"]}',
 		     '   1 2 > >{["A"]}',
 		     '     3 > >{["C"]}']);
 
     checkPrettyTrie(r.union(r.compilePattern(Immutable.Set(['A']), [r.__, 2]),
-			       r.compilePattern(Immutable.Set(['B']), [3, 4])),
+			    r.compilePattern(Immutable.Set(['B']), [3, 4])),
 		    [' < ★ 2 > >{["A"]}',
 		     '   3 2 > >{["A"]}',
 		     '     4 > >{["B"]}']);
@@ -116,10 +116,10 @@ describe("unions", function () {
     var m = r.union(r.compilePattern(Immutable.Set('B'), [2]),
 		    r.compilePattern(Immutable.Set('C'), [3]));
     checkPrettyTrie(m, [' < 2 > >{["B"]}',
-			   '   3 > >{["C"]}']);
+			'   3 > >{["C"]}']);
     m = r.union(r.compilePattern(Immutable.Set('A'), [2]), m);
     checkPrettyTrie(m, [' < 2 > >{["A","B"]}',
-			   '   3 > >{["C"]}']);
+			'   3 > >{["C"]}']);
   });
 
   it('should work with subtraction and wildcards', function () {
@@ -139,17 +139,17 @@ describe("projections", function () {
 
     it("should include things that match as well as wildcards", function () {
       checkPrettyTrie(r.project(r.union(r.compilePattern(Immutable.Set(['A']), r.__),
-					   r.compilePattern(Immutable.Set(['B']), [['b']])),
-				   proj),
+					r.compilePattern(Immutable.Set(['B']), [['b']])),
+				proj),
 		      [' < < ★ > > >{["A"]}',
 		       '     "b" > > >{["A","B"]}']);
     });
 
     it("should exclude things that lack the required structure", function () {
       checkPrettyTrie(r.project(r.union(r.compilePattern(Immutable.Set(['A']), r.__),
-					   r.compilePattern(Immutable.Set(['B']), ['b'])),
-				   proj),
-			 [' < < ★ > > >{["A"]}']);
+					r.compilePattern(Immutable.Set(['B']), ['b'])),
+				proj),
+		      [' < < ★ > > >{["A"]}']);
     });
   });
 
@@ -158,12 +158,12 @@ describe("projections", function () {
 
     it("should collapse common prefixes", function () {
       checkPrettyTrie(r.project(r.union(r.compilePattern(Immutable.Set(['A']), [1, 2]),
-					   r.compilePattern(Immutable.Set(['C']), [1, 3]),
-					   r.compilePattern(Immutable.Set(['B']), [3, 4])),
-				   proj),
-			 [' 1 2 >{["A"]}',
-			  '   3 >{["C"]}',
-			  ' 3 4 >{["B"]}']);
+					r.compilePattern(Immutable.Set(['C']), [1, 3]),
+					r.compilePattern(Immutable.Set(['B']), [3, 4])),
+				proj),
+		      [' 1 2 >{["A"]}',
+		       '   3 >{["C"]}',
+		       ' 3 4 >{["B"]}']);
     });
 
     it("should yield a correct set of results", function () {
@@ -214,8 +214,8 @@ describe("subtract after union", function () {
     checkPrettyTrie(R1, [' < ★ "B" > >{["A"]}']);
     checkPrettyTrie(R2, [' < "A" ★ > >{["B"]}']);
     checkPrettyTrie(R12, [' < "A" "B" > >{["B","A"]}',
-			     '       ★ > >{["B"]}',
-			     '   ★ "B" > >{["A"]}']);
+			  '       ★ > >{["B"]}',
+			  '   ★ "B" > >{["A"]}']);
   });
 
   it("should yield the remaining ingredients of the union", function () {
@@ -228,17 +228,17 @@ describe("subtract after union", function () {
 describe("trie equality", function () {
   it("should not rely on object identity", function () {
     expect(Immutable.is(r.union(r.compilePattern(Immutable.Set(['A']), [r.__, 'A']),
-				   r.compilePattern(Immutable.Set(['B']), [r.__, 'B'])),
-			   r.union(r.compilePattern(Immutable.Set(['A']), [r.__, 'A']),
-				   r.compilePattern(Immutable.Set(['B']), [r.__, 'B']))))
+				r.compilePattern(Immutable.Set(['B']), [r.__, 'B'])),
+			r.union(r.compilePattern(Immutable.Set(['A']), [r.__, 'A']),
+				r.compilePattern(Immutable.Set(['B']), [r.__, 'B']))))
       .to.be(true);
   });
 
   it("should respect commutativity of union", function () {
     expect(Immutable.is(r.union(r.compilePattern(Immutable.Set(['A']), [r.__, 'A']),
-				   r.compilePattern(Immutable.Set(['B']), [r.__, 'B'])),
-			   r.union(r.compilePattern(Immutable.Set(['B']), [r.__, 'B']),
-				   r.compilePattern(Immutable.Set(['A']), [r.__, 'A']))))
+				r.compilePattern(Immutable.Set(['B']), [r.__, 'B'])),
+			r.union(r.compilePattern(Immutable.Set(['B']), [r.__, 'B']),
+				r.compilePattern(Immutable.Set(['A']), [r.__, 'A']))))
       .to.be(true);
   });
 });
@@ -334,16 +334,16 @@ describe("complex erasure", function () {
 
 describe("embedding tries in patterns", function () {
   var M1a =
-    r.compilePattern(Immutable.Set(['A']),
-		     [1, r.embeddedTrie(r.compilePattern(Immutable.Set(['B']), [2, 3])), 4]);
+      r.compilePattern(Immutable.Set(['A']),
+		       [1, r.embeddedTrie(r.compilePattern(Immutable.Set(['B']), [2, 3])), 4]);
   var M1b =
-    r.compilePattern(Immutable.Set(['A']), [1, [2, 3], 4]);
+      r.compilePattern(Immutable.Set(['A']), [1, [2, 3], 4]);
   var M2a =
-    r.compilePattern(Immutable.Set(['A']),
-		     [r.embeddedTrie(r.compilePattern(Immutable.Set(['B']), [1, 2])),
-		      r.embeddedTrie(r.compilePattern(Immutable.Set(['C']), [3, 4]))]);
+      r.compilePattern(Immutable.Set(['A']),
+		       [r.embeddedTrie(r.compilePattern(Immutable.Set(['B']), [1, 2])),
+		        r.embeddedTrie(r.compilePattern(Immutable.Set(['C']), [3, 4]))]);
   var M2b =
-    r.compilePattern(Immutable.Set(['A']), [[1, 2], [3, 4]]);
+      r.compilePattern(Immutable.Set(['A']), [[1, 2], [3, 4]]);
 
   it("should yield tries equivalent to the original patterns", function () {
     expect(Immutable.is(M1a, M1b)).to.be(true);
@@ -356,14 +356,14 @@ describe("Projection with no captures", function () {
     var emptySequence = [' >{["A"]}'];
 
     checkPrettyTrie(r.project(r.compilePattern(Immutable.Set(['A']), ["X", r.__]),
-				 r.compileProjection(r.__)),
-		       emptySequence);
+			      r.compileProjection(r.__)),
+		    emptySequence);
     checkPrettyTrie(r.project(r.compilePattern(Immutable.Set(['A']), ["X", r.__]),
-				 r.compileProjection([r.__, r.__])),
-		       emptySequence);
+			      r.compileProjection([r.__, r.__])),
+		    emptySequence);
     checkPrettyTrie(r.project(r.compilePattern(Immutable.Set(['A']), ["X", r.__]),
-				 r.compileProjection(["X", r.__])),
-		       emptySequence);
+			      r.compileProjection(["X", r.__])),
+		    emptySequence);
   });
 
   it("should yield the empty trie when there's no match", function () {
@@ -373,11 +373,11 @@ describe("Projection with no captures", function () {
 
   it("should yield nonempty sequences when there are captures after all", function () {
     checkPrettyTrie(r.project(r.compilePattern(Immutable.Set(['A']), ["X", r.__]),
-				 r.compileProjection([r.__, r._$])),
-		       [' ★ >{["A"]}']);
+			      r.compileProjection([r.__, r._$])),
+		    [' ★ >{["A"]}']);
     checkPrettyTrie(r.project(r.compilePattern(Immutable.Set(['A']), ["X", r.__]),
-				 r.compileProjection([r._$, r._$])),
-		       [' "X" ★ >{["A"]}']);
+			      r.compileProjection([r._$, r._$])),
+		    [' "X" ★ >{["A"]}']);
   });
 });
 
