@@ -33,6 +33,13 @@ Actor.prototype.addFacet = function(facet) {
   this.facets = this.facets.add(facet);
 };
 
+Actor.prototype.removeFacet = function(facet) {
+  this.facets = this.facets.remove(facet);
+  if (this.facets.isEmpty()) {
+    Network.exit();
+  }
+};
+
 //---------------------------------------------------------------------------
 
 function createFacet() {
@@ -130,6 +137,7 @@ Facet.prototype.terminate = function() {
   });
   Network.stateChange(aggregate);
   this.endpoints = Immutable.Map();
+  this.actor.removeFacet(this);
 };
 
 //---------------------------------------------------------------------------
