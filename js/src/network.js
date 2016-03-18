@@ -52,6 +52,12 @@ Network.activePid = function () {
   return Network.stack.last().activePid;
 };
 
+Network.activeBehavior = function () {
+  var entry = Network.stack.last();
+  var p = entry.network.processTable.get(entry.activePid);
+  return p ? p.behavior : null;
+};
+
 Network.withNetworkStack = function (stack, f) {
   var oldStack = Network.stack;
   Network.stack = stack;

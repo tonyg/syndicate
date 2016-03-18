@@ -24,6 +24,7 @@
     "browserify": "^13.0.0",
     "mocha": "^2.4.5",
     "expect.js": "^0.3.1",
-    "immutable": "^3.7.6"
+    "immutable": "^3.7.6",
+    "ohm-js": "cdglabs/ohm"
   }
 }

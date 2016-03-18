@@ -42,7 +42,7 @@ copyKeys(['emptyPatch',
 	 module.exports.Patch);
 
 module.exports.Ground = require("./ground.js").Ground;
-// module.exports.Actor = require("./actor.js").Actor;
+module.exports.Actor = require("./actor.js");
 // module.exports.Spy = require("./spy.js").Spy;
 // module.exports.WakeDetector = require("./wake-detector.js").WakeDetector;
 
