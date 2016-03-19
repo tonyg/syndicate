@@ -187,7 +187,7 @@ var modifiedSourceActions = {
     return buildCaseEvent(eventPattern, block.asES5);
   },
   FacetStateTransition_noContinuation: function(_case, eventPattern, _sc) {
-    return buildCaseEvent(eventPattern, '');
+    return buildCaseEvent(eventPattern, '{}');
   }
 };
 
