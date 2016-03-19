@@ -60,6 +60,24 @@ function buildOnEvent(isTerminal, eventType, subscription, projection, bindings,
     ', (function(' + bindings.join(', ') + ') ' + body + '))';
 }
 
+function buildCaseEvent(eventPattern, body) {
+  if (eventPattern.eventType === 'risingEdge') {
+    return buildOnEvent(true,
+                        eventPattern.eventType,
+                        'function() { return (' + eventPattern.asES5 + '); }',
+                        'null',
+                        [],
+                        body);
+  } else {
+    return buildOnEvent(true,
+                        eventPattern.eventType,
+                        eventPattern.subscription,
+                        eventPattern.projection,
+                        eventPattern.bindings,
+                        body);
+  }
+}
+
 var modifiedSourceActions = {
   ActorStatement_noConstructor: function(_actor, block) {
     return buildActor('Object()', block);
@@ -166,20 +184,10 @@ var modifiedSourceActions = {
   },
 
   FacetStateTransition_withContinuation: function(_case, eventPattern, block) {
-    return buildOnEvent(true,
-                        eventPattern.eventType,
-                        eventPattern.subscription,
-                        eventPattern.projection,
-                        eventPattern.bindings,
-                        block.asES5);
+    return buildCaseEvent(eventPattern, block.asES5);
   },
   FacetStateTransition_noContinuation: function(_case, eventPattern, _sc) {
-    return buildOnEvent(true,
-                        eventPattern.eventType,
-                        eventPattern.subscription,
-                        eventPattern.projection,
-                        eventPattern.bindings,
-                        '');
+    return buildCaseEvent(eventPattern, '');
   }
 };
 
@@ -197,7 +205,10 @@ semantics.addAttribute('asSyndicateStructureArguments', {
 semantics.addAttribute('eventType', {
   FacetEventPattern_messageEvent: function(_kw, _pattern) { return 'message'; },
   FacetEventPattern_assertedEvent: function(_kw, _pattern) { return 'asserted'; },
-  FacetEventPattern_retractedEvent: function(_kw, _pattern) { return 'retracted'; }
+  FacetEventPattern_retractedEvent: function(_kw, _pattern) { return 'retracted'; },
+
+  FacetTransitionEventPattern_facetEvent: function (pattern) { return pattern.eventType; },
+  FacetTransitionEventPattern_risingEdge: function (expr) { return 'risingEdge'; }
 });
 
 function buildSubscription(children, patchMethod, mode) {
@@ -247,6 +258,8 @@ semantics.addAttribute('metalevel', {
   FacetEventPattern_assertedEvent: function(_kw, p) { return p.metalevel; },
   FacetEventPattern_retractedEvent: function(_kw, p) { return p.metalevel; },
 
+  FacetTransitionEventPattern_facetEvent: function (pattern) { return pattern.metalevel; },
+
   FacetPattern_withMetalevel: function(_expr, _kw, metalevel) {
     return metalevel.interval.contents;
   },
@@ -263,6 +276,10 @@ semantics.addOperation('buildSubscription(acc,mode)', {
     pattern.buildSubscription(this.args.acc, this.args.mode);
   },
   FacetEventPattern_retractedEvent: function(_kw, pattern) {
+    pattern.buildSubscription(this.args.acc, this.args.mode);
+  },
+
+  FacetTransitionEventPattern_facetEvent: function (pattern) {
     pattern.buildSubscription(this.args.acc, this.args.mode);
   },
 

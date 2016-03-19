@@ -67,13 +67,13 @@ Facet.prototype.addAssertion = function(assertionFn) {
 
 Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projectionFn, handlerFn) {
   var facet = this;
-  return this.addEndpoint(new Endpoint(subscriptionFn, function(e) {
-    var proj = projectionFn.call(facet.actor.state);
-    var spec = Patch.prependAtMeta(proj.assertion, proj.metalevel);
+  switch (eventType) {
 
-    switch (e.type) {
-    case 'message':
-      if (eventType === 'message') {
+  case 'message':
+    return this.addEndpoint(new Endpoint(subscriptionFn, function(e) {
+      if (e.type === 'message') {
+        var proj = projectionFn.call(facet.actor.state);
+        var spec = Patch.prependAtMeta(proj.assertion, proj.metalevel);
         var match = Route.matchPattern(e.message, spec);
         // console.log(match);
         if (match) {
@@ -81,29 +81,43 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
           Util.kwApply(handlerFn, facet.actor.state, match);
         }
       }
-      break;
-    case 'stateChange':
-      {
-        var objects;
-        switch (eventType) {
-        case 'asserted':
-          objects = Route.projectObjects(e.patch.added, Route.compileProjection(spec));
-          break;
-        case 'retracted':
-          objects = Route.projectObjects(e.patch.removed, Route.compileProjection(spec));
-          break;
-        default:
-          break;
-        }
+    }));
+
+  case 'asserted': /* fall through */
+  case 'retracted':
+    return this.addEndpoint(new Endpoint(subscriptionFn, function(e) {
+      if (e.type === 'stateChange') {
+        var proj = projectionFn.call(facet.actor.state);
+        var spec = Patch.prependAtMeta(proj.assertion, proj.metalevel);
+        var compiledSpec = Route.compileProjection(spec);
+        var objects = Route.projectObjects(eventType === 'asserted'
+                                           ? e.patch.added
+                                           : e.patch.removed,
+                                           compiledSpec);
         if (objects) {
           if (isTerminal) { facet.terminate(); }
           // console.log(objects.toArray());
           objects.forEach(function (o) { Util.kwApply(handlerFn, facet.actor.state, o); });
         }
       }
-    }
+    }));
 
-  }));
+  case 'risingEdge':
+    var endpoint = new Endpoint(function() { return Patch.emptyPatch; },
+                                function(e) {
+                                  var newValue = subscriptionFn.call(facet.actor.state);
+                                  if (newValue && !this.currentValue) {
+                                    if (isTerminal) { facet.terminate(); }
+                                    handlerFn.call(facet.actor.state);
+                                  }
+                                  this.currentValue = newValue;
+                                });
+    endpoint.currentValue = false;
+    return this.addEndpoint(endpoint);
+
+  default:
+    throw new Error("Unsupported Facet eventType: " + eventType);
+  }
 };
 
 Facet.prototype.addEndpoint = function(endpoint) {

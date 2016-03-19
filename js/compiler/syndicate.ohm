@@ -50,9 +50,13 @@ Syndicate <: ES5 {
     | asserted FacetPattern  -- assertedEvent
     | retracted FacetPattern -- retractedEvent
 
+  FacetTransitionEventPattern
+    = FacetEventPattern  -- facetEvent
+    | Expression<withIn> -- risingEdge
+
   FacetStateTransition
-    = case FacetEventPattern Block -- withContinuation
-    | case FacetEventPattern #(sc) -- noContinuation
+    = case FacetTransitionEventPattern Block -- withContinuation
+    | case FacetTransitionEventPattern #(sc) -- noContinuation
 
   FacetPattern
     = LeftHandSideExpression metalevel decimalIntegerLiteral -- withMetalevel
