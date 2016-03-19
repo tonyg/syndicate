@@ -208,7 +208,7 @@ semantics.addAttribute('eventType', {
   FacetEventPattern_retractedEvent: function(_kw, _pattern) { return 'retracted'; },
 
   FacetTransitionEventPattern_facetEvent: function (pattern) { return pattern.eventType; },
-  FacetTransitionEventPattern_risingEdge: function (expr) { return 'risingEdge'; }
+  FacetTransitionEventPattern_risingEdge: function (_lp, expr, _rp) { return 'risingEdge'; }
 });
 
 function buildSubscription(children, patchMethod, mode) {

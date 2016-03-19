@@ -51,8 +51,8 @@ Syndicate <: ES5 {
     | retracted FacetPattern -- retractedEvent
 
   FacetTransitionEventPattern
-    = FacetEventPattern  -- facetEvent
-    | Expression<withIn> -- risingEdge
+    = FacetEventPattern          -- facetEvent
+    | "(" Expression<withIn> ")" -- risingEdge
 
   FacetStateTransition
     = case FacetTransitionEventPattern Block -- withContinuation
