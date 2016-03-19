@@ -1,0 +1,12 @@
+#fieldContents {
+    font-family: monospace;
+}
+
+.cursor {
+    border-left: solid red 1px;
+    border-right: solid red 1px;
+}
+
+.highlight {
+    background-color: yellow;
+}
