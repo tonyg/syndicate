@@ -44,7 +44,7 @@ var forEachChild = (function () {
 
 function buildActor(constructorES5, block) {
   return 'Syndicate.Actor.spawnActor(new '+constructorES5+', '+
-    'function() {' + block.asES5 + '});';
+    'function() ' + block.asES5 + ');';
 }
 
 function buildFacet(facetBlock, transitionBlock) {
