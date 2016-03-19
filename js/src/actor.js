@@ -20,6 +20,7 @@ function Actor(state, bootFn) {
 
   this.boot = function() {
     bootFn.call(this.state);
+    this.checkForTermination();
   };
 }
 
@@ -27,6 +28,7 @@ Actor.prototype.handleEvent = function(e) {
   this.facets.forEach(function (f) {
     f.handleEvent(e);
   });
+  this.checkForTermination();
 };
 
 Actor.prototype.addFacet = function(facet) {
@@ -35,6 +37,9 @@ Actor.prototype.addFacet = function(facet) {
 
 Actor.prototype.removeFacet = function(facet) {
   this.facets = this.facets.remove(facet);
+};
+
+Actor.prototype.checkForTermination = function() {
   if (this.facets.isEmpty()) {
     Network.exit();
   }
@@ -95,8 +100,8 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
                                            : e.patch.removed,
                                            compiledSpec);
         if (objects) {
-          if (isTerminal) { facet.terminate(); }
           // console.log(objects.toArray());
+          if (isTerminal) { facet.terminate(); }
           objects.forEach(function (o) { Util.kwApply(handlerFn, facet.actor.state, o); });
         }
       }
