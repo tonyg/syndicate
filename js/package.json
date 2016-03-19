@@ -15,8 +15,9 @@
     "clean": "rm -f dist/*",
     "build-debug": "browserify src/main.js -d -s Syndicate -o dist/syndicate.js",
     "build-min": "browserify src/main.js -s Syndicate -o dist/_syndicate.js && uglifyjs dist/_syndicate.js -o dist/syndicate.min.js && rm dist/_syndicate.js",
-    "build-compiler": "browserify compiler/compiler.js -s SyndicateCompiler -o dist/_syndicatecompiler.js && uglifyjs dist/_syndicatecompiler.js -o dist/syndicatecompiler.min.js && rm dist/_syndicatecompiler.js",
-    "build": "npm run build-debug && npm run build-min && npm run build-compiler",
+    "build-compiler-debug": "browserify -t brfs compiler/inbrowser.js -s SyndicateCompiler -o dist/syndicatecompiler.js",
+    "build-compiler": "browserify -t brfs compiler/inbrowser.js -s SyndicateCompiler -o dist/_syndicatecompiler.js && uglifyjs dist/_syndicatecompiler.js -o dist/syndicatecompiler.min.js && rm dist/_syndicatecompiler.js",
+    "build": "npm run build-debug && npm run build-compiler-debug && npm run build-min && npm run build-compiler",
     "watch": "watchify src/main.js -d -s Syndicate -o dist/syndicate.js",
     "test": "mocha",
     "prepublish": "npm run build"
@@ -29,6 +30,7 @@
     "mocha": "^2.4.5",
     "expect.js": "^0.3.1",
     "immutable": "^3.7.6",
+    "brfs": "^1.4.3",
     "ohm-js": "cdglabs/ohm"
   }
 }

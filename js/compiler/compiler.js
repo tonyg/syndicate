@@ -6,7 +6,7 @@ var fs = require('fs');
 var path = require('path');
 
 var ohm = require('ohm-js');
-var ES5 = require('ohm-js/examples/ecmascript/es5.js');
+var ES5 = require('./es5.js');
 
 var grammarSource = fs.readFileSync(path.join(__dirname, 'syndicate.ohm')).toString();
 var grammar = ohm.grammar(grammarSource, { ES5: ES5.grammar });
