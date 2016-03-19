@@ -37,6 +37,7 @@ Ground.prototype.startStepping = function () {
       self.startStepping();
     }, 0);
   }
+  return this; // because the syndicatec compiler chains startStepping after the ctor
 };
 
 Ground.prototype.stopStepping = function () {

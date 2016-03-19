@@ -86,8 +86,13 @@ var modifiedSourceActions = {
     return buildActor(ctorExp.asES5, block);
   },
 
-  NetworkStatement_ground: function(_ground, _network, block) {
-    return 'new Syndicate.Ground(function () ' + block.asES5 + ').startStepping();';
+  NetworkStatement_ground: function(_ground, _network, maybeId, block) {
+    var code = 'new Syndicate.Ground(function () ' + block.asES5 + ').startStepping();';
+    if (maybeId.numChildren === 1) {
+      return 'var ' + maybeId.children[0].interval.contents + ' = ' + code;
+    } else {
+      return code;
+    }
   },
   NetworkStatement_normal: function(_network, block) {
     return 'Syndicate.Network.spawn(new Network(function () ' + block.asES5 + '));';

@@ -18,8 +18,8 @@ Syndicate <: ES5 {
     | actor Block                -- noConstructor
 
   NetworkStatement
-    = ground network Block -- ground
-    | network Block        -- normal
+    = ground network identifier? Block -- ground
+    | network Block                    -- normal
 
   ActorFacetStatement
     = state FacetBlock until FacetStateTransitionBlock   -- state
