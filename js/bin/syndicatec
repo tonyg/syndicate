@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+// -*- javascript -*-
+
+var fs = require('fs');
+var compiler = require('../compiler/compiler.js');
+
+function compileAndPrint(inputSource) {
+  var translatedSource = compiler.compileSyndicateSource(inputSource);
+  if (translatedSource) {
+    console.log(translatedSource);
+  }
+}
+
+if (process.argv.length < 3 || process.argv[2] === '-') {
+  var inputSource = '';
+  process.stdin.resume();
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', function(buf) { inputSource += buf; });
+  process.stdin.on('end', function() { compileAndPrint(inputSource); });
+} else {
+  var inputSource = fs.readFileSync(process.argv[2]).toString();
+  compileAndPrint(inputSource);
+}

@@ -316,27 +316,22 @@ semantics.addOperation('pushBindings(accumulator)', {
   }
 })
 
-function compileExtendedSource(inputSource) {
+function compileSyndicateSource(inputSource, onError) {
   var parseResult = grammar.match(inputSource);
-  if (parseResult.failed()) console.error(parseResult.message);
-  return parseResult.succeeded() && semantics(parseResult).asES5;
-}
-
-function compileAndPrint(inputSource) {
-  var translatedSource = compileExtendedSource(inputSource);
-  if (translatedSource) {
-    console.log('"use strict";');
-    console.log(translatedSource);
+  if (parseResult.failed()) {
+    if (onError) {
+      return onError(parseResult.message, parseResult);
+    } else {
+      console.error(parseResult.message);
+      return false;
+    }
+  } else {
+    return '"use strict";\n' + semantics(parseResult).asES5;
   }
 }
 
-if (process.argv.length < 3 || process.argv[2] === '-') {
-  var inputSource = '';
-  process.stdin.resume();
-  process.stdin.setEncoding('utf8');
-  process.stdin.on('data', function(buf) { inputSource += buf; });
-  process.stdin.on('end', function() { compileAndPrint(inputSource); });
-} else {
-  var inputSource = fs.readFileSync(process.argv[2]).toString();
-  compileAndPrint(inputSource);
-}
+//---------------------------------------------------------------------------
+
+module.exports.grammar = grammar;
+module.exports.semantics = semantics;
+module.exports.compileSyndicateSource = compileSyndicateSource;

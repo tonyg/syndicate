@@ -8,11 +8,15 @@
     "type": "git",
     "url": "git://github.com/tonyg/syndicate"
   },
+  "directories": {
+    "bin": "./bin"
+  },
   "scripts": {
     "clean": "rm -f dist/*",
     "build-debug": "browserify src/main.js -d -s Syndicate -o dist/syndicate.js",
     "build-min": "browserify src/main.js -s Syndicate -o dist/_syndicate.js && uglifyjs dist/_syndicate.js -o dist/syndicate.min.js && rm dist/_syndicate.js",
-    "build": "npm run build-debug && npm run build-min",
+    "build-compiler": "browserify compiler/compiler.js -s SyndicateCompiler -o dist/_syndicatecompiler.js && uglifyjs dist/_syndicatecompiler.js -o dist/syndicatecompiler.min.js && rm dist/_syndicatecompiler.js",
+    "build": "npm run build-debug && npm run build-min && npm run build-compiler",
     "watch": "watchify src/main.js -d -s Syndicate -o dist/syndicate.js",
     "test": "mocha",
     "prepublish": "npm run build"
