@@ -1,4 +1,4 @@
-// node src/compiler.js src/demo-bankaccount.js | node
+// bin/syndicatec compiler/demo-bankaccount.js | node
 
 var Syndicate = require('./src/main.js');
 

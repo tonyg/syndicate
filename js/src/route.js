@@ -17,7 +17,7 @@ function makeStructureConstructor(label, argumentNames) {
 }
 
 function isStructure(s) {
-  return !!(s.$SyndicateMeta$);
+  return (s !== null) && (typeof s === 'object') && ("$SyndicateMeta$" in s);
 }
 
 function structureToArray(s) {
@@ -138,7 +138,7 @@ function compilePattern(v, p) {
       return rseq(SOA, acc);
     }
 
-    if (p.$SyndicateMeta$) {
+    if (isStructure(p)) {
       var args = p.$SyndicateMeta$.arguments;
       acc = rseq(EOA, acc);
       for (var i = args.length - 1; i >= 0; i--) {
@@ -538,7 +538,7 @@ function matchValue(r, v) {
       } else {
 	r = rlookup(r, __);
       }
-    } else if (v.$SyndicateMeta$) {
+    } else if (isStructure(v)) {
       if (r.has(SOA)) {
         r = rlookup(r, SOA);
         stack.push(vs);
@@ -735,7 +735,7 @@ function compileProjection(/* projection, projection, ... */) {
       return;
     }
 
-    if (p.$SyndicateMeta$) {
+    if (isStructure(p)) {
       acc.push(SOA);
       acc.push(p.$SyndicateMeta$.label);
       var args = p.$SyndicateMeta$.arguments;
@@ -768,7 +768,7 @@ function projectionToPattern(p) {
       return result;
     }
 
-    if (p.$SyndicateMeta$) {
+    if (isStructure(p)) {
       var result = {"$SyndicateMeta$": p.$SyndicateMeta$};
       var args = p.$SyndicateMeta$.arguments;
       for (var i = 0; i < args.length; i++) {

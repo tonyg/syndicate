@@ -99,7 +99,7 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
                                            ? e.patch.added
                                            : e.patch.removed,
                                            compiledSpec);
-        if (objects) {
+        if (objects && objects.size > 0) {
           // console.log(objects.toArray());
           if (isTerminal) { facet.terminate(); }
           objects.forEach(function (o) { Util.kwApply(handlerFn, facet.actor.state, o); });

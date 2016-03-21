@@ -182,7 +182,7 @@ var modifiedSourceActions = {
                         buildOnEvent(true,
                                      'retracted',
                                      pattern.instantiatedSubscription,
-                                     'null',
+                                     pattern.instantiatedProjection,
                                      [],
                                      '{}') +
                         '.completeBuild(); }');
@@ -249,6 +249,12 @@ semantics.addAttribute('subscription', {
 semantics.addAttribute('instantiatedSubscription', {
   _default: function(children) {
     return buildSubscription(children, 'sub', 'instantiated');
+  }
+});
+
+semantics.addAttribute('instantiatedProjection', {
+  _default: function(children) {
+    return buildSubscription(children, null, 'instantiated');
   }
 });
 
