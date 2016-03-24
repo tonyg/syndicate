@@ -8,7 +8,9 @@
 (require racket/promise)
 (require plot/utils) ;; for vector utilities
 
-(require prospect)
+(require (except-in prospect network assert))
+(require (rename-in prospect [network core:network] [assert core:assert]))
+(require prospect/actor)
 (require prospect/drivers/timer)
 (require prospect-gl/2d)
 
@@ -350,15 +352,10 @@
 ;; ScoreKeeper
 
 (define (spawn-score-keeper)
-  (spawn (lambda (e s)
-           (match e
-             [(message (add-to-score delta))
-              (transition (+ s delta)
-                          (patch-seq (retract (current-score ?))
-                                     (assert (current-score delta))))]
-             [_ #f]))
-         0
-         (sub (add-to-score ?))))
+  (actor (forever #:collect [(score 0)]
+                  (assert (current-score score))
+                  (on (message (add-to-score $delta))
+                      (+ score delta)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; PhysicsEngine
@@ -379,53 +376,14 @@
   (define (piece-vel s id) (hash-ref (physics-state-velocities s) id (lambda () (vector 0 0))))
   (define (piece-imp s id) (hash-ref (physics-state-impulses s) id (lambda () (vector 0 0))))
 
-  (define ((remove-game-piece-configurations p) s)
-    (define removed (trie-project/set/single (patch-removed p)
-					     game-piece-configuration-projection))
-    (transition
-     (for/fold [(s s)] [(g removed)]
-       (define id (game-piece-configuration-id g))
-       (struct-copy physics-state s
-                    [configs (hash-remove (physics-state-configs s) id)]
-                    [positions (hash-remove (physics-state-positions s) id)]
-                    [velocities (hash-remove (physics-state-velocities s) id)]))
-     (for/list [(g removed)]
-       (define id (game-piece-configuration-id g))
-       (retract (position id ? ?)))))
-
-  (define ((add-game-piece-configurations p) s)
-    (define added (trie-project/set/single (patch-added p)
-					   game-piece-configuration-projection))
-    (transition
-     (for/fold [(s s)] [(g added)]
-       (match-define (game-piece-configuration id initial-position _ _) g)
-       (struct-copy physics-state s
-                    [configs (hash-set (physics-state-configs s) id g)]
-                    [positions (hash-set (physics-state-positions s) id initial-position)]
-                    [velocities (hash-set (physics-state-velocities s) id (vector 0 0))]))
-     (for/list [(g added)]
-       (match-define (game-piece-configuration id initial-position size _) g)
-       (assert (position id initial-position size)))))
-
-  (define ((update-impulses p) s)
-    (transition
-     (struct-copy physics-state s
-                  [impulses (update-hash-from-patch (physics-state-impulses s)
-                                                    p
-                                                    impulse-projection
-                                                    impulse-id
-                                                    impulse-vec)])
-     '()))
-
-  (define ((update-piece g old-pos new-pos new-vel) s)
+  (define (update-piece g old-pos new-pos new-vel s)
     (define id (game-piece-configuration-id g))
-    (transition
-     (struct-copy physics-state s
-                  [positions (hash-set (physics-state-positions s) id new-pos)]
-                  [velocities (hash-set (physics-state-velocities s) id new-vel)])
-     (and (not (v= old-pos new-pos))
-          (patch-seq (retract (position id ? ?))
-                     (assert (position id new-pos (game-piece-configuration-size g)))))))
+    (when (not (v= old-pos new-pos))
+      (retract! (position id ? ?))
+      (assert! (position id new-pos (game-piece-configuration-size g))))
+    (struct-copy physics-state s
+                 [positions (hash-set (physics-state-positions s) id new-pos)]
+                 [velocities (hash-set (physics-state-velocities s) id new-vel)]))
 
   (define (find-support p size s)
     (match-define (vector p-left p-top) p)
@@ -524,7 +482,7 @@
         (touched-during-movement? p0 p1 size (piece-pos s id) (game-piece-configuration-size g)))
       (if side (cons (cons side g) ts) ts)))
 
-  (define ((update-game-piece elapsed-ms id state-at-beginning-of-frame) s)
+  (define (update-game-piece elapsed-ms id state-at-beginning-of-frame s)
     (define g (piece-cfg state-at-beginning-of-frame id))
     (define size (game-piece-configuration-size g))
     (define pos0 (piece-pos state-at-beginning-of-frame id))
@@ -549,51 +507,56 @@
     (define final-vel (if (v= pos1 final-pos) vel1 (vector 0 0))) ;; stop at collision
     (define touchables
       (touchables-touched-during-movement state-at-beginning-of-frame pos0 final-pos size))
-    (sequence-transitions
-     (transition s
-                 (patch-seq*
-                  (cons (retract (touching id ? ?))
-                        (for/list [(t touchables)]
-                          (match-define (cons side tg) t)
-                          (assert
-                           (touching id (game-piece-configuration-id tg) side))))))
-     (update-piece g pos0 final-pos final-vel)))
+    (retract! (touching id ?))
+    (for [(t touchables)]
+      (match-define (cons side tg) t)
+      (assert! (touching id (game-piece-configuration-id tg) side)))
+    (update-piece g pos0 final-pos final-vel s))
 
   (define (evaluate-jump-request id s)
     (define g (piece-cfg s id))
     (define pos (piece-pos s id))
-    (define support (find-support pos (game-piece-configuration-size g) s))
-    (and support
-         ((update-piece g pos (v+ pos (vector 0 -1)) jump-vel) s)))
+    (if (find-support pos (game-piece-configuration-size g) s)
+        (update-piece g pos (v+ pos (vector 0 -1)) jump-vel s)
+        s))
 
-  (spawn (lambda (e s)
-           (match e
-             [(? patch? p)
-              (sequence-transitions (transition s '())
-                                    (remove-game-piece-configurations p)
-                                    (add-game-piece-configurations p)
-                                    (update-impulses p))]
-             [(message (jump-request id))
-              (evaluate-jump-request id s)]
-             [(message (at-meta (at-meta (at-meta (frame-event counter _ elapsed-ms _)))))
-              (when (zero? (modulo counter 10))
-                (collect-garbage 'incremental)
-                (log-info "Instantaneous frame rate at frame ~a: ~a Hz"
-                          counter
-                          (/ 1000.0 elapsed-ms)))
-              (for/fold [(t (transition s '()))]
-                        [((id g) (in-hash (physics-state-configs s)))
-                         #:when (game-piece-has-attribute? g 'mobile)]
-                (transition-bind (update-game-piece elapsed-ms id s) t))]
-             [_ #f]))
-         (physics-state (hash)
-                        (hash)
-                        (hash)
-                        (hash))
-         (patch-seq (sub (impulse ? ?))
-                    (sub (game-piece-configuration ? ? ? ?))
-                    (sub (jump-request ?))
-                    (sub (frame-event ? ? ? ?) #:meta-level game-level))))
+  (actor (forever #:collect [(s (physics-state (hash)
+                                               (hash)
+                                               (hash)
+                                               (hash)))]
+                  (on (message (jump-request $id))
+                      (evaluate-jump-request id s))
+                  (on (message (frame-event $counter _ $elapsed-ms _) #:meta-level game-level)
+                      (when (zero? (modulo counter 10))
+                        (collect-garbage 'incremental)
+                        (log-info "Instantaneous frame rate at frame ~a: ~a Hz"
+                                  counter
+                                  (/ 1000.0 elapsed-ms)))
+                      (define s0 s)
+                      (for/fold [(s s)]
+                                [((id g) (in-hash (physics-state-configs s)))
+                                 #:when (game-piece-has-attribute? g 'mobile)]
+                        (update-game-piece elapsed-ms id s0 s)))
+                  (on (retracted (game-piece-configuration $id _ _ _))
+                      (retract! (position id ? ?))
+                      (struct-copy physics-state s
+                                   [configs (hash-remove (physics-state-configs s) id)]
+                                   [positions (hash-remove (physics-state-positions s) id)]
+                                   [velocities (hash-remove (physics-state-velocities s) id)]))
+                  (on (asserted (game-piece-configuration $id $initial-position $size _))
+                      (assert! (position id initial-position size))
+                      (struct-copy physics-state s
+                                   [configs (hash-set (physics-state-configs s) id g)]
+                                   [positions (hash-set (physics-state-positions s) id
+                                                        initial-position)]
+                                   [velocities (hash-set (physics-state-velocities s) id
+                                                         (vector 0 0))]))
+                  (on (retracted (impulse $id _))
+                      (struct-copy physics-state s
+                                   [impulses (hash-remove (physics-state-impulses s) id)]))
+                  (on (asserted (impulse $id $vec))
+                      (struct-copy physics-state s
+                                   [impulses (hash-set (physics-state-impulses s) id vec)])))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Player
@@ -638,7 +601,7 @@
            (h-impulse (+ h-impulse (if (set-member? (player-state-keys-down s) 'right) 1 0))))
       (transition s
                   (patch-seq (retract (impulse player-id ?))
-                             (assert (impulse player-id (vector h-impulse 0)))))))
+                             (core:assert (impulse player-id (vector h-impulse 0)))))))
 
   (spawn (lambda (e s)
            (match e
@@ -658,11 +621,11 @@
          initial-player-state
          (patch-seq
           (sub (damage player-id ?))
-          (assert (health player-id (player-state-hit-points initial-player-state)))
-          (assert (game-piece-configuration player-id
-                                            initial-top-left
-                                            (icon-hitbox-size i)
-                                            (set 'player 'mobile 'massive)))
+          (core:assert (health player-id (player-state-hit-points initial-player-state)))
+          (core:assert (game-piece-configuration player-id
+                                                 initial-top-left
+                                                 (icon-hitbox-size i)
+                                                 (set 'player 'mobile 'massive)))
           (sub (position player-id ? ?))
           (sub (key-pressed 'left) #:meta-level 2)
           (sub (key-pressed 'right) #:meta-level 2)
@@ -684,10 +647,10 @@
          (void)
          (patch-seq
           (update-sprites #:meta-level game-level (simple-sprite 0 x y w h block-pict))
-          (assert (game-piece-configuration block-id
-                                            top-left
-                                            size
-                                            (set 'solid))))))
+          (core:assert (game-piece-configuration block-id
+                                                 top-left
+                                                 size
+                                                 (set 'solid))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Goal piece
@@ -706,10 +669,10 @@
              [_ #f]))
          (void)
          (patch-seq
-          (assert (game-piece-configuration goal-id
-                                            initial-top-left
-                                            (icon-hitbox-size i)
-                                            (set 'touchable)))
+          (core:assert (game-piece-configuration goal-id
+                                                 initial-top-left
+                                                 (icon-hitbox-size i)
+                                                 (set 'touchable)))
           (sub (touching player-id goal-id ?))
           (update-sprites #:meta-level game-level (icon-sprite i -1 initial-top-left)))))
 
@@ -738,10 +701,10 @@
 
   (define (motion-patch s)
     (patch-seq (retract (impulse enemy-id ?))
-               (assert (impulse enemy-id (vector (* speed (match (enemy-state-facing s)
-                                                            ['right 1]
-                                                            ['left -1]))
-                                                 0)))))
+               (core:assert (impulse enemy-id (vector (* speed (match (enemy-state-facing s)
+                                                                 ['right 1]
+                                                                 ['left -1]))
+                                                      0)))))
 
   (define ((monitor-level-size-change p) s)
     (transition (for/fold [(s s)] [(vec (trie-project/set/single (patch-added p)
@@ -791,10 +754,10 @@
              [_ #f]))
          initial-state
          (patch-seq
-          (assert (game-piece-configuration enemy-id
-                                            initial-top-left
-                                            (icon-hitbox-size i)
-                                            (set 'mobile 'massive 'touchable)))
+          (core:assert (game-piece-configuration enemy-id
+                                                 initial-top-left
+                                                 (icon-hitbox-size i)
+                                                 (set 'mobile 'massive 'touchable)))
           (sub (level-size ?))
           (sub (position enemy-id ? ?))
           (sub (touching player-id enemy-id ?))
@@ -829,7 +792,8 @@
                                          (compute-offset py wh level-height))))
                  (transition s
                              (patch-seq (retract #:meta-level 2 (scroll-offset ?))
-                                        (assert #:meta-level 2 (scroll-offset offset-pos)))))))))
+                                        (core:assert #:meta-level 2
+                                                     (scroll-offset offset-pos)))))))))
 
   (spawn (lambda (e s)
            (match e
@@ -841,7 +805,7 @@
          (vector 0 0)
          (patch-seq (sub (window ? ?) #:meta-level game-level)
                     (sub (position player-id ? ?))
-                    (assert (level-size level-size-vec)))))
+                    (core:assert (level-size level-size-vec)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelTerminationMonitor
@@ -862,7 +826,7 @@
          (void)
          (patch-seq (sub (game-piece-configuration player-id ? ? ?))
                     (sub (level-completed) #:meta-level 1)
-                    (assert (level-running) #:meta-level 1))))
+                    (core:assert (level-running) #:meta-level 1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelSpawner
