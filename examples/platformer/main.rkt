@@ -577,7 +577,6 @@
               (evaluate-jump-request id s)]
              [(message (at-meta (at-meta (at-meta (frame-event counter _ elapsed-ms _)))))
               (when (zero? (modulo counter 10))
-                (collect-garbage 'incremental)
                 (log-info "Instantaneous frame rate at frame ~a: ~a Hz"
                           counter
                           (/ 1000.0 elapsed-ms)))
@@ -933,18 +932,18 @@
      )))
 
 (define (spawn-numbered-level level-number)
-  (collect-garbage 'major)
-  (if (< level-number (length (force levels)))
-      (list-ref (force levels) level-number)
-      (spawn-standalone-assertions
-       (update-sprites #:meta-level 2
-                       (let ((message (text "You won!" 72 "red")))
-                         (simple-sprite 0
-                                        10
-                                        100
-                                        (image-width message)
-                                        (image-height message)
-                                        message))))))
+  (list (message (at-meta (at-meta (request-gc))))
+        (if (< level-number (length (force levels)))
+            (list-ref (force levels) level-number)
+            (spawn-standalone-assertions
+             (update-sprites #:meta-level 2
+                             (let ((message (text "You won!" 72 "red")))
+                               (simple-sprite 0
+                                              10
+                                              100
+                                              (image-width message)
+                                              (image-height message)
+                                              message)))))))
 
 (define (spawn-level-spawner starting-level)
   (struct level-spawner-state (current-level level-complete?) #:prefab)
