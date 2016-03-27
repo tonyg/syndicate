@@ -301,7 +301,7 @@
       (for [(s added)]
         (match-define (scene (seal pre) (seal post)) s)
         (set! prelude (compile-instructions pre))
-        (set! post (compile-instructions post))))
+        (set! postlude (compile-instructions post))))
 
     (define (process-sprite-updates! p)
       (define-values (added removed) (patch-project/set/single p sprite-projection))
