@@ -947,6 +947,12 @@
 (define levels
   (delay
     (list
+     (spawn-level (slab 25 125 100)
+                  (slab 50 300 500)
+                  (spawn-enemy 100 300 50 550)
+                  (spawn-enemy 300 300 50 550 #:facing 'left)
+                  (spawn-goal-piece 570 150)
+                  (slab 500 450 200 #:color "orange"))
      (spawn-level (slab 25 300 500)
                   (slab 500 400 500)
                   (slab 1000 500 400)
