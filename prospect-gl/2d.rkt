@@ -7,6 +7,7 @@
          (struct-out scene)
          (except-out (struct-out sprite) sprite)
          (rename-out [sprite <sprite>] [make-sprite sprite])
+         (struct-out request-gc)
          simple-sprite
          update-scene
          update-sprites
@@ -53,6 +54,12 @@
 ;; Shared state maintained by program. Z is to be a number, negative
 ;; toward camera. Instructions to be a sealed instruction list.
 (struct sprite (z instructions) #:transparent)
+
+;; Message. Requests that the OpenGL loop perform a major
+;; garbage-collection while *pausing the simulation's real-time
+;; correspondence*. This lets a GC take place without such severe
+;; simulation glitches as happen when doing it in-world.
+(struct request-gc () #:transparent)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -280,7 +287,9 @@
          (process-sprite-updates! p)
          (process-stop-requests! p)
          (process-fullscreen-requests! p)]
-        [(message body) (void)]))
+        [(message (request-gc))
+         (perform-gc-request!)]
+        [(message _) (void)]))
 
     (define (process-scene-updates! p)
       (define-values (added removed) (patch-project/set/single p scene-projection))
@@ -316,6 +325,14 @@
         (set! fullscreen? #t))
       (when changed?
         (send (send this get-top-level-window) fullscreen fullscreen?)))
+
+    (define (perform-gc-request!)
+      (define pre-gc (current-inexact-milliseconds))
+      (collect-garbage 'major)
+      (define post-gc (current-inexact-milliseconds))
+      (define delta (- post-gc pre-gc))
+      (log-info "(request-gc) took ~a milliseconds" delta)
+      (set! start-time (+ start-time delta)))
 
     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -373,6 +390,8 @@
 (define (2d-network #:width [width #f]
                     #:height [height #f]
                     . boot-actions)
+  (collect-garbage 'incremental)
+  (collect-garbage 'major)
   (define frame (new frame%
                      [style '(fullscreen-button)]
                      [label "prospect-gl"]
