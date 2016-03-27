@@ -323,7 +323,7 @@
 ;; SceneManager
 
 (define (spawn-scene-manager)
-  (struct scene-manager-state (size offset osds) #:prefab)
+  (struct scene-manager-state (size offset osds fullscreen?) #:prefab)
   (define backdrop (rectangle 1 1 "solid" "white"))
 
   (define (update-window-size s p)
@@ -366,9 +366,18 @@
                                             (translate ,(- ofs-x) ,(- ofs-y)))
                                           `((translate ,ofs-x ,ofs-y)
                                             ,@osd-blocks))))]
+             [(message (at-meta (key-event #\f _ _)))
+              (define fullscreen? (not (scene-manager-state-fullscreen? s)))
+              (let* ((s (struct-copy scene-manager-state s [fullscreen? fullscreen?])))
+                (transition s
+                            (patch-seq (retract 'fullscreen #:meta-level 1)
+                                       (if fullscreen?
+                                           (assert 'fullscreen #:meta-level 1)
+                                           patch-empty))))]
              [_ #f]))
-         (scene-manager-state (vector 0 0) (vector 0 0) (set))
-         (patch-seq (sub (scroll-offset ?))
+         (scene-manager-state (vector 0 0) (vector 0 0) (set) #f)
+         (patch-seq (sub (key-event #\f #t ?) #:meta-level 1)
+                    (sub (scroll-offset ?))
                     (sub (on-screen-display ? ? ?))
                     (sub (window ? ?) #:meta-level 1))))
 
