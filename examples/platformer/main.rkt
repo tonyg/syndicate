@@ -49,12 +49,20 @@
 ;;-------------------------------------------------------------------------
 ;; ### Scene Management
 ;;     - assertion: ScrollOffset
+;;     - assertion: OnScreenDisplay
 ;;     - role: SceneManager
 ;;         Displays the scene backdrop and adjusts display coordinates via ScrollOffset.
 ;;
 ;; A ScrollOffset is a (scroll-offset Vec), indicating the vector to *subtract*
 ;; from world coordinates to get device coordinates.
 (struct scroll-offset (vec) #:transparent)
+;;
+;; An OnScreenDisplay is an (on-screen-display Number Number (Seal Image)),
+;; representing an item to display in a fixed window-relative position
+;; above the scrolled part of the scene. If the coordinates are
+;; positive, they measure right/down from the left/top of the image;
+;; if negative, they measure left/up from the right/bottom.
+(struct on-screen-display (x y sealed-image) #:transparent)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ## Game Layer Protocols
@@ -294,6 +302,7 @@
 (define window-projection1 (at-meta (?! (window ? ?))))
 (define window-projection3 (at-meta (at-meta (at-meta (?! (window ? ?))))))
 (define scroll-offset-projection (scroll-offset (?!)))
+(define on-screen-display-projection (?! (on-screen-display ? ? ?)))
 (define key-pressed-projection (at-meta (at-meta (key-pressed (?!)))))
 (define position-projection (?! (position ? ? ?)))
 (define impulse-projection (?! (impulse ? ?)))
@@ -314,7 +323,7 @@
 ;; SceneManager
 
 (define (spawn-scene-manager)
-  (struct scene-manager-state (size offset) #:prefab)
+  (struct scene-manager-state (size offset osds) #:prefab)
   (define backdrop (rectangle 1 1 "solid" "white"))
 
   (define (update-window-size s p)
@@ -328,37 +337,63 @@
     (for/fold [(s s)] [(vec added)]
       (struct-copy scene-manager-state s [offset vec])))
 
+  (define (update-osds s p)
+    (struct-copy scene-manager-state s
+                 [osds (update-set-from-patch (scene-manager-state-osds s)
+                                              p
+                                              on-screen-display-projection)]))
+
   (spawn (lambda (e s)
            (match e
              [(? patch? p)
               (let* ((s (update-window-size s p))
-                     (s (update-scroll-offset s p)))
+                     (s (update-scroll-offset s p))
+                     (s (update-osds s p)))
                 (match-define (vector width height) (scene-manager-state-size s))
                 (match-define (vector ofs-x ofs-y) (scene-manager-state-offset s))
+                (define osd-blocks
+                  (for/list [(osd (in-set (scene-manager-state-osds s)))]
+                    (match-define (on-screen-display raw-x raw-y (seal i)) osd)
+                    (define x (if (negative? raw-x) (+ width raw-x) raw-x))
+                    (define y (if (negative? raw-y) (+ height raw-y) raw-y))
+                    `(push-matrix (translate ,x ,y)
+                                  (scale ,(image-width i) ,(image-height i))
+                                  (texture ,i))))
                 (transition s
                             (update-scene `((push-matrix
                                              (scale ,width ,height)
                                              (texture ,backdrop))
                                             (translate ,(- ofs-x) ,(- ofs-y)))
-                                          `())))]
+                                          `((translate ,ofs-x ,ofs-y)
+                                            ,@osd-blocks))))]
              [_ #f]))
-         (scene-manager-state (vector 0 0) (vector 0 0))
+         (scene-manager-state (vector 0 0) (vector 0 0) (set))
          (patch-seq (sub (scroll-offset ?))
+                    (sub (on-screen-display ? ? ?))
                     (sub (window ? ?) #:meta-level 1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ScoreKeeper
 
 (define (spawn-score-keeper)
+  (define (update-display new-score)
+    (define i (text (format "Score: ~a" new-score) 24 "white"))
+    (patch-seq (retract (on-screen-display ? ? ?) #:meta-level 1)
+               (assert (on-screen-display -150 10 (seal i)) #:meta-level 1)))
   (spawn (lambda (e s)
            (match e
              [(message (add-to-score delta))
-              (transition (+ s delta)
+              (define new-score (+ s delta))
+              (log-info "Score increased by ~a to ~a" delta new-score)
+              (define message (text (format "Score: ~a" new-score) 24 "white"))
+              (transition new-score
                           (patch-seq (retract (current-score ?))
-                                     (assert (current-score delta))))]
+                                     (assert (current-score delta))
+                                     (update-display new-score)))]
              [_ #f]))
          0
-         (sub (add-to-score ?))))
+         (patch-seq (sub (add-to-score ?))
+                    (update-display 0))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; PhysicsEngine
@@ -777,7 +812,7 @@
             (values (cons who to-damage) squashed?))))
     (define damage-actions (for/list [(who to-damage)] (message (damage who 1))))
     (if squashed?
-        (quit damage-actions)
+        (quit (list damage-actions (message (at-meta (add-to-score 1)))))
         (transition s damage-actions)))
 
   (spawn (lambda (e s)
@@ -856,7 +891,8 @@
               (transition s (quit-network))]
              [(message (at-meta (level-completed)))
               (log-info "Level completed! Terminating level.")
-              (transition s (quit-network))]
+              (transition s (list (message (at-meta (add-to-score 100)))
+                                  (quit-network)))]
              [_ #f]))
          (void)
          (patch-seq (sub (game-piece-configuration player-id ? ? ?))
