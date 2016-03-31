@@ -669,16 +669,19 @@
                                                     key-pressed-projection)])
      '()))
 
+  (define (any-key-down? s . ks)
+    (for/or [(k ks)] (set-member? (player-state-keys-down s) k)))
+
   (define ((maybe-jump s0) s)
     (transition s
-                (and (not (set-member? (player-state-keys-down s0) #\space))
-                     (set-member? (player-state-keys-down s) #\space)
+                (and (not (any-key-down? s0 #\space #\.))
+                     (any-key-down? s #\space #\.)
                      (message (jump-request player-id)))))
 
   (define (update-impulse s)
     (let* ((h-impulse 0)
-           (h-impulse (+ h-impulse (if (set-member? (player-state-keys-down s) 'left) -1 0)))
-           (h-impulse (+ h-impulse (if (set-member? (player-state-keys-down s) 'right) 1 0))))
+           (h-impulse (+ h-impulse (if (any-key-down? s 'left 'prior) -1 0)))
+           (h-impulse (+ h-impulse (if (any-key-down? s 'right 'next) 1 0))))
       (transition s
                   (patch-seq (retract (impulse player-id ?))
                              (assert (impulse player-id (vector h-impulse 0)))))))
@@ -710,6 +713,9 @@
           (sub (key-pressed 'left) #:meta-level 2)
           (sub (key-pressed 'right) #:meta-level 2)
           (sub (key-pressed #\space) #:meta-level 2)
+          (sub (key-pressed 'prior) #:meta-level 2)
+          (sub (key-pressed 'next) #:meta-level 2)
+          (sub (key-pressed #\.) #:meta-level 2)
           (sprite-update initial-player-state)
           )))
 
