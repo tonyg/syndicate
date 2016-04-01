@@ -1,4 +1,4 @@
-#lang prospect ;; -*- racket -*-
+#lang syndicate ;; -*- racket -*-
 
 (require (only-in racket/string string-trim))
 (require "../drivers/tcp.rkt")

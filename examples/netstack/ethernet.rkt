@@ -13,8 +13,8 @@
 (require racket/match)
 (require racket/async-channel)
 
-(require prospect-monolithic)
-(require prospect-monolithic/demand-matcher)
+(require syndicate-monolithic)
+(require syndicate-monolithic/demand-matcher)
 
 (require packet-socket)
 (require bitsyntax)

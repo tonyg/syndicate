@@ -1,4 +1,4 @@
-#lang prospect/hll ;; -*- racket -*-
+#lang syndicate/hll ;; -*- racket -*-
 
 (actor (forever (assert `(parent john douglas))))
 (actor (forever (assert `(parent bob john))))

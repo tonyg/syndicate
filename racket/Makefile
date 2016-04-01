@@ -1,5 +1,5 @@
-PACKAGENAME=prospect
-COLLECTS=prospect prospect-monolithic
+PACKAGENAME=syndicate
+COLLECTS=syndicate syndicate-monolithic syndicate-gl
 
 all: setup
 

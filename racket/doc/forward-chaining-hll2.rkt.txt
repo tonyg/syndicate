@@ -1,4 +1,4 @@
-#lang prospect/hll ;; -*- racket -*-
+#lang syndicate/hll ;; -*- racket -*-
 
 (actor (forever #:collect [(count 0)]
                 (assert `(parent-count ,count))

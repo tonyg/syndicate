@@ -1,12 +1,12 @@
 # FAQ
 
-* How do I run a prospect program?
-  - `#lang prospect` collects actions (`spawn`s) from module toplevel and
+* How do I run a syndicate program?
+  - `#lang syndicate` collects actions (`spawn`s) from module toplevel and
   uses them as boot actions for a ground-level network. The alternative
   is to use a different #lang, and to call `run-ground` yourself; see an
-  example in prospect/examples/example-plain.rkt.
+  example in syndicate/examples/example-plain.rkt.
 
-* How do I debug a prospect program?
+* How do I debug a syndicate program?
   - You can view a colored trace of a program's execution on stderr by setting the MINIMART_TRACE environment variable, e.g.
 
     ```
@@ -220,7 +220,7 @@
   ```
   - use `spawn-network`:
   ```racket
-  #lang prospect
+  #lang syndicate
   (spawn-network <net1-spawns> ...)
   (spawn-network <net2-spawns> ...
                  (spawn-network <net3-spawns> ...))
@@ -269,8 +269,8 @@
 	process is killed - the spawning process is not signalled. More thought
 	required.
 
-* Can I split a prospect program across multiple files?
-  - Only one module with `#lang prospect` can be used at a time.
+* Can I split a syndicate program across multiple files?
+  - Only one module with `#lang syndicate` can be used at a time.
 
 * Why does `#f` keep getting sent as an event?
   - When a behavior returns something besides `#f` in response to an event, it is

@@ -2,7 +2,7 @@
 ;; Demonstration stack configuration for various hosts.
 
 (require racket/match)
-(require prospect-monolithic)
+(require syndicate-monolithic)
 (require (only-in mzlib/os gethostname))
 (require "configuration.rkt")
 

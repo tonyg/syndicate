@@ -8,15 +8,15 @@
 (require racket/promise)
 (require plot/utils) ;; for vector utilities
 
-(require prospect)
-(require prospect/drivers/timer)
-(require prospect-gl/2d)
+(require syndicate)
+(require syndicate/drivers/timer)
+(require syndicate-gl/2d)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Layers:
 ;;
 ;; - External I/O
-;;   as arranged by prospect-gl/2d
+;;   as arranged by syndicate-gl/2d
 ;;   including keyboard events, interface to rendering, and frame timing
 ;;
 ;; - Ground

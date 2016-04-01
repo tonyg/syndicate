@@ -1,4 +1,4 @@
-#lang prospect ;; -*- racket -*-
+#lang syndicate ;; -*- racket -*-
 
 (require (only-in racket/port read-bytes-line-evt))
 (require "../drivers/tcp.rkt")

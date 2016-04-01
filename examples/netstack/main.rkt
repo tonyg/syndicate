@@ -1,7 +1,7 @@
-#lang prospect-monolithic
+#lang syndicate-monolithic
 
-(require prospect-monolithic/demand-matcher)
-(require prospect-monolithic/drivers/timer)
+(require syndicate-monolithic/demand-matcher)
+(require syndicate-monolithic/drivers/timer)
 (require "demo-config.rkt")
 (require "ethernet.rkt")
 (require "arp.rkt")
@@ -91,9 +91,9 @@
 		   (string->bytes/utf-8
 		    (format (string-append
 			     "HTTP/1.0 200 OK\r\n\r\n"
-			     "<h1>Hello world from prospect-monolithic-netstack!</h1>\n"
-			     "<p>This is running on prospect-monolithic's own\n"
-			     "<a href='https://github.com/tonyg/prospect-netstack/'>\n"
+			     "<h1>Hello world from syndicate-monolithic-netstack!</h1>\n"
+			     "<p>This is running on syndicate-monolithic's own\n"
+			     "<a href='https://github.com/tonyg/syndicate/'>\n"
 			     "TCP/IP stack</a>.</p>\n"
 			     "<p>There have been ~a requests prior to this one.</p>")
 			    counter)))

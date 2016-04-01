@@ -1,7 +1,7 @@
-#lang prospect-monolithic
+#lang syndicate-monolithic
 
-(require prospect-monolithic/demand-matcher)
-(require prospect-monolithic/drivers/timer)
+(require syndicate-monolithic/demand-matcher)
+(require syndicate-monolithic/drivers/timer)
 (require "demo-config.rkt")
 (require "ethernet.rkt")
 (require "arp.rkt")

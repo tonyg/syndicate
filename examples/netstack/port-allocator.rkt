@@ -6,7 +6,7 @@
 
 (require racket/set)
 (require racket/match)
-(require prospect-monolithic)
+(require syndicate-monolithic)
 (require "ip.rkt")
 
 (struct port-allocation-request (type k) #:prefab)

@@ -114,7 +114,7 @@ with their values at the time the `until` is started.
 ## Examples
 
 ```racket
-#lang prospect/actor
+#lang syndicate/actor
 ;; Simple mutable box and count-to-infinity box client.
 
 (struct set-box (new-value) #:transparent)

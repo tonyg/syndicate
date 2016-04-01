@@ -13,9 +13,9 @@
 (require racket/set)
 (require racket/match)
 (require (only-in racket/string string-split))
-(require prospect-monolithic)
-(require prospect-monolithic/drivers/timer)
-(require prospect-monolithic/demand-matcher)
+(require syndicate-monolithic)
+(require syndicate-monolithic/drivers/timer)
+(require syndicate-monolithic/demand-matcher)
 (require bitsyntax)
 
 (require "dump-bytes.rkt")
