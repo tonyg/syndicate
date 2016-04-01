@@ -1,0 +1,87 @@
+// -*- javascript -*-
+// Syntactic extensions to ES5 for Syndicate/js. See compiler.js for
+// the rest of the translator.
+
+Syndicate <: ES5 {
+  //---------------------------------------------------------------------------
+  // Extensions to expressions.
+
+  Statement
+    += ActorStatement
+    | NetworkStatement
+    | ActorFacetStatement
+    | AssertionTypeDeclarationStatement
+    | SendMessageStatement
+
+  ActorStatement
+    = actor CallExpression Block -- withConstructor
+    | actor Block                -- noConstructor
+
+  NetworkStatement
+    = ground network identifier? Block -- ground
+    | network Block                    -- normal
+
+  ActorFacetStatement
+    = state FacetBlock until FacetStateTransitionBlock   -- state
+    | until FacetStateTransitionBlock                    -- until
+    | forever FacetBlock                                 -- forever
+
+  AssertionTypeDeclarationStatement
+    = assertion type identifier "(" FormalParameterList ")" ("=" stringLiteral)? #(sc)
+
+  SendMessageStatement = "::" Expression<withIn> #(sc)
+
+  //---------------------------------------------------------------------------
+  // Ongoing event handlers.
+
+  FacetBlock = "{" FacetInitBlock? FacetSituation* FacetDoneBlock? "}"
+  FacetStateTransitionBlock = "{" FacetStateTransition* "}"
+
+  FacetInitBlock = init Block
+  FacetDoneBlock = done Block
+
+  FacetSituation
+    = assert FacetPattern #(sc)      -- assert
+    | on FacetEventPattern Block               -- event
+    | during FacetPattern FacetBlock -- during
+
+  FacetEventPattern
+    = message FacetPattern   -- messageEvent
+    | asserted FacetPattern  -- assertedEvent
+    | retracted FacetPattern -- retractedEvent
+
+  FacetTransitionEventPattern
+    = FacetEventPattern          -- facetEvent
+    | "(" Expression<withIn> ")" -- risingEdge
+
+  FacetStateTransition
+    = case FacetTransitionEventPattern Block -- withContinuation
+    | case FacetTransitionEventPattern #(sc) -- noContinuation
+
+  FacetPattern
+    = LeftHandSideExpression metalevel decimalIntegerLiteral -- withMetalevel
+    | LeftHandSideExpression                                 -- noMetalevel
+
+  //---------------------------------------------------------------------------
+  // Keywords. We don't add them to the "keyword" production because
+  // we don't want to make them unavailable to programs as
+  // identifiers.
+
+  actor = "actor" ~identifierPart
+  assert = "assert" ~identifierPart
+  asserted = "asserted" ~identifierPart
+  assertion = "assertion" ~identifierPart
+  done = "done" ~identifierPart
+  during = "during" ~identifierPart
+  forever = "forever" ~identifierPart
+  ground = "ground" ~identifierPart
+  init = "init" ~identifierPart
+  message = "message" ~identifierPart
+  metalevel = "metalevel" ~identifierPart
+  network = "network" ~identifierPart
+  on = "on" ~identifierPart
+  retracted = "retracted" ~identifierPart
+  state = "state" ~identifierPart
+  type = "type" ~identifierPart
+  until = "until" ~identifierPart
+}
