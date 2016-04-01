@@ -11,6 +11,8 @@
                "datalog"
                "draw-lib"
                "gui-lib"
+               "pict-lib"
+               "sgl"
 	       ))
 (define build-deps '("racket-doc"
                      "scribble-lib"))
