@@ -24,42 +24,28 @@ networks-within-networks. Programs can give up responsibility for
 maintaining shared state and for scoping group communications, letting
 their containing network take on those burdens.
 
-## The code
+## Contents
 
-This repository contains a [Racket](http://racket-lang.org/) package,
-`syndicate`, which includes
+This repository contains
 
- - the implementation of the `#lang syndicate` language, in the
-   [`syndicate` directory](https://github.com/tonyg/syndicate/tree/master/syndicate/).
+ - a [Racket](http://racket-lang.org/) implementation of Syndicate
+   (plus auxiliary modules) in `racket/syndicate/`
 
- - a TCP echo server example, which listens for connections on port
-   5999 by default, in
-   [`syndicate/examples/echo.rkt`](https://github.com/tonyg/syndicate/tree/master/syndicate/examples/echo.rkt).
-   Connect to it using, for example, `telnet localhost 5999`.
+ - an
+   [ECMAScript 5](http://www.ecma-international.org/publications/standards/Ecma-262.htm)
+   implementation of Syndicate in `js/`
 
- - a handful of other examples, in
-   [`syndicate/examples/`](https://github.com/tonyg/syndicate/tree/master/syndicate/examples/).
+ - larger example programs:
 
-## Compiling and running the code
+    - `examples/platformer`, a 2D Platform game written in Syndicate
+      for Racket.
 
-You will need Racket version 6.3 or later.
+    - `examples/netstack`, a TCP/IP stack written in Syndicate for
+      Racket. It reads and writes raw Ethernet packets from the kernel
+      using Linux- and OSX-specific APIs.
 
-Once you have Racket installed, run
-
-    raco pkg install syndicate
-
-to install the package from the Racket package repository, or
-
-    raco pkg install
-
-from the root directory of the Git checkout to install the package
-from a local snapshot. (Alternatively, `make link` does the same thing.)
-This will make `#lang syndicate` available to programs.
-
-At this point, you may load and run any of the example `*.rkt` files
-in the
-[`syndicate/examples/`](https://github.com/tonyg/syndicate/tree/master/syndicate/examples/)
-directory.
+ - a sketch of a Haskell implementation of the core routing structures
+   of Syndicate in `hs/`
 
 ## Copyright
 
