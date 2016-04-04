@@ -8,7 +8,7 @@
 
 @defmodule[syndicate/actor]
 
-@section{Insantaneous Actions (I)}
+@section{Instantaneous Actions (I)}
 
 @defform[(actor I ...)]{
 Spawns an actor that executes each instantaneous action @racket[I] in
@@ -17,7 +17,7 @@ sequence.}
 @defform[(network I ...)]{
 Spawns a network as a child of the network enclosing the executing actor. The
 new network executes each instantaneous action @racket[I].}
-                                                         
+
 @defproc[(send! [v any/c]
                 [#:meta-level level natural-number/c 0])
          void?]{

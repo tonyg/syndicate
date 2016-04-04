@@ -1,2 +1,2 @@
 #lang setup/infotab
-(define scribblings '(("scribblings/highlevelref.scrbl" ())))
+(define scribblings '(("scribblings/syndicate.scrbl" ())))
