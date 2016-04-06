@@ -32,13 +32,10 @@ deploy-copy:
 	[ -f $(SYNDICATE_WEB)/_config.yml ]
 	[ -f $(SYNDICATE_WEB)/index.md ]
 
-	[ ! -d $(SYNDICATE_WEB)/examples ] || (cd $(SYNDICATE_WEB); git rm -rf examples)
-	[ ! -d $(SYNDICATE_WEB)/dist ] || (cd $(SYNDICATE_WEB); git rm -rf dist)
-
 	git clone .. TEMP_CHECKOUT
-	cp -a TEMP_CHECKOUT/js/examples $(SYNDICATE_WEB)/examples
-	cp -a TEMP_CHECKOUT/js/dist $(SYNDICATE_WEB)/dist
+	for d in examples dist third-party; do \
+		[ ! -d $(SYNDICATE_WEB)/$$d ] || (cd $(SYNDICATE_WEB); git rm -rf $$d); \
+		cp -a TEMP_CHECKOUT/js/$$d $(SYNDICATE_WEB)/$$d; \
+		(cd $(SYNDICATE_WEB); git add $$d); \
+	done
 	rm -rf TEMP_CHECKOUT
-
-	(cd $(SYNDICATE_WEB); git add examples)
-	(cd $(SYNDICATE_WEB); git add dist)
