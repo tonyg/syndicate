@@ -16,6 +16,18 @@ Syndicate/js jQuery driver to subscribe to button click events.
  - [DEMO](button/)
  - [Source code](button/index.js) using the Syndicate/js DSL
 
+## DOM example
+
+This example demonstrates two actors, each using the Syndicate/js DOM
+driver to display user interface, and the jQuery driver to receive
+events from it. The first actor presents a button to the user, which
+when clicked sends a message to the other actor. The second actor
+receives messages from the first, updates its internal state, and
+reflects its new internal state in its visible UI.
+
+ - [DEMO](dom/)
+ - [Source code](dom/index.js) in plain JavaScript
+
 ## jQuery Example
 
 This example is similar to the button example, but uses plain
