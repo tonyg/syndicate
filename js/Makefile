@@ -33,6 +33,7 @@ deploy-copy:
 	[ -f $(SYNDICATE_WEB)/index.md ]
 
 	git clone .. TEMP_CHECKOUT
+	cp -a dist/. TEMP_CHECKOUT/js/dist/.
 	for d in examples dist third-party; do \
 		[ ! -d $(SYNDICATE_WEB)/$$d ] || (cd $(SYNDICATE_WEB); git rm -rf $$d); \
 		cp -a TEMP_CHECKOUT/js/$$d $(SYNDICATE_WEB)/$$d; \
