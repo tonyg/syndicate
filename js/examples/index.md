@@ -3,6 +3,9 @@
 
 # Syndicate/js Examples
 
+This page describes some of the example programs that are part of the
+JavaScript implementation of Syndicate.
+
 ## Clickable Button
 
 This is a simple clickable button; each time the button is clicked,
