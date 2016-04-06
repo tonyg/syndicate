@@ -21,3 +21,24 @@ clean:
 
 veryclean: clean
 	rm -rf node_modules/
+
+SYNDICATE_WEB=$(CURDIR)/../../syndicate-web
+deploy: all deploy-copy
+deploy-copy:
+	(git diff --quiet && git diff --cached --quiet) || (echo "Commit changes first."; false)
+
+	[ -d $(SYNDICATE_WEB) ]
+	[ -f $(SYNDICATE_WEB)/CNAME ]
+	[ -f $(SYNDICATE_WEB)/_config.yml ]
+	[ -f $(SYNDICATE_WEB)/index.md ]
+
+	[ ! -d $(SYNDICATE_WEB)/examples ] || (cd $(SYNDICATE_WEB); git rm -rf examples)
+	[ ! -d $(SYNDICATE_WEB)/dist ] || (cd $(SYNDICATE_WEB); git rm -rf dist)
+
+	git clone .. TEMP_CHECKOUT
+	cp -a TEMP_CHECKOUT/js/examples $(SYNDICATE_WEB)/examples
+	cp -a TEMP_CHECKOUT/js/dist $(SYNDICATE_WEB)/dist
+	rm -rf TEMP_CHECKOUT
+
+	(cd $(SYNDICATE_WEB); git add examples)
+	(cd $(SYNDICATE_WEB); git add dist)
