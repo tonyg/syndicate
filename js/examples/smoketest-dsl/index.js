@@ -1,6 +1,6 @@
 assertion type beep(counter);
 
-ground network {
+ground dataspace {
   console.log('starting ground boot');
 
   actor {

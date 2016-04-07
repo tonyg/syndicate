@@ -3,7 +3,7 @@
 
 (require syndicate/pretty)
 
-(spawn-network
+(spawn-dataspace
  (spawn (lambda (e counter)
           (and e
                (let ((new-counter (+ counter 1)))

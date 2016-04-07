@@ -2,7 +2,7 @@
 
 var G;
 $(document).ready(function () {
-    var Network = Syndicate.Network;
+    var Dataspace = Syndicate.Dataspace;
     var sub = Syndicate.sub;
     var __ = Syndicate.__;
     var _$ = Syndicate._$;
@@ -12,7 +12,7 @@ $(document).ready(function () {
 
       Syndicate.JQuery.spawnJQueryDriver();
 
-      Network.spawn({
+      Dataspace.spawn({
 	boot: function () {
 	  return sub(['jQuery', '#clicker', 'click', __]);
 	},
@@ -24,7 +24,7 @@ $(document).ready(function () {
 	}
       });
     });
-    G.network.onStateChange = function (mux, patch) {
+    G.dataspace.onStateChange = function (mux, patch) {
       $("#spy-holder").text(Syndicate.prettyTrie(mux.routingTable));
     };
     G.startStepping();

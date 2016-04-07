@@ -4,20 +4,20 @@ var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
 var Ack = require('./ack.js').Ack;
 var Seal = require('./seal.js').Seal;
 
-var Network_ = require("./network.js");
-var Network = Network_.Network;
-var __ = Network_.__;
-var _$ = Network_._$;
+var Dataspace_ = require("./dataspace.js");
+var Dataspace = Dataspace_.Dataspace;
+var __ = Dataspace_.__;
+var _$ = Dataspace_._$;
 
 function spawnDOMDriver(domWrapFunction, jQueryWrapFunction) {
   domWrapFunction = domWrapFunction || defaultWrapFunction;
   var spec = domWrapFunction(_$('selector'), _$('fragmentClass'), _$('fragmentSpec'));
-  Network.spawn(
+  Dataspace.spawn(
     new DemandMatcher(spec,
 		      Patch.advertise(spec),
 		      {
 			onDemandIncrease: function (c) {
-			  Network.spawn(new DOMFragment(c.selector,
+			  Dataspace.spawn(new DOMFragment(c.selector,
 							c.fragmentClass,
 							c.fragmentSpec,
 							domWrapFunction,
@@ -45,11 +45,11 @@ DOMFragment.prototype.boot = function () {
   var self = this;
   var specification = self.domWrapFunction(self.selector, self.fragmentClass, self.fragmentSpec);
 
-  Network.spawn(new Network(function () {
+  Dataspace.spawn(new Dataspace(function () {
     Syndicate.JQuery.spawnJQueryDriver(self.selector+" > ."+self.fragmentClass,
 				       1,
 				       self.jQueryWrapFunction);
-    Network.spawn({
+    Dataspace.spawn({
       demandExists: false,
       subscriptionEstablished: new Ack(1),
       boot: function () {
@@ -63,7 +63,7 @@ DOMFragment.prototype.boot = function () {
 	  if (e.patch.hasRemoved()) this.demandExists = false;
 	}
 	if (this.subscriptionEstablished.done && !this.demandExists) {
-	  Network.exitNetwork();
+	  Dataspace.exitDataspace();
 	}
       }
     });
@@ -84,7 +84,7 @@ DOMFragment.prototype.handleEvent = function (e) {
       var n = this.nodes[i];
       n.parentNode.removeChild(n);
     }
-    Network.exit();
+    Dataspace.exit();
   }
 };
 

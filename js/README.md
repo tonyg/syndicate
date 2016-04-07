@@ -11,8 +11,8 @@ Source files in `src/`, from most general to most specific:
  - `route.js`: Implementation of dataspace trie structure.
  - `patch.js`: Implementation of patches over dataspace tries.
  - `mux.js`: Use of tries plus patches to build a (de)multiplexing routing structure.
- - `network.js`: Implementation of core leaf actors and networks.
- - `ground.js`: Pseudo-network acting as the global outermost context for Syndicate actors.
+ - `dataspace.js`: Implementation of core leaf actors and dataspaces.
+ - `ground.js`: Pseudo-dataspace acting as the global outermost context for Syndicate actors.
 
  - `ack.js`: Utility for detecting when a previous state change has taken effect.
  - `seal.js`: Immutable container for data, used to hide structure from dataspace tries.

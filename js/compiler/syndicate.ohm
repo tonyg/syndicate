@@ -8,7 +8,7 @@ Syndicate <: ES5 {
 
   Statement
     += ActorStatement
-    | NetworkStatement
+    | DataspaceStatement
     | ActorFacetStatement
     | AssertionTypeDeclarationStatement
     | SendMessageStatement
@@ -17,9 +17,9 @@ Syndicate <: ES5 {
     = actor CallExpression Block -- withConstructor
     | actor Block                -- noConstructor
 
-  NetworkStatement
-    = ground network identifier? Block -- ground
-    | network Block                    -- normal
+  DataspaceStatement
+    = ground dataspace identifier? Block -- ground
+    | dataspace Block                    -- normal
 
   ActorFacetStatement
     = state FacetBlock until FacetStateTransitionBlock   -- state
@@ -71,6 +71,7 @@ Syndicate <: ES5 {
   assert = "assert" ~identifierPart
   asserted = "asserted" ~identifierPart
   assertion = "assertion" ~identifierPart
+  dataspace = "dataspace" ~identifierPart
   done = "done" ~identifierPart
   during = "during" ~identifierPart
   forever = "forever" ~identifierPart
@@ -78,7 +79,6 @@ Syndicate <: ES5 {
   init = "init" ~identifierPart
   message = "message" ~identifierPart
   metalevel = "metalevel" ~identifierPart
-  network = "network" ~identifierPart
   on = "on" ~identifierPart
   retracted = "retracted" ~identifierPart
   state = "state" ~identifierPart

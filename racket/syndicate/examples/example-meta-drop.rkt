@@ -2,7 +2,7 @@
 ;; Analogous to nc-incremental-meta-drop.rkt in the Redex model.
 ;; Demonstrates (hopefully) correct processing of meta-interests when dropping a patch.
 
-(spawn-network
+(spawn-dataspace
  (spawn (lambda (e u)
           (match u
             [0 (transition 1 '())]

@@ -37,7 +37,7 @@
        ;; that are coming from the background thread.
        ;;
        ;; The race cannot occur in the sequential implementation
-       ;; because the network makes sure to enqueue the transition
+       ;; because the dataspace makes sure to enqueue the transition
        ;; actions resulting from the set-timer message delivery ahead
        ;; of any enqueueing of the timer-expired ground message, so
        ;; that by the time the ground message is processed, the

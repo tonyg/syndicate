@@ -6,7 +6,7 @@ assertion type file(name, content) = "file";
 assertion type saveFile(name, content) = "save";
 assertion type deleteFile(name) = "delete";
 
-ground network {
+ground dataspace {
   ///////////////////////////////////////////////////////////////////////////
   // The file system actor
 

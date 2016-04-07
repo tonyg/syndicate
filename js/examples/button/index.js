@@ -2,7 +2,7 @@ assertion type DOM(containerSelector, fragmentClass, spec);
 assertion type jQuery(selector, eventType, event);
 
 $(document).ready(function() {
-  ground network {
+  ground dataspace {
     Syndicate.DOM.spawnDOMDriver();
     Syndicate.JQuery.spawnJQueryDriver();
 

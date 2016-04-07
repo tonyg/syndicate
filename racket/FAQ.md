@@ -2,7 +2,7 @@
 
 * How do I run a syndicate program?
   - `#lang syndicate` collects actions (`spawn`s) from module toplevel and
-  uses them as boot actions for a ground-level network. The alternative
+  uses them as boot actions for a ground-level dataspace. The alternative
   is to use a different #lang, and to call `run-ground` yourself; see an
   example in syndicate/examples/example-plain.rkt.
 
@@ -20,7 +20,7 @@
     p - lifecycle events (spawns, crashes, and quits)  
     a - process actions  
     g - dataspace contents  
-    Adding 'N' will show whole network-states too. Remove each individual
+    Adding 'N' will show whole dataspace-states too. Remove each individual
     character to turn off the corresponding trace facility; the default
     value of the variable is just the empty-string.
 
@@ -67,8 +67,8 @@
   ;; stateless actor
   (spawn/stateless (lambda (event) ... (list action ...))
                    initial-action ...)
-  ;; network of actors
-  (spawn-network boot-action ...)
+  ;; dataspace of actors
+  (spawn-dataspace boot-action ...)
   ```
 
 * How do actors at different levels communicate?
@@ -98,9 +98,9 @@
   while the second says
   > OVER THERE, I am interested in assertions 'hello
 
-  The former is necessary for the local network to route events to us, and
-  the latter is necessary for the remote network to route events to the
-  local network.
+  The former is necessary for the local dataspace to route events to us, and
+  the latter is necessary for the remote dataspace to route events to the
+  local dataspace.
 
   Implicit in any `sub` call with N>0 meta-level, therefore, is the
   construction of a whole *chain* of subscriptions, relaying information
@@ -176,7 +176,7 @@
   When a message is sent, it is delivered to everyone that is interested in it
   **at that time**.
 
-* How to inject an external event (e.g. keyboard press) into the network?
+* How to inject an external event (e.g. keyboard press) into the dataspace?
   - Use `send-ground-message`.
   - (Note that the argument to `send-ground-message` is wrapped in a `message`,
   so to send `'foo` at the ground level use `(send-ground-message 'foo)` rather than
@@ -191,10 +191,10 @@
 
 * I used `spawn` but the actor isn't being created. What happened?
   - The only two ways to spawn a process are to (a) supply the spawn instruction in
-  that network's boot-actions, or (b) have some already-existing actor supply the
+  that dataspace's boot-actions, or (b) have some already-existing actor supply the
   spawn instruction in response to some event it receives. Note that calling `spawn`
   constructs a structure which is perhaps eventually interpreted by the containing
-  network of an actor; it doesn't really "do" anything directly.
+  dataspace of an actor; it doesn't really "do" anything directly.
 
 * Why does `patch-seq` exist? Aren't all the actions in a transition effectively `patch-seq`d together?
   - Effectively, yes, that is what happens. The difference is in the
@@ -210,7 +210,7 @@
     gets to observe things-as-they-were-before-the-patch, and
     things-as-they-are-after-the-patch.
 
-* How do I create a tiered network, such as
+* How do I create a tiered dataspace, such as
   ```
         ground
       /         \
@@ -218,15 +218,15 @@
                    \
                    net3
   ```
-  - use `spawn-network`:
+  - use `spawn-dataspace`:
   ```racket
   #lang syndicate
-  (spawn-network <net1-spawns> ...)
-  (spawn-network <net2-spawns> ...
-                 (spawn-network <net3-spawns> ...))
+  (spawn-dataspace <net1-spawns> ...)
+  (spawn-dataspace <net2-spawns> ...
+                   (spawn-dataspace <net3-spawns> ...))
   ```
-  `spawn-network` expands into a regular `spawn` with an event-handler and
-  state corresponding to a whole VM. The arguments to spawn-network are
+  `spawn-dataspace` expands into a regular `spawn` with an event-handler and
+  state corresponding to a whole VM. The arguments to spawn-dataspace are
   actions to take at boot time in the new VM.
 
 * What is the outcome if I do `(assert X)` and then later `(patch-seq (retract ?) assert X)`?
@@ -275,4 +275,4 @@
 * Why does `#f` keep getting sent as an event?
   - When a behavior returns something besides `#f` in response to an event, it is
   repeatedly sent `#f` until it does return `#f`.
-  - Think of it as a way of the network asking "anything else?"
+  - Think of it as a way of the dataspace asking "anything else?"

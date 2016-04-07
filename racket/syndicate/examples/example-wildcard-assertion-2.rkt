@@ -2,7 +2,7 @@
 ;; Demonstrate almost-wildcard assertions.
 ;; One actor subscribes to everything - and so initially sees itself.
 ;; The other advertises everything except subscriptions and at-meta assertions.
-;; The first actor's aggregate view of the network then includes everything
+;; The first actor's aggregate view of the dataspace then includes everything
 ;; except at-meta assertions.
 
 (require syndicate/pretty)

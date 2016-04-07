@@ -86,7 +86,7 @@ var modifiedSourceActions = {
     return buildActor(ctorExp.asES5, block);
   },
 
-  NetworkStatement_ground: function(_ground, _network, maybeId, block) {
+  DataspaceStatement_ground: function(_ground, _dataspace, maybeId, block) {
     var code = 'new Syndicate.Ground(function () ' + block.asES5 + ').startStepping();';
     if (maybeId.numChildren === 1) {
       return 'var ' + maybeId.children[0].interval.contents + ' = ' + code;
@@ -94,8 +94,8 @@ var modifiedSourceActions = {
       return code;
     }
   },
-  NetworkStatement_normal: function(_network, block) {
-    return 'Syndicate.Network.spawn(new Network(function () ' + block.asES5 + '));';
+  DataspaceStatement_normal: function(_dataspace, block) {
+    return 'Syndicate.Dataspace.spawn(new Dataspace(function () ' + block.asES5 + '));';
   },
 
   ActorFacetStatement_state: function(_state, facetBlock, _until, transitionBlock) {
@@ -143,7 +143,7 @@ var modifiedSourceActions = {
   },
 
   SendMessageStatement: function(_colons, expr, sc) {
-    return 'Syndicate.Network.send(' + expr.asES5 + ')' + sc.interval.contents;
+    return 'Syndicate.Dataspace.send(' + expr.asES5 + ')' + sc.interval.contents;
   },
 
   FacetBlock: function(_leftParen, init, situations, done, _rightParen) {

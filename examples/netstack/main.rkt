@@ -60,7 +60,7 @@
             (advertisement (tcp-channel us them ?) #:meta-level 1) ;; we will write to remote client
             ))))
 
-  (spawn-network
+  (spawn-dataspace
    (spawn-demand-matcher (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
                          (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
                          #:meta-level 1
@@ -105,7 +105,7 @@
                        (subscription (advertise (tcp-channel them us ?)) #:meta-level 1)
                        (advertisement (tcp-channel us them ?) #:meta-level 1)))))
 
-  (spawn-network
+  (spawn-dataspace
    (spawn (lambda (e counter)
 	    (match e
 	      [(message 'bump)

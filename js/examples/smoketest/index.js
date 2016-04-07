@@ -2,7 +2,7 @@
 
 var G;
 $(document).ready(function () {
-    var Network = Syndicate.Network;
+    var Dataspace = Syndicate.Dataspace;
     var sub = Syndicate.sub;
     var __ = Syndicate.__;
     var _$ = Syndicate._$;
@@ -10,17 +10,17 @@ $(document).ready(function () {
     G = new Syndicate.Ground(function () {
       console.log('starting ground boot');
 
-      Network.spawn({
+      Dataspace.spawn({
 	counter: 0,
 	boot: function () {},
 	handleEvent: function (e) {},
 	step: function () {
-	  Network.send(["beep", this.counter++]);
+	  Dataspace.send(["beep", this.counter++]);
 	  return this.counter <= 10;
 	}
       });
 
-      Network.spawn({
+      Dataspace.spawn({
 	boot: function () { return sub(["beep", __]); },
 	handleEvent: function (e) {
 	  if (e.type === 'message') {

@@ -154,7 +154,7 @@ function spawnSearch() {
 // Main
 
 $(document).ready(function () {
-  ground network G {
+  ground dataspace G {
     Syndicate.JQuery.spawnJQueryDriver();
     Syndicate.DOM.spawnDOMDriver();
 
@@ -163,7 +163,7 @@ $(document).ready(function () {
     spawnSearch();
   }
 
-  G.network.onStateChange = function (mux, patch) {
+  G.dataspace.onStateChange = function (mux, patch) {
     $("#spy-holder").text(Syndicate.prettyTrie(mux.routingTable));
   };
 });

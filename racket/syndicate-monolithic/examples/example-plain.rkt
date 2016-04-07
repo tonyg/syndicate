@@ -63,8 +63,8 @@
                    1
                    (scn/union (subscription (observe (set-timer ? ? ?)))
                               (subscription (timer-expired 'tick ?))))
-	    (spawn-network (spawn r (void) (scn (subscription ?)))
-                           (spawn b 0 '()))
+	    (spawn-dataspace (spawn r (void) (scn (subscription ?)))
+                             (spawn b 0 '()))
 	    (spawn echoer
                    (void)
                    (scn (subscription (external-event (read-line-evt (current-input-port) 'any) ?)

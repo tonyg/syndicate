@@ -1,6 +1,6 @@
 var G;
 $(document).ready(function () {
-  var Network = Syndicate.Network;
+  var Dataspace = Syndicate.Dataspace;
   var sub = Syndicate.sub;
   var assert = Syndicate.assert;
   var retract = Syndicate.retract;
@@ -13,7 +13,7 @@ $(document).ready(function () {
 
     Syndicate.DOM.spawnDOMDriver();
 
-    Network.spawn({
+    Dataspace.spawn({
       boot: function () {
 	return assert(["DOM", "#clicker-holder", "clicker",
 		       seal(["button", ["span", [["style", "font-style: italic"]], "Click me!"]])])
@@ -21,23 +21,23 @@ $(document).ready(function () {
       },
       handleEvent: function (e) {
 	if (e.type === "message" && e.message[0] === "jQuery") {
-	  Network.send("bump_count");
+	  Dataspace.send("bump_count");
 	}
       }
     });
 
-    Network.spawn({
+    Dataspace.spawn({
       counter: 0,
       boot: function () {
 	this.updateState();
 	return sub("bump_count");
       },
       updateState: function () {
-	Network.stateChange(retract(["DOM", __, __, __])
-			    .andThen(assert(["DOM", "#counter-holder", "counter",
-					     seal(["div",
-						   ["p", "The current count is: ",
-						    this.counter]])])));
+	Dataspace.stateChange(retract(["DOM", __, __, __])
+			      .andThen(assert(["DOM", "#counter-holder", "counter",
+					       seal(["div",
+						     ["p", "The current count is: ",
+						      this.counter]])])));
       },
       handleEvent: function (e) {
 	if (e.type === "message" && e.message === "bump_count") {
@@ -48,7 +48,7 @@ $(document).ready(function () {
     });
   });
 
-  G.network.onStateChange = function (mux, patch) {
+  G.dataspace.onStateChange = function (mux, patch) {
     $("#spy-holder").text(Syndicate.prettyTrie(mux.routingTable));
   };
 

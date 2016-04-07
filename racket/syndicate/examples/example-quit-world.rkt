@@ -1,5 +1,5 @@
 #lang syndicate
-;; Demonstrates quit-network.
+;; Demonstrates quit-dataspace.
 
 (require (only-in racket/port read-bytes-line-evt))
 
@@ -9,9 +9,9 @@
              [(message (at-meta (at-meta (external-event _ (list #"quit")))))
               (printf "Quitting just the leaf actor.\n")
               (quit)]
-             [(message (at-meta (at-meta (external-event _ (list #"quit-network")))))
-              (printf "Terminating the whole network.\n")
-              (transition s (quit-network))]
+             [(message (at-meta (at-meta (external-event _ (list #"quit-dataspace")))))
+              (printf "Terminating the whole dataspace.\n")
+              (transition s (quit-dataspace))]
              [_ #f]))
          (void)
          (sub (external-event (read-bytes-line-evt (current-input-port) 'any) ?)
@@ -31,6 +31,6 @@
          (void)
          (sub-to-alarm)))
 
-(printf "Type 'quit' or 'quit-network'.\n")
-(spawn-network (spawn-command-listener)
-               (spawn-ticker))
+(printf "Type 'quit' or 'quit-dataspace'.\n")
+(spawn-dataspace (spawn-command-listener)
+                 (spawn-ticker))

@@ -14,15 +14,15 @@
 Spawns an actor that executes each instantaneous action @racket[I] in
 sequence.}
 
-@defform[(network I ...)]{
-Spawns a network as a child of the network enclosing the executing actor. The
-new network executes each instantaneous action @racket[I].}
+@defform[(dataspace I ...)]{
+Spawns a dataspace as a child of the dataspace enclosing the executing actor. The
+new dataspace executes each instantaneous action @racket[I].}
 
 @defproc[(send! [v any/c]
                 [#:meta-level level natural-number/c 0])
          void?]{
 Sends a message with body @racket[v]. The message is sent @racket[level]
-networks removed from the network containing the actor performing the
+dataspaces removed from the dataspace containing the actor performing the
 @racket[send!].}
 
 @defproc[(assert! [v any/c]
@@ -30,14 +30,14 @@ networks removed from the network containing the actor performing the
          void?]{
 Asserts the value of @racket[v] until either explicitly retracted via
 @racket[retract!] or the immediately enclosing actor exits. @racket[level]
-specifies which network the assertion should be made, in terms of relative
-distance from the network containing the enclosing actor.}
+specifies which dataspace the assertion should be made, in terms of relative
+distance from the dataspace containing the enclosing actor.}
 
 @defproc[(retract! [v any/c]
                    [#:meta-level level natural-number/c 0])
          void?]{
 Retracts any assertions made by the immediately enclosing actor at
-@racket[level] networks above the enclosing network of the form @racket[v].}
+@racket[level] dataspaces above the enclosing dataspace of the form @racket[v].}
 
 @section{Ongoing Behaviors (O)}
 

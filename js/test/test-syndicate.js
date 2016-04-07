@@ -4,7 +4,7 @@ var expect = require('expect.js');
 var Immutable = require('immutable');
 
 var Syndicate = require('../src/main.js');
-var Network = Syndicate.Network;
+var Dataspace = Syndicate.Dataspace;
 var Patch = Syndicate.Patch;
 
 var __ = Syndicate.__;
@@ -53,12 +53,12 @@ describe("configurationTrace", function() {
   describe("with some traced communication", function () {
     it("should yield an appropriate trace", function () {
       checkTrace(function (trace) {
-	Network.spawn({
+	Dataspace.spawn({
 	  boot: function () { return Syndicate.sub(__); },
 	  handleEvent: traceEvent(trace)
 	});
-	Network.send(123);
-	Network.send(234);
+	Dataspace.send(123);
+	Dataspace.send(234);
       }, ['<<<<<<<< Removed:\n'+
 	  '::: nothing\n'+
 	  '======== Added:\n'+
@@ -75,11 +75,11 @@ describe("nonempty initial routes", function () {
   it("should be immediately signalled to the process", function () {
     // Specifically, no Syndicate.updateRoutes([]) first.
     checkTrace(function (trace) {
-      Network.spawn({
+      Dataspace.spawn({
 	boot: function () { return Patch.assert(["A", __]); },
 	handleEvent: function (e) {}
       });
-      Network.spawn({
+      Dataspace.spawn({
 	boot: function () { return Patch.sub(["A", __]); },
 	handleEvent: traceEvent(trace)
       });
@@ -94,10 +94,10 @@ describe("nonempty initial routes", function () {
 describe("nested actor with an echoey protocol", function () {
   it("shouldn't see an echoed assertion", function () {
     checkTrace(function (trace) {
-      Network.spawn(new Network(function () {
-	Network.spawn({
+      Dataspace.spawn(new Dataspace(function () {
+	Dataspace.spawn({
 	  boot: function () {
-	    Network.stateChange(Patch.retract("X", 1)); // happens after subs on next line!
+	    Dataspace.stateChange(Patch.retract("X", 1)); // happens after subs on next line!
 	    return Patch.sub("X", 1).andThen(Patch.assert("X", 1));
 	  },
 	  handleEvent: traceEvent(trace)
@@ -116,10 +116,10 @@ describe("nested actor with an echoey protocol", function () {
   })
   it("shouldn't see an echoed message", function () {
     checkTrace(function (trace) {
-      Network.spawn(new Network(function () {
-	Network.spawn({
+      Dataspace.spawn(new Dataspace(function () {
+	Dataspace.spawn({
 	  boot: function () {
-	    Network.send("X", 1); // happens after subs on next line!
+	    Dataspace.send("X", 1); // happens after subs on next line!
 	    return Patch.sub("X", 1);
 	  },
 	  handleEvent: traceEvent(trace)
@@ -134,10 +134,10 @@ describe("nested actor with an echoey protocol", function () {
 // describe("actor with nonempty initial routes", function () {
 //   it("shouldn't see initial empty conversational context", function () {
 //     checkTrace(function (trace) {
-//       Network.spawn({
+//       Dataspace.spawn({
 // 	boot: function () { return [pub(["A", __])] },
 // 	handleEvent: function (e) {
-// 	  Network.spawn(new Actor(function () {
+// 	  Dataspace.spawn(new Actor(function () {
 // 	    Actor.observeAdvertisers(
 // 	      function () { return ["A", __] },
 // 	      { presence: "isPresent" },

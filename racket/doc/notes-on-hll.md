@@ -3,7 +3,7 @@
 Just a sketch, at the moment.
 
     Instantaneous actions, I := (actor I ...)
-                                (network I ...)
+                                (dataspace I ...)
                                 (state [B O ...] [E I ...] ...)
                                 (background I ...)
                                 (assert! P)
@@ -52,8 +52,8 @@ value(s) of the final `I` from the `E` exit branch that was chosen
 *prepended* to the values of the calling actor's variables at the time
 of `state` termination.
 
-There are four kinds of actor-spawning `I`s: `actor`, `network`,
-`state` and `background`. Neither `actor`, `network` nor `background`
+There are four kinds of actor-spawning `I`s: `actor`, `dataspace`,
+`state` and `background`. Neither `actor`, `dataspace` nor `background`
 yield a value; only `state` does so. However, both `state` and
 `background` link to their invoking contexts, because `state` may
 return values or crash, and `background` may crash. Actors using
@@ -66,7 +66,7 @@ Q: Should exception values be transmitted on `state` failure? I think
 no, but I am not sure there's a good reason why not.
 
 Of the events, `asserted`, `retracted` and `message` require no
-private-state, since the network does the book-keeping for us.
+private-state, since the dataspace does the book-keeping for us.
 `rising-edge`, however, needs to track the state of its predicate. If
 the predicate happens to involve an `exists`, then an assertion set
 must be maintained, like for a `track`.

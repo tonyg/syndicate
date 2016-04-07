@@ -27,8 +27,8 @@
 	    #f)]
     [_ #f]))
 
-(spawn-network (spawn r (void) (scn (subscription ?)))
-               (spawn b 0 '()))
+(spawn-dataspace (spawn r (void) (scn (subscription ?)))
+                 (spawn b 0 '()))
 
 (define (echoer e s)
   (match e

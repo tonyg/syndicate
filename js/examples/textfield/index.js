@@ -1,7 +1,7 @@
 ///////////////////////////////////////////////////////////////////////////
 // GUI
 
-var Network = Syndicate.Network;
+var Dataspace = Syndicate.Dataspace;
 var Route = Syndicate.Route;
 var Patch = Syndicate.Patch;
 var __ = Syndicate.__;
@@ -26,7 +26,7 @@ function piece(text, pos, lo, hi, cls) {
 }
 
 function spawnGui() {
-  Network.spawn({
+  Dataspace.spawn({
     field: { text: '', pos: 0 },
     highlight: { state: false },
 
@@ -46,15 +46,15 @@ function spawnGui() {
 	var keycode = event.keyCode;
 	var character = String.fromCharCode(event.charCode);
 	if (keycode === 37 /* left */) {
-	  Network.send(["fieldCommand", "cursorLeft"]);
+	  Dataspace.send(["fieldCommand", "cursorLeft"]);
 	} else if (keycode === 39 /* right */) {
-	  Network.send(["fieldCommand", "cursorRight"]);
+	  Dataspace.send(["fieldCommand", "cursorRight"]);
 	} else if (keycode === 9 /* tab */) {
 	  // ignore
 	} else if (keycode === 8 /* backspace */) {
-	  Network.send(["fieldCommand", "backspace"]);
+	  Dataspace.send(["fieldCommand", "backspace"]);
 	} else if (character) {
-	  Network.send(["fieldCommand", ["insert", character]]);
+	  Dataspace.send(["fieldCommand", ["insert", character]]);
 	}
 	break;
       case "stateChange":
@@ -89,7 +89,7 @@ function spawnGui() {
 
 function spawnModel() {
   var initialContents = "initial";
-  Network.spawn({
+  Dataspace.spawn({
     fieldContents: initialContents,
     cursorPos: initialContents.length, /* positions address gaps between characters */
 
@@ -127,7 +127,7 @@ function spawnModel() {
     },
 
     publishState: function () {
-      Network.stateChange(
+      Dataspace.stateChange(
 	Patch.retract(["fieldContents", __, __])
 	  .andThen(Patch.assert(["fieldContents", this.fieldContents, this.cursorPos])));
     }
@@ -138,7 +138,7 @@ function spawnModel() {
 // Search engine
 
 function spawnSearch() {
-  Network.spawn({
+  Dataspace.spawn({
     fieldContents: "",
     highlight: false,
 
@@ -163,7 +163,7 @@ function spawnSearch() {
     },
 
     publishState: function () {
-      Network.stateChange(
+      Dataspace.stateChange(
 	Patch.retract(["highlight", __])
 	  .andThen(Patch.assert(["highlight", this.highlight])));
     },
@@ -198,7 +198,7 @@ $(document).ready(function () {
     spawnSearch();
   });
 
-  G.network.onStateChange = function (mux, patch) {
+  G.dataspace.onStateChange = function (mux, patch) {
     $("#spy-holder").text(Syndicate.prettyTrie(mux.routingTable));
   };
 

@@ -24,14 +24,14 @@ function terminate() {
   return { type: 'terminate' };
 }
 
-function terminateNetwork() {
-  return { type: 'terminateNetwork' };
+function terminateDataspace() {
+  return { type: 'terminateDataspace' };
 }
 
 /*---------------------------------------------------------------------------*/
-/* Network */
+/* Dataspace */
 
-function Network(bootFn) {
+function Dataspace(bootFn) {
   this.pendingActions = Immutable.List(); // of [pid, Action]
   this.processTable = Immutable.Map(); // pid -> Behavior
   this.runnablePids = Immutable.Set(); // of pid
@@ -42,93 +42,93 @@ function Network(bootFn) {
 
 // Class state and methods
 
-Network.stack = Immutable.List();
+Dataspace.stack = Immutable.List();
 
-Network.current = function () {
-  return Network.stack.last().network;
+Dataspace.current = function () {
+  return Dataspace.stack.last().dataspace;
 };
 
-Network.activePid = function () {
-  return Network.stack.last().activePid;
+Dataspace.activePid = function () {
+  return Dataspace.stack.last().activePid;
 };
 
-Network.activeBehavior = function () {
-  var entry = Network.stack.last();
-  var p = entry.network.processTable.get(entry.activePid);
+Dataspace.activeBehavior = function () {
+  var entry = Dataspace.stack.last();
+  var p = entry.dataspace.processTable.get(entry.activePid);
   return p ? p.behavior : null;
 };
 
-Network.withNetworkStack = function (stack, f) {
-  var oldStack = Network.stack;
-  Network.stack = stack;
+Dataspace.withDataspaceStack = function (stack, f) {
+  var oldStack = Dataspace.stack;
+  Dataspace.stack = stack;
   var result;
   try {
     result = f();
   } catch (e) {
-    Network.stack = oldStack;
+    Dataspace.stack = oldStack;
     throw e;
   }
-  Network.stack = oldStack;
+  Dataspace.stack = oldStack;
   return result;
 };
 
-Network.wrap = function (f) {
-  var savedStack = Network.stack;
+Dataspace.wrap = function (f) {
+  var savedStack = Dataspace.stack;
   return function () {
     var actuals = arguments;
-    return Network.withNetworkStack(savedStack, function () {
-      var result = Network.current().asChild(Network.activePid(), function () {
+    return Dataspace.withDataspaceStack(savedStack, function () {
+      var result = Dataspace.current().asChild(Dataspace.activePid(), function () {
 	return f.apply(null, actuals);
       });
-      Network.stack.reverse().forEach(function (entry) {
-	entry.network.markRunnable(entry.activePid);
+      Dataspace.stack.reverse().forEach(function (entry) {
+	entry.dataspace.markRunnable(entry.activePid);
       });
       return result;
     });
   };
 };
 
-Network.enqueueAction = function (action) {
-  var entry = Network.stack.last();
-  entry.network.enqueueAction(entry.activePid, action);
+Dataspace.enqueueAction = function (action) {
+  var entry = Dataspace.stack.last();
+  entry.dataspace.enqueueAction(entry.activePid, action);
 };
 
-Network.send = function (body, metaLevel) {
-  Network.enqueueAction(message(Patch.prependAtMeta(body, metaLevel || 0)));
+Dataspace.send = function (body, metaLevel) {
+  Dataspace.enqueueAction(message(Patch.prependAtMeta(body, metaLevel || 0)));
 };
 
-Network.stateChange = function (patch) {
-  Network.enqueueAction(stateChange(patch));
+Dataspace.stateChange = function (patch) {
+  Dataspace.enqueueAction(stateChange(patch));
 };
 
-Network.spawn = function (behavior) {
-  Network.enqueueAction(spawn(behavior));
+Dataspace.spawn = function (behavior) {
+  Dataspace.enqueueAction(spawn(behavior));
 };
 
-Network.exit = function (exn) {
-  Network.current().kill(Network.activePid(), exn);
+Dataspace.exit = function (exn) {
+  Dataspace.current().kill(Dataspace.activePid(), exn);
 };
 
-Network.exitNetwork = function () {
-  Network.enqueueAction(terminateNetwork());
+Dataspace.exitDataspace = function () {
+  Dataspace.enqueueAction(terminateDataspace());
 };
 
-Network.inertBehavior = {
+Dataspace.inertBehavior = {
   handleEvent: function (e) {}
 };
 
 // Instance methods
 
-Network.prototype.asChild = function (pid, f, omitLivenessCheck) {
+Dataspace.prototype.asChild = function (pid, f, omitLivenessCheck) {
   var self = this;
   var p = this.processTable.get(pid, null);
   if (!omitLivenessCheck && (p === null)) {
-    console.warn("Network.asChild eliding invocation of dead process", pid);
+    console.warn("Dataspace.asChild eliding invocation of dead process", pid);
     return;
   }
 
-  return Network.withNetworkStack(
-    Network.stack.push({ network: this, activePid: pid }),
+  return Dataspace.withDataspaceStack(
+    Dataspace.stack.push({ dataspace: this, activePid: pid }),
     function () {
       try {
 	return f(p);
@@ -138,14 +138,14 @@ Network.prototype.asChild = function (pid, f, omitLivenessCheck) {
     });
 };
 
-Network.prototype.kill = function (pid, exn) {
+Dataspace.prototype.kill = function (pid, exn) {
   if (exn && exn.stack) {
     console.log("Process exiting", pid, exn, exn.stack);
   } else {
     console.log("Process exiting", pid, exn);
   }
   var p = this.processTable.get(pid);
-  this.processTable = this.processTable.set(pid, { behavior: Network.inertBehavior });
+  this.processTable = this.processTable.set(pid, { behavior: Dataspace.inertBehavior });
   if (p) {
     if (p.behavior.trapexit) {
       this.asChild(pid, function () { return p.behavior.trapexit(exn); }, true);
@@ -154,12 +154,12 @@ Network.prototype.kill = function (pid, exn) {
   }
 };
 
-Network.prototype.boot = function () {
-  // Needed in order for a new Network to be marked as "runnable", so
+Dataspace.prototype.boot = function () {
+  // Needed in order for a new Dataspace to be marked as "runnable", so
   // its initial actions get performed.
 };
 
-Network.prototype.handleEvent = function (e) {
+Dataspace.prototype.handleEvent = function (e) {
   switch (e.type) {
   case 'stateChange':
     this.enqueueAction('meta', stateChange(e.patch.lift()));
@@ -175,17 +175,17 @@ Network.prototype.handleEvent = function (e) {
   return true;
 };
 
-Network.prototype.step = function () {
+Dataspace.prototype.step = function () {
   return this.dispatchActions()
     && this.runRunnablePids()
     && ((this.pendingActions.size > 0) || (this.runnablePids.size > 0));
 };
 
-Network.prototype.enqueueAction = function (pid, action) {
+Dataspace.prototype.enqueueAction = function (pid, action) {
   this.pendingActions = this.pendingActions.push([pid, action]);
 };
 
-Network.prototype.dispatchActions = function () {
+Dataspace.prototype.dispatchActions = function () {
   var self = this;
   var actionQueue = this.pendingActions;
   this.pendingActions = Immutable.List();
@@ -201,11 +201,11 @@ Network.prototype.dispatchActions = function () {
   return alive;
 };
 
-Network.prototype.markRunnable = function (pid) {
+Dataspace.prototype.markRunnable = function (pid) {
   this.runnablePids = this.runnablePids.add(pid);
 };
 
-Network.prototype.runRunnablePids = function () {
+Dataspace.prototype.runRunnablePids = function () {
   var self = this;
   var pidSet = this.runnablePids;
   this.runnablePids = Immutable.Set();
@@ -219,7 +219,7 @@ Network.prototype.runRunnablePids = function () {
   return true;
 };
 
-Network.prototype.interpretAction = function (pid, action) {
+Dataspace.prototype.interpretAction = function (pid, action) {
   var self = this;
 
   switch (action.type) {
@@ -233,7 +233,7 @@ Network.prototype.interpretAction = function (pid, action) {
       console.warn('Process ' + pid + ' send message containing query', action.message);
     }
     if (pid !== 'meta' && Patch.isAtMeta(action.message)) {
-      Network.send(action.message[1]);
+      Dataspace.send(action.message[1]);
     } else {
       this.mux.routeMessage(action.message).forEach(function (pid) {
 	self.deliverEvent(pid, action);
@@ -262,8 +262,8 @@ Network.prototype.interpretAction = function (pid, action) {
     this.processTable = this.processTable.remove(pid);
     return true;
 
-  case 'terminateNetwork':
-    Network.exit();
+  case 'terminateDataspace':
+    Dataspace.exit();
     return false;
 
   default:
@@ -273,17 +273,17 @@ Network.prototype.interpretAction = function (pid, action) {
   }
 };
 
-Network.prototype.deliverPatches = function (oldMux, updateStreamResult) {
+Dataspace.prototype.deliverPatches = function (oldMux, updateStreamResult) {
   var self = this;
   var events = Mux.computeEvents(oldMux, this.mux, updateStreamResult);
   events.eventMap.forEach(function (patch, pid) {
     self.deliverEvent(pid, stateChange(patch));
   });
-  events.metaEvents.forEach(Network.stateChange);
+  events.metaEvents.forEach(Dataspace.stateChange);
   this.onStateChange(this.mux, updateStreamResult.deltaAggregate);
 };
 
-Network.prototype.deliverEvent = function (pid, event) {
+Dataspace.prototype.deliverEvent = function (pid, event) {
   var childBusy = this.asChild(pid, function (p) { return p.behavior.handleEvent(event); });
   if (childBusy) this.markRunnable(pid);
 };
@@ -294,6 +294,6 @@ module.exports.stateChange = stateChange;
 module.exports.message = message;
 module.exports.spawn = spawn;
 module.exports.terminate = terminate;
-module.exports.terminateNetwork = terminateNetwork;
+module.exports.terminateDataspace = terminateDataspace;
 
-module.exports.Network = Network;
+module.exports.Dataspace = Dataspace;

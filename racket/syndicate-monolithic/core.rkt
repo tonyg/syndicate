@@ -1,14 +1,14 @@
 #lang racket/base
-;; Core implementation of Incremental Network Calculus.
+;; Core implementation of Monolithic Syndicate.
 
 (provide (struct-out message)
          (except-out (struct-out quit) quit)
-         (struct-out quit-network)
+         (struct-out quit-dataspace)
          (rename-out [quit <quit>])
          (except-out (struct-out spawn) spawn)
          (rename-out [spawn <spawn>])
          (struct-out transition)
-         (struct-out network)
+         (struct-out dataspace)
 
          (struct-out seal)
 
@@ -46,11 +46,11 @@
          scn/union
 
          (rename-out [make-quit quit])
-         make-network
-         spawn-network
+         make-dataspace
+         spawn-dataspace
          (rename-out [spawn-process spawn])
          spawn/stateless
-         make-spawn-network
+         make-spawn-dataspace
 
          transition-bind
          sequence-transitions
@@ -58,10 +58,10 @@
          sequence-transitions0
          sequence-transitions0*
 
-         network-handle-event
+         dataspace-handle-event
          clean-transition
 
-         pretty-print-network)
+         pretty-print-dataspace)
 
 (require racket/set)
 (require racket/match)
@@ -79,7 +79,7 @@
 
 ;; Actions ⊃ Events
 (struct spawn (boot) #:prefab)
-(struct quit-network () #:prefab) ;; NB. An action. Compare (quit), a Transition.
+(struct quit-dataspace () #:prefab) ;; NB. An action. Compare (quit), a Transition.
 
 ;; A Behavior is a ((Option Event) Any -> Transition): a function
 ;; mapping an Event (or, in the #f case, a poll signal) and a
@@ -89,7 +89,7 @@
 ;;  - #f, a signal from a Process that it is inert and need not be
 ;;        scheduled until some Event relevant to it arrives; or,
 ;;  - a (transition Any (Constreeof Action)), a new Process state to
-;;        be held by its Network and a sequence of Actions for the Network
+;;        be held by its Dataspace and a sequence of Actions for the Dataspace
 ;;        to take on the transitioning Process's behalf.
 ;;  - a (quit (Option Exn) (Constreeof Action)), signalling that the
 ;;        Process should never again be handed an event, and that any
@@ -104,16 +104,16 @@
 ;; A Label is a PID or 'meta.
 
 ;; VM private states
-(struct network (mux ;; Multiplexer
-                 pending-action-queue ;; (Queueof (Cons Label (U Action 'quit)))
-                 runnable-pids ;; (Setof PID)
-                 behaviors ;; (HashTable PID Behavior)
-                 states ;; (HashTable PID Any)
-                 )
+(struct dataspace (mux ;; Multiplexer
+                   pending-action-queue ;; (Queueof (Cons Label (U Action 'quit)))
+                   runnable-pids ;; (Setof PID)
+                   behaviors ;; (HashTable PID Behavior)
+                   states ;; (HashTable PID Any)
+                   )
   #:transparent
   #:methods gen:syndicate-pretty-printable
   [(define (syndicate-pretty-print w [p (current-output-port)])
-     (pretty-print-network w p))])
+     (pretty-print-dataspace w p))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Seals are used by protocols to prevent the routing tries from
@@ -124,7 +124,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (event? x) (or (scn? x) (message? x)))
-(define (action? x) (or (event? x) (spawn? x) (quit-network? x)))
+(define (action? x) (or (event? x) (spawn? x) (quit-dataspace? x)))
 
 (define (prepend-at-meta pattern level)
   (if (zero? level)
@@ -181,8 +181,8 @@
   (filter action? (flatten actions)))
 
 (define (send-event e pid w)
-  (define behavior (hash-ref (network-behaviors w) pid #f))
-  (define old-state (hash-ref (network-states w) pid #f))
+  (define behavior (hash-ref (dataspace-behaviors w) pid #f))
+  (define old-state (hash-ref (dataspace-states w) pid #f))
   (if (not behavior)
       w
       (begin
@@ -205,16 +205,16 @@
                           (enqueue-actions (disable-process pid exn w) pid (list 'quit)))))))
 
 (define (update-state w pid s)
-  (struct-copy network w [states (hash-set (network-states w) pid s)]))
+  (struct-copy dataspace w [states (hash-set (dataspace-states w) pid s)]))
 
 (define (disable-process pid exn w)
   (when exn
     (log-error "Process ~a died with exception:\n~a"
                (cons pid (trace-pid-stack))
                (exn->string exn)))
-  (struct-copy network w
-               [behaviors (hash-remove (network-behaviors w) pid)]
-               [states (hash-remove (network-states w) pid)]))
+  (struct-copy dataspace w
+               [behaviors (hash-remove (dataspace-behaviors w) pid)]
+               [states (hash-remove (dataspace-states w) pid)]))
 
 (define (invoke-process pid thunk k-ok k-exn)
   (define-values (ok? result)
@@ -228,12 +228,12 @@
       (k-exn result)))
 
 (define (mark-pid-runnable w pid)
-  (struct-copy network w [runnable-pids (set-add (network-runnable-pids w) pid)]))
+  (struct-copy dataspace w [runnable-pids (set-add (dataspace-runnable-pids w) pid)]))
 
 (define (enqueue-actions w label actions)
-  (struct-copy network w
+  (struct-copy dataspace w
     [pending-action-queue
-     (queue-append-list (network-pending-action-queue w)
+     (queue-append-list (dataspace-pending-action-queue w)
                         (for/list [(a actions)] (cons label a)))]))
 
 (define (make-quit #:exception [exn #f] . actions)
@@ -263,20 +263,20 @@
     [(? quit? q) q]
     [actions (transition state actions)]))
 
-(define-syntax-rule (spawn-network boot-action ...)
-  (make-spawn-network (lambda () (list boot-action ...))))
+(define-syntax-rule (spawn-dataspace boot-action ...)
+  (make-spawn-dataspace (lambda () (list boot-action ...))))
 
-(define (make-network boot-actions)
-  (network (mux)
-           (list->queue (for/list ((a (in-list (clean-actions boot-actions)))) (cons 'meta a)))
-           (set)
-           (hash)
-           (hash)))
+(define (make-dataspace boot-actions)
+  (dataspace (mux)
+             (list->queue (for/list ((a (in-list (clean-actions boot-actions)))) (cons 'meta a)))
+             (set)
+             (hash)
+             (hash)))
 
-(define (make-spawn-network boot-actions-thunk)
+(define (make-spawn-dataspace boot-actions-thunk)
   (spawn (lambda ()
-           (list network-handle-event
-                 (transition (make-network (boot-actions-thunk)) '())))))
+           (list dataspace-handle-event
+                 (transition (make-dataspace (boot-actions-thunk)) '())))))
 
 (define (transition-bind k t0)
   (match t0
@@ -307,10 +307,10 @@
        [(? transition? t) (sequence-transitions* t rest)])]))
 
 (define (inert? w)
-  (and (queue-empty? (network-pending-action-queue w))
-       (set-empty? (network-runnable-pids w))))
+  (and (queue-empty? (dataspace-pending-action-queue w))
+       (set-empty? (dataspace-runnable-pids w))))
 
-(define (network-handle-event e w)
+(define (dataspace-handle-event e w)
   (if (or e (not (inert? w)))
       (sequence-transitions (transition w '())
                             (inject-event e)
@@ -326,8 +326,8 @@
               '()))
 
 (define (perform-actions w)
-  (for/fold ([wt (transition (struct-copy network w [pending-action-queue (make-queue)]) '())])
-      ((entry (in-list (queue->list (network-pending-action-queue w)))))
+  (for/fold ([wt (transition (struct-copy dataspace w [pending-action-queue (make-queue)]) '())])
+      ((entry (in-list (queue->list (dataspace-pending-action-queue w)))))
     #:break (quit? wt) ;; TODO: should a quit action be delayed until the end of the turn?
     (match-define [cons label a] entry)
     (trace-internal-action label a (transition-state wt))
@@ -351,20 +351,20 @@
                        (match-define (list behavior initial-transition) results)
                        (create-process w behavior initial-transition))
                      (lambda (exn)
-                       (log-error "Spawned process in network ~a died with exception:\n~a"
+                       (log-error "Spawned process in dataspace ~a died with exception:\n~a"
                                   (trace-pid-stack)
                                   (exn->string exn))
                        (transition w '())))]
     ['quit
      (define-values (new-mux _label s aggregate-assertions)
-       (mux-remove-stream (network-mux w) label))
+       (mux-remove-stream (dataspace-mux w) label))
      ;; behavior & state in w already removed by disable-process
      (deliver-scns w new-mux label s aggregate-assertions)]
-    [(quit-network)
+    [(quit-dataspace)
      (make-quit)]
     [(? scn? s-orig)
      (define-values (new-mux _label s aggregate-assertions)
-       (mux-update-stream (network-mux w) label s-orig))
+       (mux-update-stream (dataspace-mux w) label s-orig))
      (deliver-scns w new-mux label s aggregate-assertions)]
     [(and m (message body))
      (when (observe? body)
@@ -375,7 +375,7 @@
               (at-meta? body)) ;; it relates to envt, not local
          (transition w (message (at-meta-claim body)))
          (transition (for/fold [(w w)]
-                               [(pid (in-list (mux-route-message (network-mux w) body)))]
+                               [(pid (in-list (mux-route-message (dataspace-mux w) body)))]
                        (send-event m pid w))
                      '()))]))
 
@@ -400,20 +400,20 @@
             [(cons (? scn? s) rest) (values s rest)]
             [other (values (scn trie-empty) other)]))
         (define-values (new-mux new-pid s aggregate-assertions)
-          (mux-add-stream (network-mux w) initial-scn))
-        (let* ((w (struct-copy network w
-                               [behaviors (hash-set (network-behaviors w)
+          (mux-add-stream (dataspace-mux w) initial-scn))
+        (let* ((w (struct-copy dataspace w
+                               [behaviors (hash-set (dataspace-behaviors w)
                                                     new-pid
                                                     behavior)]))
                (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions)))
           (deliver-scns w new-mux new-pid s aggregate-assertions)))))
 
 (define (deliver-scns w new-mux acting-label s aggregate-assertions)
-  (define old-mux (network-mux w))
+  (define old-mux (dataspace-mux w))
   (define old-echo-cancelled-assertions (echo-cancelled-routing-table old-mux))
   (define-values (scns meta-action)
     (compute-scns old-mux new-mux acting-label s aggregate-assertions))
-  (transition (for/fold [(w (struct-copy network w [mux new-mux]))]
+  (transition (for/fold [(w (struct-copy dataspace w [mux new-mux]))]
                         [(entry (in-list scns))]
                 (match-define (cons label (and event (scn new-assertions))) entry)
                 (if (equal? (biased-intersection old-echo-cancelled-assertions
@@ -424,17 +424,17 @@
               meta-action))
 
 (define (step-children w)
-  (define runnable-pids (network-runnable-pids w))
+  (define runnable-pids (dataspace-runnable-pids w))
   (if (set-empty? runnable-pids)
-      #f ;; network is inert.
-      (transition (for/fold [(w (struct-copy network w [runnable-pids (set)]))]
+      #f ;; dataspace is inert.
+      (transition (for/fold [(w (struct-copy dataspace w [runnable-pids (set)]))]
                             [(pid (in-set runnable-pids))]
                     (send-event #f pid w))
 		  '())))
 
-(define (pretty-print-network w [p (current-output-port)])
-  (match-define (network mux qs runnable behaviors states) w)
-  (fprintf p "NETWORK:\n")
+(define (pretty-print-dataspace w [p (current-output-port)])
+  (match-define (dataspace mux qs runnable behaviors states) w)
+  (fprintf p "DATASPACE:\n")
   (fprintf p " - ~a queued actions\n" (queue-length qs))
   (fprintf p " - ~a runnable pids ~a\n" (set-count runnable) (set->list runnable))
   (fprintf p " - ~a live processes\n" (hash-count states))
@@ -460,10 +460,10 @@
   (define (step* w)
     (let loop ((w w) (actions '()))
       (pretty-print w)
-      (match (network-handle-event #f w)
+      (match (dataspace-handle-event #f w)
         [#f (values w #f (flatten actions))]
         [(quit exn new-actions) (values w exn (flatten (cons actions new-actions)))]
         [(transition new-w new-actions) (loop new-w (cons actions new-actions))])))
 
-  (step* (make-network '()))
+  (step* (make-dataspace '()))
   )

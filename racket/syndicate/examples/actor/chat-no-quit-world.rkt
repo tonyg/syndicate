@@ -31,7 +31,7 @@
                     (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
 
 (spawn-tcp-driver)
-(network (define us (tcp-listener 5999))
-         (forever (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
-                  (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
-                      (spawn-session them us))))
+(dataspace (define us (tcp-listener 5999))
+           (forever (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
+                    (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
+                        (spawn-session them us))))

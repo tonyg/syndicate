@@ -1,7 +1,7 @@
 #lang racket/base
 
-(provide big-bang-network
-         big-bang-network/universe
+(provide big-bang-dataspace
+         big-bang-dataspace/universe
          (struct-out window)
          (struct-out to-server)
          (struct-out from-server)
@@ -48,7 +48,7 @@
 
 ;;---------------------------------------------------------------------------
 
-(struct bb (network windows inbound outbound halted? x y) #:transparent)
+(struct bb (dataspace windows inbound outbound halted? x y) #:transparent)
 
 (define window-projection (?! (window ? ? ? ? ?)))
 
@@ -74,7 +74,7 @@
                             #f)]))
 
 (define (deliver b e)
-  (clean-transition (network-handle-event e (bb-network b))))
+  (clean-transition (dataspace-handle-event e (bb-dataspace b))))
 
 (define (interpret-actions b txn need-poll?)
   (match txn
@@ -90,8 +90,8 @@
        [(cons e rest)
         (let ((b (struct-copy bb b [inbound rest])))
           (interpret-actions b (deliver b e) #t))])]
-    [(transition new-network actions)
-     (let process-actions ((b (struct-copy bb b [network new-network])) (actions actions))
+    [(transition new-dataspace actions)
+     (let process-actions ((b (struct-copy bb b [dataspace new-dataspace])) (actions actions))
        (match actions
          ['() (interpret-actions b #f #t)]
          [(cons a actions)
@@ -128,8 +128,8 @@
   (patch-seq (retract (active-window ?))
              (assert (active-window active-id))))
 
-(define-syntax-rule (big-bang-network* boot-actions extra-clause ...)
-  (big-bang (interpret-actions (bb (make-network boot-actions)
+(define-syntax-rule (big-bang-dataspace* boot-actions extra-clause ...)
+  (big-bang (interpret-actions (bb (make-dataspace boot-actions)
                                    '()
                                    '()
                                    '()
@@ -155,25 +155,25 @@
             (stop-when bb-halted?)
             extra-clause ...))
 
-(define-syntax-rule (big-bang-network** width height boot-actions extra-clause ...)
+(define-syntax-rule (big-bang-dataspace** width height boot-actions extra-clause ...)
   (if (and width height)
-      (big-bang-network* boot-actions (to-draw render width height) extra-clause ...)
-      (big-bang-network* boot-actions (to-draw render) extra-clause ...)))
+      (big-bang-dataspace* boot-actions (to-draw render width height) extra-clause ...)
+      (big-bang-dataspace* boot-actions (to-draw render) extra-clause ...)))
 
-(define (big-bang-network #:width [width #f]
-                          #:height [height #f]
-                          . boot-actions)
-  (big-bang-network** width height boot-actions))
+(define (big-bang-dataspace #:width [width #f]
+                            #:height [height #f]
+                            . boot-actions)
+  (big-bang-dataspace** width height boot-actions))
 
-(define (big-bang-network/universe #:width [width #f]
-                                   #:height [height #f]
-                                   #:register [ip LOCALHOST]
-                                   #:port [port-number SQPORT]
-                                   #:name [world-name (gensym 'syndicate)]
-                                   . boot-actions)
-  (big-bang-network** width height boot-actions
-                      (on-receive (lambda (b sexps)
-                                    (inject b (for/list ((m sexps)) (message (from-server m))))))
-                      (register ip)
-                      (port port-number)
-                      (name world-name)))
+(define (big-bang-dataspace/universe #:width [width #f]
+                                     #:height [height #f]
+                                     #:register [ip LOCALHOST]
+                                     #:port [port-number SQPORT]
+                                     #:name [world-name (gensym 'syndicate)]
+                                     . boot-actions)
+  (big-bang-dataspace** width height boot-actions
+                        (on-receive (lambda (b sexps)
+                                      (inject b (for/list ((m sexps)) (message (from-server m))))))
+                        (register ip)
+                        (port port-number)
+                        (name world-name)))

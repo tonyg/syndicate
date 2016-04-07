@@ -1,7 +1,7 @@
 #lang racket/base
 
 (provide actor
-         network
+         dataspace
          ;; background
          state
 
@@ -54,8 +54,8 @@
 (require racket/set)
 (require racket/match)
 
-(require (except-in "core.rkt" assert network)
-         (rename-in "core.rkt" [assert core:assert] [network core:network]))
+(require (except-in "core.rkt" assert dataspace)
+         (rename-in "core.rkt" [assert core:assert] [dataspace core:dataspace]))
 (require "trie.rkt")
 (require "mux.rkt")
 
@@ -84,7 +84,7 @@
 ;; A LinkageKind is one of
 ;; - 'call, a blocking, exception-linked connection
 ;; - 'actor, a non-blocking, non-exception-linked connection
-;; - 'network, a non-blocking, nested, non-exception-linked connection
+;; - 'dataspace, a non-blocking, nested, non-exception-linked connection
 ;;
 ;; Patch Instructions are issued when the actor uses `assert!` and
 ;; `retract!`. Action instructions are issued when the actor uses
@@ -92,7 +92,7 @@
 ;; called. Script-complete instructions are automatically issued when
 ;; a Script terminates successfully.
 ;;
-;; Spawn instructions are issued when `actor`, `network`, and `state`
+;; Spawn instructions are issued when `actor`, `dataspace`, and `state`
 ;; are used, directly or indirectly. (TODO: `background`?) The
 ;; spawn-action-producing function is given the IDs of the spawned and
 ;; spawning actors, and is to return an action which spawns the new
@@ -256,14 +256,14 @@
     [(_ I ...)
      (expand-state 'actor #'(I ... (return/no-link-result!)) #'() #'() #'() #'())]))
 
-;; Spawn whole networks
-(define-syntax (network stx)
+;; Spawn whole dataspaces
+(define-syntax (dataspace stx)
   (syntax-parse stx
     [(_ I ...)
-     (expand-state 'network
+     (expand-state 'dataspace
                    #'(I
                       ...
-                      (perform-core-action! (quit-network))
+                      (perform-core-action! (quit-dataspace))
                       (return/no-link-result!))
                    #'()
                    #'()
@@ -393,8 +393,8 @@
                                (transition (if blocking?
                                                (store-continuation s callee-id get-next-instr)
                                                s)
-                                           (if (eq? linkage-kind 'network)
-                                               (spawn-network spawn-action)
+                                           (if (eq? linkage-kind 'dataspace)
+                                               (spawn-dataspace spawn-action)
                                                spawn-action)))))
      (if blocking?
          next-t
@@ -415,7 +415,7 @@
 
 ;; TODO: track
 ;; TODO: default to hll
-;; TODO: some better means of keeping track of nested network levels
+;; TODO: some better means of keeping track of nested dataspace levels
 
 (begin-for-syntax
   (define-splicing-syntax-class when-pred

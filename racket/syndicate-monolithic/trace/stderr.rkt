@@ -35,7 +35,7 @@
 (define show-message-actions? #f)
 (define show-actions? #f)
 (define show-routing-table? #f)
-(define network-is-boring? #t)
+(define dataspace-is-boring? #t)
 
 (define (set-stderr-trace-flags! flags-string)
   (set! flags (for/set [(c flags-string)] (string->symbol (string c))))
@@ -53,7 +53,7 @@
   (set-flag! M show-message-actions?)
   (set-flag! a show-actions?)
   (set-flag! g show-routing-table?)
-  (set! network-is-boring? (not (set-member? flags 'N))))
+  (set! dataspace-is-boring? (not (set-member? flags 'N))))
 
 (set-stderr-trace-flags! (or (getenv "MINIMART_TRACE") ""))
 
@@ -81,7 +81,7 @@
   (apply fprintf (current-error-port) fmt args))
 
 (define (boring-state? state)
-  (or (and (network? state) network-is-boring?)
+  (or (and (dataspace? state) dataspace-is-boring?)
       (void? state)))
 
 (define (set-color! c) (when colored-output? (output "\e[0~am" c)))
@@ -162,14 +162,14 @@
                    (syndicate-pretty-print (transition-state t) (current-error-port)))))))]
 	[('internal-action (list pids a old-w))
          (define pidstr (format-pids pids))
-         (define oldcount (hash-count (network-behaviors old-w)))
+         (define oldcount (hash-count (dataspace-behaviors old-w)))
          (match a
            [(? spawn?)
             ;; Handle this in internal-action-result
             (void)]
            ['quit
             (when (or show-process-lifecycle? show-actions?)
-              (define interests (mux-interests-of (network-mux old-w) (car pids)))
+              (define interests (mux-interests-of (dataspace-mux old-w) (car pids)))
               (with-color BRIGHT-RED
                 (output "~a exiting (~a total processes remain)\n"
                         pidstr
@@ -177,9 +177,9 @@
               (unless (trie-empty? interests)
                 (output "~a's final interests:\n" pidstr)
                 (pretty-print-trie interests (current-error-port))))]
-           [(quit-network)
+           [(quit-dataspace)
             (with-color BRIGHT-RED
-              (output "Process ~a performed a quit-network.\n" pidstr))]
+              (output "Process ~a performed a quit-dataspace.\n" pidstr))]
            [(scn r)
             (when (or show-actions? show-scn-actions?)
               (output "~a performing a SCN:\n" pidstr)
@@ -192,15 +192,15 @@
          (when (transition? t)
            (define new-w (transition-state t))
            (define pidstr (format-pids pids))
-           (define newcount (hash-count (network-behaviors new-w)))
+           (define newcount (hash-count (dataspace-behaviors new-w)))
            (match a
              [(? spawn?)
               (when (or show-process-lifecycle? show-actions?)
-                (define newpid (mux-next-pid (network-mux old-w)))
+                (define newpid (mux-next-pid (dataspace-mux old-w)))
                 (define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
-                (define interests (mux-interests-of (network-mux new-w) newpid))
-                (define behavior (hash-ref (network-behaviors new-w) newpid '#:missing-behavior))
-                (define state (hash-ref (network-states new-w) newpid '#:missing-state))
+                (define interests (mux-interests-of (dataspace-mux new-w) newpid))
+                (define behavior (hash-ref (dataspace-behaviors new-w) newpid '#:missing-behavior))
+                (define state (hash-ref (dataspace-states new-w) newpid '#:missing-state))
                 (with-color BRIGHT-GREEN
                   (output "~a ~v spawned from ~a (~a total processes now)\n"
                           newpidstr
@@ -217,8 +217,8 @@
               ;; other cases handled in internal-action
               (void)])
            (when show-routing-table?
-             (define old-table (mux-routing-table (network-mux old-w)))
-             (define new-table (mux-routing-table (network-mux new-w)))
+             (define old-table (mux-routing-table (dataspace-mux old-w)))
+             (define new-table (mux-routing-table (dataspace-mux new-w)))
              (when (not (equal? old-table new-table))
                (with-color BRIGHT-BLUE
                  (output "~a's routing table:\n" (format-pids (cdr pids)))

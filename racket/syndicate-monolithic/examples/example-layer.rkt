@@ -11,7 +11,7 @@
         (subscription 'die)
         (subscription (observe 'die))))
 
-(spawn-network
+(spawn-dataspace
  (spawn (lambda (e s)
           (match e
             [(message (at-meta 'die)) (quit)]

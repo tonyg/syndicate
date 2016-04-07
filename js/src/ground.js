@@ -1,21 +1,21 @@
 "use strict";
 
 var Immutable = require('immutable');
-var Network = require('./network.js').Network;
+var Dataspace = require('./dataspace.js').Dataspace;
 
 function Ground(bootFn) {
   var self = this;
   this.stepperId = null;
-  this.baseStack = Immutable.List.of({ network: this, activePid: -1 });
-  Network.withNetworkStack(this.baseStack, function () {
-    self.network = new Network(bootFn);
+  this.baseStack = Immutable.List.of({ dataspace: this, activePid: -1 });
+  Dataspace.withDataspaceStack(this.baseStack, function () {
+    self.dataspace = new Dataspace(bootFn);
   });
 }
 
 Ground.prototype.step = function () {
   var self = this;
-  return Network.withNetworkStack(this.baseStack, function () {
-    return self.network.step();
+  return Dataspace.withDataspaceStack(this.baseStack, function () {
+    return self.dataspace.step();
   });
 };
 
@@ -49,7 +49,7 @@ Ground.prototype.stopStepping = function () {
 
 Ground.prototype.kill = function (pid, exn) {
   this.checkPid(pid);
-  console.log("Ground network terminated");
+  console.log("Ground dataspace terminated");
   this.stopStepping();
 };
 

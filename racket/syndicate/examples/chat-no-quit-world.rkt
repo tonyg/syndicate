@@ -37,7 +37,7 @@
           ))))
 
 (spawn-tcp-driver)
-(spawn-network
+(spawn-dataspace
  (spawn-demand-matcher (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
                        (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
 		       #:meta-level 1

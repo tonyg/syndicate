@@ -37,15 +37,15 @@
        (idle 0 (- mx dx) (- my dy))]))
   (actor (idle 0 orig-x orig-y)))
 
-(big-bang-network #:width 640
-                  #:height 480
-                  (actor (forever
-                          (on (asserted (active-window $id) #:meta-level 1)
-                              (update-window 'active-window-label 300 0
-                                             (text (format "~v" id) 22 "black")))))
-                  (button #:background "red" 'stop-button 0 0 "Exit"
-                          (lambda () (assert! 'stop #:meta-level 1)))
-                  (draggable-shape 'c1 50 50 (circle 30 "solid" "orange"))
-                  (draggable-shape 's1 100 100 (star 40 "solid" "firebrick")))
+(big-bang-dataspace #:width 640
+                    #:height 480
+                    (actor (forever
+                            (on (asserted (active-window $id) #:meta-level 1)
+                                (update-window 'active-window-label 300 0
+                                               (text (format "~v" id) 22 "black")))))
+                    (button #:background "red" 'stop-button 0 0 "Exit"
+                            (lambda () (assert! 'stop #:meta-level 1)))
+                    (draggable-shape 'c1 50 50 (circle 30 "solid" "orange"))
+                    (draggable-shape 's1 100 100 (star 40 "solid" "firebrick")))
 
 (exit 0)

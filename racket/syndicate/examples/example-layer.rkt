@@ -10,7 +10,7 @@
        (patch-seq (sub 'die)
                   (sub (observe 'die))))
 
-(spawn-network
+(spawn-dataspace
  (spawn (lambda (e s)
           (match e
             [(message (at-meta 'die)) (quit)]

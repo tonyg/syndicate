@@ -1,7 +1,7 @@
 'use strict';
 
 var Immutable = require('immutable');
-var Network = require('./network.js').Network;
+var Dataspace = require('./dataspace.js').Dataspace;
 var Mux = require('./mux.js');
 var Patch = require('./patch.js');
 var Route = require('./route.js');
@@ -10,7 +10,7 @@ var Util = require('./util.js');
 //---------------------------------------------------------------------------
 
 function spawnActor(state, bootFn) {
-  Network.spawn(new Actor(state, bootFn));
+  Dataspace.spawn(new Actor(state, bootFn));
 }
 
 function Actor(state, bootFn) {
@@ -41,14 +41,14 @@ Actor.prototype.removeFacet = function(facet) {
 
 Actor.prototype.checkForTermination = function() {
   if (this.facets.isEmpty()) {
-    Network.exit();
+    Dataspace.exit();
   }
 };
 
 //---------------------------------------------------------------------------
 
 function createFacet() {
-  return new Facet(Network.activeBehavior());
+  return new Facet(Dataspace.activeBehavior());
 }
 
 function Facet(actor) {
@@ -129,7 +129,7 @@ Facet.prototype.addEndpoint = function(endpoint) {
   var patch = endpoint.subscriptionFn.call(this.actor.state);
   var r = this.actor.mux.addStream(patch);
   this.endpoints = this.endpoints.set(r.pid, endpoint);
-  Network.stateChange(r.deltaAggregate);
+  Dataspace.stateChange(r.deltaAggregate);
   return this; // for chaining
 };
 
@@ -152,7 +152,7 @@ Facet.prototype.refresh = function() {
     var r = facet.actor.mux.updateStream(eid, patch);
     aggregate = aggregate.andThen(r.deltaAggregate);
   });
-  Network.stateChange(aggregate);
+  Dataspace.stateChange(aggregate);
 };
 
 Facet.prototype.completeBuild = function() {
@@ -168,7 +168,7 @@ Facet.prototype.terminate = function() {
     var r = facet.actor.mux.removeStream(eid);
     aggregate = aggregate.andThen(r.deltaAggregate);
   });
-  Network.stateChange(aggregate);
+  Dataspace.stateChange(aggregate);
   this.endpoints = Immutable.Map();
   this.actor.removeFacet(this);
   this.doneBlocks.forEach(function(b) { b.call(facet.actor.state); });

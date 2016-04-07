@@ -63,8 +63,8 @@
                    1
                    (patch-seq (sub (observe (set-timer ? ? ?)))
                               (sub (timer-expired 'tick ?))))
-	    (spawn-network (spawn r (void) (sub ?))
-                           (spawn b 0 '()))
+	    (spawn-dataspace (spawn r (void) (sub ?))
+                             (spawn b 0 '()))
 	    (spawn echoer
                    (void)
                    (sub (external-event (read-line-evt (current-input-port) 'any) ?)

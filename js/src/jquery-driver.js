@@ -2,21 +2,21 @@
 var Patch = require("./patch.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
 
-var Network_ = require("./network.js");
-var Network = Network_.Network;
-var __ = Network_.__;
-var _$ = Network_._$;
+var Dataspace_ = require("./dataspace.js");
+var Dataspace = Dataspace_.Dataspace;
+var __ = Dataspace_.__;
+var _$ = Dataspace_._$;
 
 function spawnJQueryDriver(baseSelector, metaLevel, wrapFunction) {
   metaLevel = metaLevel || 0;
   wrapFunction = wrapFunction || defaultWrapFunction;
-  Network.spawn(
+  Dataspace.spawn(
     new DemandMatcher(Patch.observe(wrapFunction(_$('selector'), _$('eventName'), __)),
 		      Patch.advertise(wrapFunction(_$('selector'), _$('eventName'), __)),
 		      {
 			metaLevel: metaLevel,
 			onDemandIncrease: function (c) {
-			  Network.spawn(new JQueryEventRouter(baseSelector,
+			  Dataspace.spawn(new JQueryEventRouter(baseSelector,
 							      c.selector,
 							      c.eventName,
 							      metaLevel,
@@ -38,8 +38,8 @@ function JQueryEventRouter(baseSelector, selector, eventName, metaLevel, wrapFun
   this.wrapFunction = wrapFunction || defaultWrapFunction;
   this.preventDefault = (this.eventName.charAt(0) !== "+");
   this.handler =
-    Network.wrap(function (e) {
-      Network.send(self.wrapFunction(self.selector, self.eventName, e), self.metaLevel);
+    Dataspace.wrap(function (e) {
+      Dataspace.send(self.wrapFunction(self.selector, self.eventName, e), self.metaLevel);
       if (self.preventDefault) e.preventDefault();
       return !self.preventDefault;
     });
@@ -56,7 +56,7 @@ JQueryEventRouter.prototype.boot = function () {
 JQueryEventRouter.prototype.handleEvent = function (e) {
   if (e.type === "stateChange" && e.patch.hasRemoved()) {
     this.computeNodes().off(this.eventName, this.handler);
-    Network.exit();
+    Dataspace.exit();
   }
 };
 

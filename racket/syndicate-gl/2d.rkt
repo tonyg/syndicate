@@ -12,7 +12,7 @@
          update-scene
          update-sprites
          spawn-keyboard-integrator
-         2d-network)
+         2d-dataspace)
 
 (require data/order)
 (require data/splay-tree)
@@ -31,13 +31,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Shared state maintained by network. Describes current window dimensions.
+;; Shared state maintained by dataspace. Describes current window dimensions.
 (struct window (width height) #:transparent)
 
-;; Message sent by network. Describes frame about to be rendered.
+;; Message sent by dataspace. Describes frame about to be rendered.
 (struct frame-event (counter timestamp elapsed-ms target-frame-rate) #:transparent)
 
-;; Message sent by network. Describes a key event. Key is a sealed
+;; Message sent by dataspace. Describes a key event. Key is a sealed
 ;; key-event%. `press?` is #t when the key is pressed (or
 ;; autorepeated!), and #f when it is released.
 (struct key-event (code press? key) #:transparent)
@@ -221,7 +221,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define network-canvas%
+(define dataspace-canvas%
   (class canvas%
     (inherit refresh with-gl-context swap-gl-buffers)
 
@@ -243,7 +243,7 @@
     (define postlude empty-instructions)
     (define fullscreen? #f)
 
-    (define network (make-network boot-actions))
+    (define dataspace (make-dataspace boot-actions))
     (define event-queue (make-queue))
 
     (define target-frame-rate 60)
@@ -266,7 +266,7 @@
       (enqueue! event-queue e))
 
     (define (deliver-event e)
-      (clean-transition (network-handle-event e network)))
+      (clean-transition (dataspace-handle-event e dataspace)))
 
     (define (quiesce!)
       (let loop ((txn #f) (need-poll? #t))
@@ -275,8 +275,8 @@
            (if (queue-empty? event-queue)
                (when need-poll? (loop (deliver-event #f) #f))
                (loop (deliver-event (dequeue! event-queue)) #t))]
-          [(transition new-network actions)
-           (set! network new-network)
+          [(transition new-dataspace actions)
+           (set! dataspace new-dataspace)
            (for-each process-action! actions)
            (loop #f #t)])))
 
@@ -387,9 +387,9 @@
 
     (super-new (style '(gl no-autoclear)))))
 
-(define (2d-network #:width [width #f]
-                    #:height [height #f]
-                    . boot-actions)
+(define (2d-dataspace #:width [width #f]
+                      #:height [height #f]
+                      . boot-actions)
   (collect-garbage 'incremental)
   (collect-garbage 'major)
   (define frame (new frame%
@@ -397,11 +397,11 @@
                      [label "syndicate-gl"]
                      [width (or width 640)]
                      [height (or height 480)]))
-  (define c (new network-canvas%
+  (define c (new dataspace-canvas%
                  [parent frame]
                  [boot-actions boot-actions]))
   (unless (send (send (send c get-dc) get-gl-context) ok?)
-    (error '2d-network "OpenGL context failed to initialize"))
+    (error '2d-dataspace "OpenGL context failed to initialize"))
   (send c focus)
   (send frame show #t)
   (yield 'wait))
