@@ -66,7 +66,10 @@
          trie->pretty-string
          trie->abstract-graph
          abstract-graph->dot
-         trie->dot)
+         trie->dot
+
+         trie->jsexpr
+         jsexpr->trie)
 
 (require racket/set)
 (require racket/match)
@@ -1013,6 +1016,67 @@
 
 (define (trie->dot m #:transform-success [transform-success values])
   (abstract-graph->dot (trie->abstract-graph m #:transform-success transform-success)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; ParenType -> String
+(define (paren-type->string type)
+  (match type
+    ['list "L"]
+    ['vector "V"]
+    [(? struct-type?)
+     (string-append ":" (symbol->string (struct-type-name type)))]))
+
+;; String (String -> (Option struct-type)) -> ParenType
+(define (string->paren-type s lookup-struct-type)
+  (match s
+    ["L" 'list]
+    ["V" 'vector]
+    [_ (if (char=? (string-ref s 0) #\:)
+           (or (lookup-struct-type (substring s 1))
+               (error 'string->paren-type "Unexpected struct type name ~v" (substring s 1)))
+           (error 'string->paren-type "Invalid paren-type string representation ~v" s))]))
+
+;; Trie (Any -> JSExpr) [#:serialize-atom (Any -> JSExpr)] -> JSExpr
+(define (trie->jsexpr m success->jsexpr #:serialize-atom [serialize-atom values])
+  (let walk ((m m))
+    (match m
+      [(? trie-empty?) '()]
+      [(success v) (list (success->jsexpr v))]
+      [(branch opens wild sigmas)
+       (list (for/list [(kv (treap-to-alist opens))]
+               (match-define (cons (open-parenthesis arity type) v) kv)
+               (list arity
+                     (paren-type->string type)
+                     (walk v)))
+             (walk wild)
+             (for/list [(kv (treap-to-alist sigmas))]
+               (match-define (cons k v) kv)
+               (list (serialize-atom k)
+                     (walk v))))])))
+
+;; JSExpr (JSExpr -> Any) [String -> (Option struct-type)] [#:deserialize-atom (JSExpr -> Any)]
+;;   -> Trie
+;; Deserializes a matcher from a JSON expression.
+(define (jsexpr->trie j
+                      jsexpr->success
+                      [lookup-struct-type (lambda (t) #f)]
+                      #:deserialize-atom [deserialize-atom values])
+  (let walk ((j j))
+    (match j
+      ['() #f]
+      [(list vj) (rsuccess (jsexpr->success vj))]
+      [(list jopens jwild jsigmas)
+       (canonicalize
+        (collapse
+         (branch (for/fold [(acc empty-omap)] [(jopen (in-list jopens))]
+                   (match-define (list arity type-str vj) jopen)
+                   (define type (string->paren-type type-str lookup-struct-type))
+                   (treap-insert acc (canonical-open-parenthesis arity type) (walk vj)))
+                 (walk jwild)
+                 (for/fold [(acc empty-smap)] [(jsigma (in-list jsigmas))]
+                   (match-define (list atom vj) jsigma)
+                   (treap-insert acc (deserialize-atom atom) (walk vj))))))])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

@@ -37,7 +37,10 @@
          patch-project/set/single
 
          pretty-print-patch
-         patch->pretty-string)
+         patch->pretty-string
+
+         patch->jsexpr
+         jsexpr->patch)
 
 (require racket/set)
 (require racket/match)
@@ -268,6 +271,21 @@
   (format "<<<<<<<< Removed:\n~a======== Added:\n~a>>>>>>>>\n"
           (trie->pretty-string out)
           (trie->pretty-string in)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (patch->jsexpr p success->jsexpr #:serialize-atom [serialize-atom values])
+  (match-define (patch in out) p)
+  (list (trie->jsexpr in success->jsexpr #:serialize-atom serialize-atom)
+        (trie->jsexpr out success->jsexpr #:serialize-atom serialize-atom)))
+
+(define (jsexpr->patch pj
+                       jsexpr->success
+                       [lookup-struct-type (lambda (t) #f)]
+                       #:deserialize-atom [deserialize-atom values])
+  (match-define (list ij oj) pj)
+  (patch (jsexpr->trie ij jsexpr->success lookup-struct-type #:deserialize-atom deserialize-atom)
+         (jsexpr->trie oj jsexpr->success lookup-struct-type #:deserialize-atom deserialize-atom)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
