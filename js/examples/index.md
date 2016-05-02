@@ -76,3 +76,34 @@ directly, and one using the high-level Syndicate DSL.
  - Low-level implementation
     - [DEMO](textfield/)
     - [Source code](textfield/index.js) in plain JavaScript
+
+## IoT Demo
+
+This is a model of a home automation system.
+
+The idea is to alert a homeowner to the possibility they have left the
+stove switched on beyond the time they intended to.
+
+Components in the model include:
+
+ - a switch for the stove;
+ - an electric power meter, which monitors the power drawn by the
+   stove;
+ - a TV, which displays alerts to the user; and
+ - a remote control for the system, which can be used to switch off
+   the stove remotely.
+
+When the stove is switched on, a timer is started, and if a certain
+time goes by without the stove being switched off, an alert is shown
+on the TV.
+
+The example was inspired by a talk given in May 2016 at the
+[PL Seminar at Northeastern University's College of Computer Science](http://prl.ccs.neu.edu/seminars.html)
+by
+[Charles Consel](http://phoenix.inria.fr/index.php/members/54-charles-consel)
+about the
+[DiaSuite](http://phoenix.inria.fr/research-projects/diasuite) system
+that he and his collaborators have been developing.
+
+ - [DEMO](iot/)
+ - [Source code](iot/index.js) using the Syndicate/js DSL

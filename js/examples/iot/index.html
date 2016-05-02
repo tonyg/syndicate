@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Syndicate: IoT Demo</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="style.css" rel="stylesheet">
+    <script src="../../third-party/jquery-2.2.0.min.js"></script>
+    <script src="../../dist/syndicatecompiler.js"></script>
+    <script src="../../dist/syndicate.js"></script>
+    <script type="text/syndicate-js" src="index.js"></script>
+  </head>
+  <body>
+    <h1>IoT Demo</h1>
+
+    <h2>Devices</h2>
+
+    <section>
+      <section>
+        <h3>TV</h3>
+        <div id="tv-container">
+          &nbsp;<div id="tv"></div>
+        </div>
+      </section>
+
+      <section>
+        <h3>Stove switch</h3>
+        <div id="stove-switch"></div>
+        <button id="stove-switch-on">Turn on switch</button>
+        <button id="stove-switch-off">Turn off switch</button>
+      </section>
+
+      <section>
+        <h3>Remote control</h3>
+        <button id="remote-control"><img src="img/remote.png"></button>
+      </section>
+
+      <section>
+        <h3>Power draw meter</h3>
+        <div id="power-draw-meter"></div>
+      </section>
+    </section>
+
+    <h2>Fault injection</h2>
+
+    <section>
+      <section>
+        <h3>Chaos Monkey</h3>
+        <div>
+          <button id="kill-power-draw-monitor">Kill power draw monitor</button>
+          <button id="kill-stove-switch">Kill stove-switch</button>
+        </div>
+        <div>
+          <button id="spawn-power-draw-monitor">Spawn power draw monitor</button>
+          <button id="spawn-stove-switch">Spawn stove-switch</button>
+        </div>
+      </section>
+    </section>
+
+    <hr>
+    <pre id="ds-state"></pre>
+  </body>
+</html>

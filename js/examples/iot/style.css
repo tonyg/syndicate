@@ -1,0 +1,38 @@
+#tv-container {
+    background: url('img/tvscreen.gif');
+    background-size: 100%;
+    background-repeat: no-repeat;
+    width: 400px;
+    height: 300px;
+}
+
+#tv-container .alerts {
+    color: white;
+    margin: 3em;
+    max-width: 11em;
+}
+
+.power-meter-display {
+    font-size: 24pt;
+    background-color: black;
+    color: red;
+    padding: 0.2em;
+    margin: 0.2em;
+    display: inline-block;
+}
+
+h2 {
+    background: lightgrey;
+}
+
+h3 {
+    border-bottom: solid grey 1px;
+}
+
+body > section {
+    display: flex;
+}
+
+body > section > section {
+    margin: 1em;
+}
