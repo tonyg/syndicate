@@ -1,4 +1,5 @@
 ---
+title: Live Demos
 ---
 
 # Syndicate/js Examples
@@ -83,6 +84,8 @@ This is a model of a home automation system.
 
 The idea is to alert a homeowner to the possibility they have left the
 stove switched on beyond the time they intended to.
+
+![IoT Example](iot/iot-example.png)
 
 Components in the model include:
 
