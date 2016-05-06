@@ -11,6 +11,7 @@
          (struct-out dataspace)
 
          (struct-out seal)
+         sealof
 
          (all-from-out "patch.rkt")
 
@@ -120,6 +121,10 @@
 ;; examining internal structure of values.
 
 (struct seal (contents)) ;; NB. Neither transparent nor prefab
+
+;; contract -> contract
+(define ((sealof c) x)
+  (and (seal? x) (c (seal-contents x))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
