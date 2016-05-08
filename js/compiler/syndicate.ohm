@@ -41,9 +41,11 @@ Syndicate <: ES5 {
   FacetDoneBlock = done Block
 
   FacetSituation
-    = assert FacetPattern #(sc)      -- assert
-    | on FacetEventPattern Block               -- event
-    | during FacetPattern FacetBlock -- during
+    = assert FacetPattern AssertWhenClause? #(sc) -- assert
+    | on FacetEventPattern Block                  -- event
+    | during FacetPattern FacetBlock              -- during
+
+  AssertWhenClause = when "(" Expression<withIn> ")"
 
   FacetEventPattern
     = message FacetPattern   -- messageEvent
@@ -84,4 +86,5 @@ Syndicate <: ES5 {
   state = "state" ~identifierPart
   type = "type" ~identifierPart
   until = "until" ~identifierPart
+  when = "when" ~identifierPart
 }

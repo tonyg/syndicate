@@ -144,8 +144,8 @@ var modifiedSourceActions = {
     return '\n.addDoneBlock((function() ' + block.asES5 + '))';
   },
 
-  FacetSituation_assert: function(_assert, expr, _sc) {
-    return '\n.addAssertion(' + buildSubscription([expr], 'assert', 'pattern') + ')';
+  FacetSituation_assert: function(_assert, expr, whenClause, _sc) {
+    return '\n.addAssertion(' + buildSubscription([expr], 'assert', 'pattern', whenClause) + ')';
   },
   FacetSituation_event: function(_on, eventPattern, block) {
     return buildOnEvent(false,
@@ -170,6 +170,10 @@ var modifiedSourceActions = {
                                      [],
                                      '{}') +
                         '.completeBuild(); }');
+  },
+
+  AssertWhenClause: function(_when, _lparen, expr, _rparen) {
+    return expr.asES5;
   },
 
   FacetStateTransition_withContinuation: function(_case, eventPattern, block) {
@@ -200,9 +204,13 @@ semantics.addAttribute('eventType', {
   FacetTransitionEventPattern_risingEdge: function (_lp, expr, _rp) { return 'risingEdge'; }
 });
 
-function buildSubscription(children, patchMethod, mode) {
+function buildSubscription(children, patchMethod, mode, whenClause) {
   var fragments = [];
+  var hasWhenClause = (whenClause && (whenClause.numChildren === 1));
   fragments.push('(function() { var _ = Syndicate.__; return ');
+  if (hasWhenClause) {
+    fragments.push('(' + whenClause.asES5 + ') ? ');
+  }
   if (patchMethod) {
     fragments.push('Syndicate.Patch.' + patchMethod + '(');
   } else {
@@ -220,31 +228,34 @@ function buildSubscription(children, patchMethod, mode) {
   } else {
     fragments.push(' }');
   }
+  if (hasWhenClause) {
+    fragments.push(' : Syndicate.Patch.emptyPatch');
+  }
   fragments.push('; })');
   return fragments.join('');
 }
 
 semantics.addAttribute('subscription', {
   _default: function(children) {
-    return buildSubscription(children, 'sub', 'pattern');
+    return buildSubscription(children, 'sub', 'pattern', null);
   }
 });
 
 semantics.addAttribute('instantiatedSubscription', {
   _default: function(children) {
-    return buildSubscription(children, 'sub', 'instantiated');
+    return buildSubscription(children, 'sub', 'instantiated', null);
   }
 });
 
 semantics.addAttribute('instantiatedProjection', {
   _default: function(children) {
-    return buildSubscription(children, null, 'instantiated');
+    return buildSubscription(children, null, 'instantiated', null);
   }
 });
 
 semantics.addAttribute('projection', {
   _default: function(children) {
-    return buildSubscription(children, null, 'projection');
+    return buildSubscription(children, null, 'projection', null);
   }
 });
 
