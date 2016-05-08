@@ -36,7 +36,7 @@
   [on
    during
    assert
-   track
+   query
 
    asserted
    retracted
@@ -66,7 +66,7 @@
 ;; variables of an actor.
 
 ;; An Aggregates is a (Hashtable Nat Any), storing implicit state of
-;; an actor, including tracked and implicit aggregates.
+;; an actor, including queried and implicit aggregates.
 
 ;; A Script is a (-> Variables). It is to be executed inside
 ;; the special syndicate-hll prompt, and so may have Instruction
@@ -413,7 +413,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compilation of HLL actors
 
-;; TODO: track
+;; TODO: query
 ;; TODO: default to hll
 ;; TODO: some better means of keeping track of nested dataspace levels
 
@@ -440,7 +440,7 @@
 
     ;; Records aggregate updaters.
     ;; (Boxof (Listof StageProducer))
-    (define track-updaters (box '()))
+    (define query-updaters (box '()))
 
     ;; Records both actual event handlers and termination check handlers.
     ;; (Boxof (Listof StageProducer))
@@ -457,7 +457,7 @@
       (- (length (unbox aggregate-init-stxs)) 1))
 
     ;; StageProducer -> Void
-    (define (add-track-updater! stage-producer) (box-adjoin! track-updaters stage-producer))
+    (define (add-query-updater! stage-producer) (box-adjoin! query-updaters stage-producer))
     (define (add-event-handler! stage-producer) (box-adjoin! event-handlers stage-producer))
 
     (define (mapply v fs) (map (lambda (f) (f v)) fs))
@@ -587,32 +587,32 @@
         (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! index #'core:assert pat Pred-stx L-stx))
 
-    (define (analyze-tracks! index track-spec-stxs I-stxs)
-      (error 'analyze-tracks! "unimplemented"))
+    (define (analyze-queries! index query-spec-stxs I-stxs)
+      (error 'analyze-queries! "unimplemented"))
 
-    ;; Track analysis happens first, because we need the tracked
+    ;; Query analysis happens first, because we need the queried
     ;; bindings to be in scope everywhere else.
     (for [(ongoing (in-list (syntax->list ongoings)))
           (ongoing-index (in-naturals))]
       (syntax-parse ongoing
-        #:literals [track]
-        [(track [track-spec ...] I ...)
-         (analyze-tracks! ongoing-index #'(track-spec ...) #'(I ...))]
+        #:literals [query]
+        [(query [query-spec ...] I ...)
+         (analyze-queries! ongoing-index #'(query-spec ...) #'(I ...))]
         [_ (void)]))
 
-    ;; Now make another pass over the ongoings, ignoring tracks this
+    ;; Now make another pass over the ongoings, ignoring queries this
     ;; time.
     (for [(ongoing (in-list (syntax->list ongoings)))
           (ongoing-index (in-naturals))]
       (syntax-parse ongoing
-        #:literals [on during assert track]
+        #:literals [on during assert query]
         [(on E I ...)
          (analyze-event! ongoing-index #'E #'(I ...))]
         [(during P O ...)
          (analyze-during! ongoing-index #'P #'(O ...))]
         [(assert w:when-pred P L:meta-level)
          (analyze-assertion! ongoing-index #'w.Pred ongoing #'P #'L.level)]
-        [(track [track-spec ...] I ...)
+        [(query [query-spec ...] I ...)
          (void)]))
 
     ;; Finally, add in the termination conditions...
@@ -637,7 +637,7 @@
              (define (behavior e s)
                (and e
                     (sequence-transitions0 s
-                                           #,@(mapply #'e (unbox track-updaters))
+                                           #,@(mapply #'e (unbox query-updaters))
                                            #,@(mapply #'e (unbox event-handlers))
                                            (maintain-assertions e)
                                            perform-pending-patch)))
