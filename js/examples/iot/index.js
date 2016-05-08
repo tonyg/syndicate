@@ -14,28 +14,9 @@ var jQueryEvent = Syndicate.JQuery.jQueryEvent;
 
 function spawnTV() {
   actor {
-    this.alerts = [];
-    this.alertFragment = ["ul"];
-
-    this.computeDisplay = function () {
-      var self = this; // omg javascript
-      this.alertFragment = ["ul"];
-      this.alerts.forEach(function (t) {
-        self.alertFragment.push(["li", t]);
-      });
-    };
-
     forever {
-      assert DOM('#tv', 'alerts', Syndicate.seal(this.alertFragment));
-
-      on asserted tvAlert($text) {
-        this.alerts.push(text);
-        this.computeDisplay();
-      }
-
-      on retracted tvAlert($text) {
-        this.alerts = this.alerts.filter(function (t) { return t !== text; });
-        this.computeDisplay();
+      during tvAlert($text) {
+        assert DOM('#tv', 'alert', Syndicate.seal(["li", text]));
       }
     }
   }
