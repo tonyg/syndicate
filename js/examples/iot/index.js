@@ -121,7 +121,6 @@ function spawnClock() {
 }
 
 function spawnTimeoutListener() {
-  var message = tvAlert('Stove on too long?');
   actor {
     this.mostRecentTime = 0;
     this.powerOnTime = null;
@@ -132,12 +131,9 @@ function spawnTimeoutListener() {
       }
       on message time($now) {
         this.mostRecentTime = now;
-        if (this.powerOnTime !== null && this.mostRecentTime - this.powerOnTime > 3000) {
-          Syndicate.Dataspace.stateChange(Syndicate.assert(message));
-        } else {
-          Syndicate.Dataspace.stateChange(Syndicate.retract(message));
-        }
       }
+      assert tvAlert('Stove on too long?')
+        when (this.powerOnTime !== null && this.mostRecentTime - this.powerOnTime > 3000);
     }
   }
 }
@@ -146,17 +142,14 @@ function spawnTimeoutListener() {
 // Failure monitor
 
 function spawnFailureMonitor() {
-  function messageFor(who) {
-    return tvAlert('FAILURE: ' + who);
-  }
-
   actor {
     forever {
-      on asserted componentPresent($who) {
-        Syndicate.Dataspace.stateChange(Syndicate.retract(messageFor(who)));
-      }
       on retracted componentPresent($who) {
-        Syndicate.Dataspace.stateChange(Syndicate.assert(messageFor(who)));
+        state {
+          assert tvAlert('FAILURE: ' + who);
+        } until {
+          case asserted componentPresent(who);
+        }
       }
     }
   }
