@@ -2,15 +2,15 @@
 // GUI
 
 var Dataspace = Syndicate.Dataspace;
-var Route = Syndicate.Route;
+var Trie = Syndicate.Trie;
 var Patch = Syndicate.Patch;
 var __ = Syndicate.__;
 var _$ = Syndicate._$;
 
 var jQueryEvent = Syndicate.JQuery.jQueryEvent;
-var fieldContents = Route.makeStructureConstructor('fieldContents', ['text', 'pos']);
-var highlight = Route.makeStructureConstructor('highlight', ['state']);
-var fieldCommand = Route.makeStructureConstructor('fieldCommand', ['detail']);
+var fieldContents = Syndicate.Struct.makeStructureConstructor('fieldContents', ['text', 'pos']);
+var highlight = Syndicate.Struct.makeStructureConstructor('highlight', ['state']);
+var fieldCommand = Syndicate.Struct.makeStructureConstructor('fieldCommand', ['detail']);
 
 function escapeText(text) {
   text = text.replace(/&/g, '&amp;');
@@ -63,10 +63,10 @@ function spawnGui() {
 	}
 	break;
       case "stateChange":
-	Route.projectObjects(e.patch.added, this.fieldContentsProjection).forEach(function (c) {
+	Trie.projectObjects(e.patch.added, this.fieldContentsProjection).forEach(function (c) {
 	  self.field = c;
 	});
-	Route.projectObjects(e.patch.added, this.highlightProjection).forEach(function (c) {
+	Trie.projectObjects(e.patch.added, this.highlightProjection).forEach(function (c) {
 	  self.highlight = c;
 	});
 	this.updateDisplay();
@@ -160,7 +160,7 @@ function spawnSearch() {
 	this.search();
       }
       if (e.type === "stateChange") {
-	Route.projectObjects(e.patch.added, this.fieldContentsProjection).forEach(function (c) {
+	Trie.projectObjects(e.patch.added, this.fieldContentsProjection).forEach(function (c) {
 	  self.fieldValue = c.text;
 	});
 	this.search();

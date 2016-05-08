@@ -1,14 +1,14 @@
 // JQuery event driver
 var Patch = require("./patch.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
-var Route = require('./route.js');
+var Struct = require('./struct.js');
 
 var Dataspace_ = require("./dataspace.js");
 var Dataspace = Dataspace_.Dataspace;
 var __ = Dataspace_.__;
 var _$ = Dataspace_._$;
 
-var jQueryEvent = Route.makeStructureConstructor('jQueryEvent', ['selector', 'eventName', 'eventValue']);
+var jQueryEvent = Struct.makeStructureConstructor('jQueryEvent', ['selector', 'eventName', 'eventValue']);
 
 function spawnJQueryDriver(baseSelector, metaLevel, wrapFunction) {
   metaLevel = metaLevel || 0;

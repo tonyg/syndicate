@@ -1,6 +1,6 @@
 "use strict";
 
-var beep = Syndicate.Route.makeStructureConstructor('beep', ['counter']);
+var beep = Syndicate.Struct.makeStructureConstructor('beep', ['counter']);
 
 var G;
 $(document).ready(function () {

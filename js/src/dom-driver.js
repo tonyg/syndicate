@@ -1,7 +1,7 @@
 // DOM fragment display driver
 var Patch = require("./patch.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
-var Route = require('./route.js');
+var Struct = require('./struct.js');
 var Ack = require('./ack.js').Ack;
 var Seal = require('./seal.js').Seal;
 
@@ -10,7 +10,7 @@ var Dataspace = Dataspace_.Dataspace;
 var __ = Dataspace_.__;
 var _$ = Dataspace_._$;
 
-var DOM = Route.makeStructureConstructor('DOM', ['selector', 'fragmentClass', 'fragmentSpec']);
+var DOM = Struct.makeStructureConstructor('DOM', ['selector', 'fragmentClass', 'fragmentSpec']);
 
 function spawnDOMDriver(domWrapFunction, jQueryWrapFunction) {
   domWrapFunction = domWrapFunction || DOM;

@@ -1,62 +1,8 @@
 "use strict";
 
 var Immutable = require("immutable");
-
-///////////////////////////////////////////////////////////////////////////
-// "Structures": Simple named-tuple-like records.
-// TODO: shore up $SyndicateMeta$, making it a proper object
-
-function instantiateStructure($SyndicateMeta$, argvals) {
-  var result = {"$SyndicateMeta$": $SyndicateMeta$};
-  var argnames = $SyndicateMeta$.arguments;
-  for (var i = 0; i < argnames.length; i++) {
-    result[argnames[i]] = argvals[i];
-  }
-  return result;
-}
-
-function makeStructureConstructor(label, argumentNames) {
-  var $SyndicateMeta$ = {
-    label: label,
-    arguments: argumentNames
-  };
-  var ctor = function() {
-    return instantiateStructure($SyndicateMeta$, arguments);
-  };
-  ctor.meta = $SyndicateMeta$;
-  ctor.isClassOf = function (v) { return v && v.$SyndicateMeta$ === $SyndicateMeta$; };
-  ctor.pattern = ctor.apply(null, Immutable.Repeat(__, argumentNames.length).toArray());
-  return ctor;
-}
-
-function isSyndicateMeta(m) {
-  // TODO: include more structure in $SyndicateMeta$ objects to make
-  // this judgement less sloppy.
-  return m && m.label && Array.isArray(m.arguments);
-}
-
-function isStructure(s) {
-  return (s !== null) && (typeof s === 'object') && ("$SyndicateMeta$" in s);
-}
-
-function structureToArray(s, excludeLabel) {
-  var result = excludeLabel ? [] : [s.$SyndicateMeta$.label];
-  var args = s.$SyndicateMeta$.arguments;
-  for (var i = 0; i < args.length; i++) {
-    result.push(s[args[i]]);
-  }
-  return result;
-}
-
-///////////////////////////////////////////////////////////////////////////
-// $Special: Builder of singletons.
-
-function $Special(name) {
-  this.name = name;
-}
-
-///////////////////////////////////////////////////////////////////////////
-// Misc. utilities
+var Struct = require('./struct.js');
+var $Special = require('./special.js');
 
 function die(message) {
   throw new Error(message);
@@ -100,7 +46,7 @@ $Branch.prototype.equals = function (other) {
 ///////////////////////////////////////////////////////////////////////////
 // Patterns, projections and captures
 
-var __ = new $Special("wildcard"); /* wildcard marker */
+var __ = Struct.__; /* imported rather than defined here because of cyclic dep in Struct */
 var SOA = new $Special("array"); /* key for start-of-array */
 
 function $Embedded(trie, arrayLength) {
@@ -239,7 +185,7 @@ function compilePattern(v, p) {
       return rseq(p.size, SOA, acc);
     }
 
-    if (isStructure(p)) {
+    if (Struct.isStructure(p)) {
       var args = p.$SyndicateMeta$.arguments;
       for (var i = args.length - 1; i >= 0; i--) {
         acc = walk(p[args[i]], acc);
@@ -276,7 +222,10 @@ function matchPattern(v, p) {
 
     if (p === __) return;
 
-    if (isStructure(p) && isStructure(v) && (p.$SyndicateMeta$ === v.$SyndicateMeta$)) {
+    if (Struct.isStructure(p)
+        && Struct.isStructure(v)
+        && (p.$SyndicateMeta$ === v.$SyndicateMeta$))
+    {
       var args = p.$SyndicateMeta$.arguments;
       for (var i = 0; i < args.length; i++) {
         walk(v[args[i]], p[args[i]]);
@@ -481,9 +430,9 @@ function matchValue(r, v, failureResultOpt) {
     if (Array.isArray(v)) {
       r = rlookup(r, v.length, SOA);
       vs = Immutable.List(v).concat(vs);
-    } else if (isStructure(v)) {
+    } else if (Struct.isStructure(v)) {
       r = rlookup(r, v.$SyndicateMeta$.arguments.length, v.$SyndicateMeta$);
-      vs = Immutable.List(structureToArray(v, true)).concat(vs);
+      vs = Immutable.List(Struct.structureToArray(v, true)).concat(vs);
     } else {
       r = rlookup(r, 0, v);
     }
@@ -600,7 +549,7 @@ function projectionNames(p) {
       return;
     }
 
-    if (isStructure(p)) {
+    if (Struct.isStructure(p)) {
       var args = p.$SyndicateMeta$.arguments;
       for (var i = 0; i < args.length; i++) walk(p[args[i]]);
       return;
@@ -626,7 +575,7 @@ function projectionToPattern(p) {
       return result;
     }
 
-    if (isStructure(p)) {
+    if (Struct.isStructure(p)) {
       var result = {"$SyndicateMeta$": p.$SyndicateMeta$};
       var args = p.$SyndicateMeta$.arguments;
       for (var i = 0; i < args.length; i++) {
@@ -702,12 +651,12 @@ function projectMany(t, wholeSpecs, projectSuccessOpt, combinerOpt) {
       return target;
     }
 
-    if (isStructure(spec)) {
+    if (Struct.isStructure(spec)) {
       var arity = spec.$SyndicateMeta$.arguments.length;
       var key = spec.$SyndicateMeta$;
       var intermediate = walk(isCapturing,
                               rlookup(t, arity, key),
-                              Immutable.List(structureToArray(spec, true)),
+                              Immutable.List(Struct.structureToArray(spec, true)),
                               function (intermediate) {
                                 return walk(isCapturing, intermediate, specsRest, kont);
                               });
@@ -738,14 +687,14 @@ function reconstructSequence(key, items) {
   if (key === SOA) {
     return items.toArray();
   } else {
-    return instantiateStructure(key, items);
+    return Struct.instantiateStructure(key, items);
   }
 }
 
 function trieKeys(m, takeCount0) {
   if (typeof takeCount0 !== 'number') {
     // Cope with API change which would otherwise silently cause problems
-    die("Missing mandatory argument 'takeCount' to Route.trieKeys");
+    die("Missing mandatory argument 'takeCount' to Trie.trieKeys");
   }
 
   if (is_emptyTrie(m)) return Immutable.Set();
@@ -773,7 +722,7 @@ function trieKeys(m, takeCount0) {
         if (result === false) return false; // break out of iteration
 
         var piece;
-        if (isSyndicateMeta(key) || key === SOA) { // TODO: this is sloppy
+        if (Struct.isSyndicateMeta(key) || key === SOA) { // TODO: this is sloppy
           piece = walk(k, arity, Immutable.List(), function (items, m1) {
             var item = reconstructSequence(key, items);
             return walk(m1, takeCount - 1, valsRev.unshift(item), kont);
@@ -849,7 +798,7 @@ function prettyTrie(m, initialIndent) {
 	    }
 	    acc.push(" ");
 	    if (key === SOA) key = '<' + arity + '>';
-            else if (isSyndicateMeta(key)) key = key.label + '<' + arity + '>';
+            else if (Struct.isSyndicateMeta(key)) key = key.label + '<' + arity + '>';
 	    else if (key instanceof $Special) key = key.name;
             else if (typeof key === 'undefined') key = 'undefined';
 	    else key = JSON.stringify(key);
@@ -870,7 +819,6 @@ module.exports.__ = __;
 module.exports.SOA = SOA;
 module.exports.$Capture = $Capture;
 module.exports.$Special = $Special;
-module.exports.makeStructureConstructor = makeStructureConstructor;
 module.exports._$ = _$;
 module.exports.is_emptyTrie = is_emptyTrie;
 module.exports.emptyTrie = emptyTrie;

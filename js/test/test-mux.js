@@ -3,15 +3,15 @@
 var expect = require('expect.js');
 var Immutable = require('immutable');
 
-var Route = require('../src/route.js');
+var Trie = require('../src/trie.js');
 var Patch = require('../src/patch.js');
 var Mux = require('../src/mux.js');
 
-var __ = Route.__;
-var _$ = Route._$;
+var __ = Trie.__;
+var _$ = Trie._$;
 
 function checkPrettyTrie(m, expected) {
-  expect(Route.prettyTrie(m)).to.equal(expected.join('\n'));
+  expect(Trie.prettyTrie(m)).to.equal(expected.join('\n'));
 }
 
 function checkPrettyPatch(p, expectedAdded, expectedRemoved) {

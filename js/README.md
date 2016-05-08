@@ -8,7 +8,7 @@ Source files in `src/`, from most general to most specific:
  - `util.js`: Functions `extend` and `kwApply`.
  - `randomid.js`: Generation of (cryptographically) random base64 strings.
 
- - `route.js`: Implementation of dataspace trie structure.
+ - `trie.js`: Implementation of dataspace trie structure.
  - `patch.js`: Implementation of patches over dataspace tries.
  - `mux.js`: Use of tries plus patches to build a (de)multiplexing routing structure.
  - `dataspace.js`: Implementation of core leaf actors and dataspaces.

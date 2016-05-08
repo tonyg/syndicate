@@ -2,10 +2,10 @@
 
 var RandomID = require('./randomid.js');
 var Dataspace = require('./dataspace.js').Dataspace;
-var Route = require('./route.js');
+var Struct = require('./struct.js');
 var Patch = require('./patch.js');
 
-var ack = Route.makeStructureConstructor('ack', ['id']);
+var ack = Struct.makeStructureConstructor('ack', ['id']);
 
 function Ack(metaLevel, id) {
   this.metaLevel = metaLevel || 0;

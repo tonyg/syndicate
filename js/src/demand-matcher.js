@@ -1,5 +1,5 @@
 var Immutable = require('immutable');
-var Route = require('./route.js');
+var Trie = require('./trie.js');
 var Patch = require('./patch.js');
 var Util = require('./util.js');
 
@@ -18,12 +18,12 @@ function DemandMatcher(demandSpec, supplySpec, options) {
   this.onSupplyDecrease = options.onSupplyDecrease;
   this.demandSpec = demandSpec;
   this.supplySpec = supplySpec;
-  this.demandPattern = Route.projectionToPattern(demandSpec);
-  this.supplyPattern = Route.projectionToPattern(supplySpec);
+  this.demandPattern = Trie.projectionToPattern(demandSpec);
+  this.supplyPattern = Trie.projectionToPattern(supplySpec);
   this.demandProjection = Patch.prependAtMeta(demandSpec, this.metaLevel);
   this.supplyProjection = Patch.prependAtMeta(supplySpec, this.metaLevel);
-  this.demandProjectionNames = Route.projectionNames(this.demandProjection);
-  this.supplyProjectionNames = Route.projectionNames(this.supplyProjection);
+  this.demandProjectionNames = Trie.projectionNames(this.demandProjection);
+  this.supplyProjectionNames = Trie.projectionNames(this.supplyProjection);
   this.currentDemand = Immutable.Set();
   this.currentSupply = Immutable.Set();
 }
@@ -44,10 +44,10 @@ DemandMatcher.prototype.handlePatch = function (p) {
 
   var dN = self.demandProjectionNames.length;
   var sN = self.supplyProjectionNames.length;
-  var addedDemand = Route.trieKeys(Route.project(p.added, self.demandProjection), dN);
-  var removedDemand = Route.trieKeys(Route.project(p.removed, self.demandProjection), dN);
-  var addedSupply = Route.trieKeys(Route.project(p.added, self.supplyProjection), sN);
-  var removedSupply = Route.trieKeys(Route.project(p.removed, self.supplyProjection), sN);
+  var addedDemand = Trie.trieKeys(Trie.project(p.added, self.demandProjection), dN);
+  var removedDemand = Trie.trieKeys(Trie.project(p.removed, self.demandProjection), dN);
+  var addedSupply = Trie.trieKeys(Trie.project(p.added, self.supplyProjection), sN);
+  var removedSupply = Trie.trieKeys(Trie.project(p.removed, self.supplyProjection), sN);
 
   if (addedDemand === null) {
     throw new Error("Syndicate: wildcard demand detected:\n" +
@@ -65,12 +65,12 @@ DemandMatcher.prototype.handlePatch = function (p) {
 
   removedSupply.forEach(function (captures) {
     if (self.currentDemand.has(captures)) {
-      self.onSupplyDecrease(Route.captureToObject(captures, self.supplyProjectionNames));
+      self.onSupplyDecrease(Trie.captureToObject(captures, self.supplyProjectionNames));
     }
   });
   addedDemand.forEach(function (captures) {
     if (!self.currentSupply.has(captures)) {
-      self.onDemandIncrease(Route.captureToObject(captures, self.demandProjectionNames));
+      self.onDemandIncrease(Trie.captureToObject(captures, self.demandProjectionNames));
     }
   });
 

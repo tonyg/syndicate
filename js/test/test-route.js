@@ -3,7 +3,8 @@
 var Immutable = require('immutable');
 var expect = require('expect.js');
 var util = require('util');
-var r = require("../src/route.js");
+var Struct = require("../src/struct.js");
+var r = require("../src/trie.js");
 
 function checkPrettyTrie(m, expected) {
   expect(r.prettyTrie(m)).to.equal(expected.join('\n'));
@@ -401,7 +402,7 @@ describe("calls to matchPattern", function () {
   });
 
   it("matches structures", function () {
-    var ctor = r.makeStructureConstructor('foo', ['bar', 'zot']);
+    var ctor = Struct.makeStructureConstructor('foo', ['bar', 'zot']);
     expect(r.matchPattern(ctor(123, 234), ctor(r._$("bar"), r._$("zot"))))
       .to.eql({ bar: 123, zot: 234, length: 2 });
     // Previously, structures were roughly the same as arrays:
@@ -518,14 +519,14 @@ describe('triePruneBranch', function () {
 
 describe('makeStructureConstructor', function () {
   it('should produce the right metadata', function () {
-    var ctor = r.makeStructureConstructor('foo', ['bar', 'zot']);
+    var ctor = Struct.makeStructureConstructor('foo', ['bar', 'zot']);
     var inst = ctor(123, 234);
     expect(inst.$SyndicateMeta$.label).to.equal('foo');
     expect(inst.$SyndicateMeta$.arguments).to.eql(['bar', 'zot']);
   });
 
   it('should produce the right instance data', function () {
-    var ctor = r.makeStructureConstructor('foo', ['bar', 'zot']);
+    var ctor = Struct.makeStructureConstructor('foo', ['bar', 'zot']);
     var inst = ctor(123, 234);
     expect(inst.bar).to.equal(123);
     expect(inst.zot).to.equal(234);
@@ -533,7 +534,7 @@ describe('makeStructureConstructor', function () {
 
   it('should work with compilePattern and matchValue', function () {
     var sA = Immutable.Set(["A"]);
-    var ctor = r.makeStructureConstructor('foo', ['bar', 'zot']);
+    var ctor = Struct.makeStructureConstructor('foo', ['bar', 'zot']);
     var inst = ctor(123, 234);
     var x = r.compilePattern(sA, ctor(123, r.__));
     checkPrettyTrie(x, [' foo<2> 123 ★ {["A"]}']);

@@ -122,7 +122,7 @@ var modifiedSourceActions = {
     var label = maybeLabel.numChildren === 1
         ? maybeLabel.children[0].interval.contents
         : JSON.stringify(typeName.interval.contents);
-    return 'var ' + typeName.asES5 + ' = Syndicate.Route.makeStructureConstructor(' +
+    return 'var ' + typeName.asES5 + ' = Syndicate.Struct.makeStructureConstructor(' +
       label + ', ' + JSON.stringify(formals) + ');';
   },
 

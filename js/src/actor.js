@@ -4,7 +4,7 @@ var Immutable = require('immutable');
 var Dataspace = require('./dataspace.js').Dataspace;
 var Mux = require('./mux.js');
 var Patch = require('./patch.js');
-var Route = require('./route.js');
+var Trie = require('./trie.js');
 var Util = require('./util.js');
 
 //---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
       if (e.type === 'message') {
         var proj = projectionFn.call(facet.actor.state);
         var spec = Patch.prependAtMeta(proj.assertion, proj.metalevel);
-        var match = Route.matchPattern(e.message, spec);
+        var match = Trie.matchPattern(e.message, spec);
         // console.log(match);
         if (match) {
           if (isTerminal) { facet.terminate(); }
@@ -94,10 +94,10 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
       if (e.type === 'stateChange') {
         var proj = projectionFn.call(facet.actor.state);
         var spec = Patch.prependAtMeta(proj.assertion, proj.metalevel);
-        var objects = Route.projectObjects(eventType === 'asserted'
-                                           ? e.patch.added
-                                           : e.patch.removed,
-                                           spec);
+        var objects = Trie.projectObjects(eventType === 'asserted'
+                                          ? e.patch.added
+                                          : e.patch.removed,
+                                          spec);
         if (objects && objects.size > 0) {
           // console.log(objects.toArray());
           if (isTerminal) { facet.terminate(); }

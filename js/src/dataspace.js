@@ -1,7 +1,6 @@
 "use strict";
 
 var Immutable = require('immutable');
-var Route = require('./route.js');
 var Patch = require('./patch.js');
 var Mux = require('./mux.js');
 

@@ -1,23 +1,24 @@
 "use strict";
 
-var Route = require("./route.js");
+var Trie = require("./trie.js");
+var Struct = require("./struct.js");
 var Immutable = require("immutable");
 
-var __ = Route.__;
-var _$ = Route._$;
+var __ = Trie.__;
+var _$ = Trie._$;
 
 function Patch(added, removed) {
   this.added = added;
   this.removed = removed;
 }
 
-var emptyPatch = new Patch(Route.emptyTrie, Route.emptyTrie);
-var removeEverythingPatch = new Patch(Route.emptyTrie, Route.compilePattern(true, __));
-var trueLabel = Route.trieSuccess(true);
+var emptyPatch = new Patch(Trie.emptyTrie, Trie.emptyTrie);
+var removeEverythingPatch = new Patch(Trie.emptyTrie, Trie.compilePattern(true, __));
+var trueLabel = Trie.trieSuccess(true);
 
-var observe = Route.makeStructureConstructor('observe', ['assertion']);
-var atMeta = Route.makeStructureConstructor('atMeta', ['assertion']);
-var advertise = Route.makeStructureConstructor('advertise', ['assertion']);
+var observe = Struct.makeStructureConstructor('observe', ['assertion']);
+var atMeta = Struct.makeStructureConstructor('atMeta', ['assertion']);
+var advertise = Struct.makeStructureConstructor('advertise', ['assertion']);
 
 function prependAtMeta(p, level) {
   while (level--) {
@@ -39,11 +40,11 @@ function stripAtMeta(p, level) {
 
 function observeAtMeta(p, level) {
   if (level === 0) {
-    return Route.compilePattern(true, observe(p));
+    return Trie.compilePattern(true, observe(p));
   } else {
-    return Route._union(
-      Route.compilePattern(true, observe(prependAtMeta(p, level))),
-      Route.compilePattern(true, atMeta(Route.embeddedTrie(observeAtMeta(p, level - 1)))));
+    return Trie._union(
+      Trie.compilePattern(true, observe(prependAtMeta(p, level))),
+      Trie.compilePattern(true, atMeta(Trie.embeddedTrie(observeAtMeta(p, level - 1)))));
   }
 }
 
@@ -55,21 +56,21 @@ function _check(p) {
 }
 
 function assert(p, metaLevel) {
-  return new Patch(Route.compilePattern(true, prependAtMeta(_check(p), metaLevel || 0)),
-		   Route.emptyTrie);
+  return new Patch(Trie.compilePattern(true, prependAtMeta(_check(p), metaLevel || 0)),
+		   Trie.emptyTrie);
 }
 
 function retract(p, metaLevel) {
-  return new Patch(Route.emptyTrie,
-		   Route.compilePattern(true, prependAtMeta(_check(p), metaLevel || 0)));
+  return new Patch(Trie.emptyTrie,
+		   Trie.compilePattern(true, prependAtMeta(_check(p), metaLevel || 0)));
 }
 
 function sub(p, metaLevel) {
-  return new Patch(observeAtMeta(_check(p), metaLevel || 0), Route.emptyTrie);
+  return new Patch(observeAtMeta(_check(p), metaLevel || 0), Trie.emptyTrie);
 }
 
 function unsub(p, metaLevel) {
-  return new Patch(Route.emptyTrie, observeAtMeta(_check(p), metaLevel || 0));
+  return new Patch(Trie.emptyTrie, observeAtMeta(_check(p), metaLevel || 0));
 }
 
 function pub(p, metaLevel) {
@@ -88,7 +89,7 @@ Patch.prototype.equals = function (other) {
 };
 
 Patch.prototype.isEmpty = function () {
-  return this.added === Route.emptyTrie && this.removed === Route.emptyTrie;
+  return this.added === Trie.emptyTrie && this.removed === Trie.emptyTrie;
 };
 
 Patch.prototype.isNonEmpty = function () {
@@ -96,89 +97,89 @@ Patch.prototype.isNonEmpty = function () {
 };
 
 Patch.prototype.hasAdded = function () {
-  return this.added !== Route.emptyTrie;
+  return this.added !== Trie.emptyTrie;
 };
 
 Patch.prototype.hasRemoved = function () {
-  return this.removed !== Route.emptyTrie;
+  return this.removed !== Trie.emptyTrie;
 };
 
 Patch.prototype.lift = function () {
-  return new Patch(Route.compilePattern(true, atMeta(Route.embeddedTrie(this.added))),
-		   Route.compilePattern(true, atMeta(Route.embeddedTrie(this.removed))));
+  return new Patch(Trie.compilePattern(true, atMeta(Trie.embeddedTrie(this.added))),
+		   Trie.compilePattern(true, atMeta(Trie.embeddedTrie(this.removed))));
 };
 
 var atMetaProj = atMeta(_$);
 Patch.prototype.drop = function () {
-  return new Patch(Route.project(this.added, atMetaProj),
-		   Route.project(this.removed, atMetaProj));
+  return new Patch(Trie.project(this.added, atMetaProj),
+		   Trie.project(this.removed, atMetaProj));
 };
 
 Patch.prototype.strip = function () {
-  return new Patch(Route.relabel(this.added, function (v) { return true; }),
-		   Route.relabel(this.removed, function (v) { return true; }));
+  return new Patch(Trie.relabel(this.added, function (v) { return true; }),
+		   Trie.relabel(this.removed, function (v) { return true; }));
 };
 
 Patch.prototype.label = function (labelValue) {
-  return new Patch(Route.relabel(this.added, function (v) { return labelValue; }),
-		   Route.relabel(this.removed, function (v) { return labelValue; }));
+  return new Patch(Trie.relabel(this.added, function (v) { return labelValue; }),
+		   Trie.relabel(this.removed, function (v) { return labelValue; }));
 };
 
 Patch.prototype.limit = function (bound) {
-  return new Patch(Route.subtract(this.added, bound, function (v1, v2) { return Route.emptyTrie; }),
-		   Route.intersect(this.removed, bound,
-                                   function (v1, v2) { return Route.trieSuccess(v1); }));
+  return new Patch(Trie.subtract(this.added, bound, function (v1, v2) { return Trie.emptyTrie; }),
+		   Trie.intersect(this.removed, bound,
+                                  function (v1, v2) { return Trie.trieSuccess(v1); }));
 };
 
 var metaLabelSet = Immutable.Set(["meta"]);
 Patch.prototype.computeAggregate = function (label, base, removeMeta /* optional flag */) {
-  return new Patch(Route.subtract(this.added, base, addCombiner),
-		   Route.subtract(this.removed, base, removeCombiner));
+  return new Patch(Trie.subtract(this.added, base, addCombiner),
+		   Trie.subtract(this.removed, base, removeCombiner));
 
   function addCombiner(v1, v2) {
     if (removeMeta && Immutable.is(v2, metaLabelSet)) {
-      return Route.trieSuccess(v1);
+      return Trie.trieSuccess(v1);
     } else {
-      return Route.emptyTrie;
+      return Trie.emptyTrie;
     }
   }
 
   function removeCombiner(v1, v2) {
     if (v2.size === 1) {
-      return Route.trieSuccess(v1);
+      return Trie.trieSuccess(v1);
     } else {
       if (removeMeta && v2.size === 2 && v2.has("meta")) {
-	return Route.trieSuccess(v1);
+	return Trie.trieSuccess(v1);
       } else {
-	return Route.emptyTrie;
+	return Trie.emptyTrie;
       }
     }
   }
 };
 
 Patch.prototype.applyTo = function (base) {
-  return Route._union(Route.subtract(base, this.removed), this.added);
+  return Trie._union(Trie.subtract(base, this.removed), this.added);
 };
 
 Patch.prototype.updateInterests = function (base) {
-  return Route._union(Route.subtract(base,
-                                     this.removed,
-                                     function (v1, v2) { return Route.emptyTrie; }),
-		      this.added,
-		      function (v1, v2) { return trueLabel; });
+  return Trie._union(Trie.subtract(base,
+                                   this.removed,
+                                   function (v1, v2) { return Trie.emptyTrie; }),
+		     this.added,
+		     function (v1, v2) { return trueLabel; });
 };
 
 Patch.prototype.unapplyTo = function (base) {
-  return Route._union(Route.subtract(base, this.added), this.removed);
+  return Trie._union(Trie.subtract(base, this.added), this.removed);
 };
 
 Patch.prototype.andThen = function (nextPatch) {
   return new Patch(nextPatch.updateInterests(this.added),
-		   Route._union(Route.subtract(this.removed,
-					       nextPatch.added,
-					       function (v1, v2) { return Route.emptyTrie; }),
-				nextPatch.removed,
-				function (v1, v2) { return trueLabel; }));
+		   Trie._union(Trie.subtract(this.removed,
+					     nextPatch.added,
+					     function (v1, v2) { return Trie.emptyTrie; }),
+			       nextPatch.removed,
+			       function (v1, v2) { return trueLabel; }));
 };
 
 function patchSeq(/* patch, patch, ... */) {
@@ -190,13 +191,13 @@ function patchSeq(/* patch, patch, ... */) {
 }
 
 function computePatch(oldBase, newBase) {
-  return new Patch(Route.subtract(newBase, oldBase),
-		   Route.subtract(oldBase, newBase));
+  return new Patch(Trie.subtract(newBase, oldBase),
+		   Trie.subtract(oldBase, newBase));
 }
 
 function biasedIntersection(object, subject) {
-  subject = Route.trieStep(subject, observe.meta.arguments.length, observe.meta);
-  return Route.intersect(object, subject, function (v1, v2) { return Route.trieSuccess(v1); });
+  subject = Trie.trieStep(subject, observe.meta.arguments.length, observe.meta);
+  return Trie.intersect(object, subject, function (v1, v2) { return Trie.trieSuccess(v1); });
 }
 
 Patch.prototype.viewFrom = function (interests) {
@@ -207,23 +208,23 @@ Patch.prototype.viewFrom = function (interests) {
 Patch.prototype.unsafeUnion = function (other) {
   // Unsafe because does not necessarily preserve invariant that added
   // and removed are disjoint.
-  return new Patch(Route._union(this.added, other.added),
-		   Route._union(this.removed, other.removed));
+  return new Patch(Trie._union(this.added, other.added),
+		   Trie._union(this.removed, other.removed));
 };
 
 Patch.prototype.project = function (compiledProjection) {
-  return new Patch(Route.project(this.added, compiledProjection),
-		   Route.project(this.removed, compiledProjection));
+  return new Patch(Trie.project(this.added, compiledProjection),
+		   Trie.project(this.removed, compiledProjection));
 };
 
 Patch.prototype.projectObjects = function (compiledProjection) {
-  return [Route.projectObjects(this.added, compiledProjection),
-	  Route.projectObjects(this.removed, compiledProjection)];
+  return [Trie.projectObjects(this.added, compiledProjection),
+	  Trie.projectObjects(this.removed, compiledProjection)];
 };
 
 Patch.prototype.pretty = function () {
-  return ("<<<<<<<< Removed:\n" + Route.prettyTrie(this.removed) + "\n" +
-	  "======== Added:\n" + Route.prettyTrie(this.added) + "\n" +
+  return ("<<<<<<<< Removed:\n" + Trie.prettyTrie(this.removed) + "\n" +
+	  "======== Added:\n" + Trie.prettyTrie(this.added) + "\n" +
 	  ">>>>>>>>");
 }
 

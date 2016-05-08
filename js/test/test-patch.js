@@ -3,11 +3,11 @@
 var expect = require('expect.js');
 var Immutable = require('immutable');
 
-var Route = require('../src/route.js');
+var Trie = require('../src/trie.js');
 var Patch = require('../src/patch.js');
 
-var __ = Route.__;
-var _$ = Route._$;
+var __ = Trie.__;
+var _$ = Trie._$;
 
 function checkPrettyPatch(p, expectedAdded, expectedRemoved) {
   expect(p.pretty()).to.equal(

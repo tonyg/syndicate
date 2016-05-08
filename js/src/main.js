@@ -8,14 +8,15 @@ function copyKeys(keys, to, from) {
 
 module.exports = require("./dataspace.js");
 
-module.exports.Route = require("./route.js");
+module.exports.Trie = require("./trie.js");
 copyKeys(['__', '_$', '$Capture', '$Special',
 	  'is_emptyTrie', 'emptyTrie',
 	  'embeddedTrie', 'compilePattern',
 	  'project', 'projectObjects',
 	  'prettyTrie'],
 	 module.exports,
-	 module.exports.Route);
+	 module.exports.Trie);
+module.exports.Struct = require('./struct.js');
 
 var Seal = require('./seal.js')
 copyKeys(['Seal', 'seal'],
