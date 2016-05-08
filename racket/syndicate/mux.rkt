@@ -9,6 +9,7 @@
          mux-update-stream
          mux-route-message
          mux-interests-of
+         ;; mux-focus-event
          compute-patches
          compute-affected-pids
          pretty-print-mux)
@@ -121,6 +122,25 @@
 
 (define (mux-interests-of m label)
   (hash-ref (mux-interest-table m) label trie-empty))
+
+;; There's a problem with mux-focus-event in most circumstances: often
+;; you will want to focus incoming events with respect to some
+;; locally-stored memory of interests. But that local memory may be
+;; *ahead* of the incoming event stream! There's the round-trip
+;; latency between the actor and the dataspaces where patch actions
+;; are applied. This could lead to unwanted discarding of retractions,
+;; and even of assertions in cases of quick pulses of interest.
+;;
+;; ;; Mux Label Event -> (Option Event)
+;; (define (mux-focus-event m label e)
+;;   (define interests (mux-interests-of m label))
+;;   (match e
+;;     [(patch added removed)
+;;      (define p (patch (biased-intersection added interests)
+;;                       (biased-intersection removed interests)))
+;;      (and (patch-non-empty? p) p)]
+;;     [(message body)
+;;      (and (trie-lookup interests (observe body) #f) e)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
