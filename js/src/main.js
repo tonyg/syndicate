@@ -12,7 +12,7 @@ module.exports.Route = require("./route.js");
 copyKeys(['__', '_$', '$Capture', '$Special',
 	  'is_emptyTrie', 'emptyTrie',
 	  'embeddedTrie', 'compilePattern',
-	  'compileProjection', 'project', 'projectObjects',
+	  'project', 'projectObjects',
 	  'prettyTrie'],
 	 module.exports,
 	 module.exports.Route);
@@ -35,7 +35,6 @@ module.exports.Reflect = require("./reflect.js");
 module.exports.Patch = require("./patch.js");
 copyKeys(['emptyPatch',
 	  'observe', 'atMeta', 'advertise',
-	  'isObserve', 'isAtMeta', 'isAdvertise',
 	  'assert', 'retract', 'sub', 'unsub', 'pub', 'unpub',
 	  'patchSeq'],
 	 module.exports,

@@ -14,10 +14,13 @@ $(document).ready(function () {
 
       Dataspace.spawn({
 	boot: function () {
-	  return sub(['jQuery', '#clicker', 'click', __]);
+	  return sub(Syndicate.JQuery.jQueryEvent('#clicker', 'click', __));
 	},
 	handleEvent: function (e) {
-	  if (e.type === 'message' && e.message[0] === 'jQuery' && e.message[1] === '#clicker') {
+	  if (e.type === 'message'
+              && Syndicate.JQuery.jQueryEvent.isClassOf(e.message)
+              && e.message.selector === '#clicker')
+          {
 	    var r = $('#result');
 	    r.html(Number(r.html()) + 1);
 	  }

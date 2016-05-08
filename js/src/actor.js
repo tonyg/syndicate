@@ -94,11 +94,10 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
       if (e.type === 'stateChange') {
         var proj = projectionFn.call(facet.actor.state);
         var spec = Patch.prependAtMeta(proj.assertion, proj.metalevel);
-        var compiledSpec = Route.compileProjection(spec);
         var objects = Route.projectObjects(eventType === 'asserted'
                                            ? e.patch.added
                                            : e.patch.removed,
-                                           compiledSpec);
+                                           spec);
         if (objects && objects.size > 0) {
           // console.log(objects.toArray());
           if (isTerminal) { facet.terminate(); }

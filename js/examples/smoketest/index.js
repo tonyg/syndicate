@@ -1,5 +1,7 @@
 "use strict";
 
+var beep = Syndicate.Route.makeStructureConstructor('beep', ['counter']);
+
 var G;
 $(document).ready(function () {
     var Dataspace = Syndicate.Dataspace;
@@ -15,16 +17,16 @@ $(document).ready(function () {
 	boot: function () {},
 	handleEvent: function (e) {},
 	step: function () {
-	  Dataspace.send(["beep", this.counter++]);
+	  Dataspace.send(beep(this.counter++));
 	  return this.counter <= 10;
 	}
       });
 
       Dataspace.spawn({
-	boot: function () { return sub(["beep", __]); },
+	boot: function () { return sub(beep.pattern); },
 	handleEvent: function (e) {
 	  if (e.type === 'message') {
-	    console.log("beep!", e.message[1]);
+	    console.log("beep!", e.message.counter);
 	  }
 	}
       });

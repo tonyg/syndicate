@@ -20,8 +20,10 @@ function DemandMatcher(demandSpec, supplySpec, options) {
   this.supplySpec = supplySpec;
   this.demandPattern = Route.projectionToPattern(demandSpec);
   this.supplyPattern = Route.projectionToPattern(supplySpec);
-  this.demandProjection = Route.compileProjection(Patch.prependAtMeta(demandSpec, this.metaLevel));
-  this.supplyProjection = Route.compileProjection(Patch.prependAtMeta(supplySpec, this.metaLevel));
+  this.demandProjection = Patch.prependAtMeta(demandSpec, this.metaLevel);
+  this.supplyProjection = Patch.prependAtMeta(supplySpec, this.metaLevel);
+  this.demandProjectionNames = Route.projectionNames(this.demandProjection);
+  this.supplyProjectionNames = Route.projectionNames(this.supplyProjection);
   this.currentDemand = Immutable.Set();
   this.currentSupply = Immutable.Set();
 }
@@ -40,10 +42,12 @@ DemandMatcher.prototype.handleEvent = function (e) {
 DemandMatcher.prototype.handlePatch = function (p) {
   var self = this;
 
-  var addedDemand = Route.trieKeys(Route.project(p.added, self.demandProjection));
-  var removedDemand = Route.trieKeys(Route.project(p.removed, self.demandProjection));
-  var addedSupply = Route.trieKeys(Route.project(p.added, self.supplyProjection));
-  var removedSupply = Route.trieKeys(Route.project(p.removed, self.supplyProjection));
+  var dN = self.demandProjectionNames.length;
+  var sN = self.supplyProjectionNames.length;
+  var addedDemand = Route.trieKeys(Route.project(p.added, self.demandProjection), dN);
+  var removedDemand = Route.trieKeys(Route.project(p.removed, self.demandProjection), dN);
+  var addedSupply = Route.trieKeys(Route.project(p.added, self.supplyProjection), sN);
+  var removedSupply = Route.trieKeys(Route.project(p.removed, self.supplyProjection), sN);
 
   if (addedDemand === null) {
     throw new Error("Syndicate: wildcard demand detected:\n" +
@@ -61,12 +65,12 @@ DemandMatcher.prototype.handlePatch = function (p) {
 
   removedSupply.forEach(function (captures) {
     if (self.currentDemand.has(captures)) {
-      self.onSupplyDecrease(Route.captureToObject(captures, self.supplyProjection));
+      self.onSupplyDecrease(Route.captureToObject(captures, self.supplyProjectionNames));
     }
   });
   addedDemand.forEach(function (captures) {
     if (!self.currentSupply.has(captures)) {
-      self.onDemandIncrease(Route.captureToObject(captures, self.demandProjection));
+      self.onDemandIncrease(Route.captureToObject(captures, self.demandProjectionNames));
     }
   });
 

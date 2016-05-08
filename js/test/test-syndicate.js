@@ -60,10 +60,9 @@ describe("configurationTrace", function() {
 	Dataspace.send(123);
 	Dataspace.send(234);
       }, ['<<<<<<<< Removed:\n'+
-	  '::: nothing\n'+
+	  ' ::: nothing\n'+
 	  '======== Added:\n'+
-	  ' < $Observe ★ > >{[0]}\n'
-	  +'            >::: nothing\n'+
+	  ' observe<1> ★ {[0]}\n'+
 	  '>>>>>>>>',
 	  Syndicate.message(123),
 	  Syndicate.message(234)]);
@@ -84,9 +83,9 @@ describe("nonempty initial routes", function () {
 	handleEvent: traceEvent(trace)
       });
     }, ['<<<<<<<< Removed:\n'+
-	'::: nothing\n'+
+	' ::: nothing\n'+
 	'======== Added:\n'+
-	' < "A" ★ > >{[1]}\n'+
+	' <2> "A" ★ {[0]}\n'+
 	'>>>>>>>>']);
   });
 });
@@ -104,14 +103,14 @@ describe("nested actor with an echoey protocol", function () {
 	});
       }));
     }, ['<<<<<<<< Removed:\n'+
-	'::: nothing\n'+
+	' ::: nothing\n'+
 	'======== Added:\n'+
-	' < $AtMeta "X" > >{[0]}\n'+
+	' atMeta<1> "X" {["meta"]}\n'+
 	'>>>>>>>>',
 	'<<<<<<<< Removed:\n'+
-	' < $AtMeta "X" > >{[0]}\n'+
+	' atMeta<1> "X" {["meta"]}\n'+
 	'======== Added:\n'+
-	'::: nothing\n'+
+	' ::: nothing\n'+
 	'>>>>>>>>']);
   })
   it("shouldn't see an echoed message", function () {
@@ -120,7 +119,7 @@ describe("nested actor with an echoey protocol", function () {
 	Dataspace.spawn({
 	  boot: function () {
 	    Dataspace.send("X", 1); // happens after subs on next line!
-	    return Patch.sub("X", 1);
+            return Patch.sub("X", 1);
 	  },
 	  handleEvent: traceEvent(trace)
 	});

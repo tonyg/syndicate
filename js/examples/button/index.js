@@ -1,5 +1,5 @@
-assertion type DOM(containerSelector, fragmentClass, spec);
-assertion type jQuery(selector, eventType, event);
+var DOM = Syndicate.DOM.DOM;
+var jQueryEvent = Syndicate.JQuery.jQueryEvent;
 
 $(document).ready(function() {
   ground dataspace {
@@ -10,7 +10,7 @@ $(document).ready(function() {
       this.counter = 0;
       forever {
         assert DOM('#button-label', '', Syndicate.seal(this.counter));
-        on message jQuery('#counter', 'click', _) {
+        on message jQueryEvent('#counter', 'click', _) {
           this.counter++;
         }
       }

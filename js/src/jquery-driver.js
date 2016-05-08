@@ -1,15 +1,18 @@
 // JQuery event driver
 var Patch = require("./patch.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
+var Route = require('./route.js');
 
 var Dataspace_ = require("./dataspace.js");
 var Dataspace = Dataspace_.Dataspace;
 var __ = Dataspace_.__;
 var _$ = Dataspace_._$;
 
+var jQueryEvent = Route.makeStructureConstructor('jQueryEvent', ['selector', 'eventName', 'eventValue']);
+
 function spawnJQueryDriver(baseSelector, metaLevel, wrapFunction) {
   metaLevel = metaLevel || 0;
-  wrapFunction = wrapFunction || defaultWrapFunction;
+  wrapFunction = wrapFunction || jQueryEvent;
   Dataspace.spawn(
     new DemandMatcher(Patch.observe(wrapFunction(_$('selector'), _$('eventName'), __)),
 		      Patch.advertise(wrapFunction(_$('selector'), _$('eventName'), __)),
@@ -17,16 +20,12 @@ function spawnJQueryDriver(baseSelector, metaLevel, wrapFunction) {
 			metaLevel: metaLevel,
 			onDemandIncrease: function (c) {
 			  Dataspace.spawn(new JQueryEventRouter(baseSelector,
-							      c.selector,
-							      c.eventName,
-							      metaLevel,
-							      wrapFunction));
+							        c.selector,
+							        c.eventName,
+							        metaLevel,
+							        wrapFunction));
 			}
 		      }));
-}
-
-function defaultWrapFunction(selector, eventName, eventValue) {
-  return ["jQuery", selector, eventName, eventValue];
 }
 
 function JQueryEventRouter(baseSelector, selector, eventName, metaLevel, wrapFunction) {
@@ -35,7 +34,7 @@ function JQueryEventRouter(baseSelector, selector, eventName, metaLevel, wrapFun
   this.selector = selector;
   this.eventName = eventName;
   this.metaLevel = metaLevel || 0;
-  this.wrapFunction = wrapFunction || defaultWrapFunction;
+  this.wrapFunction = wrapFunction || jQueryEvent;
   this.preventDefault = (this.eventName.charAt(0) !== "+");
   this.handler =
     Dataspace.wrap(function (e) {
@@ -88,4 +87,4 @@ function simplifyDOMEvent(e) {
 
 module.exports.spawnJQueryDriver = spawnJQueryDriver;
 module.exports.simplifyDOMEvent = simplifyDOMEvent;
-module.exports.defaultWrapFunction = defaultWrapFunction;
+module.exports.jQueryEvent = jQueryEvent;

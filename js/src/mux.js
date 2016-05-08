@@ -45,12 +45,12 @@ Mux.prototype.updateStream = function (pid, unclampedPatch) {
 };
 
 var atMetaEverything = Route.compilePattern(true, Patch.atMeta(Route.__));
-var atMetaBranchKeys = Immutable.List([Route.SOA, Patch.$AtMeta]);
-var onlyMeta = Immutable.Set.of("meta");
+var atMetaBranchKeys = Immutable.List([[Patch.atMeta.meta.arguments.length, Patch.atMeta.meta]]);
+var onlyMeta = Route.trieSuccess(Immutable.Set.of("meta"));
 
 function echoCancelledTrie(t) {
   return Route.subtract(t, atMetaEverything, function (v1, v2) {
-    return v1.has("meta") ? onlyMeta : null;
+    return v1.has("meta") ? onlyMeta : Route.emptyTrie;
   });
 }
 
@@ -95,12 +95,10 @@ function computeEvents(oldMux, newMux, updateStreamResult) {
 
 function computeAffectedPids(routingTable, delta) {
   var cover = Route._union(delta.added, delta.removed);
-  routingTable = Route.trieStep(routingTable, Route.SOA);
-  routingTable = Route.trieStep(routingTable, Patch.$Observe);
+  routingTable =
+    Route.trieStep(routingTable, Patch.observe.meta.arguments.length, Patch.observe.meta);
   return Route.matchTrie(cover, routingTable, Immutable.Set(),
-			 function (v, r, acc) {
-			   return acc.union(Route.trieStep(r, Route.EOA).value);
-			 });
+                         function (v1, v2, acc) { return acc.union(v2); });
 }
 
 Mux.prototype.routeMessage = function (body) {

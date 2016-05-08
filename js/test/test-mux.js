@@ -32,13 +32,13 @@ describe('mux stream', function () {
   describe('addition', function () {
     it('should union interests appropriately', function () {
       var m = getM();
-      checkPrettyTrie(m.routingTable, [' 1 >{[0]}',
-				       ' 2 >{[0,1]}',
-				       ' 3 >{[1]}']);
-      checkPrettyTrie(m.interestsOf(0), [' 1 >{[0]}',
-					 ' 2 >{[0]}']);
-      checkPrettyTrie(m.interestsOf(1), [' 2 >{[1]}',
-					 ' 3 >{[1]}']);
+      checkPrettyTrie(m.routingTable, [' 1 {[0]}',
+				       ' 2 {[0,1]}',
+				       ' 3 {[1]}']);
+      checkPrettyTrie(m.interestsOf(0), [' 1 {[0]}',
+					 ' 2 {[0]}']);
+      checkPrettyTrie(m.interestsOf(1), [' 2 {[1]}',
+					 ' 3 {[1]}']);
     });
   });
 
@@ -51,30 +51,30 @@ describe('mux stream', function () {
 	  .andThen(Patch.assert(4))
 	  .andThen(Patch.retract(99));
       checkPrettyPatch(rawPatch,
-		       [' 1 >{true}',
-		        ' 4 >{true}'],
-		       [' 2 >{true}',
-		        ' 3 >{true}',
-		        ' 99 >{true}']);
+		       [' 1 {true}',
+		        ' 4 {true}'],
+		       [' 2 {true}',
+		        ' 3 {true}',
+		        ' 99 {true}']);
 
       var m = getM();
       var updateStreamResult = m.updateStream(1, rawPatch);
       expect(updateStreamResult.pid).to.equal(1);
       checkPrettyPatch(updateStreamResult.delta,
-		       [' 1 >{[1]}',
-			' 4 >{[1]}'],
-		       [' 2 >{[1]}',
-			' 3 >{[1]}']);
-      checkPrettyTrie(m.routingTable, [' 1 >{[0,1]}',
-				       ' 2 >{[0]}',
-				       ' 4 >{[1]}']);
-      checkPrettyTrie(m.interestsOf(0), [' 1 >{[0]}',
-					 ' 2 >{[0]}']);
-      checkPrettyTrie(m.interestsOf(1), [' 1 >{[1]}',
-					 ' 4 >{[1]}']);
+		       [' 1 {[1]}',
+			' 4 {[1]}'],
+		       [' 2 {[1]}',
+			' 3 {[1]}']);
+      checkPrettyTrie(m.routingTable, [' 1 {[0,1]}',
+				       ' 2 {[0]}',
+				       ' 4 {[1]}']);
+      checkPrettyTrie(m.interestsOf(0), [' 1 {[0]}',
+					 ' 2 {[0]}']);
+      checkPrettyTrie(m.interestsOf(1), [' 1 {[1]}',
+					 ' 4 {[1]}']);
       checkPrettyPatch(updateStreamResult.deltaAggregate,
-		       [' 4 >{[1]}'],
-		       [' 3 >{[1]}']);
+		       [' 4 {[1]}'],
+		       [' 3 {[1]}']);
     });
   });
 
@@ -84,17 +84,17 @@ describe('mux stream', function () {
       var updateStreamResult = m.removeStream(1);
       expect(updateStreamResult.pid).to.equal(1);
       checkPrettyPatch(updateStreamResult.delta,
-		       ['::: nothing'],
-		       [' 2 >{[1]}',
-			' 3 >{[1]}']);
-      checkPrettyTrie(m.routingTable, [' 1 >{[0]}',
-				       ' 2 >{[0]}']);
-      checkPrettyTrie(m.interestsOf(0), [' 1 >{[0]}',
-					 ' 2 >{[0]}']);
-      checkPrettyTrie(m.interestsOf(1), ['::: nothing']);
+		       [' ::: nothing'],
+		       [' 2 {[1]}',
+			' 3 {[1]}']);
+      checkPrettyTrie(m.routingTable, [' 1 {[0]}',
+				       ' 2 {[0]}']);
+      checkPrettyTrie(m.interestsOf(0), [' 1 {[0]}',
+					 ' 2 {[0]}']);
+      checkPrettyTrie(m.interestsOf(1), [' ::: nothing']);
       checkPrettyPatch(updateStreamResult.deltaAggregate,
-		       ['::: nothing'],
-		       [' 3 >{[1]}']);
+		       [' ::: nothing'],
+		       [' 3 {[1]}']);
     });
   });
 });

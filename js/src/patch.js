@@ -13,18 +13,11 @@ function Patch(added, removed) {
 
 var emptyPatch = new Patch(Route.emptyTrie, Route.emptyTrie);
 var removeEverythingPatch = new Patch(Route.emptyTrie, Route.compilePattern(true, __));
+var trueLabel = Route.trieSuccess(true);
 
-var $Observe = new Route.$Special("$Observe");
-var $AtMeta = new Route.$Special("$AtMeta");
-var $Advertise = new Route.$Special("$Advertise");
-
-function observe(p) { return [$Observe, p]; }
-function atMeta(p) { return [$AtMeta, p]; }
-function advertise(p) { return [$Advertise, p]; }
-
-function isObserve(p) { return p[0] === $Observe; }
-function isAtMeta(p) { return p[0] === $AtMeta; }
-function isAdvertise(p) { return p[0] === $Advertise; }
+var observe = Route.makeStructureConstructor('observe', ['assertion']);
+var atMeta = Route.makeStructureConstructor('atMeta', ['assertion']);
+var advertise = Route.makeStructureConstructor('advertise', ['assertion']);
 
 function prependAtMeta(p, level) {
   while (level--) {
@@ -35,8 +28,8 @@ function prependAtMeta(p, level) {
 
 function stripAtMeta(p, level) {
   while (level--) {
-    if (p.length === 2 && p[0] === $AtMeta) {
-      p = p[1];
+    if (atMeta.isClassOf(p)) {
+      p = p.assertion;
     } else {
       return null;
     }
@@ -115,7 +108,7 @@ Patch.prototype.lift = function () {
 		   Route.compilePattern(true, atMeta(Route.embeddedTrie(this.removed))));
 };
 
-var atMetaProj = Route.compileProjection(atMeta(_$));
+var atMetaProj = atMeta(_$);
 Patch.prototype.drop = function () {
   return new Patch(Route.project(this.added, atMetaProj),
 		   Route.project(this.removed, atMetaProj));
@@ -132,8 +125,9 @@ Patch.prototype.label = function (labelValue) {
 };
 
 Patch.prototype.limit = function (bound) {
-  return new Patch(Route.subtract(this.added, bound, function (v1, v2) { return null; }),
-		   Route.intersect(this.removed, bound, function (v1, v2) { return v1; }));
+  return new Patch(Route.subtract(this.added, bound, function (v1, v2) { return Route.emptyTrie; }),
+		   Route.intersect(this.removed, bound,
+                                   function (v1, v2) { return Route.trieSuccess(v1); }));
 };
 
 var metaLabelSet = Immutable.Set(["meta"]);
@@ -143,20 +137,20 @@ Patch.prototype.computeAggregate = function (label, base, removeMeta /* optional
 
   function addCombiner(v1, v2) {
     if (removeMeta && Immutable.is(v2, metaLabelSet)) {
-      return v1;
+      return Route.trieSuccess(v1);
     } else {
-      return null;
+      return Route.emptyTrie;
     }
   }
 
   function removeCombiner(v1, v2) {
     if (v2.size === 1) {
-      return v1;
+      return Route.trieSuccess(v1);
     } else {
       if (removeMeta && v2.size === 2 && v2.has("meta")) {
-	return v1;
+	return Route.trieSuccess(v1);
       } else {
-	return null;
+	return Route.emptyTrie;
       }
     }
   }
@@ -167,9 +161,11 @@ Patch.prototype.applyTo = function (base) {
 };
 
 Patch.prototype.updateInterests = function (base) {
-  return Route._union(Route.subtract(base, this.removed, function (v1, v2) { return null; }),
+  return Route._union(Route.subtract(base,
+                                     this.removed,
+                                     function (v1, v2) { return Route.emptyTrie; }),
 		      this.added,
-		      function (v1, v2) { return true; });
+		      function (v1, v2) { return trueLabel; });
 };
 
 Patch.prototype.unapplyTo = function (base) {
@@ -180,9 +176,9 @@ Patch.prototype.andThen = function (nextPatch) {
   return new Patch(nextPatch.updateInterests(this.added),
 		   Route._union(Route.subtract(this.removed,
 					       nextPatch.added,
-					       function (v1, v2) { return null; }),
+					       function (v1, v2) { return Route.emptyTrie; }),
 				nextPatch.removed,
-				function (v1, v2) { return true; }));
+				function (v1, v2) { return trueLabel; }));
 };
 
 function patchSeq(/* patch, patch, ... */) {
@@ -199,11 +195,8 @@ function computePatch(oldBase, newBase) {
 }
 
 function biasedIntersection(object, subject) {
-  subject = Route.trieStep(subject, Route.SOA);
-  subject = Route.trieStep(subject, $Observe);
-  return Route.intersect(object, subject,
-			 function (v1, v2) { return true; },
-			 function (v, r) { return Route.trieStep(r, Route.EOA); });
+  subject = Route.trieStep(subject, observe.meta.arguments.length, observe.meta);
+  return Route.intersect(object, subject, function (v1, v2) { return Route.trieSuccess(v1); });
 }
 
 Patch.prototype.viewFrom = function (interests) {
@@ -240,15 +233,9 @@ module.exports.Patch = Patch;
 module.exports.emptyPatch = emptyPatch;
 module.exports.removeEverythingPatch = removeEverythingPatch;
 
-module.exports.$Observe = $Observe;
-module.exports.$AtMeta = $AtMeta;
-module.exports.$Advertise = $Advertise;
 module.exports.observe = observe;
 module.exports.atMeta = atMeta;
 module.exports.advertise = advertise;
-module.exports.isObserve = isObserve;
-module.exports.isAtMeta = isAtMeta;
-module.exports.isAdvertise = isAdvertise;
 
 module.exports.prependAtMeta = prependAtMeta;
 module.exports.stripAtMeta = stripAtMeta;

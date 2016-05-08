@@ -5,7 +5,7 @@ var Dataspace = require('./dataspace.js').Dataspace;
 var Route = require('./route.js');
 var Patch = require('./patch.js');
 
-var $Ack = new Route.$Special('ack');
+var ack = Route.makeStructureConstructor('ack', ['id']);
 
 function Ack(metaLevel, id) {
   this.metaLevel = metaLevel || 0;
@@ -14,19 +14,19 @@ function Ack(metaLevel, id) {
 }
 
 Ack.prototype.arm = function () {
-  Dataspace.stateChange(Patch.sub([$Ack, this.id], this.metaLevel));
-  Dataspace.send([$Ack, this.id], this.metaLevel);
+  Dataspace.stateChange(Patch.sub(ack(this.id), this.metaLevel));
+  Dataspace.send(ack(this.id), this.metaLevel);
 };
 
 Ack.prototype.disarm = function () {
-  Dataspace.stateChange(Patch.unsub([$Ack, this.id], this.metaLevel));
+  Dataspace.stateChange(Patch.unsub(ack(this.id), this.metaLevel));
 };
 
 Ack.prototype.check = function (e) {
   if (!this.done) {
     if (e.type === 'message') {
       var m = Patch.stripAtMeta(e.message, this.metaLevel);
-      if (m && m[0] === $Ack && m[1] === this.id) {
+      if (ack.isClassOf(m) && m.id === this.id) {
 	this.disarm();
 	this.done = true;
       }
@@ -37,5 +37,5 @@ Ack.prototype.check = function (e) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-module.exports.$Ack = $Ack;
+module.exports.ack = ack;
 module.exports.Ack = Ack;

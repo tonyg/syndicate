@@ -229,11 +229,11 @@ Dataspace.prototype.interpretAction = function (pid, action) {
     return true;
 
   case 'message':
-    if (Patch.isObserve(action.message)) {
+    if (Patch.observe.isClassOf(action.message)) {
       console.warn('Process ' + pid + ' send message containing query', action.message);
     }
-    if (pid !== 'meta' && Patch.isAtMeta(action.message)) {
-      Dataspace.send(action.message[1]);
+    if (pid !== 'meta' && Patch.atMeta.isClassOf(action.message)) {
+      Dataspace.send(action.message.assertion);
     } else {
       this.mux.routeMessage(action.message).forEach(function (pid) {
 	self.deliverEvent(pid, action);

@@ -122,24 +122,8 @@ var modifiedSourceActions = {
     var label = maybeLabel.numChildren === 1
         ? maybeLabel.children[0].interval.contents
         : JSON.stringify(typeName.interval.contents);
-    var fragments = [];
-    fragments.push(
-      'var ' + typeName.asES5 + ' = (function() {',
-      '  var $SyndicateMeta$ = {',
-      '    label: ' + label + ',',
-      '    arguments: ' + JSON.stringify(formals),
-      '  };',
-      '  return function ' + typeName.asES5 + '(' + formalsRaw.asES5 + ') {',
-      '    return {');
-    formals.forEach(function(f) {
-      fragments.push('      ' + JSON.stringify(f) + ': ' + f + ',');
-    });
-    fragments.push(
-      '      "$SyndicateMeta$": $SyndicateMeta$',
-      '    };',
-      '  };',
-      '})();');
-    return fragments.join('\n');
+    return 'var ' + typeName.asES5 + ' = Syndicate.Route.makeStructureConstructor(' +
+      label + ', ' + JSON.stringify(formals) + ');';
   },
 
   SendMessageStatement: function(_colons, expr, sc) {

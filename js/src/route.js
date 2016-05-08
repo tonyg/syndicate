@@ -2,26 +2,45 @@
 
 var Immutable = require("immutable");
 
+///////////////////////////////////////////////////////////////////////////
+// "Structures": Simple named-tuple-like records.
+// TODO: shore up $SyndicateMeta$, making it a proper object
+
+function instantiateStructure($SyndicateMeta$, argvals) {
+  var result = {"$SyndicateMeta$": $SyndicateMeta$};
+  var argnames = $SyndicateMeta$.arguments;
+  for (var i = 0; i < argnames.length; i++) {
+    result[argnames[i]] = argvals[i];
+  }
+  return result;
+}
+
 function makeStructureConstructor(label, argumentNames) {
   var $SyndicateMeta$ = {
     label: label,
     arguments: argumentNames
   };
-  return function() {
-    var result = {"$SyndicateMeta$": $SyndicateMeta$};
-    for (var i = 0; i < argumentNames.length; i++) {
-      result[argumentNames[i]] = arguments[i];
-    }
-    return result;
+  var ctor = function() {
+    return instantiateStructure($SyndicateMeta$, arguments);
   };
+  ctor.meta = $SyndicateMeta$;
+  ctor.isClassOf = function (v) { return v && v.$SyndicateMeta$ === $SyndicateMeta$; };
+  ctor.pattern = ctor.apply(null, Immutable.Repeat(__, argumentNames.length).toArray());
+  return ctor;
+}
+
+function isSyndicateMeta(m) {
+  // TODO: include more structure in $SyndicateMeta$ objects to make
+  // this judgement less sloppy.
+  return m && m.label && Array.isArray(m.arguments);
 }
 
 function isStructure(s) {
   return (s !== null) && (typeof s === 'object') && ("$SyndicateMeta$" in s);
 }
 
-function structureToArray(s) {
-  var result = [s.$SyndicateMeta$.label];
+function structureToArray(s, excludeLabel) {
+  var result = excludeLabel ? [] : [s.$SyndicateMeta$.label];
   var args = s.$SyndicateMeta$.arguments;
   for (var i = 0; i < args.length; i++) {
     result.push(s[args[i]]);
@@ -29,25 +48,72 @@ function structureToArray(s) {
   return result;
 }
 
+///////////////////////////////////////////////////////////////////////////
+// $Special: Builder of singletons.
+
 function $Special(name) {
   this.name = name;
 }
 
-var __ = new $Special("wildcard"); /* wildcard marker */
-
-var SOA = new $Special("["); // start of array
-var EOA = new $Special("]"); // end of array
+///////////////////////////////////////////////////////////////////////////
+// Misc. utilities
 
 function die(message) {
   throw new Error(message);
 }
 
-function $Embedded(trie) {
+///////////////////////////////////////////////////////////////////////////
+// Trie representations
+//
+// A Trie is one of
+//  - emptyTrie
+//  - an instance of $Success
+//  - an instance of $Branch
+
+var emptyTrie = new $Special("Mt");
+
+function is_emptyTrie(m) {
+  return m === emptyTrie;
+}
+
+function $Success(value) {
+  this.value = value;
+}
+
+$Success.prototype.equals = function (other) {
+  if (!(other instanceof $Success)) return false;
+  return Immutable.is(this.value, other.value);
+};
+
+function $Branch(wild, edges, count) {
+  this.wild = wild || emptyTrie; // Trie
+  this.edges = edges || Immutable.Map(); // Map from arity to Map from key-like-thing to Trie
+  // (Sigmas are 0-ary.)
+  this.count = count || 0;
+}
+
+$Branch.prototype.equals = function (other) {
+  if (!(other instanceof $Branch)) return false;
+  return (this.count === other.count) && Immutable.is(this.wild, other.wild) && Immutable.is(this.edges, other.edges);
+};
+
+///////////////////////////////////////////////////////////////////////////
+// Patterns, projections and captures
+
+var __ = new $Special("wildcard"); /* wildcard marker */
+var SOA = new $Special("array"); /* key for start-of-array */
+
+function $Embedded(trie, arrayLength) {
   this.trie = trie;
+  this.arrayLength = arrayLength;
 }
 
 function embeddedTrie(trie) {
-  return new $Embedded(trie);
+  return new $Embedded(trie, null);
+}
+
+function embeddedTrieArray(trie, arrayLength) {
+  return new $Embedded(trie, arrayLength);
 }
 
 // The name argument should be a string or null; it defaults to null.
@@ -66,92 +132,129 @@ function isCapture(x) { return x instanceof $Capture || x === _$; }
 function captureName(x) { return x instanceof $Capture ? x.name : null; }
 function capturePattern(x) { return x instanceof $Capture ? x.pattern : __; }
 
-var SOC = new $Special("{"); // start of capture
-var EOC = new $Special("}"); // end of capture
-
-function $Success(value) {
-  this.value = value;
-}
-
-$Success.prototype.equals = function (other) {
-  if (!(other instanceof $Success)) return false;
-  return Immutable.is(this.value, other.value);
-};
-
-function $WildcardSequence(trie) {
-  this.trie = trie;
-}
-
-$WildcardSequence.prototype.equals = function (other) {
-  if (!(other instanceof $WildcardSequence)) return false;
-  return Immutable.is(this.trie, other.trie);
-};
-
-function is_emptyTrie(m) {
-  return Immutable.is(m, emptyTrie);
-}
-
 ///////////////////////////////////////////////////////////////////////////
 // Constructors
 
-var emptyTrie = Immutable.Map();
-
 function rsuccess(v) {
-  return (v === null) ? emptyTrie : new $Success(v);
+  return new $Success(v);
 }
 
-function rseq(e, r) {
-  if (r === emptyTrie) return emptyTrie;
-  return emptyTrie.set(e, r);
+function rseq(arity, key, r) {
+  if (is_emptyTrie(r)) return emptyTrie;
+  return new $Branch(emptyTrie, Immutable.Map.of(arity, Immutable.Map.of(key, r)), 1);
 }
 
 function rwild(r) {
-  return rseq(__, r);
+  if (is_emptyTrie(r)) return emptyTrie;
+  return new $Branch(r, Immutable.Map(), 0);
 }
 
-function rwildseq(r) {
-  return (r === emptyTrie) ? emptyTrie : new $WildcardSequence(r);
+function rcopybranch(r) {
+  return new $Branch(r.wild, r.edges, r.count);
+}
+
+function prepend_wilds(n, r) {
+  while (n-- > 0) { r = rwild(r); }
+  return r;
+}
+
+// true iff r1 could have been the output of prepend_wilds(n, r2).
+function equal_upto_wilds(n, r1, r2) {
+  while (true) {
+    if (n === 0 || is_emptyTrie(r1)) {
+      return Immutable.is(r1, r2);
+    }
+    if (!(r1 instanceof $Branch) || r1.count > 0) {
+      return false;
+    }
+    n = n - 1;
+    r1 = r1.wild;
+  }
+}
+
+function rupdate_inplace(r, arity, key, k) {
+  if (equal_upto_wilds(arity, k, r.wild)) {
+    var m = r.edges.get(arity);
+    if (!m) return;
+    if (m.has(key)) r.count--;
+    m = m.remove(key);
+    r.edges = m.isEmpty() ? r.edges.remove(arity) : r.edges.set(arity, m);
+  } else {
+    var m = r.edges.get(arity) || Immutable.Map();
+    if (!m.has(key)) r.count++;
+    r.edges = r.edges.set(arity, m.set(key, k));
+  }
+}
+
+function rlookup(r, arity, key) {
+  var m = r.edges.get(arity);
+  m = m && m.get(key);
+  return m || prepend_wilds(arity, r.wild);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+function collapse(r) {
+  if ((r instanceof $Branch) && is_emptyTrie(r.wild) && (r.count === 0)) {
+    return emptyTrie;
+  } else {
+    return r;
+  }
+}
+
+// use with extreme care
+function newEmptyBranch() {
+  return new $Branch(emptyTrie, Immutable.Map(), 0);
+}
+
+var canonicalExpandedEmpty = newEmptyBranch();
+function expand(r) {
+  if (is_emptyTrie(r)) {
+    return canonicalExpandedEmpty;
+  } else {
+    return r;
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
 function compilePattern(v, p) {
   if (!p) die("compilePattern: missing pattern");
-  return walk(p, rseq(EOA, rsuccess(v)));
+  return walk(p, rsuccess(v));
 
   function walk(p, acc) {
     if (p === __) return rwild(acc);
 
     if (Array.isArray(p)) {
-      acc = rseq(EOA, acc);
       for (var i = p.length - 1; i >= 0; i--) {
 	acc = walk(p[i], acc);
       }
-      return rseq(SOA, acc);
+      return rseq(p.length, SOA, acc);
     }
 
     if (Immutable.List.isList(p)) {
-      acc = rseq(EOA, acc);
       p.reverse().forEach(function (element) {
 	acc = walk(element, acc);
       });
-      return rseq(SOA, acc);
+      return rseq(p.size, SOA, acc);
     }
 
     if (isStructure(p)) {
       var args = p.$SyndicateMeta$.arguments;
-      acc = rseq(EOA, acc);
       for (var i = args.length - 1; i >= 0; i--) {
         acc = walk(p[args[i]], acc);
       }
-      acc = rseq(p.$SyndicateMeta$.label, acc);
-      return rseq(SOA, acc);
+      return rseq(args.length, p.$SyndicateMeta$, acc);
     }
 
     if (p instanceof $Embedded) {
-      return appendTrie(p.trie, function (v) { return acc; });
+      acc = appendTrie(p.trie, function (v) { return acc; });
+      if (p.arrayLength !== null) {
+        acc = rseq(p.arrayLength, SOA, acc);
+      }
+      return acc;
     } else {
-      return rseq(p, acc);
+      return rseq(0, p, acc);
     }
   }
 }
@@ -173,8 +276,13 @@ function matchPattern(v, p) {
 
     if (p === __) return;
 
-    if (isStructure(p)) { p = structureToArray(p); }
-    if (isStructure(v)) { v = structureToArray(v); }
+    if (isStructure(p) && isStructure(v) && (p.$SyndicateMeta$ === v.$SyndicateMeta$)) {
+      var args = p.$SyndicateMeta$.arguments;
+      for (var i = 0; i < args.length; i++) {
+        walk(v[args[i]], p[args[i]]);
+      }
+      return;
+    }
 
     if (Array.isArray(p) && Array.isArray(v) && p.length === v.length) {
       for (var i = 0; i < p.length; i++) {
@@ -198,126 +306,95 @@ function matchPattern(v, p) {
   }
 }
 
-function rupdate(r, key, k) {
-  var oldWild = r.get(__, emptyTrie);
-  if (Immutable.is(k, oldWild)) {
-    return r.remove(key);
-  } else {
-    return r.set(key, k);
+///////////////////////////////////////////////////////////////////////////
+
+function combine(combineSuccess, leftEmpty, rightEmpty, leftBase, rightBase, r1, r2) {
+  return walk(r1, r2);
+
+  function walk(r1, r2) {
+    if (is_emptyTrie(r1)) return collapse(leftEmpty(r2));
+    if (is_emptyTrie(r2)) return collapse(rightEmpty(r1));
+
+    if ((r1 instanceof $Success) || (r2 instanceof $Success)) {
+      return collapse(combineSuccess(r1, r2));
+    }
+
+    if (!(r1 instanceof $Branch) || !(r2 instanceof $Branch)) {
+      die("Invalid trie given to combine");
+    }
+
+    /* fold-over-keys */
+    var w = walk(r1.wild, r2.wild);
+
+    var acc;
+    if (!is_emptyTrie(r1.wild) && !is_emptyTrie(r2.wild)) {
+      acc = rcopybranch(expand(rwild(w)));
+      var seen = Immutable.Map();
+      r1.edges.forEach(function (keymap, arity) {
+        keymap.forEach(function (r1v, key) {
+          var r2v = rlookup(r2, arity, key);
+          rupdate_inplace(acc, arity, key, walk(r1v, r2v));
+          seen = seen.set(arity, (seen.get(arity) || Immutable.Set()).add(key));
+        });
+      });
+      r2.edges.forEach(function (keymap, arity) {
+        keymap.forEach(function (r2v, key) {
+          var r1v = rlookup(r1, arity, key);
+          var s = seen.get(arity);
+          s = s && s.has(key);
+          if (!s) rupdate_inplace(acc, arity, key, walk(r1v, r2v));
+        });
+      });
+    } else if (!is_emptyTrie(r1.wild) || (is_emptyTrie(r2.wild) && (r1.count > r2.count))) {
+      acc = rcopybranch(expand(leftBase(r1)));
+      acc.wild = w;
+      r2.edges.forEach(function (keymap, arity) {
+        keymap.forEach(function (r2v, key) {
+          var r1v = rlookup(r1, arity, key);
+          rupdate_inplace(acc, arity, key, walk(r1v, r2v));
+        });
+      });
+    } else {
+      acc = rcopybranch(expand(rightBase(r2)));
+      acc.wild = w;
+      r1.edges.forEach(function (keymap, arity) {
+        keymap.forEach(function (r1v, key) {
+          var r2v = rlookup(r2, arity, key);
+          rupdate_inplace(acc, arity, key, walk(r1v, r2v));
+        });
+      });
+    }
+
+    return collapse(acc);
   }
 }
 
-function rlookup(r, key) {
-  return r.get(key, emptyTrie);
-}
-
-function rlookupWild(r, key) {
-  var result = r.get(key, false);
-  if (result) return result;
-  var wildEdge = rlookup(r, __);
-  if (is_keyOpen(key)) return rwildseq(wildEdge);
-  if (is_keyClose(key)) return (wildEdge instanceof $WildcardSequence) ? wildEdge.trie : emptyTrie;
-  return wildEdge;
-}
-
-function is_keyOpen(k) {
-  return k === SOA;
-}
-
-function is_keyClose(k) {
-  return k === EOA;
-}
-
-function is_keyNormal(k) {
-  return !(is_keyOpen(k) || is_keyClose(k));
+function asymmetricTrieError(r1, r2) {
+  die("Asymmetric tries: " + r1 + ", " + r2);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
 var unionSuccessesDefault = function (v1, v2) {
-  if (v1 === true) return v2;
-  if (v2 === true) return v1;
-  return v1.union(v2);
+  return rsuccess(v1.union(v2));
 };
-
-var intersectSuccessesDefault = function (v1, v2) {
-  return v1;
-};
-
-var subtractSuccessesDefault = function (v1, v2) {
-  var r = v1.subtract(v2);
-  if (r.isEmpty()) return null;
-  return r;
-};
-
-var matchTrieSuccesses = function (v1, v2, acc) {
-  return acc.union(v2);
-};
-
-var projectSuccess = function (v) {
-  return v;
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-function expandWildseq(r) {
-  return union(rwild(rwildseq(r)), rseq(EOA, r));
-}
 
 function union(o1, o2, unionSuccessesOpt) {
   var unionSuccesses = unionSuccessesOpt || unionSuccessesDefault;
-  return merge(o1, o2);
+  return combine(unionCombiner,
+                 function (x) { return x; },
+                 function (x) { return x; },
+                 function (x) { return x; },
+                 function (x) { return x; },
+                 o1,
+                 o2);
 
-  function merge(o1, o2) {
-    if (is_emptyTrie(o1)) return o2;
-    if (is_emptyTrie(o2)) return o1;
-    return walk(o1, o2);
-  }
-
-  function walk(r1, r2) {
-    if (r1 instanceof $WildcardSequence) {
-      if (r2 instanceof $WildcardSequence) {
-	return rwildseq(walk(r1.trie, r2.trie));
-      }
-      r1 = expandWildseq(r1.trie);
-    } else if (r2 instanceof $WildcardSequence) {
-      r2 = expandWildseq(r2.trie);
-    }
-
-    if (r1 instanceof $Success) {
-      if (r2 instanceof $Success) {
-	return rsuccess(unionSuccesses(r1.value, r2.value));
-      } else {
-	die("Route.union: left short!");
-      }
-    } else if (r2 instanceof $Success) {
-      die("Route.union: right short!");
-    }
-
-    var w = merge(rlookup(r1, __), rlookup(r2, __));
-    var target;
-
-    function examineKey(key) {
-      if ((key !== __) && !target.has(key)) {
-	target = rupdate(target, key, merge(rlookupWild(r1, key), rlookupWild(r2, key)));
-      }
-    }
-
-    if (is_emptyTrie(w)) {
-      var smaller = r1.size < r2.size ? r1 : r2;
-      var larger  = r1.size < r2.size ? r2 : r1;
-      target = larger;
-      smaller.forEach(function (val, key) {
-	var k = merge(rlookup(smaller, key), rlookup(larger, key));
-	target = rupdate(target, key, k);
-      });
-    } else {
-      target = rwild(w);
-      r1.forEach(function (val, key) { examineKey(key) });
-      r2.forEach(function (val, key) { examineKey(key) });
-    }
-
-    return target;
+  function unionCombiner(r1, r2) {
+    if ((r1 instanceof $Success) && (r2 instanceof $Success))
+      return unionSuccesses(r1.value, r2.value);
+    if (is_emptyTrie(r1)) return r2;
+    if (is_emptyTrie(r2)) return r1;
+    asymmetricTrieError(r1, r2);
   }
 }
 
@@ -329,200 +406,71 @@ function unionN() {
   return acc;
 }
 
-function intersect(o1, o2, intersectSuccessesOpt, leftShortOpt) {
+///////////////////////////////////////////////////////////////////////////
+
+var intersectSuccessesDefault = unionSuccessesDefault;
+
+function intersect(o1, o2, intersectSuccessesOpt) {
   var intersectSuccesses = intersectSuccessesOpt || intersectSuccessesDefault;
-  var leftShort = leftShortOpt || function (v, r) {
-    die("Route.intersect: left side short!");
-  };
-  return walk(o1, o2);
+  return combine(intersectCombiner,
+                 function (x) { return emptyTrie; },
+                 function (x) { return emptyTrie; },
+                 function (x) { return emptyTrie; },
+                 function (x) { return emptyTrie; },
+                 o1,
+                 o2);
 
-  function walkFlipped(r2, r1) { return walk(r1, r2); }
-
-  function walk(r1, r2) {
-    // INVARIANT: r1 is a part of the original o1, and
-    // likewise for r2. This is so that the first arg to
-    // intersectSuccesses always comes from r1, and the second
-    // from r2.
+  function intersectCombiner(r1, r2) {
+    if ((r1 instanceof $Success) && (r2 instanceof $Success))
+      return intersectSuccesses(r1.value, r2.value);
     if (is_emptyTrie(r1)) return emptyTrie;
     if (is_emptyTrie(r2)) return emptyTrie;
-
-    if (r1 instanceof $WildcardSequence) {
-      if (r2 instanceof $WildcardSequence) {
-	return rwildseq(walk(r1.trie, r2.trie));
-      }
-      r1 = expandWildseq(r1.trie);
-    } else if (r2 instanceof $WildcardSequence) {
-      r2 = expandWildseq(r2.trie);
-    }
-
-    if (r1 instanceof $Success) {
-      if (r2 instanceof $Success) {
-	return rsuccess(intersectSuccesses(r1.value, r2.value));
-      } else {
-	return leftShort(r1.value, r2);
-      }
-    }
-
-    var w1 = rlookup(r1, __);
-    var w2 = rlookup(r2, __);
-    var w = walk(w1, w2);
-
-    var target = emptyTrie;
-
-    function examineKey(key) {
-      if ((key !== __) && !target.has(key)) {
-	target = rupdate(target, key, walk(rlookupWild(r1, key), rlookupWild(r2, key)));
-      }
-    }
-
-    if (is_emptyTrie(w1)) {
-      if (is_emptyTrie(w2)) {
-	(r1.size < r2.size ? r1 : r2).forEach(function (val, key) { examineKey(key) });
-      } else {
-	r1.forEach(function (val, key) { examineKey(key) });
-      }
-    } else {
-      if (is_emptyTrie(w2)) {
-	r2.forEach(function (val, key) { examineKey(key) });
-      } else {
-	target = rupdate(target, __, w);
-	r1.forEach(function (val, key) { examineKey(key) });
-	r2.forEach(function (val, key) { examineKey(key) });
-      }
-    }
-    return target;
+    asymmetricTrieError(r1, r2);
   }
 }
 
-// The subtractSuccesses function should return null to signal "no
-// remaining success values".
+///////////////////////////////////////////////////////////////////////////
+
+var subtractSuccessesDefault = function (v1, v2) {
+  var r = v1.subtract(v2);
+  if (r.isEmpty()) return emptyTrie;
+  return rsuccess(r);
+};
+
 function subtract(o1, o2, subtractSuccessesOpt) {
   var subtractSuccesses = subtractSuccessesOpt || subtractSuccessesDefault;
-  return walk(o1, o2);
+  return combine(subtractCombiner,
+                 function (x) { return emptyTrie; },
+                 function (x) { return x; },
+                 function (x) { return x; },
+                 function (x) { return emptyTrie; },
+                 o1,
+                 o2);
 
-  function walkFlipped(r2, r1) { return walk(r1, r2); }
-
-  function walk(r1, r2) {
-    if (is_emptyTrie(r1)) {
-      return emptyTrie;
-    } else {
-      if (is_emptyTrie(r2)) {
-	return r1;
-      }
-    }
-
-    if (r1 instanceof $WildcardSequence) {
-      if (r2 instanceof $WildcardSequence) {
-	return rwildseq(walk(r1.trie, r2.trie));
-      }
-      r1 = expandWildseq(r1.trie);
-    } else if (r2 instanceof $WildcardSequence) {
-      r2 = expandWildseq(r2.trie);
-    }
-
-    if (r1 instanceof $Success && r2 instanceof $Success) {
-      return rsuccess(subtractSuccesses(r1.value, r2.value));
-    }
-
-    var w1 = rlookup(r1, __);
-    var w2 = rlookup(r2, __);
-    var w = walk(w1, w2);
-    var target;
-
-    function examineKey(key) {
-      if (key !== __) {
-	var k1 = rlookupWild(r1, key);
-	var k2 = rlookupWild(r2, key);
-	var updatedK = walk(k1, k2);
-
-	// Here we ensure a "minimal" remainder in cases
-	// where after an erasure, a particular key's
-	// continuation is the same as the wildcard's
-	// continuation. TODO: the equals check may
-	// be expensive. If so, how can it be made
-	// cheaper?
-	if (is_keyOpen(key)) {
-	  target = rupdate(target, key,
-			   ((updatedK instanceof $WildcardSequence) &&
-			    Immutable.is(updatedK.trie, w))
-			   ? w
-			   : updatedK);
-	} else {
-	  target = rupdate(target, key, updatedK);
-	}
-      }
-    }
-
-    if (is_emptyTrie(w2)) {
-      target = r1;
-      r2.forEach(function (val, key) { examineKey(key) });
-    } else {
-      target = emptyTrie;
-      target = rupdate(target, __, w);
-      r1.forEach(function (val, key) { examineKey(key) });
-      r2.forEach(function (val, key) { examineKey(key) });
-    }
-
-    return collapseWildcardSequences(target);
+  function subtractCombiner(r1, r2) {
+    if ((r1 instanceof $Success) && (r2 instanceof $Success))
+      return subtractSuccesses(r1.value, r2.value);
+    if (is_emptyTrie(r1)) return emptyTrie;
+    if (is_emptyTrie(r2)) return r1;
+    asymmetricTrieError(r1, r2);
   }
 }
 
-function collapseWildcardSequences(target) {
-  // Here, the target is complete. If it has only two keys,
-  // one wild and one is_keyClose, and wild's continuation
-  // is a $WildcardSequence and the other continuation is
-  // identical to the sequence's continuation, then replace
-  // the whole thing with a nested $WildcardSequence.
-  // (We know w === rlookup(target, __) from before.)
-  //
-  // TODO: I suspect actually this applies even if there are
-  // more than two keys, so long as all their continuations
-  // are identical and there's at least one is_keyClose
-  // alongside a wild.
-  if (target.size === 2) {
-    var finalW = rlookup(target, __);
-    if (finalW instanceof $WildcardSequence) {
-      target.forEach(function (k, key) {
-	if ((key !== __) && is_keyClose(key)) {
-	  if (Immutable.is(k, finalW.trie)) {
-	    target = finalW;
-	    return false; // terminate the iteration early
-	  }
-	}
-      });
-    }
-  }
-  return target;
-}
+///////////////////////////////////////////////////////////////////////////
 
-// Returns null on failed match, otherwise the appropriate success
+// Returns failureResult on failed match, otherwise the appropriate success
 // value contained in the trie r.
-function matchValue(r, v) {
-  var failureResult = null;
+function matchValue(r, v, failureResultOpt) {
+  var failureResult = failureResultOpt || null;
 
   var vs = Immutable.List.of(v);
-  var stack = [Immutable.List()];
 
   while (!is_emptyTrie(r)) {
-    if (r instanceof $WildcardSequence) {
-      if (stack.length === 0) return failureResult;
-      vs = stack.pop();
-      r = r.trie;
-      continue;
-    }
-
     if (r instanceof $Success) {
-      if (vs.size === 0 && stack.length === 0) return r.value;
-      return failureResult;
+      return vs.isEmpty() ? r.value : failureResult;
     }
 
-    if (vs.size === 0) {
-      if (stack.length === 0) return failureResult;
-      vs = stack.pop();
-      r = rlookup(r, EOA);
-      continue;
-    }
-
+    if (vs.isEmpty()) return failureResult;
     var v = vs.first();
     vs = vs.shift();
 
@@ -531,123 +479,58 @@ function matchValue(r, v) {
     }
 
     if (Array.isArray(v)) {
-      if (r.has(SOA)) {
-	r = rlookup(r, SOA);
-	stack.push(vs);
-	vs = Immutable.List(v);
-      } else {
-	r = rlookup(r, __);
-      }
+      r = rlookup(r, v.length, SOA);
+      vs = Immutable.List(v).concat(vs);
     } else if (isStructure(v)) {
-      if (r.has(SOA)) {
-        r = rlookup(r, SOA);
-        stack.push(vs);
-        vs = Immutable.List.of(v.$SyndicateMeta$.label);
-        var args = v.$SyndicateMeta$.arguments;
-        for (var i = 0; i < args.length; i++) {
-          vs = vs.push(v[args[i]]);
-        }
-      } else {
-        r = rlookup(r, __);
-      }
+      r = rlookup(r, v.$SyndicateMeta$.arguments.length, v.$SyndicateMeta$);
+      vs = Immutable.List(structureToArray(v, true)).concat(vs);
     } else {
-      if (r.has(v)) {
-	r = rlookup(r, v);
-      } else {
-	r = rlookup(r, __);
-      }
+      r = rlookup(r, 0, v);
     }
   }
 
   return failureResult;
 }
 
-function matchTrie(o1, o2, seed, leftShortOpt) {
+function matchTrie(o1, o2, seed, combiner) {
   var acc = typeof seed === 'undefined' ? Immutable.Set() : seed; // variable updated imperatively
-  var leftShort = leftShortOpt || function (v, r, acc) {
-    die("Route.matchTrie: left side short!");
-  };
   walk(o1, o2);
   return acc;
-
-  function walkFlipped(r2, r1) { return walk(r1, r2); }
 
   function walk(r1, r2) {
     if (is_emptyTrie(r1) || is_emptyTrie(r2)) return;
 
-    if (r1 instanceof $WildcardSequence) {
-      if (r2 instanceof $WildcardSequence) {
-	walk(r1.trie, r2.trie);
-	return;
-      }
-      r1 = expandWildseq(r1.trie);
-    } else if (r2 instanceof $WildcardSequence) {
-      r2 = expandWildseq(r2.trie);
-    }
-
-    if (r1 instanceof $Success) {
-      if (r2 instanceof $Success) {
-	acc = matchTrieSuccesses(r1.value, r2.value, acc);
-      } else {
-	acc = leftShort(r1.value, r2, acc);
-      }
+    if ((r1 instanceof $Success) && (r2 instanceof $Success)) {
+      acc = combiner(r1.value, r2.value, acc);
       return;
-    } else if (r2 instanceof $Success) {
-      die("Route.matchTrie: right side short!");
     }
 
-    var w1 = rlookup(r1, __);
-    var w2 = rlookup(r2, __);
-    walk(w1, w2);
-
-    function examineKey(key) {
-      if (key !== __) {
-	var k1 = rlookup(r1, key);
-	var k2 = rlookup(r2, key);
-	if (is_emptyTrie(k1)) {
-	  if (is_emptyTrie(k2)) {
-	    return;
-	  } else {
-	    walkWild(walk, w1, key, k2);
-	  }
-	} else {
-	  if (is_emptyTrie(k2)) {
-	    walkWild(walkFlipped, w2, key, k1);
-	  } else {
-	    walk(k1, k2);
-	  }
-	}
-      }
+    if (!(r1 instanceof $Branch) || !(r2 instanceof $Branch)) {
+      asymmetricTrieError(r1, r2);
     }
 
-    // Optimize similarly to intersect().
-    if (is_emptyTrie(w1)) {
-      if (is_emptyTrie(w2)) {
-	(r1.size < r2.size ? r1 : r2).forEach(function (val, key) { examineKey(key) });
+    walk(r1.wild, r2.wild);
+
+    function examineKeys(keymap, arity) {
+      keymap.forEach(function (_val, key) {
+        walk(rlookup(r1, arity, key), rlookup(r2, arity, key));
+      });
+    }
+
+    if (is_emptyTrie(r1.wild)) {
+      if (is_emptyTrie(r2.wild)) {
+	(r1.count < r2.count ? r1 : r2).edges.forEach(examineKeys);
       } else {
-	r1.forEach(function (val, key) { examineKey(key) });
+	r1.edges.forEach(examineKeys);
       }
     } else {
-      if (is_emptyTrie(w2)) {
-	r2.forEach(function (val, key) { examineKey(key) });
+      if (is_emptyTrie(r2.wild)) {
+	r2.edges.forEach(examineKeys);
       } else {
-	r1.forEach(function (val, key) { examineKey(key) });
-	r2.forEach(function (val, key) { examineKey(key) });
+	r1.edges.forEach(examineKeys);
+	r2.edges.forEach(examineKeys);
       }
     }
-  }
-
-  function walkWild(walker, w, key, k) {
-    if (is_emptyTrie(w)) return;
-    if (is_keyOpen(key)) {
-      walker(rwildseq(w), k);
-      return;
-    }
-    if (is_keyClose(key)) {
-      if (w instanceof $WildcardSequence) walker(w.trie, k);
-      return;
-    }
-    walker(w, k);
   }
 }
 
@@ -656,102 +539,77 @@ function appendTrie(m, mTailFn) {
 
   function walk(m) {
     if (is_emptyTrie(m)) return emptyTrie;
-    if (m instanceof $WildcardSequence) return rwildseq(walk(m.trie));
-    if (m instanceof $Success) die("Ill-formed trie");
+    if (m instanceof $Success) return mTailFn(m.value);
 
-    var target = emptyTrie;
-    m.forEach(function (k, key) {
-      if (is_keyClose(key) && (k instanceof $Success)) {
-	target = union(target, mTailFn(k.value));
-      } else {
-	target = rupdate(target, key, walk(k));
-      }
+    var target = newEmptyBranch();
+    target.wild = walk(m.wild);
+    m.edges.forEach(function (keymap, arity) {
+      keymap.forEach(function (k, key) {
+        rupdate_inplace(target, arity, key, walk(k));
+      });
     });
-    return target;
+    return collapse(target);
   }
 }
 
-function triePruneBranch(m, keys) {
-  if (keys.isEmpty()) return emptyTrie;
-
-  if (is_emptyTrie(m)) return emptyTrie;
-  if (m instanceof $WildcardSequence) {
-    return collapseWildcardSequences(triePruneBranch(expandWildseq(m.trie), keys));
-  }
-  if (m instanceof $Success) return m;
-
-  var key = keys.first();
-  var rest = keys.shift();
-  return rupdate(m, key, triePruneBranch(rlookupWild(m, key), rest));
+function triePruneBranch(m, arityKeys) {
+  if (arityKeys.isEmpty()) return emptyTrie;
+  if (!(m instanceof $Branch)) return m;
+  var arityKey = arityKeys.first();
+  var rest = arityKeys.shift();
+  var arity = arityKey[0];
+  var key = arityKey[1];
+  m = rcopybranch(m);
+  rupdate_inplace(m, arity, key, triePruneBranch(rlookup(m, arity, key), rest));
+  return collapse(m);
 }
 
-function trieStep(m, key) {
+function trieStep(m, arity, key) {
+  if (typeof key === 'undefined') {
+    // Cope with API change which would otherwise silently cause problems
+    die("trieStep: missing 'key' argument");
+  }
   if (is_emptyTrie(m)) return emptyTrie;
-  if (m instanceof $WildcardSequence) return (is_keyClose(key) ? m.trie : m);
   if (m instanceof $Success) return emptyTrie;
-  return rlookupWild(m, key);
+  return rlookup(m, arity, key);
 }
 
 function relabel(m, f) {
-  return walk(m);
-
-  function walk(m) {
-    if (is_emptyTrie(m)) return emptyTrie;
-    if (m instanceof $WildcardSequence) return rwildseq(walk(m.trie));
-    if (m instanceof $Success) return rsuccess(f(m.value));
-
-    var target = emptyTrie;
-    m.forEach(function (k, key) {
-      target = rupdate(target, key, walk(k));
-    });
-    return target;
-  }
+  return appendTrie(m, function (v) {
+    var v1 = f(v);
+    return v1 ? rsuccess(v1) : emptyTrie;
+  });
 }
 
-function compileProjection(/* projection, projection, ... */) {
+///////////////////////////////////////////////////////////////////////////
+
+function projectionNames(p) {
   var names = [];
-  var acc = [];
-  for (var i = 0; i < arguments.length; i++) {
-    walk(arguments[i]);
-  }
-  acc.push(EOA);
-  return {names: names, spec: acc};
+  walk(p);
+  return names;
 
   function walk(p) {
     if (isCapture(p)) {
       names.push(captureName(p));
-      acc.push(SOC);
       walk(capturePattern(p));
-      acc.push(EOC);
       return;
     }
 
     if (Array.isArray(p)) {
-      acc.push(SOA);
-      for (var i = 0; i < p.length; i++) {
-	walk(p[i]);
-      }
-      acc.push(EOA);
+      for (var i = 0; i < p.length; i++) walk(p[i]);
       return;
     }
 
     if (isStructure(p)) {
-      acc.push(SOA);
-      acc.push(p.$SyndicateMeta$.label);
       var args = p.$SyndicateMeta$.arguments;
-      for (var i = 0; i < args.length; i++) {
-        walk(p[args[i]]);
-      }
-      acc.push(EOA);
+      for (var i = 0; i < args.length; i++) walk(p[args[i]]);
       return;
     }
-
-    if (p instanceof $Embedded) {
-      die("Cannot embed trie in projection");
-    } else {
-      acc.push(p);
-    }
   }
+}
+
+function projectionArity(p) {
+  return projectionNames(p).length;
 }
 
 function projectionToPattern(p) {
@@ -777,253 +635,176 @@ function projectionToPattern(p) {
       return result;
     }
 
-    if (p instanceof $Embedded) {
-      return p.trie;
-    } else {
-      return p;
-    }
+    return p;
   }
 }
 
-function project(m, compiledProjection) {
-  var spec = compiledProjection.spec;
-  return walk(false, m, 0);
+function project(t, wholeSpec, projectSuccessOpt, combinerOpt) {
+  return projectMany(t, Immutable.List.of(wholeSpec), projectSuccessOpt, combinerOpt);
+}
 
-  function walk(isCapturing, m, specIndex) {
-    if (specIndex >= spec.length) {
-      if (isCapturing) die("Bad specification: unclosed capture");
-      if (m instanceof $Success) {
-	return rseq(EOA, rsuccess(projectSuccess(m.value)));
-      } else {
-	return emptyTrie;
-      }
+function projectMany(t, wholeSpecs, projectSuccessOpt, combinerOpt) {
+  var projectSuccess = projectSuccessOpt || rsuccess;
+  var combiner = combinerOpt || unionSuccessesDefault;
+
+  return walk(false, t, Immutable.List(wholeSpecs), function (t) {
+    if (t instanceof $Success) {
+      return projectSuccess(t.value);
+    } else {
+      return emptyTrie;
     }
+  });
 
-    if (is_emptyTrie(m)) return emptyTrie;
+  function walk(isCapturing, t, specs, kont) {
+    if (specs.isEmpty()) return kont(t);
+    if (!(t instanceof $Branch)) return emptyTrie;
 
-    var item = spec[specIndex];
-    var nextIndex = specIndex + 1;
+    var spec = specs.first();
+    var specsRest = specs.rest();
 
-    if (item === EOC) {
-      if (!isCapturing) die("Bad specification: unexpected EOC");
-      return walk(false, m, nextIndex);
-    }
-
-    if (item === SOC) {
-      if (isCapturing) die("Bad specification: nested capture");
-      return walk(true, m, nextIndex);
-    }
-
-    if (item === __) {
-      if (m instanceof $WildcardSequence) {
-	if (isCapturing) {
-	  return rwild(walk(isCapturing, m, nextIndex));
-	} else {
-	  return walk(isCapturing, m, nextIndex);
-	}
-      }
-
-      if (m instanceof $Success) {
-	return emptyTrie;
-      }
-
-      var target;
+    if (isCapture(spec)) {
       if (isCapturing) {
-	target = emptyTrie;
-	target = rupdate(target, __, walk(isCapturing, rlookup(m, __), nextIndex));
-	m.forEach(function (mk, key) {
-	  if (key !== __) {
-	    if (is_keyOpen(key)) {
-	      target = rupdate(target, key, captureNested(mk, function (mk2) {
-		return walk(isCapturing, mk2, nextIndex);
-	      }));
-	    } else if (is_keyClose(key)) {
-	      // do nothing
-	    } else {
-	      target = rupdate(target, key, walk(isCapturing, mk, nextIndex));
-	    }
-	  }
-	});
+        die("projectMany: nested capture in projection: " + wholeSpecs);
+      }
+      return walk(true, t, Immutable.List.of(capturePattern(spec)), function (intermediate) {
+        return walk(false, intermediate, specsRest, kont);
+      });
+    }
+
+    if (spec === __) {
+      if (isCapturing) {
+        var target = newEmptyBranch();
+        target.wild = walk(isCapturing, t.wild, specsRest, kont);
+        t.edges.forEach(function (keymap, arity) {
+          var innerSpecs = Immutable.Repeat(__, arity);
+          keymap.forEach(function (k, key) {
+            rupdate_inplace(target, arity, key,
+                            walk(isCapturing, k, innerSpecs, function (intermediate) {
+                              return walk(isCapturing, intermediate, specsRest, kont);
+                            }));
+          });
+        });
+        return collapse(target);
       } else {
-	target = walk(isCapturing, rlookup(m, __), nextIndex);
-	m.forEach(function (mk, key) {
-	  if (key !== __) {
-	    if (is_keyOpen(key)) {
-	      target = union(target, skipNested(mk, function (mk2) {
-		return walk(isCapturing, mk2, nextIndex);
-	      }));
-	    } else if (is_keyClose(key)) {
-	      // do nothing
-	    } else {
-	      target = union(target, walk(isCapturing, mk, nextIndex));
-	    }
-	  }
-	});
+        var seed = walk(isCapturing, t.wild, specsRest, kont);
+        t.edges.forEach(function (keymap, arity) {
+          var innerSpecs = Immutable.Repeat(__, arity);
+          keymap.forEach(function (k, key) {
+            seed = union(seed,
+                         walk(isCapturing, k, innerSpecs, function (intermediate) {
+                           return walk(isCapturing, intermediate, specsRest, kont);
+                         }),
+                         combiner);
+          });
+        });
+        return seed;
       }
       return target;
     }
 
-    var result;
-    if (m instanceof $WildcardSequence) {
-      if (is_keyOpen(item)) {
-	result = walk(isCapturing, rwildseq(m), nextIndex);
-      } else if (is_keyClose(item)) {
-	result = walk(isCapturing, m.trie, nextIndex);
-      } else {
-	result = walk(isCapturing, m, nextIndex);
-      }
-    } else if (m instanceof $Success) {
-      result = emptyTrie;
-    } else {
-      if (is_keyOpen(item)) {
-	result = walk(isCapturing, rwildseq(rlookup(m, __)), nextIndex);
-      } else if (is_keyClose(item)) {
-	result = emptyTrie;
-      } else {
-	result = walk(isCapturing, rlookup(m, __), nextIndex);
-      }
-      result = union(result, walk(isCapturing, rlookup(m, item), nextIndex));
+    if (isStructure(spec)) {
+      var arity = spec.$SyndicateMeta$.arguments.length;
+      var key = spec.$SyndicateMeta$;
+      var intermediate = walk(isCapturing,
+                              rlookup(t, arity, key),
+                              Immutable.List(structureToArray(spec, true)),
+                              function (intermediate) {
+                                return walk(isCapturing, intermediate, specsRest, kont);
+                              });
+      return isCapturing ? rseq(arity, key, intermediate) : intermediate;
     }
-    if (isCapturing) {
-      result = rseq(item, result);
+
+    if (Array.isArray(spec)) {
+      var intermediate = walk(isCapturing,
+                              rlookup(t, spec.length, SOA),
+                              Immutable.List(spec),
+                              function (intermediate) {
+                                return walk(isCapturing, intermediate, specsRest, kont);
+                              });
+      return isCapturing ? rseq(spec.length, SOA, intermediate) : intermediate;
     }
+
+    if (spec instanceof $Embedded) {
+      die("$Embedded patterns not supported in projectMany()");
+    }
+
+    /* It is a normal atom */
+    var intermediate = walk(isCapturing, rlookup(t, 0, spec), specsRest, kont);
+    return isCapturing ? rseq(0, spec, intermediate) : intermediate;
+  }
+}
+
+function reconstructSequence(key, items) {
+  if (key === SOA) {
+    return items.toArray();
+  } else {
+    return instantiateStructure(key, items);
+  }
+}
+
+function trieKeys(m, takeCount0) {
+  if (typeof takeCount0 !== 'number') {
+    // Cope with API change which would otherwise silently cause problems
+    die("Missing mandatory argument 'takeCount' to Route.trieKeys");
+  }
+
+  if (is_emptyTrie(m)) return Immutable.Set();
+  return walk(m, takeCount0, Immutable.List(),
+              function (items, tail) {
+                if (is_emptyTrie(tail)) return Immutable.Set();
+                if (tail instanceof $Success) return Immutable.Set.of(items);
+                die("Trie contains more than the requested "+takeCount0+" items");
+              });
+
+  function walk(m, takeCount, valsRev, kont) {
+    if (takeCount === 0) return kont(valsRev.reverse(), m);
+
+    if (is_emptyTrie(m)) return Immutable.Set();
+    if (m instanceof $Success) {
+      die("Trie contains fewer than the requested "+takeCount0+" items");
+    }
+
+    if (!is_emptyTrie(m.wild)) return false;
+
+    var result = Immutable.Set();
+    m.edges.forEach(function (keymap, arity) {
+      if (result === false) return false; // break out of iteration
+      keymap.forEach(function (k, key) {
+        if (result === false) return false; // break out of iteration
+
+        var piece;
+        if (isSyndicateMeta(key) || key === SOA) { // TODO: this is sloppy
+          piece = walk(k, arity, Immutable.List(), function (items, m1) {
+            var item = reconstructSequence(key, items);
+            return walk(m1, takeCount - 1, valsRev.unshift(item), kont);
+          });
+        } else {
+          piece = walk(k, takeCount - 1, valsRev.unshift(key), kont);
+        }
+
+        result = (piece === false) ? false : result.union(piece);
+      });
+    });
     return result;
   }
-
-  function captureNested(m, cont) {
-    if (m instanceof $WildcardSequence) {
-      return rwildseq(cont(m.trie));
-    }
-
-    if (is_emptyTrie(m) || (m instanceof $Success)) {
-      return emptyTrie;
-    }
-
-    var target = emptyTrie;
-    target = rupdate(target, __, captureNested(rlookup(m, __), cont));
-    m.forEach(function (mk, key) {
-      if (key !== __) {
-	if (is_keyOpen(key)) {
-	  target = rupdate(target, key, captureNested(mk, function (mk2) {
-	    return captureNested(mk2, cont);
-	  }));
-	} else if (is_keyClose(key)) {
-	  target = rupdate(target, key, cont(mk));
-	} else {
-	  target = rupdate(target, key, captureNested(mk, cont));
-	}
-      }
-    });
-    return target;
-  }
-
-  function skipNested(m, cont) {
-    if (m instanceof $WildcardSequence) {
-      return cont(m.trie);
-    }
-
-    if (is_emptyTrie(m) || (m instanceof $Success)) {
-      return emptyTrie;
-    }
-
-    var target = skipNested(rlookup(m, __), cont);
-    m.forEach(function (mk, key) {
-      if (key !== __) {
-	if (is_keyOpen(key)) {
-	  target = union(target, skipNested(mk, function (mk2) {
-	    return skipNested(mk2, cont)
-	  }));
-	} else if (is_keyClose(key)) {
-	  target = union(target, cont(mk));
-	} else {
-	  target = union(target, skipNested(mk, cont));
-	}
-      }
-    });
-    return target;
-  }
 }
 
-function trieKeys(m) {
-  if (is_emptyTrie(m)) return Immutable.Set();
-  var result = walkSeq(m, function (vss, vsk) { return vss; });
-  if (result === null) return null;
-  return Immutable.Set(result);
-
-  function walk(m, k) {
-    if (m instanceof $WildcardSequence) return null;
-    if (m instanceof $Success) return [];
-    if (m.has(__)) return null;
-    var acc = [];
-    m.forEach(function (mk, key) {
-      var piece;
-      if (is_keyOpen(key)) {
-	piece = walkSeq(mk, function (vss, vsk) {
-	  var acc = [];
-	  for (var i = 0; i < vss.length; i++) {
-	    var vs = vss[i];
-	    acc = acc.concat(k(transformSeqs(vs, key), vsk));
-	  }
-	  return acc;
-	});
-      } else if (is_keyClose(key)) {
-	die("trieKeys: internal error: unexpected key-close");
-      } else {
-	piece = k(key, mk);
-      }
-      if (piece === null) return null;
-      acc = acc.concat(piece);
-    });
-    return acc;
-  }
-
-  function walkSeq(m, k) {
-    if (m instanceof $WildcardSequence) return null;
-    if (m instanceof $Success) return k([], emptyTrie); // TODO: ??
-    if (m.has(__)) return null;
-    var acc = [];
-    m.forEach(function (mk, key) {
-      var piece;
-      if (is_keyClose(key)) {
-	piece = k([Immutable.List()], mk);
-      } else {
-	piece = walk(rseq(key, mk), function (v, vk) {
-	  return walkSeq(vk, function (vss, vsk) {
-	    var acc = [];
-	    for (var i = 0; i < vss.length; i++) {
-	      acc.push(vss[i].unshift(v));
-	    }
-	    return k(acc, vsk);
-	  });
-	});
-      }
-      if (piece === null) return null;
-      acc = acc.concat(piece);
-    });
-    return acc;
-  }
-
-  function transformSeqs(vs, opener) {
-    if (opener === SOA) return vs;
-    die("Internal error: unknown opener " + opener);
-  }
-}
-
-function captureToObject(captures, compiledProjection) {
+function captureToObject(captures, names) {
   var d = {};
   captures.forEach(function (key, index) {
-    d[compiledProjection.names[index] || ('$' + index)] = key;
+    d[names[index] || ('$' + index)] = key;
   });
   return d;
 }
 
-function trieKeysToObjects(trieKeysResult, compiledProjection) {
-  if (trieKeysResult === null) return null;
-  return trieKeysResult.toList().map(function (e) { return captureToObject(e, compiledProjection); });
+function trieKeysToObjects(trieKeysResult, names) {
+  if (trieKeysResult === false) return false;
+  return trieKeysResult.toList().map(function (e) { return captureToObject(e, names); });
 }
 
-function projectObjects(m, compiledProjection) {
-  return trieKeysToObjects(trieKeys(project(m, compiledProjection)), compiledProjection);
+function projectObjects(m, projection) {
+  var names = projectionNames(projection);
+  return trieKeysToObjects(trieKeys(project(m, projection), names.length), names);
 }
 
 function prettyTrie(m, initialIndent) {
@@ -1032,41 +813,49 @@ function prettyTrie(m, initialIndent) {
   return acc.join('');
 
   function walk(i, m) {
-    if (m instanceof $WildcardSequence) {
-      acc.push("...>");
-      walk(i + 4, m.trie);
-      return;
-    }
     if (m instanceof $Success) {
       var v = m.value;
       if (Immutable.Set.isSet(v)) { v = v.toArray(); }
-      acc.push("{" + JSON.stringify(v) + "}");
+      acc.push(" {" + JSON.stringify(v) + "}");
       return;
     }
 
-    if (m.size === 0) {
-      acc.push("::: nothing");
+    if (is_emptyTrie(m)) {
+      acc.push(" ::: nothing");
       return;
     }
 
     var needSep = false;
-    m.toOrderedMap()
-      .sortBy(function (k, key) { return key })
-      .forEach(function (k, key) {
-	if (needSep) {
-	  acc.push("\n");
-	  acc.push(indentStr(i));
-	} else {
-	  needSep = true;
-	}
-	acc.push(" ");
-	if (key === __) key = '★';
-	else if (key === SOA) key = '<';
-	else if (key === EOA) key = '>';
-	else if (key instanceof $Special) key = key.name;
-	else key = JSON.stringify(key);
-	acc.push(key);
-	walk(i + key.length + 1, k);
+    if (!is_emptyTrie(m.wild)) {
+      var key = "★";
+      needSep = true;
+      acc.push(" ");
+      acc.push(key);
+      walk(i + key.length + 1, m.wild);
+    }
+    m.edges
+      .toOrderedMap()
+      .sortBy(function (keymap, arity) { return arity })
+      .forEach(function (keymap, arity) {
+        keymap
+          .toOrderedMap()
+          .sortBy(function (k, key) { return key })
+          .forEach(function (k, key) {
+	    if (needSep) {
+	      acc.push("\n");
+	      acc.push(indentStr(i));
+	    } else {
+	      needSep = true;
+	    }
+	    acc.push(" ");
+	    if (key === SOA) key = '<' + arity + '>';
+            else if (isSyndicateMeta(key)) key = key.label + '<' + arity + '>';
+	    else if (key instanceof $Special) key = key.name;
+            else if (typeof key === 'undefined') key = 'undefined';
+	    else key = JSON.stringify(key);
+	    acc.push(key);
+	    walk(i + key.length + 1, k);
+          });
       });
   }
 
@@ -1079,7 +868,6 @@ function prettyTrie(m, initialIndent) {
 
 module.exports.__ = __;
 module.exports.SOA = SOA;
-module.exports.EOA = EOA;
 module.exports.$Capture = $Capture;
 module.exports.$Special = $Special;
 module.exports.makeStructureConstructor = makeStructureConstructor;
@@ -1087,6 +875,7 @@ module.exports._$ = _$;
 module.exports.is_emptyTrie = is_emptyTrie;
 module.exports.emptyTrie = emptyTrie;
 module.exports.embeddedTrie = embeddedTrie;
+module.exports.embeddedTrieArray = embeddedTrieArray;
 module.exports.compilePattern = compilePattern;
 module.exports.matchPattern = matchPattern;
 module.exports._union = union;
@@ -1098,10 +887,13 @@ module.exports.matchTrie = matchTrie;
 module.exports.appendTrie = appendTrie;
 module.exports.triePruneBranch = triePruneBranch;
 module.exports.trieStep = trieStep;
+module.exports.trieSuccess = rsuccess;
 module.exports.relabel = relabel;
-module.exports.compileProjection = compileProjection;
+module.exports.projectionNames = projectionNames;
+module.exports.projectionArity = projectionArity;
 module.exports.projectionToPattern = projectionToPattern;
 module.exports.project = project;
+module.exports.projectMany = projectMany;
 module.exports.trieKeys = trieKeys;
 module.exports.captureToObject = captureToObject;
 module.exports.trieKeysToObjects = trieKeysToObjects;
@@ -1112,6 +904,5 @@ module.exports.prettyTrie = prettyTrie;
 module.exports._testing = {
   rsuccess: rsuccess,
   rseq: rseq,
-  rwild: rwild,
-  rwildseq: rwildseq
+  rwild: rwild
 };

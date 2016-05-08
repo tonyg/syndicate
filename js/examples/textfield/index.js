@@ -7,6 +7,11 @@ var Patch = Syndicate.Patch;
 var __ = Syndicate.__;
 var _$ = Syndicate._$;
 
+var jQueryEvent = Syndicate.JQuery.jQueryEvent;
+var fieldContents = Route.makeStructureConstructor('fieldContents', ['text', 'pos']);
+var highlight = Route.makeStructureConstructor('highlight', ['state']);
+var fieldCommand = Route.makeStructureConstructor('fieldCommand', ['detail']);
+
 function escapeText(text) {
   text = text.replace(/&/g, '&amp;');
   text = text.replace(/</g, '&lt;');
@@ -31,30 +36,30 @@ function spawnGui() {
     highlight: { state: false },
 
     boot: function () {
-      return Patch.sub(["jQuery", "#inputRow", "+keypress", __])
-	.andThen(Patch.sub(["fieldContents", __, __]))
-	.andThen(Patch.sub(["highlight", __]));
+      return Patch.sub(jQueryEvent("#inputRow", "+keypress", __))
+	.andThen(Patch.sub(fieldContents.pattern))
+	.andThen(Patch.sub(highlight.pattern));
     },
 
-    fieldContentsProjection: Route.compileProjection(["fieldContents", _$("text"), _$("pos")]),
-    highlightProjection: Route.compileProjection(["highlight", _$("state")]),
+    fieldContentsProjection: fieldContents(_$("text"), _$("pos")),
+    highlightProjection: highlight(_$("state")),
     handleEvent: function (e) {
       var self = this;
       switch (e.type) {
       case "message":
-	var event = e.message[3];
+	var event = e.message.eventValue;
 	var keycode = event.keyCode;
 	var character = String.fromCharCode(event.charCode);
 	if (keycode === 37 /* left */) {
-	  Dataspace.send(["fieldCommand", "cursorLeft"]);
+	  Dataspace.send(fieldCommand("cursorLeft"));
 	} else if (keycode === 39 /* right */) {
-	  Dataspace.send(["fieldCommand", "cursorRight"]);
+	  Dataspace.send(fieldCommand("cursorRight"));
 	} else if (keycode === 9 /* tab */) {
 	  // ignore
 	} else if (keycode === 8 /* backspace */) {
-	  Dataspace.send(["fieldCommand", "backspace"]);
+	  Dataspace.send(fieldCommand("backspace"));
 	} else if (character) {
-	  Dataspace.send(["fieldCommand", ["insert", character]]);
+	  Dataspace.send(fieldCommand(["insert", character]));
 	}
 	break;
       case "stateChange":
@@ -73,8 +78,8 @@ function spawnGui() {
       var text = this.field ? this.field.text : "";
       var pos = this.field ? this.field.pos : 0;
       var highlight = this.highlight ? this.highlight.state : false;
-      var hLeft = highlight ? highlight.get(0) : 0;
-      var hRight = highlight ? highlight.get(1) : 0;
+      var hLeft = highlight ? highlight[0] : 0;
+      var hRight = highlight ? highlight[1] : 0;
       $("#fieldContents")[0].innerHTML = highlight
 	? piece(text, pos, 0, hLeft, "normal") +
 	piece(text, pos, hLeft, hRight, "highlight") +
@@ -90,36 +95,36 @@ function spawnGui() {
 function spawnModel() {
   var initialContents = "initial";
   Dataspace.spawn({
-    fieldContents: initialContents,
+    fieldValue: initialContents,
     cursorPos: initialContents.length, /* positions address gaps between characters */
 
     boot: function () {
       this.publishState();
-      return Patch.sub(["fieldCommand", __]);
+      return Patch.sub(fieldCommand.pattern);
     },
 
     handleEvent: function (e) {
-      if (e.type === "message" && e.message[0] === "fieldCommand") {
-	var command = e.message[1];
+      if (e.type === "message" && fieldCommand.isClassOf(e.message)) {
+	var command = e.message.detail;
 	if (command === "cursorLeft") {
 	  this.cursorPos--;
 	  if (this.cursorPos < 0)
 	    this.cursorPos = 0;
 	} else if (command === "cursorRight") {
 	  this.cursorPos++;
-	  if (this.cursorPos > this.fieldContents.length)
-	    this.cursorPos = this.fieldContents.length;
+	  if (this.cursorPos > this.fieldValue.length)
+	    this.cursorPos = this.fieldValue.length;
 	} else if (command === "backspace" && this.cursorPos > 0) {
-	  this.fieldContents =
-	    this.fieldContents.substring(0, this.cursorPos - 1) +
-	    this.fieldContents.substring(this.cursorPos);
+	  this.fieldValue =
+	    this.fieldValue.substring(0, this.cursorPos - 1) +
+	    this.fieldValue.substring(this.cursorPos);
 	  this.cursorPos--;
 	} else if (command.constructor === Array && command[0] === "insert") {
 	  var newText = command[1];
-	  this.fieldContents =
-	    this.fieldContents.substring(0, this.cursorPos) +
+	  this.fieldValue =
+	    this.fieldValue.substring(0, this.cursorPos) +
 	    newText +
-	    this.fieldContents.substring(this.cursorPos);
+	    this.fieldValue.substring(this.cursorPos);
 	  this.cursorPos += newText.length;
 	}
 	this.publishState();
@@ -128,8 +133,8 @@ function spawnModel() {
 
     publishState: function () {
       Dataspace.stateChange(
-	Patch.retract(["fieldContents", __, __])
-	  .andThen(Patch.assert(["fieldContents", this.fieldContents, this.cursorPos])));
+	Patch.retract(fieldContents.pattern)
+	  .andThen(Patch.assert(fieldContents(this.fieldValue, this.cursorPos))));
     }
   });
 }
@@ -139,24 +144,24 @@ function spawnModel() {
 
 function spawnSearch() {
   Dataspace.spawn({
-    fieldContents: "",
+    fieldValue: "",
     highlight: false,
 
     boot: function () {
       this.publishState();
-      return Patch.sub(["jQuery", "#searchBox", "input", __])
-	.andThen(Patch.sub(["fieldContents", __, __]));
+      return Patch.sub(jQueryEvent("#searchBox", "input", __))
+	.andThen(Patch.sub(fieldContents.pattern));
     },
 
-    fieldContentsProjection: Route.compileProjection(["fieldContents", _$("text"), _$("pos")]),
+    fieldContentsProjection: fieldContents(_$("text"), _$("pos")),
     handleEvent: function (e) {
       var self = this;
-      if (e.type === "message" && e.message[0] === "jQuery") {
+      if (jQueryEvent.isClassOf(e.message)) {
 	this.search();
       }
       if (e.type === "stateChange") {
 	Route.projectObjects(e.patch.added, this.fieldContentsProjection).forEach(function (c) {
-	  self.fieldContents = c.text;
+	  self.fieldValue = c.text;
 	});
 	this.search();
       }
@@ -164,15 +169,15 @@ function spawnSearch() {
 
     publishState: function () {
       Dataspace.stateChange(
-	Patch.retract(["highlight", __])
-	  .andThen(Patch.assert(["highlight", this.highlight])));
+	Patch.retract(highlight.pattern)
+	  .andThen(Patch.assert(highlight(this.highlight))));
     },
 
     search: function () {
       var searchtext = $("#searchBox")[0].value;
       var oldHighlight = this.highlight;
       if (searchtext) {
-	var pos = this.fieldContents.indexOf(searchtext);
+	var pos = this.fieldValue.indexOf(searchtext);
 	this.highlight = (pos !== -1) && [pos, pos + searchtext.length];
       } else {
 	this.highlight = false;

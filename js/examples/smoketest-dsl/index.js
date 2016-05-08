@@ -23,8 +23,8 @@ ground dataspace {
 
   actor {
     forever {
-      on message $m {
-        console.log("Got message:", m);
+      on message beep($counter) {
+        console.log("beep!", counter);
       }
     }
   }

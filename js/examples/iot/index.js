@@ -6,8 +6,8 @@ assertion type tvAlert(text);
 assertion type switchAction(on);
 assertion type componentPresent(name);
 
-assertion type DOM(containerSelector, fragmentClass, spec);
-assertion type jQuery(selector, eventType, event);
+var DOM = Syndicate.DOM.DOM;
+var jQueryEvent = Syndicate.JQuery.jQueryEvent;
 
 ///////////////////////////////////////////////////////////////////////////
 // TV
@@ -48,7 +48,7 @@ function spawnRemoteControl() {
   actor {
     forever {
       assert componentPresent('remote control');
-      on message jQuery('#remote-control', 'click', _) {
+      on message jQueryEvent('#remote-control', 'click', _) {
         :: remoteClick();
       }
     }
@@ -92,14 +92,14 @@ function spawnStoveSwitch() {
                                           "img/stove-coil-element-" +
                                           (this.powerOn ? "hot" : "cold") + ".jpg"]]]));
 
-      on message jQuery('#stove-switch-on', 'click', _) { this.powerOn = true; }
-      on message jQuery('#stove-switch-off', 'click', _) { this.powerOn = false; }
+      on message jQueryEvent('#stove-switch-on', 'click', _) { this.powerOn = true; }
+      on message jQueryEvent('#stove-switch-off', 'click', _) { this.powerOn = false; }
 
       on message switchAction($newState) {
         this.powerOn = newState;
       }
     } until {
-      case message jQuery('#kill-stove-switch', 'click', _);
+      case message jQueryEvent('#kill-stove-switch', 'click', _);
     }
   }
 }
@@ -120,7 +120,7 @@ function spawnPowerDrawMonitor() {
         this.watts = on ? 1500 : 0;
       }
     } until {
-      case message jQuery('#kill-power-draw-monitor', 'click', _);
+      case message jQueryEvent('#kill-power-draw-monitor', 'click', _);
     }
   }
 }
@@ -187,10 +187,10 @@ function spawnFailureMonitor() {
 function spawnChaosMonkey() {
   actor {
     forever {
-      on message jQuery('#spawn-power-draw-monitor', 'click', _) {
+      on message jQueryEvent('#spawn-power-draw-monitor', 'click', _) {
         spawnPowerDrawMonitor();
       }
-      on message jQuery('#spawn-stove-switch', 'click', _) {
+      on message jQueryEvent('#spawn-stove-switch', 'click', _) {
         spawnStoveSwitch();
       }
     }

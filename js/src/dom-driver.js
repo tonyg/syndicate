@@ -1,6 +1,7 @@
 // DOM fragment display driver
 var Patch = require("./patch.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
+var Route = require('./route.js');
 var Ack = require('./ack.js').Ack;
 var Seal = require('./seal.js').Seal;
 
@@ -9,25 +10,23 @@ var Dataspace = Dataspace_.Dataspace;
 var __ = Dataspace_.__;
 var _$ = Dataspace_._$;
 
+var DOM = Route.makeStructureConstructor('DOM', ['selector', 'fragmentClass', 'fragmentSpec']);
+
 function spawnDOMDriver(domWrapFunction, jQueryWrapFunction) {
-  domWrapFunction = domWrapFunction || defaultWrapFunction;
+  domWrapFunction = domWrapFunction || DOM;
   var spec = domWrapFunction(_$('selector'), _$('fragmentClass'), _$('fragmentSpec'));
   Dataspace.spawn(
     new DemandMatcher(spec,
-		      Patch.advertise(spec),
+		      Patch.advertise(spec), // TODO: are the embedded captures problematic here? If not, why not?
 		      {
 			onDemandIncrease: function (c) {
 			  Dataspace.spawn(new DOMFragment(c.selector,
-							c.fragmentClass,
-							c.fragmentSpec,
-							domWrapFunction,
-							jQueryWrapFunction));
+							  c.fragmentClass,
+							  c.fragmentSpec,
+							  domWrapFunction,
+							  jQueryWrapFunction));
 			}
 		      }));
-}
-
-function defaultWrapFunction(selector, fragmentClass, fragmentSpec) {
-  return ["DOM", selector, fragmentClass, fragmentSpec];
 }
 
 function DOMFragment(selector, fragmentClass, fragmentSpec, domWrapFunction, jQueryWrapFunction) {
@@ -138,4 +137,4 @@ DOMFragment.prototype.buildNodes = function () {
 ///////////////////////////////////////////////////////////////////////////
 
 module.exports.spawnDOMDriver = spawnDOMDriver;
-module.exports.defaultWrapFunction = defaultWrapFunction;
+module.exports.DOM = DOM;

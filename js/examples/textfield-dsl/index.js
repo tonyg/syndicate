@@ -1,7 +1,7 @@
 ///////////////////////////////////////////////////////////////////////////
 // GUI
 
-assertion type jQuery(selector, eventType, event);
+var jQueryEvent = Syndicate.JQuery.jQueryEvent;
 assertion type fieldCommand(detail);
 assertion type fieldContents(text, pos);
 assertion type highlight(state);
@@ -34,8 +34,8 @@ function spawnGui() {
       var text = this.text;
       var pos = this.pos;
       var highlight = this.highlightState;
-      var hLeft = highlight ? highlight.get(0) : 0;
-      var hRight = highlight ? highlight.get(1) : 0;
+      var hLeft = highlight ? highlight[0] : 0;
+      var hRight = highlight ? highlight[1] : 0;
       $("#fieldContents")[0].innerHTML = highlight
 	? piece(text, pos, 0, hLeft, "normal") +
 	piece(text, pos, hLeft, hRight, "highlight") +
@@ -44,7 +44,7 @@ function spawnGui() {
     };
 
     forever {
-      on message jQuery("#inputRow", "+keypress", $event) {
+      on message jQueryEvent("#inputRow", "+keypress", $event) {
         var keycode = event.keyCode;
         var character = String.fromCharCode(event.charCode);
         if (keycode === 37 /* left */) {
@@ -79,11 +79,11 @@ function spawnGui() {
 
 function spawnModel() {
   actor {
-    this.fieldContents = "initial";
-    this.cursorPos = this.fieldContents.length; /* positions address gaps between characters */
+    this.fieldValue = "initial";
+    this.cursorPos = this.fieldValue.length; /* positions address gaps between characters */
 
     forever {
-      assert fieldContents(this.fieldContents, this.cursorPos);
+      assert fieldContents(this.fieldValue, this.cursorPos);
 
       on message fieldCommand("cursorLeft") {
 	this.cursorPos--;
@@ -93,24 +93,24 @@ function spawnModel() {
 
       on message fieldCommand("cursorRight") {
 	this.cursorPos++;
-	if (this.cursorPos > this.fieldContents.length)
-	  this.cursorPos = this.fieldContents.length;
+	if (this.cursorPos > this.fieldValue.length)
+	  this.cursorPos = this.fieldValue.length;
       }
 
       on message fieldCommand("backspace") {
         if (this.cursorPos > 0) {
-	  this.fieldContents =
-	    this.fieldContents.substring(0, this.cursorPos - 1) +
-	    this.fieldContents.substring(this.cursorPos);
+	  this.fieldValue =
+	    this.fieldValue.substring(0, this.cursorPos - 1) +
+	    this.fieldValue.substring(this.cursorPos);
 	  this.cursorPos--;
         }
       }
 
       on message fieldCommand(["insert", $newText]) {
-	this.fieldContents =
-	  this.fieldContents.substring(0, this.cursorPos) +
+	this.fieldValue =
+	  this.fieldValue.substring(0, this.cursorPos) +
 	  newText +
-	  this.fieldContents.substring(this.cursorPos);
+	  this.fieldValue.substring(this.cursorPos);
 	this.cursorPos += newText.length;
       }
     }
@@ -122,13 +122,13 @@ function spawnModel() {
 
 function spawnSearch() {
   actor {
-    this.fieldContents = "";
+    this.fieldValue = "";
     this.highlight = false;
 
     this.search = function () {
       var searchtext = $("#searchBox")[0].value;
       if (searchtext) {
-	var pos = this.fieldContents.indexOf(searchtext);
+	var pos = this.fieldValue.indexOf(searchtext);
 	this.highlight = (pos !== -1) && [pos, pos + searchtext.length];
       } else {
 	this.highlight = false;
@@ -138,12 +138,12 @@ function spawnSearch() {
     forever {
       assert highlight(this.highlight);
 
-      on message jQuery("#searchBox", "input", $event) {
+      on message jQueryEvent("#searchBox", "input", $event) {
         this.search();
       }
 
       on asserted fieldContents($text, _) {
-        this.fieldContents = text;
+        this.fieldValue = text;
         this.search();
       }
     }
