@@ -25,6 +25,7 @@ function makeStructureConstructor(label, argumentNames) {
   var ctor = function() {
     return instantiateStructure($SyndicateMeta$, arguments);
   };
+  ctor.prototype._get = function(i) { return this[this.$SyndicateMeta$.arguments[i]]; };
   ctor.meta = $SyndicateMeta$;
   ctor.isClassOf = function (v) { return v && v.$SyndicateMeta$ === $SyndicateMeta$; };
   ctor.pattern = ctor.apply(null, Immutable.Repeat(__, argumentNames.length).toArray());
