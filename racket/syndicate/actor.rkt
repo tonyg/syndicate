@@ -10,6 +10,7 @@
 
          assert!
          retract!
+         patch!
          send!
          return!
          return/no-link-result!
@@ -34,6 +35,7 @@
 
 (define&provide-dsl-helper-syntaxes "state/until/forever form"
   [on
+   on-event
    during
    assert
    query
@@ -192,6 +194,11 @@
 (define (retract! P #:meta-level [meta-level 0])
   (call-in-raw-context
    (lambda (k) (patch-instruction (retract P #:meta-level meta-level) k))))
+
+;; Returns void
+(define (patch! p)
+  (call-in-raw-context
+   (lambda (k) (patch-instruction p k))))
 
 ;; Returns void
 (define (send! M #:meta-level [meta-level 0])
@@ -587,6 +594,21 @@
         (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! index #'core:assert pat Pred-stx L-stx))
 
+    (define (analyze-on-event! index clauses-stx outer-expr-stx)
+      (add-event-handler!
+       (lambda (evt-stx)
+         #`(lambda (s)
+             (match (actor-state-variables s)
+               [(vector #,@binding-names)
+                (match #,evt-stx
+                  #,@(for/list [(clause-stx (syntax->list clauses-stx))]
+                       (syntax-case clause-stx ()
+                         [(pat #:when cond-expr body ...)
+                          #`(pat #:when cond-expr #,(make-run-script-call outer-expr-stx #'s #'(body ...)))]
+                         [(pat body ...)
+                          #`(pat #,(make-run-script-call outer-expr-stx #'s #'(body ...)))]))
+                  [_ #f])])))))
+
     (define (analyze-queries! index query-spec-stxs I-stxs)
       (error 'analyze-queries! "unimplemented"))
 
@@ -605,9 +627,11 @@
     (for [(ongoing (in-list (syntax->list ongoings)))
           (ongoing-index (in-naturals))]
       (syntax-parse ongoing
-        #:literals [on during assert query]
+        #:literals [on on-event during assert query]
         [(on E I ...)
          (analyze-event! ongoing-index #'E #'(I ...))]
+        [(on-event clause ...)
+         (analyze-on-event! ongoing-index #'(clause ...) ongoing)]
         [(during P O ...)
          (analyze-during! ongoing-index #'P #'(O ...))]
         [(assert w:when-pred P L:meta-level)
