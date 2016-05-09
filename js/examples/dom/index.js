@@ -51,9 +51,9 @@ $(document).ready(function () {
     });
   });
 
-  G.dataspace.onStateChange = function (mux, patch) {
+  G.dataspace.setOnStateChange(function (mux, patch) {
     $("#spy-holder").text(Syndicate.prettyTrie(mux.routingTable));
-  };
+  });
 
   G.startStepping();
 });

@@ -287,6 +287,11 @@ Dataspace.prototype.deliverEvent = function (pid, event) {
   if (childBusy) this.markRunnable(pid);
 };
 
+Dataspace.prototype.setOnStateChange = function (handler) {
+  this.onStateChange = handler;
+  this.onStateChange(this.mux, Patch.emptyPatch);
+};
+
 ///////////////////////////////////////////////////////////////////////////
 
 module.exports.stateChange = stateChange;

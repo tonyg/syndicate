@@ -192,7 +192,7 @@ $(document).ready(function () {
     spawnChaosMonkey();
   }
 
-  G.dataspace.onStateChange = function (mux, patch) {
+  G.dataspace.setOnStateChange(function (mux, patch) {
     $("#ds-state").text(Syndicate.prettyTrie(mux.routingTable));
-  };
+  });
 });
