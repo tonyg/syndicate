@@ -20,6 +20,7 @@
          label-patch
          limit-patch
          limit-patch/routing-table
+         patch-without-at-meta
          only-meta-tset
          compute-aggregate-patch
          apply-patch
@@ -133,6 +134,12 @@
   (patch (trie-subtract in bound)
          (trie-intersect out bound
 			 #:combiner (lambda (v1 v2) (empty-tset-guard (tset-intersect v1 v2))))))
+
+;; Removes at-meta assertions from the given patch.
+(define (patch-without-at-meta p)
+  (match-define (patch added removed) p)
+  (patch (trie-prune-branch added at-meta-parenthesis)
+         (trie-prune-branch removed at-meta-parenthesis)))
 
 (define only-meta-tset (datum-tset 'meta))
 

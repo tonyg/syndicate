@@ -82,8 +82,7 @@
   (define delta-aggregate/no-echo
     (if (meta-label? label)
         delta
-        (patch (trie-prune-branch (patch-added delta-aggregate) at-meta-parenthesis)
-               (trie-prune-branch (patch-removed delta-aggregate) at-meta-parenthesis))))
+        (patch-without-at-meta delta-aggregate)))
   (define old-routing-table (mux-routing-table old-m))
   (define new-routing-table (mux-routing-table new-m))
   (define affected-pids
