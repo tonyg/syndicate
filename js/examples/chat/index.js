@@ -4,6 +4,12 @@ assertion type says(who, message);
 var DOM = Syndicate.DOM.DOM;
 var jQueryEvent = Syndicate.JQuery.jQueryEvent;
 
+var brokerConnected = Syndicate.Broker.brokerConnected;
+var brokerConnection = Syndicate.Broker.brokerConnection;
+var toBroker = Syndicate.Broker.toBroker;
+var fromBroker = Syndicate.Broker.fromBroker;
+var forceBrokerDisconnect = Syndicate.Broker.forceBrokerDisconnect;
+
 ///////////////////////////////////////////////////////////////////////////
 // Application
 
@@ -105,7 +111,7 @@ $(document).ready(function () {
     Syndicate.JQuery.spawnJQueryDriver();
     Syndicate.DOM.spawnDOMDriver();
     Syndicate.WakeDetector.spawnWakeDetector();
-    spawnBrokerClientDriver();
+    Syndicate.Broker.spawnBrokerClientDriver();
     spawnInputChangeMonitor();
     spawnChatApp();
   }

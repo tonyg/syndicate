@@ -1,13 +1,17 @@
 "use strict";
 // WebSocket-based Syndicate broker client
 
-var Trie = Syndicate.Trie;
-var Patch = Syndicate.Patch;
-var Dataspace = Syndicate.Dataspace;
-var Struct = Syndicate.Struct;
-var DemandMatcher = Syndicate.DemandMatcher;
-var __ = Syndicate.__;
-var _$ = Syndicate._$;
+var Immutable = require('immutable');
+var Trie = require('./trie.js');
+var Patch = require('./patch.js');
+var Struct = require('./struct.js');
+var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
+var Codec = require('./codec');
+
+var Dataspace_ = require("./dataspace.js");
+var Dataspace = Dataspace_.Dataspace;
+var __ = Dataspace_.__;
+var _$ = Dataspace_._$;
 
 var DEFAULT_RECONNECT_DELAY = 100; // ms
 var MAX_RECONNECT_DELAY = 30000; // ms
@@ -235,3 +239,14 @@ BrokerClientConnection.prototype.onclose = function (e) {
     ? MAX_RECONNECT_DELAY + (Math.random() * 1000)
     : this.reconnectDelay;
 };
+
+///////////////////////////////////////////////////////////////////////////
+
+module.exports.toBroker = toBroker;
+module.exports.fromBroker = fromBroker;
+module.exports.brokerConnection = brokerConnection;
+module.exports.brokerConnected = brokerConnected;
+module.exports.forceBrokerDisconnect = forceBrokerDisconnect;
+
+module.exports.spawnBrokerClientDriver = spawnBrokerClientDriver;
+module.exports.BrokerClientConnection = BrokerClientConnection;

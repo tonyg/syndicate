@@ -1,8 +1,9 @@
 "use strict";
 // Wire protocol representation of events and actions
 
-var Trie = Syndicate.Trie;
-var Struct = Syndicate.Struct;
+var Trie = require('./trie.js');
+var Patch = require('./patch.js');
+var Struct = require('./struct.js');
 
 function _encode(e) {
   switch (e.type) {
@@ -28,14 +29,7 @@ function _decode(what) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-// module.exports.encodeEvent = _encode;
-// module.exports.decodeEvent = _decode("event");
-// module.exports.encodeAction = _encode;
-// module.exports.decodeAction = _decode("action");
-
-var Codec = {
-  encodeEvent: _encode,
-  decodeEvent: _decode("event"),
-  encodeAction: _encode,
-  decodeAction: _decode("action")
-};
+module.exports.encodeEvent = _encode;
+module.exports.decodeEvent = _decode("event");
+module.exports.encodeAction = _encode;
+module.exports.decodeAction = _decode("action");
