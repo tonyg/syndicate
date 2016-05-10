@@ -16,9 +16,9 @@ var emptyPatch = new Patch(Trie.emptyTrie, Trie.emptyTrie);
 var removeEverythingPatch = new Patch(Trie.emptyTrie, Trie.compilePattern(true, __));
 var trueLabel = Trie.trieSuccess(true);
 
-var observe = Struct.makeStructureConstructor('observe', ['assertion']);
-var atMeta = Struct.makeStructureConstructor('atMeta', ['assertion']);
-var advertise = Struct.makeStructureConstructor('advertise', ['assertion']);
+var observe = Struct.makeConstructor('observe', ['assertion']);
+var atMeta = Struct.makeConstructor('at-meta', ['assertion']);
+var advertise = Struct.makeConstructor('advertise', ['assertion']);
 
 function prependAtMeta(p, level) {
   while (level--) {
@@ -30,7 +30,7 @@ function prependAtMeta(p, level) {
 function stripAtMeta(p, level) {
   while (level--) {
     if (atMeta.isClassOf(p)) {
-      p = p.assertion;
+      p = p[0];
     } else {
       return null;
     }
@@ -97,11 +97,11 @@ Patch.prototype.isNonEmpty = function () {
 };
 
 Patch.prototype.hasAdded = function () {
-  return this.added !== Trie.emptyTrie;
+  return !Trie.is_emptyTrie(this.added);
 };
 
 Patch.prototype.hasRemoved = function () {
-  return this.removed !== Trie.emptyTrie;
+  return !Trie.is_emptyTrie(this.removed);
 };
 
 Patch.prototype.lift = function () {
@@ -196,7 +196,7 @@ function computePatch(oldBase, newBase) {
 }
 
 function biasedIntersection(object, subject) {
-  subject = Trie.trieStep(subject, observe.meta.arguments.length, observe.meta);
+  subject = Trie.trieStep(subject, observe.meta.arity, observe.meta);
   return Trie.intersect(object, subject, function (v1, v2) { return Trie.trieSuccess(v1); });
 }
 
@@ -226,6 +226,27 @@ Patch.prototype.pretty = function () {
   return ("<<<<<<<< Removed:\n" + Trie.prettyTrie(this.removed) + "\n" +
 	  "======== Added:\n" + Trie.prettyTrie(this.added) + "\n" +
 	  ">>>>>>>>");
+};
+
+// Completely ignores success-values in t.
+Patch.prototype.prunedBy = function (t) {
+  return new Patch(Trie.subtract(this.added, t, function (v1, v2) { return Trie.emptyTrie; }),
+                   Trie.subtract(this.removed, t, function (v1, v2) { return Trie.emptyTrie; }));
+};
+
+var atMetaEverything = Trie.compilePattern(true, atMeta.pattern);
+Patch.prototype.withoutAtMeta = function () {
+  return this.prunedBy(atMetaEverything);
+};
+
+///////////////////////////////////////////////////////////////////////////
+
+Patch.prototype.toJSON = function () {
+  return [Trie.trieToJSON(this.added), Trie.trieToJSON(this.removed)];
+};
+
+function fromJSON(j) {
+  return new Patch(Trie.trieFromJSON(j[0]), Trie.trieFromJSON(j[1]));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -251,3 +272,5 @@ module.exports.unpub = unpub;
 module.exports.patchSeq = patchSeq;
 module.exports.computePatch = computePatch;
 module.exports.biasedIntersection = biasedIntersection;
+
+module.exports.fromJSON = fromJSON;

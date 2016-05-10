@@ -45,7 +45,7 @@ Mux.prototype.updateStream = function (pid, unclampedPatch) {
 };
 
 var atMetaEverything = Trie.compilePattern(true, Patch.atMeta(Trie.__));
-var atMetaBranchKeys = Immutable.List([[Patch.atMeta.meta.arguments.length, Patch.atMeta.meta]]);
+var atMetaBranchKeys = Immutable.List([[Patch.atMeta.meta.arity, Patch.atMeta.meta]]);
 var onlyMeta = Trie.trieSuccess(Immutable.Set.of("meta"));
 
 function echoCancelledTrie(t) {
@@ -60,8 +60,7 @@ function computeEvents(oldMux, newMux, updateStreamResult) {
   var deltaAggregate = updateStreamResult.deltaAggregate;
   var deltaAggregateNoEcho = (actingPid === "meta")
       ? delta // because echo-cancellation means that meta-SCNs are always new information
-      : new Patch.Patch(Trie.triePruneBranch(deltaAggregate.added, atMetaBranchKeys),
-			Trie.triePruneBranch(deltaAggregate.removed, atMetaBranchKeys));
+      : deltaAggregate.withoutAtMeta();
   var oldRoutingTable = oldMux.routingTable;
   var newRoutingTable = newMux.routingTable;
   var affectedPids =
@@ -95,8 +94,7 @@ function computeEvents(oldMux, newMux, updateStreamResult) {
 
 function computeAffectedPids(routingTable, delta) {
   var cover = Trie._union(delta.added, delta.removed);
-  routingTable =
-    Trie.trieStep(routingTable, Patch.observe.meta.arguments.length, Patch.observe.meta);
+  routingTable = Trie.trieStep(routingTable, Patch.observe.meta.arity, Patch.observe.meta);
   return Trie.matchTrie(cover, routingTable, Immutable.Set(),
                         function (v1, v2, acc) { return acc.union(v2); });
 }

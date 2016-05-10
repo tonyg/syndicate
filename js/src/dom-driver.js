@@ -10,14 +10,14 @@ var Dataspace = Dataspace_.Dataspace;
 var __ = Dataspace_.__;
 var _$ = Dataspace_._$;
 
-var DOM = Struct.makeStructureConstructor('DOM', ['selector', 'fragmentClass', 'fragmentSpec']);
+var DOM = Struct.makeConstructor('DOM', ['selector', 'fragmentClass', 'fragmentSpec']);
 
 function spawnDOMDriver(domWrapFunction, jQueryWrapFunction) {
   domWrapFunction = domWrapFunction || DOM;
   var spec = domWrapFunction(_$('selector'), _$('fragmentClass'), _$('fragmentSpec'));
   Dataspace.spawn(
-    new DemandMatcher(spec,
-		      Patch.advertise(spec), // TODO: are the embedded captures problematic here? If not, why not?
+    new DemandMatcher([spec],
+		      [Patch.advertise(spec)],
 		      {
 			onDemandIncrease: function (c) {
 			  Dataspace.spawn(new DOMFragment(c.selector,
@@ -106,7 +106,7 @@ DOMFragment.prototype.interpretSpec = function (spec) {
     var attrs = hasAttrs ? spec[1] : {};
     var kidIndex = hasAttrs ? 2 : 1;
 
-    // Wow! Such XSS! Many hacks! So vulnerability! Amaze!
+    // TODO: Wow! Such XSS! Many hacks! So vulnerability! Amaze!
     var n = document.createElement(tagName);
     for (var i = 0; i < attrs.length; i++) {
       n.setAttribute(attrs[i][0], attrs[i][1]);
@@ -124,6 +124,9 @@ DOMFragment.prototype.buildNodes = function () {
   var self = this;
   var nodes = [];
   $(self.selector).each(function (index, domNode) {
+    if (!(self.fragmentSpec instanceof Syndicate.Seal)) {
+      throw new Error("DOM fragmentSpec not contained in a Syndicate.Seal: " + JSON.stringify(self.fragmentSpec));
+    }
     var n = self.interpretSpec(self.fragmentSpec.sealContents);
     if ('classList' in n) {
       n.classList.add(self.fragmentClass);

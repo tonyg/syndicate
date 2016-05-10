@@ -186,11 +186,10 @@ function compilePattern(v, p) {
     }
 
     if (Struct.isStructure(p)) {
-      var args = p.$SyndicateMeta$.arguments;
-      for (var i = args.length - 1; i >= 0; i--) {
-        acc = walk(p[args[i]], acc);
+      for (var i = p.meta.arity - 1; i >= 0; i--) {
+        acc = walk(p[i], acc);
       }
-      return rseq(args.length, p.$SyndicateMeta$, acc);
+      return rseq(p.meta.arity, p.meta, acc);
     }
 
     if (p instanceof $Embedded) {
@@ -222,13 +221,10 @@ function matchPattern(v, p) {
 
     if (p === __) return;
 
-    if (Struct.isStructure(p)
-        && Struct.isStructure(v)
-        && (p.$SyndicateMeta$ === v.$SyndicateMeta$))
+    if (Struct.isStructure(p) && Struct.isStructure(v) && (p.meta.equals(v.meta)))
     {
-      var args = p.$SyndicateMeta$.arguments;
-      for (var i = 0; i < args.length; i++) {
-        walk(v[args[i]], p[args[i]]);
+      for (var i = 0; i < p.meta.arity; i++) {
+        walk(v[i], p[i]);
       }
       return;
     }
@@ -431,8 +427,8 @@ function matchValue(r, v, failureResultOpt) {
       r = rlookup(r, v.length, SOA);
       vs = Immutable.List(v).concat(vs);
     } else if (Struct.isStructure(v)) {
-      r = rlookup(r, v.$SyndicateMeta$.arguments.length, v.$SyndicateMeta$);
-      vs = Immutable.List(Struct.structureToArray(v, true)).concat(vs);
+      r = rlookup(r, v.meta.arity, v.meta);
+      vs = Immutable.List(v.fields).concat(vs);
     } else {
       r = rlookup(r, 0, v);
     }
@@ -501,17 +497,19 @@ function appendTrie(m, mTailFn) {
   }
 }
 
-function triePruneBranch(m, arityKeys) {
-  if (arityKeys.isEmpty()) return emptyTrie;
-  if (!(m instanceof $Branch)) return m;
-  var arityKey = arityKeys.first();
-  var rest = arityKeys.shift();
-  var arity = arityKey[0];
-  var key = arityKey[1];
-  m = rcopybranch(m);
-  rupdate_inplace(m, arity, key, triePruneBranch(rlookup(m, arity, key), rest));
-  return collapse(m);
-}
+// DANGEROUS: prefer subtract() instead.
+//
+// function triePruneBranch(m, arityKeys) {
+//   if (arityKeys.isEmpty()) return emptyTrie;
+//   if (!(m instanceof $Branch)) return m;
+//   var arityKey = arityKeys.first();
+//   var rest = arityKeys.shift();
+//   var arity = arityKey[0];
+//   var key = arityKey[1];
+//   m = rcopybranch(m);
+//   rupdate_inplace(m, arity, key, triePruneBranch(rlookup(m, arity, key), rest));
+//   return collapse(m);
+// }
 
 function trieStep(m, arity, key) {
   if (typeof key === 'undefined') {
@@ -550,8 +548,7 @@ function projectionNames(p) {
     }
 
     if (Struct.isStructure(p)) {
-      var args = p.$SyndicateMeta$.arguments;
-      for (var i = 0; i < args.length; i++) walk(p[args[i]]);
+      for (var i = 0; i < p.meta.arity; i++) walk(p[i]);
       return;
     }
   }
@@ -576,12 +573,11 @@ function projectionToPattern(p) {
     }
 
     if (Struct.isStructure(p)) {
-      var result = {"$SyndicateMeta$": p.$SyndicateMeta$};
-      var args = p.$SyndicateMeta$.arguments;
-      for (var i = 0; i < args.length; i++) {
-        result[args[i]] = walk(p[args[i]]);
+      var resultFields = [];
+      for (var i = 0; i < p.meta.arity; i++) {
+        resultFields[i] = walk(p[i]);
       }
-      return result;
+      return new Struct.Structure(p.meta, resultFields);
     }
 
     return p;
@@ -652,15 +648,13 @@ function projectMany(t, wholeSpecs, projectSuccessOpt, combinerOpt) {
     }
 
     if (Struct.isStructure(spec)) {
-      var arity = spec.$SyndicateMeta$.arguments.length;
-      var key = spec.$SyndicateMeta$;
       var intermediate = walk(isCapturing,
-                              rlookup(t, arity, key),
-                              Immutable.List(Struct.structureToArray(spec, true)),
+                              rlookup(t, spec.meta.arity, spec.meta),
+                              Immutable.List(spec.fields),
                               function (intermediate) {
                                 return walk(isCapturing, intermediate, specsRest, kont);
                               });
-      return isCapturing ? rseq(arity, key, intermediate) : intermediate;
+      return isCapturing ? rseq(spec.meta.arity, spec.meta, intermediate) : intermediate;
     }
 
     if (Array.isArray(spec)) {
@@ -687,7 +681,7 @@ function reconstructSequence(key, items) {
   if (key === SOA) {
     return items.toArray();
   } else {
-    return Struct.instantiateStructure(key, items);
+    return key.instantiate(items);
   }
 }
 
@@ -722,7 +716,7 @@ function trieKeys(m, takeCount0) {
         if (result === false) return false; // break out of iteration
 
         var piece;
-        if (Struct.isSyndicateMeta(key) || key === SOA) { // TODO: this is sloppy
+        if (Struct.isStructureType(key) || key === SOA) {
           piece = walk(k, arity, Immutable.List(), function (items, m1) {
             var item = reconstructSequence(key, items);
             return walk(m1, takeCount - 1, valsRev.unshift(item), kont);
@@ -798,10 +792,11 @@ function prettyTrie(m, initialIndent) {
 	    }
 	    acc.push(" ");
 	    if (key === SOA) key = '<' + arity + '>';
-            else if (Struct.isSyndicateMeta(key)) key = key.label + '<' + arity + '>';
+            else if (Struct.isStructureType(key)) key = key.label + '<' + arity + '>';
 	    else if (key instanceof $Special) key = key.name;
-            else if (typeof key === 'undefined') key = 'undefined';
-	    else key = JSON.stringify(key);
+            else key = JSON.stringify(key);
+
+            if (typeof key === 'undefined') key = 'undefined';
 	    acc.push(key);
 	    walk(i + key.length + 1, k);
           });
@@ -810,6 +805,78 @@ function prettyTrie(m, initialIndent) {
 
   function indentStr(i) {
     return new Array(i + 1).join(' '); // eww
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+function parenTypeToString(key) {
+  if (Struct.isStructureType(key)) {
+    return ':' + key.label;
+  } else {
+    return 'L';
+  }
+}
+
+function stringToParenType(arity, key) {
+  if (key[0] === ':') {
+    return new Struct.StructureType(key.slice(1), arity);
+  } else if (key === 'L') {
+    return SOA;
+  }
+  throw new Error("Unsupported JSON trie paren type: "+key);
+}
+
+function trieToJSON(t) {
+  if (is_emptyTrie(t)) { return []; }
+  if (t instanceof $Success) { return [true]; } // TODO: consider generalizing
+
+  // It's a $Branch.
+
+  var jParens = [];
+  var jAtoms = [];
+  t.edges.forEach(function (keymap, arity) {
+    keymap.forEach(function (k, key) {
+      var jk = trieToJSON(k);
+      if (Struct.isStructureType(key) || key === SOA) {
+        jParens.push([arity, parenTypeToString(key), jk]);
+      } else {
+        jAtoms.push([key, jk]);
+      }
+    });
+  });
+  return [jParens, trieToJSON(t.wild), jAtoms];
+}
+
+function badJSON(j) {
+  die("Cannot deserialize JSON trie: " + JSON.stringify(j));
+}
+
+function trieFromJSON(j) {
+  return decode(j);
+
+  function decode(j) {
+    if (!Array.isArray(j)) badJSON(j);
+
+    switch (j.length) {
+    case 0: return emptyTrie;
+    case 1: return rsuccess(true); // TODO: consider generalizing
+    case 3: {
+      var result = rcopybranch(expand(rwild(decode(j[1]))));
+      j[0].forEach(function (entry) {
+        var arity = entry[0];
+        if (typeof arity !== 'number') badJSON(j);
+        var key = stringToParenType(arity, entry[1]);
+        rupdate_inplace(result, arity, key, decode(entry[2]));
+      });
+      j[2].forEach(function (entry) {
+        var key = entry[0];
+        rupdate_inplace(result, 0, key, decode(entry[1]));
+      });
+      return collapse(result);
+    }
+    default: badJSON(j);
+    }
   }
 }
 
@@ -833,7 +900,7 @@ module.exports.subtract = subtract;
 module.exports.matchValue = matchValue;
 module.exports.matchTrie = matchTrie;
 module.exports.appendTrie = appendTrie;
-module.exports.triePruneBranch = triePruneBranch;
+// module.exports.triePruneBranch = triePruneBranch;
 module.exports.trieStep = trieStep;
 module.exports.trieSuccess = rsuccess;
 module.exports.relabel = relabel;
@@ -847,6 +914,8 @@ module.exports.captureToObject = captureToObject;
 module.exports.trieKeysToObjects = trieKeysToObjects;
 module.exports.projectObjects = projectObjects;
 module.exports.prettyTrie = prettyTrie;
+module.exports.trieToJSON = trieToJSON;
+module.exports.trieFromJSON = trieFromJSON;
 
 // For testing
 module.exports._testing = {

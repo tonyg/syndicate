@@ -29,8 +29,7 @@ module.exports.Ack = require('./ack.js').Ack;
 module.exports.RandomID = require('./randomid.js');
 module.exports.DOM = require("./dom-driver.js");
 module.exports.JQuery = require("./jquery-driver.js");
-// module.exports.RoutingTableWidget = require("./routing-table-widget.js");
-// module.exports.WebSocket = require("./websocket-driver.js");
+module.exports.WakeDetector = require("./wake-detector-driver.js");
 module.exports.Reflect = require("./reflect.js");
 
 module.exports.Patch = require("./patch.js");

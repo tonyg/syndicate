@@ -19,14 +19,17 @@ function Actor(state, bootFn) {
   this.mux = new Mux.Mux();
 
   this.boot = function() {
-    bootFn.call(this.state);
-    this.checkForTermination();
+    var self = this;
+    withCurrentFacet(null, function () {
+      bootFn.call(self.state);
+    });
+    self.checkForTermination();
   };
 }
 
 Actor.prototype.handleEvent = function(e) {
   this.facets.forEach(function (f) {
-    f.handleEvent(e);
+    withCurrentFacet(f, function () { f.handleEvent(e); });
   });
   this.checkForTermination();
 };
@@ -56,14 +59,32 @@ function Facet(actor) {
   this.endpoints = Immutable.Map();
   this.initBlocks = Immutable.List();
   this.doneBlocks = Immutable.List();
+  this.children = Immutable.Set();
+  this.parent = Facet.current;
+}
+
+Facet.current = null;
+
+function withCurrentFacet(facet, f) {
+  var previous = Facet.current;
+  Facet.current = facet;
+  var result;
+  try {
+    result = f();
+  } catch (e) {
+    Facet.current = previous;
+    throw e;
+  }
+  Facet.current = previous;
+  return result;
 }
 
 Facet.prototype.handleEvent = function(e) {
   var facet = this;
-  this.endpoints.forEach(function(endpoint) {
+  facet.endpoints.forEach(function(endpoint) {
     endpoint.handlerFn.call(facet.actor.state, e);
   });
-  this.refresh();
+  facet.refresh();
 };
 
 Facet.prototype.addAssertion = function(assertionFn) {
@@ -157,6 +178,9 @@ Facet.prototype.refresh = function() {
 Facet.prototype.completeBuild = function() {
   var facet = this;
   this.actor.addFacet(this);
+  if (this.parent) {
+    this.parent.children = this.parent.children.add(this);
+  }
   this.initBlocks.forEach(function(b) { b.call(facet.actor.state); });
 };
 
@@ -169,8 +193,14 @@ Facet.prototype.terminate = function() {
   });
   Dataspace.stateChange(aggregate);
   this.endpoints = Immutable.Map();
+  if (this.parent) {
+    this.parent.children = this.parent.children.remove(this);
+  }
   this.actor.removeFacet(this);
   this.doneBlocks.forEach(function(b) { b.call(facet.actor.state); });
+  this.children.forEach(function (child) {
+    child.terminate();
+  });
 };
 
 //---------------------------------------------------------------------------

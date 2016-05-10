@@ -1,0 +1,97 @@
+h1 {
+    background: lightgrey;
+}
+
+body > section {
+    display: flex;
+}
+
+body > section > section {
+    margin: 1em;
+}
+
+section#messages {
+    flex-grow: 3;
+}
+
+section#active_users {
+    flex-grow: 1;
+}
+
+form#chat_form {
+    flex: 1 100%;
+}
+
+span.timestamp {
+    color: #d0d0d0;
+}
+
+span.timestamp:after {
+    content: " ";
+}
+
+.utterance span.nym:after {
+    content: ": ";
+}
+
+span.arrived:after {
+    content: " arrived";
+}
+
+span.departed:after {
+    content: " departed";
+}
+
+div.notification {
+    background-color: #eeeeff;
+}
+
+span.state.connected, span.arrived {
+    color: #00c000;
+}
+
+span.state.disconnected, span.departed {
+    color: #c00000;
+}
+
+span.state.crashed {
+    color: white;
+    background: red;
+}
+
+span.state.crashed:after {
+    content: "; please reload the page";
+}
+
+div.state_disconnected {
+    background-color: #ffeeee;
+}
+
+div.state_connected {
+    background-color: #eeffee;
+}
+
+#chat_output {
+    height: 15em;
+    overflow-y: scroll;
+}
+
+#chat_input {
+    width: 80%;
+}
+
+.nym {
+    color: #00c000;
+}
+
+.nym_status:before {
+    content: " (";
+}
+
+.nym_status:after {
+    content: ")";
+}
+
+.nym_status {
+    font-size: smaller;
+}

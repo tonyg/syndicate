@@ -8,9 +8,9 @@ var __ = Syndicate.__;
 var _$ = Syndicate._$;
 
 var jQueryEvent = Syndicate.JQuery.jQueryEvent;
-var fieldContents = Syndicate.Struct.makeStructureConstructor('fieldContents', ['text', 'pos']);
-var highlight = Syndicate.Struct.makeStructureConstructor('highlight', ['state']);
-var fieldCommand = Syndicate.Struct.makeStructureConstructor('fieldCommand', ['detail']);
+var fieldContents = Syndicate.Struct.makeConstructor('fieldContents', ['text', 'pos']);
+var highlight = Syndicate.Struct.makeConstructor('highlight', ['state']);
+var fieldCommand = Syndicate.Struct.makeConstructor('fieldCommand', ['detail']);
 
 function escapeText(text) {
   text = text.replace(/&/g, '&amp;');
@@ -47,7 +47,7 @@ function spawnGui() {
       var self = this;
       switch (e.type) {
       case "message":
-	var event = e.message.eventValue;
+	var event = e.message[2];
 	var keycode = event.keyCode;
 	var character = String.fromCharCode(event.charCode);
 	if (keycode === 37 /* left */) {
@@ -105,7 +105,7 @@ function spawnModel() {
 
     handleEvent: function (e) {
       if (e.type === "message" && fieldCommand.isClassOf(e.message)) {
-	var command = e.message.detail;
+	var command = e.message[0];
 	if (command === "cursorLeft") {
 	  this.cursorPos--;
 	  if (this.cursorPos < 0)

@@ -1,6 +1,6 @@
 "use strict";
 
-var beep = Syndicate.Struct.makeStructureConstructor('beep', ['counter']);
+var beep = Syndicate.Struct.makeConstructor('beep', ['counter']);
 
 var G;
 $(document).ready(function () {
@@ -26,7 +26,7 @@ $(document).ready(function () {
 	boot: function () { return sub(beep.pattern); },
 	handleEvent: function (e) {
 	  if (e.type === 'message') {
-	    console.log("beep!", e.message.counter);
+	    console.log("beep!", e.message[0]);
 	  }
 	}
       });

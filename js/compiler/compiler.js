@@ -122,7 +122,7 @@ var modifiedSourceActions = {
     var label = maybeLabel.numChildren === 1
         ? maybeLabel.children[0].interval.contents
         : JSON.stringify(typeName.interval.contents);
-    return 'var ' + typeName.asES5 + ' = Syndicate.Struct.makeStructureConstructor(' +
+    return 'var ' + typeName.asES5 + ' = Syndicate.Struct.makeConstructor(' +
       label + ', ' + JSON.stringify(formals) + ');';
   },
 
@@ -293,14 +293,35 @@ semantics.addOperation('buildSubscription(acc,mode)', {
     v.children[0].buildSubscription(this.args.acc, this.args.mode); // both branches!
   },
 
+  AssignmentExpression_assignment: function (lhsExpr, _assignmentOperator, rhsExpr) {
+    var i = lhsExpr.interval.contents;
+    if (i[0] === '$' && i.length > 1) {
+      switch (this.args.mode) {
+        case 'pattern': rhsExpr.buildSubscription(this.args.acc, this.args.mode); break;
+        case 'instantiated': lhsExpr.buildSubscription(this.args.acc, this.args.mode); break;
+        case 'projection': {
+          this.args.acc.push('(Syndicate._$(' + JSON.stringify(i.slice(1)) + ',');
+          rhsExpr.buildSubscription(this.args.acc, this.args.mode);
+          this.args.acc.push('))');
+          break;
+        }
+        default: throw new Error('Unexpected buildSubscription mode ' + this.args.mode);
+      }
+    } else {
+      lhsExpr.buildSubscription(this.args.acc, this.args.mode);
+      _assignmentOperator.buildSubscription(this.args.acc, this.args.mode);
+      rhsExpr.buildSubscription(this.args.acc, this.args.mode);
+    }
+  },
+
   identifier: function(_name) {
     var i = this.interval.contents;
-    if (i[0] === '$') {
+    if (i[0] === '$' && i.length > 1) {
       switch (this.args.mode) {
-      case 'pattern': this.args.acc.push('_'); break;
-      case 'instantiated': this.args.acc.push(i.slice(1)); break;
-      case 'projection': this.args.acc.push('(Syndicate._$(' + JSON.stringify(i.slice(1)) + '))'); break;
-      default: throw new Error('Unexpected buildSubscription mode ' + this.args.mode);
+        case 'pattern': this.args.acc.push('_'); break;
+        case 'instantiated': this.args.acc.push(i.slice(1)); break;
+        case 'projection': this.args.acc.push('(Syndicate._$(' + JSON.stringify(i.slice(1)) + '))'); break;
+        default: throw new Error('Unexpected buildSubscription mode ' + this.args.mode);
       }
     } else {
       this.args.acc.push(i);
@@ -328,7 +349,7 @@ semantics.addAttribute('bindings', {
 semantics.addOperation('pushBindings(accumulator)', {
   identifier: function(_name) {
     var i = this.interval.contents;
-    if (i[0] === '$') {
+    if (i[0] === '$' && i.length > 1) {
       this.args.accumulator.push(i.slice(1));
     }
   },

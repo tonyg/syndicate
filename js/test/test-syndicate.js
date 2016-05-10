@@ -105,10 +105,10 @@ describe("nested actor with an echoey protocol", function () {
     }, ['<<<<<<<< Removed:\n'+
 	' ::: nothing\n'+
 	'======== Added:\n'+
-	' atMeta<1> "X" {["meta"]}\n'+
+	' at-meta<1> "X" {["meta"]}\n'+
 	'>>>>>>>>',
 	'<<<<<<<< Removed:\n'+
-	' atMeta<1> "X" {["meta"]}\n'+
+	' at-meta<1> "X" {["meta"]}\n'+
 	'======== Added:\n'+
 	' ::: nothing\n'+
 	'>>>>>>>>']);

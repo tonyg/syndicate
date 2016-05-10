@@ -402,7 +402,7 @@ describe("calls to matchPattern", function () {
   });
 
   it("matches structures", function () {
-    var ctor = Struct.makeStructureConstructor('foo', ['bar', 'zot']);
+    var ctor = Struct.makeConstructor('foo', ['bar', 'zot']);
     expect(r.matchPattern(ctor(123, 234), ctor(r._$("bar"), r._$("zot"))))
       .to.eql({ bar: 123, zot: 234, length: 2 });
     // Previously, structures were roughly the same as arrays:
@@ -466,75 +466,76 @@ describe('intersect', function () {
   });
 });
 
-describe('triePruneBranch', function () {
-  it('should not affect empty trie', function () {
-    checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List([])), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List([r.SOA])), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List(["x"])), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List([r.SOA, "x"])), [' ::: nothing']);
-  });
+// describe('triePruneBranch', function () {
+//   it('should not affect empty trie', function () {
+//     checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List([])), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List([r.SOA])), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List(["x"])), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(r.emptyTrie, Immutable.List([r.SOA, "x"])), [' ::: nothing']);
+//   });
+//
+//   it('should leave a hole in a full trie', function () {
+//     var full = r.compilePattern(true, r.__);
+//     checkPrettyTrie(r.triePruneBranch(full, Immutable.List([])), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(full, Immutable.List([[0, r.SOA]])),
+// 		    [' ★ {true}',
+// 		     ' <0> ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(full, Immutable.List([[0, "x"]])),
+// 		    [' ★ {true}',
+// 		     ' "x" ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(full, Immutable.List([[2, r.SOA], [0, "x"]])),
+// 		    [' ★ {true}',
+// 		     ' <2> ★ ★ {true}',
+// 		     '     "x" ::: nothing']);
+//   });
+//
+//   it('should prune in a finite tree and leave the rest alone', function () {
+//     var A = r.compilePattern(true, ["y"])
+//     var B = r.union(r.compilePattern(true, ["x"]), A);
+//     var C = r.union(r.compilePattern(true, "z"), B);
+//     checkPrettyTrie(r.triePruneBranch(A, Immutable.List([])), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(B, Immutable.List([])), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(C, Immutable.List([])), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(A, Immutable.List([[0, "z"]])), [' <1> "y" {true}']);
+//     checkPrettyTrie(r.triePruneBranch(B, Immutable.List([[0, "z"]])), [' <1> "x" {true}',
+// 								       '     "y" {true}']);
+//     checkPrettyTrie(r.triePruneBranch(C, Immutable.List([[0, "z"]])), [' <1> "x" {true}',
+// 								       '     "y" {true}']);
+//     checkPrettyTrie(r.triePruneBranch(A, Immutable.List([[1, r.SOA]])), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(B, Immutable.List([[1, r.SOA]])), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(C, Immutable.List([[1, r.SOA]])), [' "z" {true}']);
+//     var px = [[1, r.SOA], [0, "x"]];
+//     checkPrettyTrie(r.triePruneBranch(A, Immutable.List(px)), [' <1> "y" {true}']);
+//     checkPrettyTrie(r.triePruneBranch(B, Immutable.List(px)), [' <1> "y" {true}']);
+//     checkPrettyTrie(r.triePruneBranch(C, Immutable.List(px)), [' "z" {true}',
+// 							       ' <1> "y" {true}']);
+//     var py = [[1, r.SOA], [0, "y"]];
+//     checkPrettyTrie(r.triePruneBranch(A, Immutable.List(py)), [' ::: nothing']);
+//     checkPrettyTrie(r.triePruneBranch(B, Immutable.List(py)), [' <1> "x" {true}']);
+//     checkPrettyTrie(r.triePruneBranch(C, Immutable.List(py)), [' "z" {true}',
+// 							       ' <1> "x" {true}']);
+//   });
+// });
 
-  it('should leave a hole in a full trie', function () {
-    var full = r.compilePattern(true, r.__);
-    checkPrettyTrie(r.triePruneBranch(full, Immutable.List([])), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(full, Immutable.List([[0, r.SOA]])),
-		    [' ★ {true}',
-		     ' <0> ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(full, Immutable.List([[0, "x"]])),
-		    [' ★ {true}',
-		     ' "x" ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(full, Immutable.List([[2, r.SOA], [0, "x"]])),
-		    [' ★ {true}',
-		     ' <2> ★ ★ {true}',
-		     '     "x" ::: nothing']);
-  });
-
-  it('should prune in a finite tree and leave the rest alone', function () {
-    var A = r.compilePattern(true, ["y"])
-    var B = r.union(r.compilePattern(true, ["x"]), A);
-    var C = r.union(r.compilePattern(true, "z"), B);
-    checkPrettyTrie(r.triePruneBranch(A, Immutable.List([])), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(B, Immutable.List([])), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(C, Immutable.List([])), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(A, Immutable.List([[0, "z"]])), [' <1> "y" {true}']);
-    checkPrettyTrie(r.triePruneBranch(B, Immutable.List([[0, "z"]])), [' <1> "x" {true}',
-								       '     "y" {true}']);
-    checkPrettyTrie(r.triePruneBranch(C, Immutable.List([[0, "z"]])), [' <1> "x" {true}',
-								       '     "y" {true}']);
-    checkPrettyTrie(r.triePruneBranch(A, Immutable.List([[1, r.SOA]])), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(B, Immutable.List([[1, r.SOA]])), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(C, Immutable.List([[1, r.SOA]])), [' "z" {true}']);
-    var px = [[1, r.SOA], [0, "x"]];
-    checkPrettyTrie(r.triePruneBranch(A, Immutable.List(px)), [' <1> "y" {true}']);
-    checkPrettyTrie(r.triePruneBranch(B, Immutable.List(px)), [' <1> "y" {true}']);
-    checkPrettyTrie(r.triePruneBranch(C, Immutable.List(px)), [' "z" {true}',
-							       ' <1> "y" {true}']);
-    var py = [[1, r.SOA], [0, "y"]];
-    checkPrettyTrie(r.triePruneBranch(A, Immutable.List(py)), [' ::: nothing']);
-    checkPrettyTrie(r.triePruneBranch(B, Immutable.List(py)), [' <1> "x" {true}']);
-    checkPrettyTrie(r.triePruneBranch(C, Immutable.List(py)), [' "z" {true}',
-							       ' <1> "x" {true}']);
-  });
-});
-
-describe('makeStructureConstructor', function () {
+describe('makeConstructor', function () {
   it('should produce the right metadata', function () {
-    var ctor = Struct.makeStructureConstructor('foo', ['bar', 'zot']);
+    var ctor = Struct.makeConstructor('foo', ['bar', 'zot']);
     var inst = ctor(123, 234);
-    expect(inst.$SyndicateMeta$.label).to.equal('foo');
-    expect(inst.$SyndicateMeta$.arguments).to.eql(['bar', 'zot']);
+    expect(inst.meta.label).to.equal('foo');
+    expect(inst.meta.arity).to.equal(2);
+    expect(ctor.meta).to.equal(inst.meta);
   });
 
   it('should produce the right instance data', function () {
-    var ctor = Struct.makeStructureConstructor('foo', ['bar', 'zot']);
+    var ctor = Struct.makeConstructor('foo', ['bar', 'zot']);
     var inst = ctor(123, 234);
-    expect(inst.bar).to.equal(123);
-    expect(inst.zot).to.equal(234);
+    expect(inst[0]).to.equal(123);
+    expect(inst[1]).to.equal(234);
   });
 
   it('should work with compilePattern and matchValue', function () {
     var sA = Immutable.Set(["A"]);
-    var ctor = Struct.makeStructureConstructor('foo', ['bar', 'zot']);
+    var ctor = Struct.makeConstructor('foo', ['bar', 'zot']);
     var inst = ctor(123, 234);
     var x = r.compilePattern(sA, ctor(123, r.__));
     checkPrettyTrie(x, [' foo<2> 123 ★ {["A"]}']);

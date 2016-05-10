@@ -5,7 +5,7 @@ var Dataspace = require('./dataspace.js').Dataspace;
 var Struct = require('./struct.js');
 var Patch = require('./patch.js');
 
-var ack = Struct.makeStructureConstructor('ack', ['id']);
+var ack = Struct.makeConstructor('ack', ['id']);
 
 function Ack(metaLevel, id) {
   this.metaLevel = metaLevel || 0;
@@ -26,7 +26,7 @@ Ack.prototype.check = function (e) {
   if (!this.done) {
     if (e.type === 'message') {
       var m = Patch.stripAtMeta(e.message, this.metaLevel);
-      if (ack.isClassOf(m) && m.id === this.id) {
+      if (ack.isClassOf(m) && m[0] === this.id) {
 	this.disarm();
 	this.done = true;
       }

@@ -40,23 +40,23 @@ describe('basic patch compilation', function () {
     		     [' <2> 1 2 {true}'],
     		     [' ::: nothing']);
     checkPrettyPatch(Patch.assert([1, 2], 1),
-    		     [' atMeta<1> <2> 1 2 {true}'],
+    		     [' at-meta<1> <2> 1 2 {true}'],
     		     [' ::: nothing']);
     checkPrettyPatch(Patch.assert([1, 2], 2),
-    		     [' atMeta<1> atMeta<1> <2> 1 2 {true}'],
+    		     [' at-meta<1> at-meta<1> <2> 1 2 {true}'],
     		     [' ::: nothing']);
 
     checkPrettyPatch(Patch.sub([1, 2], 0),
     		     [' observe<1> <2> 1 2 {true}'],
     		     [' ::: nothing']);
     checkPrettyPatch(Patch.sub([1, 2], 1),
-    		     [' atMeta<1> observe<1> <2> 1 2 {true}',
-		      ' observe<1> atMeta<1> <2> 1 2 {true}'],
+    		     [' at-meta<1> observe<1> <2> 1 2 {true}',
+		      ' observe<1> at-meta<1> <2> 1 2 {true}'],
     		     [' ::: nothing']);
     checkPrettyPatch(Patch.sub([1, 2], 2),
-    		     [' atMeta<1> atMeta<1> observe<1> <2> 1 2 {true}',
-		      '           observe<1> atMeta<1> <2> 1 2 {true}',
-		      ' observe<1> atMeta<1> atMeta<1> <2> 1 2 {true}'],
+    		     [' at-meta<1> at-meta<1> observe<1> <2> 1 2 {true}',
+		      '            observe<1> at-meta<1> <2> 1 2 {true}',
+		      ' observe<1> at-meta<1> at-meta<1> <2> 1 2 {true}'],
     		     [' ::: nothing']);
   });
 });
@@ -111,14 +111,14 @@ describe('patch sequencing', function () {
 describe('patch lifting', function () {
   it('should basically work', function () {
     checkPrettyPatch(Patch.assert([1, 2]).lift(),
-    		     [' atMeta<1> <2> 1 2 {true}'],
+    		     [' at-meta<1> <2> 1 2 {true}'],
     		     [' ::: nothing']);
     checkPrettyPatch(Patch.sub([1, 2]).lift(),
-    		     [' atMeta<1> observe<1> <2> 1 2 {true}'],
+    		     [' at-meta<1> observe<1> <2> 1 2 {true}'],
     		     [' ::: nothing']);
     checkPrettyPatch(Patch.assert([1, 2]).andThen(Patch.assert(Patch.atMeta([1, 2]))).lift(),
-    		     [' atMeta<1> atMeta<1> <2> 1 2 {true}',
-		      '           <2> 1 2 {true}'],
+    		     [' at-meta<1> at-meta<1> <2> 1 2 {true}',
+		      '            <2> 1 2 {true}'],
     		     [' ::: nothing']);
   });
 });

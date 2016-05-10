@@ -41,6 +41,7 @@ function Dataspace(bootFn) {
 
 // Class state and methods
 
+Dataspace.noisy = false;
 Dataspace.stack = Immutable.List();
 
 Dataspace.current = function () {
@@ -140,7 +141,7 @@ Dataspace.prototype.asChild = function (pid, f, omitLivenessCheck) {
 Dataspace.prototype.kill = function (pid, exn) {
   if (exn && exn.stack) {
     console.log("Process exiting", pid, exn, exn.stack);
-  } else {
+  } else if (exn || Dataspace.noisy) {
     console.log("Process exiting", pid, exn);
   }
   var p = this.processTable.get(pid);
@@ -222,53 +223,53 @@ Dataspace.prototype.interpretAction = function (pid, action) {
   var self = this;
 
   switch (action.type) {
-  case 'stateChange':
-    var oldMux = this.mux.shallowCopy();
-    this.deliverPatches(oldMux, this.mux.updateStream(pid, action.patch));
-    return true;
+    case 'stateChange':
+      var oldMux = this.mux.shallowCopy();
+      this.deliverPatches(oldMux, this.mux.updateStream(pid, action.patch));
+      return true;
 
-  case 'message':
-    if (Patch.observe.isClassOf(action.message)) {
-      console.warn('Process ' + pid + ' send message containing query', action.message);
-    }
-    if (pid !== 'meta' && Patch.atMeta.isClassOf(action.message)) {
-      Dataspace.send(action.message.assertion);
-    } else {
-      this.mux.routeMessage(action.message).forEach(function (pid) {
-	self.deliverEvent(pid, action);
-      });
-    }
-    return true;
+    case 'message':
+      if (Patch.observe.isClassOf(action.message)) {
+        console.warn('Process ' + pid + ' send message containing query', action.message);
+      }
+      if (pid !== 'meta' && Patch.atMeta.isClassOf(action.message)) {
+        Dataspace.send(action.message[0]);
+      } else {
+        this.mux.routeMessage(action.message).forEach(function (pid) {
+	  self.deliverEvent(pid, action);
+        });
+      }
+      return true;
 
-  case 'spawn':
-    var oldMux = this.mux.shallowCopy();
-    var p = { behavior: action.behavior };
-    var pid = this.mux.nextPid;
-    this.processTable = this.processTable.set(pid, p);
-    var initialPatch = Patch.emptyPatch;
-    if (p.behavior.boot) {
-      initialPatch = this.asChild(pid, function () { return p.behavior.boot() });
-      initialPatch = initialPatch || Patch.emptyPatch;
-      this.markRunnable(pid);
-    }
-    this.deliverPatches(oldMux, this.mux.addStream(initialPatch));
-    return true;
+    case 'spawn':
+      var oldMux = this.mux.shallowCopy();
+      var p = { behavior: action.behavior };
+      var pid = this.mux.nextPid;
+      this.processTable = this.processTable.set(pid, p);
+      var initialPatch = Patch.emptyPatch;
+      if (p.behavior.boot) {
+        initialPatch = this.asChild(pid, function () { return p.behavior.boot() });
+        initialPatch = initialPatch || Patch.emptyPatch;
+        this.markRunnable(pid);
+      }
+      this.deliverPatches(oldMux, this.mux.addStream(initialPatch));
+      return true;
 
-  case 'terminate':
-    var oldMux = this.mux.shallowCopy();
-    this.deliverPatches(oldMux, this.mux.removeStream(pid));
-    console.log("Process exit complete", pid);
-    this.processTable = this.processTable.remove(pid);
-    return true;
+    case 'terminate':
+      var oldMux = this.mux.shallowCopy();
+      this.deliverPatches(oldMux, this.mux.removeStream(pid));
+      if (Dataspace.noisy) console.log("Process exit complete", pid);
+      this.processTable = this.processTable.remove(pid);
+      return true;
 
-  case 'terminateDataspace':
-    Dataspace.exit();
-    return false;
+    case 'terminateDataspace':
+      Dataspace.exit();
+      return false;
 
-  default:
-    var exn = new Error("Action type " + action.type + " not understood");
-    exn.action = action;
-    throw exn;
+    default:
+      var exn = new Error("Action type " + action.type + " not understood");
+      exn.action = action;
+      throw exn;
   }
 };
 
