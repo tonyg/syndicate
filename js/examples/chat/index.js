@@ -19,7 +19,7 @@ function spawnChatApp() {
   if (!($("#nym").val())) { $("#nym").val("nym" + Math.floor(Math.random() * 65536)); }
 
   actor {
-    forever {
+    react {
       on asserted jQueryInput('#nym',    $v) { this.nym = v; }
       on asserted jQueryInput('#status', $v) { this.status = v; }
 
@@ -85,11 +85,11 @@ assertion type jQueryInput(selector, value);
 
 function spawnInputChangeMonitor() {
   actor {
-    forever {
+    react {
       on asserted Syndicate.observe(jQueryInput($selector, _)) {
         actor {
           this.value = $(selector).val();
-          state {
+          react {
             assert jQueryInput(selector, this.value);
             on message jQueryEvent(selector, 'change', $e) {
               this.value = e.target.value;

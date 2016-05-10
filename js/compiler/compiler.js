@@ -101,7 +101,7 @@ var modifiedSourceActions = {
   ActorFacetStatement_state: function(_state, facetBlock, _until, transitionBlock) {
     return buildFacet(facetBlock, transitionBlock);
   },
-  ActorFacetStatement_until: function(_until, transitionBlock) {
+  ActorFacetStatement_until: function(_react, _until, transitionBlock) {
     return buildFacet(null, transitionBlock);
   },
   ActorFacetStatement_forever: function(_forever, facetBlock) {

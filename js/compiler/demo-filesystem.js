@@ -12,13 +12,13 @@ ground dataspace {
 
   actor {
     this.files = {};
-    forever {
+    react {
       during Syndicate.observe(file($name, _)) {
-        init {
+        do {
           console.log("At least one reader exists for:", name);
         }
         assert file(name, this.files[name]);
-        done {
+        finally {
           console.log("No remaining readers exist for:", name);
         }
       }
@@ -35,7 +35,7 @@ ground dataspace {
   // A simple demo client of the file system
 
   actor {
-    state {
+    react {
       on asserted file("hello.txt", $content) {
         console.log("hello.txt has content", JSON.stringify(content));
       }
@@ -45,7 +45,7 @@ ground dataspace {
       }
     }
 
-    until {
+    react until {
       case asserted Syndicate.observe(saveFile(_, _)) {
         :: saveFile("hello.txt", "a");
         :: deleteFile("hello.txt");
@@ -53,7 +53,7 @@ ground dataspace {
         :: saveFile("hello.txt", "quit demo");
         :: saveFile("hello.txt", "final contents");
         actor {
-          until {
+          react until {
             case asserted file("hello.txt", $content) {
               console.log("second observer sees that hello.txt content is",
                           JSON.stringify(content));

@@ -43,7 +43,7 @@ function spawnGui() {
 	: piece(text, pos, 0, text.length + 1, "normal");
     };
 
-    forever {
+    react {
       on message jQueryEvent("#inputRow", "+keypress", $event) {
         var keycode = event.keyCode;
         var character = String.fromCharCode(event.charCode);
@@ -82,7 +82,7 @@ function spawnModel() {
     this.fieldValue = "initial";
     this.cursorPos = this.fieldValue.length; /* positions address gaps between characters */
 
-    forever {
+    react {
       assert fieldContents(this.fieldValue, this.cursorPos);
 
       on message fieldCommand("cursorLeft") {
@@ -135,7 +135,7 @@ function spawnSearch() {
       }
     };
 
-    forever {
+    react {
       assert highlight(this.highlight);
 
       on message jQueryEvent("#searchBox", "input", $event) {

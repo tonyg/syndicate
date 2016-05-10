@@ -22,9 +22,9 @@ Syndicate <: ES5 {
     | dataspace Block                    -- normal
 
   ActorFacetStatement
-    = state FacetBlock until FacetStateTransitionBlock   -- state
-    | until FacetStateTransitionBlock                    -- until
-    | forever FacetBlock                                 -- forever
+    = react FacetBlock until FacetStateTransitionBlock   -- state
+    | react until FacetStateTransitionBlock              -- until
+    | react FacetBlock                                   -- forever
 
   AssertionTypeDeclarationStatement
     = assertion type identifier "(" FormalParameterList ")" ("=" stringLiteral)? #(sc)
@@ -37,8 +37,8 @@ Syndicate <: ES5 {
   FacetBlock = "{" FacetInitBlock? FacetSituation* FacetDoneBlock? "}"
   FacetStateTransitionBlock = "{" FacetStateTransition* "}"
 
-  FacetInitBlock = init Block
-  FacetDoneBlock = done Block
+  FacetInitBlock = do Block
+  FacetDoneBlock = finally Block
 
   FacetSituation
     = assert FacetPattern AssertWhenClause? #(sc) -- assert
@@ -74,16 +74,13 @@ Syndicate <: ES5 {
   asserted = "asserted" ~identifierPart
   assertion = "assertion" ~identifierPart
   dataspace = "dataspace" ~identifierPart
-  done = "done" ~identifierPart
   during = "during" ~identifierPart
-  forever = "forever" ~identifierPart
   ground = "ground" ~identifierPart
-  init = "init" ~identifierPart
   message = "message" ~identifierPart
   metalevel = "metalevel" ~identifierPart
   on = "on" ~identifierPart
+  react = "react" ~identifierPart
   retracted = "retracted" ~identifierPart
-  state = "state" ~identifierPart
   type = "type" ~identifierPart
   until = "until" ~identifierPart
   when = "when" ~identifierPart

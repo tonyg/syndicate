@@ -9,7 +9,7 @@ ground dataspace {
   actor {
     this.balance = 0;
 
-    forever {
+    react {
       assert account(this.balance);
       on message deposit($amount) {
         this.balance += amount;
@@ -18,7 +18,7 @@ ground dataspace {
   }
 
   actor {
-    forever {
+    react {
       on asserted account($balance) {
         console.log("Balance is now", balance);
       }
@@ -26,11 +26,11 @@ ground dataspace {
   }
 
   actor {
-    state {
-      init {
+    react {
+      do {
         console.log("Waiting for account.");
       }
-      done {
+      finally {
         console.log("Account became ready.");
       }
     } until {

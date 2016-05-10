@@ -13,7 +13,7 @@ var jQueryEvent = Syndicate.JQuery.jQueryEvent;
 
 function spawnTV() {
   actor {
-    forever {
+    react {
       during tvAlert($text) {
         assert DOM('#tv', 'alert', Syndicate.seal(["li", text]));
       }
@@ -26,7 +26,7 @@ function spawnTV() {
 
 function spawnRemoteControl() {
   actor {
-    forever {
+    react {
       assert componentPresent('remote control');
       on message jQueryEvent('#remote-control', 'click', _) {
         :: remoteClick();
@@ -43,7 +43,7 @@ function spawnRemoteListener() {
     // state, if we've been clicked, turn it off. We don't do this
     // here, for simplicity.
 
-    forever {
+    react {
       on asserted powerDraw($watts) {
         this.stoveIsOn = watts > 0;
       }
@@ -63,7 +63,7 @@ function spawnRemoteListener() {
 function spawnStoveSwitch() {
   actor {
     this.powerOn = false;
-    state {
+    react {
       assert componentPresent('stove switch');
       assert switchState(this.powerOn);
 
@@ -87,7 +87,7 @@ function spawnStoveSwitch() {
 function spawnPowerDrawMonitor() {
   actor {
     this.watts = 0;
-    state {
+    react {
       assert componentPresent('power draw monitor');
       assert powerDraw(this.watts);
 
@@ -110,14 +110,14 @@ function spawnPowerDrawMonitor() {
 
 function spawnTimeoutListener() {
   actor {
-    forever {
+    react {
       during powerDraw($watts) {
-        init {
+        do {
           if (watts > 0) {
             var powerOnTime = Date.now();
-            forever {
+            react {
               on asserted Syndicate.Timer.timeLaterThan(powerOnTime + 3000) {
-                forever { assert tvAlert('Stove on too long?'); }
+                react { assert tvAlert('Stove on too long?'); }
               }
             }
           }
@@ -129,13 +129,13 @@ function spawnTimeoutListener() {
 
 // function spawnTimeoutListener() {
 //   actor {
-//     forever {
+//     react {
 //       on asserted powerDraw($watts) {
 //         if (watts > 0) {
 //           var powerOnTime = Date.now();
-//           state {
+//           react {
 //             on asserted Syndicate.Timer.timeLaterThan(powerOnTime + 3000) {
-//               forever { assert tvAlert('Stove on too long?'); }
+//               react { assert tvAlert('Stove on too long?'); }
 //             }
 //           } until {
 //             case asserted powerDraw(0); // alt: on retracted powerDraw(watts);
@@ -150,7 +150,7 @@ function spawnTimeoutListener() {
 //   actor {
 //     this.mostRecentTime = 0;
 //     this.powerOnTime = null;
-//     forever {
+//     react {
 //       on asserted powerDraw($watts) {
 //         this.powerOnTime = (watts > 0) ? this.mostRecentTime : null;
 //       }
@@ -168,9 +168,9 @@ function spawnTimeoutListener() {
 
 function spawnFailureMonitor() {
   actor {
-    forever {
+    react {
       on retracted componentPresent($who) {
-        state {
+        react {
           assert tvAlert('FAILURE: ' + who);
         } until {
           case asserted componentPresent(who);
@@ -185,7 +185,7 @@ function spawnFailureMonitor() {
 
 function spawnChaosMonkey() {
   actor {
-    forever {
+    react {
       on message jQueryEvent('#spawn-power-draw-monitor', 'click', _) {
         spawnPowerDrawMonitor();
       }

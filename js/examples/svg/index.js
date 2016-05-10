@@ -13,7 +13,7 @@ $(document).ready(function () {
         :: time(+(new Date()));
       }), 1000);
 
-      forever {
+      react {
         on message time($now) {
           this.angle = (((now / 1000) % 60) / 60) * 2 * Math.PI;
           this.handX = 50 + 40 * Math.cos(this.angle);
