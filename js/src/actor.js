@@ -181,7 +181,9 @@ Facet.prototype.completeBuild = function() {
   if (this.parent) {
     this.parent.children = this.parent.children.add(this);
   }
-  this.initBlocks.forEach(function(b) { b.call(facet.actor.state); });
+  withCurrentFacet(facet, function () {
+    facet.initBlocks.forEach(function(b) { b.call(facet.actor.state); });
+  });
 };
 
 Facet.prototype.terminate = function() {
@@ -197,7 +199,9 @@ Facet.prototype.terminate = function() {
     this.parent.children = this.parent.children.remove(this);
   }
   this.actor.removeFacet(this);
-  this.doneBlocks.forEach(function(b) { b.call(facet.actor.state); });
+  withCurrentFacet(facet, function () {
+    facet.doneBlocks.forEach(function(b) { b.call(facet.actor.state); });
+  });
   this.children.forEach(function (child) {
     child.terminate();
   });
