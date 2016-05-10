@@ -93,7 +93,7 @@ function isAttributes(x) {
   return Array.isArray(x) && ((x.length === 0) || Array.isArray(x[0]));
 }
 
-DOMFragment.prototype.interpretSpec = function (spec) {
+DOMFragment.prototype.interpretSpec = function (spec, xmlns) {
   // Fragment specs are roughly JSON-equivalents of SXML.
   // spec ::== ["tag", [["attr", "value"], ...], spec, spec, ...]
   //         | ["tag", spec, spec, ...]
@@ -103,16 +103,23 @@ DOMFragment.prototype.interpretSpec = function (spec) {
   } else if ($.isArray(spec)) {
     var tagName = spec[0];
     var hasAttrs = isAttributes(spec[1]);
-    var attrs = hasAttrs ? spec[1] : {};
+    var attrs = hasAttrs ? spec[1] : [];
     var kidIndex = hasAttrs ? 2 : 1;
 
+    var xmlnsAttr = attrs.find(function (e) { return e[0] === 'xmlns' });
+    if (xmlnsAttr) {
+      xmlns = xmlnsAttr[1];
+    }
+
     // TODO: Wow! Such XSS! Many hacks! So vulnerability! Amaze!
-    var n = document.createElement(tagName);
+    var n = xmlns
+        ? document.createElementNS(xmlns, tagName)
+        : document.createElement(tagName);
     for (var i = 0; i < attrs.length; i++) {
-      n.setAttribute(attrs[i][0], attrs[i][1]);
+      if (attrs[i][0] !== 'xmlns') n.setAttribute(attrs[i][0], attrs[i][1]);
     }
     for (var i = kidIndex; i < spec.length; i++) {
-      n.appendChild(this.interpretSpec(spec[i]));
+      n.appendChild(this.interpretSpec(spec[i], xmlns));
     }
     return n;
   } else {
@@ -127,7 +134,7 @@ DOMFragment.prototype.buildNodes = function () {
     if (!(self.fragmentSpec instanceof Syndicate.Seal)) {
       throw new Error("DOM fragmentSpec not contained in a Syndicate.Seal: " + JSON.stringify(self.fragmentSpec));
     }
-    var n = self.interpretSpec(self.fragmentSpec.sealContents);
+    var n = self.interpretSpec(self.fragmentSpec.sealContents, '');
     if ('classList' in n) {
       n.classList.add(self.fragmentClass);
     }
