@@ -1,6 +1,5 @@
 assertion type switchState(on);
 assertion type powerDraw(watts);
-assertion type time(now);
 assertion type remoteClick();
 assertion type tvAlert(text);
 assertion type switchAction(on);
@@ -107,36 +106,62 @@ function spawnPowerDrawMonitor() {
 }
 
 ///////////////////////////////////////////////////////////////////////////
-// Clock and "timeout listener"
-
-function spawnClock() {
-  actor {
-    setInterval(Syndicate.Dataspace.wrap(function () {
-      :: time(+(new Date()));
-    }), 200);
-    forever {
-      assert componentPresent('real time clock');
-    }
-  }
-}
+// Timeout listener
 
 function spawnTimeoutListener() {
   actor {
-    this.mostRecentTime = 0;
-    this.powerOnTime = null;
-
     forever {
-      on asserted powerDraw($watts) {
-        this.powerOnTime = (watts > 0) ? this.mostRecentTime : null;
+      during powerDraw($watts) {
+        init {
+          if (watts > 0) {
+            var powerOnTime = Date.now();
+            forever {
+              on asserted Syndicate.Timer.timeLaterThan(powerOnTime + 3000) {
+                forever { assert tvAlert('Stove on too long?'); }
+              }
+            }
+          }
+        }
       }
-      on message time($now) {
-        this.mostRecentTime = now;
-      }
-      assert tvAlert('Stove on too long?')
-        when (this.powerOnTime !== null && this.mostRecentTime - this.powerOnTime > 3000);
     }
   }
 }
+
+// function spawnTimeoutListener() {
+//   actor {
+//     forever {
+//       on asserted powerDraw($watts) {
+//         if (watts > 0) {
+//           var powerOnTime = Date.now();
+//           state {
+//             on asserted Syndicate.Timer.timeLaterThan(powerOnTime + 3000) {
+//               forever { assert tvAlert('Stove on too long?'); }
+//             }
+//           } until {
+//             case asserted powerDraw(0); // alt: on retracted powerDraw(watts);
+//           }
+//         }
+//       }
+//     }
+//   }
+// }
+
+// function spawnTimeoutListener() {
+//   actor {
+//     this.mostRecentTime = 0;
+//     this.powerOnTime = null;
+//     forever {
+//       on asserted powerDraw($watts) {
+//         this.powerOnTime = (watts > 0) ? this.mostRecentTime : null;
+//       }
+//       on message Syndicate.Timer.periodicTick(200) {
+//         this.mostRecentTime = Date.now();
+//       }
+//       assert tvAlert('Stove on too long?')
+//         when (this.powerOnTime !== null && this.mostRecentTime - this.powerOnTime > 3000);
+//     }
+//   }
+// }
 
 ///////////////////////////////////////////////////////////////////////////
 // Failure monitor
@@ -178,13 +203,13 @@ $(document).ready(function () {
   ground dataspace G {
     Syndicate.JQuery.spawnJQueryDriver();
     Syndicate.DOM.spawnDOMDriver();
+    Syndicate.Timer.spawnTimerDriver();
 
     spawnTV();
     spawnRemoteControl();
     spawnRemoteListener();
     spawnStoveSwitch();
     spawnPowerDrawMonitor();
-    spawnClock();
     spawnTimeoutListener();
 
     spawnFailureMonitor();
