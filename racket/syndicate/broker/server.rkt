@@ -8,6 +8,7 @@
 (require net/rfc6455)
 (require (except-in "../main.rkt" dataspace assert))
 (require "../actor.rkt")
+(require "../trie.rkt")
 (require "../demand-matcher.rkt")
 (require "../drivers/timer.rkt")
 (require "../drivers/websocket.rkt")
@@ -34,7 +35,7 @@
 
          (arm-ping-timer!)
 
-         (until (retracted (advertise (websocket-message c server-id _)))
+         (until (retracted (advertise (websocket-message c server-id _)) #:meta-level 1)
            (assert (advertise (websocket-message server-id c _)) #:meta-level 1)
 
            (on (message (timer-expired c _) #:meta-level 1)
@@ -43,14 +44,27 @@
 
            (on (message (websocket-message c server-id $data) #:meta-level 1)
                (match (drop-json-action (string->jsexpr data))
+                 ['ping (send-event 'pong)]
+                 ['pong (void)]
                  [(? patch? p) (patch! (patch-without-at-meta p))]
                  [(message (at-meta _)) (void)]
                  [(message body) (send! body)]))
 
            (on-event
-            [(? patch? p) (send-event (patch-without-at-meta p))]
+            [(? patch? p) (send-event (clean-patch p))]
             [(message (at-meta _)) #f]
             [(? message? m) (send-event m)]))))
+
+(define stuff-to-prune
+  (trie-union-all #:combiner (lambda (v1 v2) (trie-success #t))
+                  (list (pattern->trie #t (at-meta ?))
+                        (pattern->trie #t (observe (at-meta ?))))))
+
+(define (clean-patch p)
+  ;; TODO: this is gross. Linkage shouldn't be visible, and there
+  ;; should be some clean way of getting rid of observe(atMeta(...))
+  ;; and so on.
+  (patch-without-linkage (patch-pruned-by p stuff-to-prune)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

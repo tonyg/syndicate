@@ -20,6 +20,7 @@
          label-patch
          limit-patch
          limit-patch/routing-table
+         patch-pruned-by
          patch-without-at-meta
          only-meta-tset
          compute-aggregate-patch
@@ -70,6 +71,8 @@
 
 (define observe-parenthesis (open-parenthesis 1 struct:observe))
 (define at-meta-parenthesis (open-parenthesis 1 struct:at-meta))
+
+(define at-meta-everything (pattern->trie #t (at-meta ?)))
 
 (define (patch-empty? p)
   (and (patch? p)
@@ -135,11 +138,15 @@
          (trie-intersect out bound
 			 #:combiner (lambda (v1 v2) (empty-tset-guard (tset-intersect v1 v2))))))
 
+;; Completely ignores success-values in t.
+(define (patch-pruned-by p t)
+  (match-define (patch added removed) p)
+  (patch (trie-subtract #:combiner (lambda (v1 v2) trie-empty) added t)
+         (trie-subtract #:combiner (lambda (v1 v2) trie-empty) removed t)))
+
 ;; Removes at-meta assertions from the given patch.
 (define (patch-without-at-meta p)
-  (match-define (patch added removed) p)
-  (patch (trie-prune-branch added at-meta-parenthesis)
-         (trie-prune-branch removed at-meta-parenthesis)))
+  (patch-pruned-by p at-meta-everything))
 
 (define only-meta-tset (datum-tset 'meta))
 
@@ -288,7 +295,7 @@
 
 (define (jsexpr->patch pj
                        jsexpr->success
-                       [lookup-struct-type (lambda (t) #f)]
+                       [lookup-struct-type (lambda (arity t) #f)]
                        #:deserialize-atom [deserialize-atom values])
   (match-define (list ij oj) pj)
   (patch (jsexpr->trie ij jsexpr->success lookup-struct-type #:deserialize-atom deserialize-atom)

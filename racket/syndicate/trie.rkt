@@ -50,7 +50,7 @@
          trie-append
          trie-relabel
 
-         trie-prune-branch
+         ;; trie-prune-branch
          trie-step
 
          projection->pattern
@@ -75,11 +75,11 @@
 (require racket/match)
 (require (only-in racket/list append-map make-list))
 (require (only-in racket/port call-with-output-string with-output-to-string))
-(require (only-in racket/class object?))
 (require "canonicalize.rkt")
 (require "treap.rkt")
 (require "tset.rkt")
 (require "hash-order.rkt")
+(require "support/struct.rkt")
 
 (module+ test
   (require rackunit)
@@ -241,12 +241,6 @@
             [(_ 'vector) '>]
             [(_ _) (hash-order (struct-type-name a-type) (struct-type-name b-type))])]))
 
-;; struct-type -> Symbol
-;; Extract just the name of the given struct-type.
-(define (struct-type-name st)
-  (define-values (name x2 x3 x4 x5 x6 x7 x8) (struct-type-info st))
-  name)
-
 ;; (Treap OpenParenthesis Trie)
 (define empty-omap (treap-empty open-parenthesis-order))
 
@@ -403,20 +397,6 @@
 ;; Convenience form of pattern->trie*.
 (define (pattern->trie v . ps)
   (pattern->trie* v ps))
-
-;; Structure -> StructType
-;; Errors when given any struct that isn't completely transparent/prefab.
-(define (struct->struct-type p)
-  (define-values (t skipped?) (struct-info p))
-  (when skipped? (error 'struct->struct-type "Cannot reflect on struct instance ~v" p))
-  t)
-
-;; Any -> Boolean
-;; Racket objects are structures, so we reject them explicitly for
-;; now, leaving them opaque to unification.
-(define (non-object-struct? x)
-  (and (struct? x)
-       (not (object? x))))
 
 ;; (A B -> B) B (Vectorof A) -> B
 (define (vector-foldr kons knil v)
@@ -643,17 +623,22 @@
                      [#f trie-empty]
                      [result (success result)]))))
 
-;; Trie (U OpenParenthesis Sigma) -> Trie
-;; Outright removes tries reachable from m via edges labelled with key.
-;; Useful for removing (at-meta *) when the success value along that
-;; branch doesn't matter.
-(define (trie-prune-branch m key)
-  (match* (m key)
-    [((branch os w h) (open-parenthesis arity _))
-     (canonicalize (collapse (struct-copy branch m [opens (rupdate arity w os key trie-empty)])))]
-    [((branch os w h) _)
-     (canonicalize (collapse (struct-copy branch m [sigmas (rupdate 0 w h key trie-empty)])))]
-    [(_ _) m]))
+;; DANGEROUS: doesn't adjust any wild edge. So if you give it m=★, it
+;; will give you the wrong answer. Note that trie-step uses
+;; rlookup-open, which deals with the wild edges, so doesn't have this
+;; problem.
+;;
+;; ;; Trie (U OpenParenthesis Sigma) -> Trie
+;; ;; Outright removes tries reachable from m via edges labelled with key.
+;; ;; Useful for removing (at-meta *) when the success value along that
+;; ;; branch doesn't matter.
+;; (define (trie-prune-branch m key)
+;;   (match* (m key)
+;;     [((branch os w h) (open-parenthesis arity _))
+;;      (canonicalize (collapse (struct-copy branch m [opens (rupdate arity w os key trie-empty)])))]
+;;     [((branch os w h) _)
+;;      (canonicalize (collapse (struct-copy branch m [sigmas (rupdate 0 w h key trie-empty)])))]
+;;     [(_ _) m]))
 
 ;; Trie (U OpenParenthesis Sigma) -> Trie
 (define (trie-step m key)
@@ -1027,13 +1012,13 @@
     [(? struct-type?)
      (string-append ":" (symbol->string (struct-type-name type)))]))
 
-;; String (String -> (Option struct-type)) -> ParenType
-(define (string->paren-type s lookup-struct-type)
+;; Natural String (String -> (Option struct-type)) -> ParenType
+(define (string->paren-type arity s lookup-struct-type)
   (match s
     ["L" 'list]
     ["V" 'vector]
     [_ (if (char=? (string-ref s 0) #\:)
-           (or (lookup-struct-type (substring s 1))
+           (or (lookup-struct-type arity (substring s 1))
                (error 'string->paren-type "Unexpected struct type name ~v" (substring s 1)))
            (error 'string->paren-type "Invalid paren-type string representation ~v" s))]))
 
@@ -1060,7 +1045,7 @@
 ;; Deserializes a matcher from a JSON expression.
 (define (jsexpr->trie j
                       jsexpr->success
-                      [lookup-struct-type (lambda (t) #f)]
+                      [lookup-struct-type (lambda (arity t) #f)]
                       #:deserialize-atom [deserialize-atom values])
   (let walk ((j j))
     (match j
@@ -1071,7 +1056,7 @@
         (collapse
          (branch (for/fold [(acc empty-omap)] [(jopen (in-list jopens))]
                    (match-define (list arity type-str vj) jopen)
-                   (define type (string->paren-type type-str lookup-struct-type))
+                   (define type (string->paren-type arity type-str lookup-struct-type))
                    (treap-insert acc (canonical-open-parenthesis arity type) (walk vj)))
                  (walk jwild)
                  (for/fold [(acc empty-smap)] [(jsigma (in-list jsigmas))]

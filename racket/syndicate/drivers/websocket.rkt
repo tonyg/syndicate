@@ -158,10 +158,10 @@
     (match e
       [(message (at-meta (websocket-incoming-message _ (? eof-object?))))
        (shutdown-connection! state)]
-      [(message (at-meta (websocket-incoming-message _ (? bytes? bs))))
+      [(message (at-meta (websocket-incoming-message _ bytes-or-string)))
        (transition state (message (websocket-message (connection-state-remote-addr state)
                                                      (connection-state-local-addr state)
-                                                     bs)))]
+                                                     bytes-or-string)))]
       [(message (websocket-message _ _ m))
        (ws-send! (connection-state-c state) m)
        #f]

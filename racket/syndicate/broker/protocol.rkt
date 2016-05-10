@@ -12,25 +12,55 @@
 (require racket/match)
 (require "../main.rkt")
 (require "../tset.rkt")
+(require "../support/struct.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Wire protocol representation of events and actions
 
+(define (revive-prefabs j)
+  (match j
+    [(? list?) (map revive-prefabs j)]
+    [(? hash?)
+     (define type (hash-ref j '@type #f))
+     (define fields (hash-ref j 'fields #f))
+     (if (and type fields (= (hash-count j) 2))
+         (apply (struct-type-make-constructor
+                 (prefab-key->struct-type (string->symbol type) (length fields)))
+                (map revive-prefabs fields))
+         (for/hasheq [((k v) (in-hash j))] (values k (revive-prefabs v))))]
+    [_ j]))
+
+(define (pickle-prefabs j)
+  (match j
+    [(? list?) (map pickle-prefabs j)]
+    [(? hash?) (for/hasheq [((k v) (in-hash j))] (values k (pickle-prefabs v)))]
+    [(? non-object-struct?)
+     (hasheq '@type (symbol->string (struct-type-name (struct->struct-type j)))
+             'fields (map pickle-prefabs (cdr (vector->list (struct->vector j)))))]
+    [_ j]))
+
 (define only-peer (datum-tset 'peer))
 
 (define (drop j)
-  (match j
+  (match (revive-prefabs j)
     ["ping" 'ping]
     ["pong" 'pong]
-    [`("patch" ,pj) (jsexpr->patch pj (lambda (v) only-peer))]
+    [`("patch" ,pj) (jsexpr->patch pj
+                                   (lambda (v) only-peer)
+                                   (lambda (arity t)
+                                     (prefab-key->struct-type (string->symbol t) arity)))]
     [`("message" ,body) (message body)]))
 
 (define (lift j)
-  (match j
-    ['ping "ping"]
-    ['pong "pong"]
-    [(? patch? p) `("patch" ,(patch->jsexpr p (lambda (v) #t)))]
-    [(message body) `("message" ,body)]))
+  (pickle-prefabs
+   (match j
+     ['ping "ping"]
+     ['pong "pong"]
+     [(? patch? p) `("patch" ,(patch->jsexpr p (lambda (v) #t)))]
+     [(message body) `("message" ,body)])))
+
+(require racket/trace)
+(trace drop lift)
 
 (define drop-json-action drop)
 (define lift-json-event lift)

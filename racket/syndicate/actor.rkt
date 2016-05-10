@@ -20,6 +20,8 @@
 
          actor-body->spawn-action
 
+         patch-without-linkage
+
          ;;----------------------------------------
          (struct-out actor-state)
          pretty-print-actor-state
@@ -155,6 +157,19 @@
 
 ;; Projection for observing LinkActive.
 (define link-active-projection (link-active ? (?!)))
+
+;; Assertions for patch-without-linkage to remove. TODO: this is gross.
+(define linkage-assertions
+  (trie-union-all #:combiner (lambda (v1 v2) (trie-success #t))
+                  (list (pattern->trie #t (link-active ? ?))
+                        (pattern->trie #t (observe (link-active ? ?)))
+                        (pattern->trie #t (link-result ? ? ?))
+                        (pattern->trie #t (observe (link-result ? ? ?))))))
+
+;; Patch -> Patch
+;; Remove linkage-related assertions.
+(define (patch-without-linkage p)
+  (patch-pruned-by p linkage-assertions))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Producing Instruction side-effects
