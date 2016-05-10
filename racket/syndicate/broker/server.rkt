@@ -35,6 +35,7 @@
 
          (arm-ping-timer!)
 
+         (log-info "\nStarting broker connection from ~v" c)
          (until (retracted (advertise (websocket-message c server-id _)) #:meta-level 1)
            (assert (advertise (websocket-message server-id c _)) #:meta-level 1)
 
@@ -46,14 +47,19 @@
                (match (drop-json-action (string->jsexpr data))
                  ['ping (send-event 'pong)]
                  ['pong (void)]
-                 [(? patch? p) (patch! (patch-without-at-meta p))]
+                 [(? patch? p) (patch! (log-packet c 'inbound 'patch (patch-without-at-meta p)))]
                  [(message (at-meta _)) (void)]
-                 [(message body) (send! body)]))
+                 [(message body) (send! (log-packet c 'inbound 'message body))]))
 
            (on-event
-            [(? patch? p) (send-event (clean-patch p))]
+            [(? patch? p) (send-event (log-packet c 'outbound 'patch (clean-patch p)))]
             [(message (at-meta _)) #f]
-            [(? message? m) (send-event m)]))))
+            [(message body) (send-event (message (log-packet c 'outbound 'message body)))]))
+         (log-info "\nEnding broker connection from ~v" c)))
+
+(define (log-packet c direction kind value)
+  (log-info "\nBroker: ~v: ~a ~a\n~v" c direction kind value)
+  value)
 
 (define stuff-to-prune
   (trie-union-all #:combiner (lambda (v1 v2) (trie-success #t))

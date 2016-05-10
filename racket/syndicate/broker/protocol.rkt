@@ -59,9 +59,6 @@
      [(? patch? p) `("patch" ,(patch->jsexpr p (lambda (v) #t)))]
      [(message body) `("message" ,body)])))
 
-(require racket/trace)
-(trace drop lift)
-
 (define drop-json-action drop)
 (define lift-json-event lift)
 (define lift-json-action lift)
