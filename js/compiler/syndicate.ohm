@@ -27,7 +27,7 @@ Syndicate <: ES5 {
     | react FacetBlock                                   -- forever
 
   AssertionTypeDeclarationStatement
-    = assertion type identifier "(" FormalParameterList ")" ("=" stringLiteral)? #(sc)
+    = (assertion | message) type identifier "(" FormalParameterList ")" ("=" stringLiteral)? #(sc)
 
   SendMessageStatement = "::" Expression<withIn> #(sc)
 
