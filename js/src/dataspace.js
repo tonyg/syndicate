@@ -280,7 +280,9 @@ Dataspace.prototype.deliverPatches = function (oldMux, updateStreamResult) {
     self.deliverEvent(pid, stateChange(patch));
   });
   events.metaEvents.forEach(Dataspace.stateChange);
-  this.onStateChange(this.mux, updateStreamResult.deltaAggregate);
+  if (!updateStreamResult.deltaAggregate.isEmpty()) {
+    this.onStateChange(this.mux, updateStreamResult.deltaAggregate);
+  }
 };
 
 Dataspace.prototype.deliverEvent = function (pid, event) {
