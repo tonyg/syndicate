@@ -183,12 +183,32 @@ function spawnFailureMonitor() {
 
 function spawnChaosMonkey() {
   actor {
+    monitorComponent('power draw monitor',
+                     '#spawn-power-draw-monitor',
+                     '#kill-power-draw-monitor',
+                     spawnPowerDrawMonitor);
+    monitorComponent('stove switch',
+                     '#spawn-stove-switch',
+                     '#kill-stove-switch',
+                     spawnStoveSwitch);
+  }
+
+  function monitorComponent(name, spawnButtonSelector, killButtonSelector, spawnFunction) {
+    var jSpawnButtons = $(spawnButtonSelector);
+    var jKillButtons = $(killButtonSelector);
     react {
-      on message jQueryEvent('#spawn-power-draw-monitor', 'click', _) {
-        spawnPowerDrawMonitor();
+      during componentPresent(name) {
+        do {
+          jSpawnButtons.prop('disabled', true);
+          jKillButtons.prop('disabled', false);
+        }
+        finally {
+          jSpawnButtons.prop('disabled', false);
+          jKillButtons.prop('disabled', true);
+        }
       }
-      on message jQueryEvent('#spawn-stove-switch', 'click', _) {
-        spawnStoveSwitch();
+      on message jQueryEvent(spawnButtonSelector, 'click', _) {
+        spawnFunction();
       }
     }
   }
