@@ -4,7 +4,6 @@ $(document).ready(function () {
   var sub = Syndicate.sub;
   var assert = Syndicate.assert;
   var retract = Syndicate.retract;
-  var seal = Syndicate.seal;
   var __ = Syndicate.__;
   var _$ = Syndicate._$;
 
@@ -18,8 +17,7 @@ $(document).ready(function () {
     Dataspace.spawn({
       boot: function () {
 	return assert(DOM("#clicker-holder", "clicker",
-		          seal(["button", ["span", [["style", "font-style: italic"]],
-                                           "Click me!"]])))
+                          '<button><span style="font-style: italic">Click me!</span></button>'))
 	  .andThen(sub(jQueryEvent("button.clicker", "click", __)));
       },
       handleEvent: function (e) {
@@ -38,9 +36,8 @@ $(document).ready(function () {
       updateState: function () {
 	Dataspace.stateChange(retract(DOM.pattern)
 			      .andThen(assert(DOM("#counter-holder", "counter",
-					          seal(["div",
-						        ["p", "The current count is: ",
-						         this.counter]])))));
+                                                  '<div><p>The current count is: '+this.counter+
+                                                  '</p></div>'))));
       },
       handleEvent: function (e) {
 	if (e.type === "message" && e.message === "bump_count") {

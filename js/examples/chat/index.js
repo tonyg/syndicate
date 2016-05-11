@@ -35,10 +35,8 @@ function spawnChatApp() {
 
         assert toBroker(url, present(this.nym, this.status));
         during fromBroker(url, present($who, $status)) {
-          assert DOM('#nymlist', 'present-nym', Syndicate.seal(
-            ["li",
-             ["span", [["class", "nym"]], who],
-             ["span", [["class", "nym_status"]], status]]));
+          assert DOM('#nymlist', 'present-nym',
+                     Mustache.render($('#nym_template').html(), { who: who, status: status }));
         }
 
         on message jQueryEvent('#send_chat', 'click', _) {

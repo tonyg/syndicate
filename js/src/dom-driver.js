@@ -3,7 +3,6 @@ var Patch = require("./patch.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
 var Struct = require('./struct.js');
 var Ack = require('./ack.js').Ack;
-var Seal = require('./seal.js').Seal;
 
 var Dataspace_ = require("./dataspace.js");
 var Dataspace = Dataspace_.Dataspace;
@@ -89,57 +88,28 @@ DOMFragment.prototype.handleEvent = function (e) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-function isAttributes(x) {
-  return Array.isArray(x) && ((x.length === 0) || Array.isArray(x[0]));
-}
-
-DOMFragment.prototype.interpretSpec = function (spec, xmlns) {
-  // Fragment specs are roughly JSON-equivalents of SXML.
-  // spec ::== ["tag", [["attr", "value"], ...], spec, spec, ...]
-  //         | ["tag", spec, spec, ...]
-  //         | "cdata"
-  if (typeof(spec) === "string" || typeof(spec) === "number") {
-    return document.createTextNode(spec);
-  } else if ($.isArray(spec)) {
-    var tagName = spec[0];
-    var hasAttrs = isAttributes(spec[1]);
-    var attrs = hasAttrs ? spec[1] : [];
-    var kidIndex = hasAttrs ? 2 : 1;
-
-    var xmlnsAttr = attrs.find(function (e) { return e[0] === 'xmlns' });
-    if (xmlnsAttr) {
-      xmlns = xmlnsAttr[1];
-    }
-
-    // TODO: Wow! Such XSS! Many hacks! So vulnerability! Amaze!
-    var n = xmlns
-        ? document.createElementNS(xmlns, tagName)
-        : document.createElement(tagName);
-    for (var i = 0; i < attrs.length; i++) {
-      if (attrs[i][0] !== 'xmlns') n.setAttribute(attrs[i][0], attrs[i][1]);
-    }
-    for (var i = kidIndex; i < spec.length; i++) {
-      n.appendChild(this.interpretSpec(spec[i], xmlns));
-    }
-    return n;
-  } else {
-    throw new Error("Ill-formed DOM specification");
-  }
-};
-
 DOMFragment.prototype.buildNodes = function () {
   var self = this;
   var nodes = [];
   $(self.selector).each(function (index, domNode) {
-    if (!(self.fragmentSpec instanceof Syndicate.Seal)) {
-      throw new Error("DOM fragmentSpec not contained in a Syndicate.Seal: " + JSON.stringify(self.fragmentSpec));
+    if (typeof self.fragmentSpec !== 'string') {
+      throw new Error("DOM fragmentSpec not a string: " + JSON.stringify(self.fragmentSpec));
     }
-    var n = self.interpretSpec(self.fragmentSpec.sealContents, '');
-    if ('classList' in n) {
-      n.classList.add(self.fragmentClass);
+    var newNodes = $('<div>' + self.fragmentSpec + '</div>')[0].childNodes;
+    // This next loop looks SUPER SUSPICIOUS. What is happening is
+    // that each time we call domNode.appendChild(n), where n is an
+    // element of the NodeList newNodes, the DOM is **removing** n
+    // from the NodeList in order to place it in its new parent. So,
+    // each call to appendChild shrinks the NodeList by one node until
+    // it is finally empty, and its length property yields zero.
+    while (newNodes.length) {
+      var n = newNodes[0];
+      if ('classList' in n) {
+        n.classList.add(self.fragmentClass);
+      }
+      domNode.appendChild(n);
+      nodes.push(n);
     }
-    domNode.appendChild(n);
-    nodes.push(n);
   });
   return nodes;
 };

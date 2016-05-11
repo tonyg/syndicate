@@ -5,6 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="style.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/2.2.1/mustache.min.js"></script>
     <script src="../../third-party/jquery-2.2.0.min.js"></script>
     <script src="../../dist/syndicatecompiler.js"></script>
     <script src="../../dist/syndicate.js"></script>
@@ -19,13 +20,22 @@
       <section>
         <h3>TV</h3>
         <div id="tv-container">
-          &nbsp;<div><ul id="tv" class="alerts"></ul></div>
+          &nbsp;
+          <ul id="tv" class="alerts">
+            <template id="alert_template">
+              <li>{{text}}</li>
+            </template>
+          </ul>
         </div>
       </section>
 
       <section>
         <h3>Stove switch</h3>
-        <div id="stove-switch"></div>
+        <div id="stove-switch">
+          <template id="stove_element_template">
+            <img src="{{imgurl}}">
+          </template>
+        </div>
         <button id="stove-switch-on">Turn on switch</button>
         <button id="stove-switch-off">Turn off switch</button>
       </section>
@@ -37,7 +47,11 @@
 
       <section>
         <h3>Power draw meter</h3>
-        <div id="power-draw-meter"></div>
+        <div id="power-draw-meter">
+          <template id="power_draw_template">
+            <p>Power draw: <span class="power-meter-display">{{watts}} W</span></p>
+          </template>
+        </div>
       </section>
     </section>
 

@@ -1,3 +1,7 @@
+template {
+    display: none;
+}
+
 #tv-container {
     background: url('img/tvscreen.gif');
     background-size: 100%;

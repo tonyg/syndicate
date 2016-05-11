@@ -9,7 +9,7 @@ $(document).ready(function() {
     actor {
       this.counter = 0;
       react {
-        assert DOM('#button-label', '', Syndicate.seal(this.counter));
+        assert DOM('#button-label', '', '' + this.counter);
         on message jQueryEvent('#counter', 'click', _) {
           this.counter++;
         }

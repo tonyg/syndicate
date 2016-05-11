@@ -19,15 +19,11 @@ $(document).ready(function () {
           this.handX = 50 + 40 * Math.cos(this.angle);
           this.handY = 50 + 40 * Math.sin(this.angle);
         }
-        assert DOM('#clock', 'clock', Syndicate.seal(
-          ["svg", [["xmlns", "http://www.w3.org/2000/svg"],
-                   ["width", "300px"],
-                   ["viewBox", "0 0 100 100"]],
-           ["circle", [["fill", "#0B79CE"],
-                       ["r", 45], ["cx", 50], ["cy", 50]]],
-           ["line", [["stroke", "#023963"],
-                     ["x1", 50], ["y1", 50],
-                     ["x2", this.handX], ["y2", this.handY]]]]))
+        assert DOM('#clock', 'clock',
+                   '<svg width="300px" viewBox="0 0 100 100">'+
+                   '<circle fill="#0B79CE" r=45 cx=50 cy=50/>'+
+                   '<line stroke="#023963" x1=50 y1=50 x2='+this.handX+' y2='+this.handY+' />'+
+                   '</svg>')
           when (typeof this.angle === 'number');
       }
     }

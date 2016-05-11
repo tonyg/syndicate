@@ -5,6 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="style.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/2.2.1/mustache.min.js"></script>
     <script src="../../third-party/jquery-2.2.0.min.js"></script>
     <script src="../../dist/syndicatecompiler.js"></script>
     <script src="../../dist/syndicate.js"></script>
@@ -33,7 +34,14 @@
       </section>
       <section id="active_users">
 	<h1>Active Users</h1>
-	<ul id="nymlist"></ul>
+	<ul id="nymlist">
+          <template id="nym_template">
+            <li>
+              <span class="nym">{{who}}</span>
+              <span class="nym_status">{{status}}</span>
+            </li>
+          </template>
+        </ul>
       </section>
     </section>
 

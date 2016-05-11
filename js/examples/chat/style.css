@@ -1,3 +1,7 @@
+template {
+    display: none;
+}
+
 h1 {
     background: lightgrey;
 }
