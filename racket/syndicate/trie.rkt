@@ -660,7 +660,7 @@
     [((? branch?) (? open-parenthesis?))
      (rlookup-open m key)]
     [((? branch?) _)
-     (rlookup-sigma m key)]
+     (rlookup-sigma m (canonicalize key))]
     [(_ _) trie-empty]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

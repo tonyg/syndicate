@@ -23,6 +23,7 @@
          patch-pruned-by
          patch-without-at-meta
          patch-step
+         patch-step*
          only-meta-tset
          compute-aggregate-patch
          apply-patch
@@ -154,6 +155,9 @@
   (match-define (patch added removed) p)
   (patch (trie-step added key)
          (trie-step removed key)))
+
+(define (patch-step* p keys)
+  (foldl (lambda (key p) (patch-step p key)) p keys))
 
 (define only-meta-tset (datum-tset 'meta))
 
