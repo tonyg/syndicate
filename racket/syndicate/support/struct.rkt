@@ -3,6 +3,7 @@
 
 (provide non-object-struct?
          struct-type-name
+         struct-type-constructor-arity
          struct->struct-type)
 
 (require (only-in racket/class object?))
@@ -20,9 +21,15 @@
   (define-values (name x2 x3 x4 x5 x6 x7 x8) (struct-type-info st))
   name)
 
+;; StructType -> Natural
+(define (struct-type-constructor-arity st)
+  (define-values (x1 arity x3 x4 x5 x6 x7 x8) (struct-type-info st))
+  arity)
+
 ;; Structure -> StructType
 ;; Errors when given any struct that isn't completely transparent/prefab.
 (define (struct->struct-type p)
   (define-values (t skipped?) (struct-info p))
   (when skipped? (error 'struct->struct-type "Cannot reflect on struct instance ~v" p))
   t)
+

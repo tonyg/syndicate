@@ -22,6 +22,7 @@
          limit-patch/routing-table
          patch-pruned-by
          patch-without-at-meta
+         patch-step
          only-meta-tset
          compute-aggregate-patch
          apply-patch
@@ -147,6 +148,12 @@
 ;; Removes at-meta assertions from the given patch.
 (define (patch-without-at-meta p)
   (patch-pruned-by p at-meta-everything))
+
+;; Steps both added and removes sets
+(define (patch-step p key)
+  (match-define (patch added removed) p)
+  (patch (trie-step added key)
+         (trie-step removed key)))
 
 (define only-meta-tset (datum-tset 'meta))
 

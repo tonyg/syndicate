@@ -15,6 +15,7 @@
          (rename-out [open-parenthesis <open-parenthesis>]
                      [canonical-open-parenthesis open-parenthesis])
          (except-out (struct-out open-parenthesis) open-parenthesis)
+         struct-type->parenthesis
 
          ?
          wildcard?
@@ -27,8 +28,7 @@
          trie
          trie-empty?
          trie-non-empty?
-         (rename-out [rsigma trie-prepend-atom])
-         (rename-out [ropen trie-prepend-parenthesis])
+         trie-prepend
 
          pattern->trie*
          pattern->trie
@@ -304,14 +304,28 @@
 (define (canonical-open-parenthesis arity type)
   (canonicalize (open-parenthesis arity type)))
 
+;; StructType -> OpenParenthesis
+(define (struct-type->parenthesis st)
+  (canonical-open-parenthesis (struct-type-constructor-arity st) st))
+
+;; OpenParenthesis Trie -> Trie
+;; Prepends an open-parenthesis edge to r, if r is non-empty
+(define (ropen* paren r)
+  (if (trie-empty? r)
+      r
+      (canonicalize (branch (treap-insert empty-omap paren r) trie-empty empty-smap))))
+
 ;; Natural ParenType Trie -> Trie
 ;; Prepends an open-parenthesis edge to r, if r is non-empty
 (define (ropen arity type r)
-  (if (trie-empty? r)
-      r
-      (canonicalize (branch (treap-insert empty-omap (canonical-open-parenthesis arity type) r)
-                            trie-empty
-                            empty-smap))))
+  (ropen* (canonical-open-parenthesis arity type) r))
+
+;; (U Sigma OpenParenthesis) Trie -> Trie
+;; User-accessible rsigma / ropen*.
+(define (trie-prepend key r)
+  (if (open-parenthesis? key)
+      (ropen* key r)
+      (rsigma (canonicalize key) r)))
 
 ;; Natural Trie -> Trie
 ;; Prepends n wildcard edges to r, if r is non-empty.
