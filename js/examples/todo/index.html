@@ -23,13 +23,18 @@
 	<input class="toggle-all" type="checkbox">
 	<label for="toggle-all">Mark all as complete</label>
 	<ul class="todo-list" id="todo-list">
-          <template id="todo-list-item-template">
-            <li data-id="{{id}}" class="">
+          <template id="todo-list-item-view-template">
+            <li data-id="{{id}}" class="{{hidden_class}} {{completed_class}}">
               <div class="view">
                 <input class="toggle" type="checkbox" {{checked}}>
                 <label>{{task}}</label>
                 <button class="destroy"></button>
               </div>
+            </li>
+          </template>
+          <template id="todo-list-item-edit-template">
+            <li data-id="{{id}}" class="editing">
+              <input value="{{task}}" class="edit">
             </li>
           </template>
         </ul>
