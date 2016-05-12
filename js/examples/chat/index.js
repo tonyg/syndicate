@@ -33,7 +33,7 @@ function spawnChatApp() {
 
         assert toBroker(url, present(this.nym, this.status));
         during fromBroker(url, present($who, $status)) {
-          assert ui.context(who)
+          assert ui.context(who, status)
             .html('#nymlist',
                   Mustache.render($('#nym_template').html(), { who: who, status: status }));
         }

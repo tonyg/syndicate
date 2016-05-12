@@ -337,8 +337,9 @@ function Anchor(explicitFragmentId) {
   this.eventPattern = uiEvent(this.fragmentId, __, __, __);
 }
 
-Anchor.prototype.context = function (contextId) {
-  return new Anchor(this.fragmentId + '_' + escapeDataAttributeName(contextId));
+Anchor.prototype.context = function (/* ... */) {
+  var extn = Array.prototype.slice.call(arguments).map(escapeDataAttributeName).join('__');
+  return new Anchor(this.fragmentId + '__' + extn);
 };
 
 Anchor.prototype.html = function (selector, html) {
