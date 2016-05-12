@@ -2,6 +2,20 @@ template {
     display: none;
 }
 
+div.flamecontainer {
+    position: relative;
+    width: 0;
+    height: 0;
+}
+
+img.flames {
+    display: none;
+    position: absolute;
+    bottom: -20px;
+    left: 25px;
+    width: 356px;
+}
+
 #tv-container {
     background: url('img/tvscreen.gif');
     background-size: 100%;

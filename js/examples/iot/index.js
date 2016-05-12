@@ -117,6 +117,9 @@ function spawnTimeoutListener() {
               on asserted Syndicate.Timer.timeLaterThan(powerOnTime + 3000) {
                 react { assert tvAlert('Stove on too long?'); }
               }
+              on asserted Syndicate.Timer.timeLaterThan(powerOnTime + 10000) {
+                $("img.flames").show();
+              }
             }
           }
         }
