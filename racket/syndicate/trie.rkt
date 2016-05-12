@@ -1061,7 +1061,7 @@
                  (walk jwild)
                  (for/fold [(acc empty-smap)] [(jsigma (in-list jsigmas))]
                    (match-define (list atom vj) jsigma)
-                   (treap-insert acc (deserialize-atom atom) (walk vj))))))])))
+                   (treap-insert acc (canonicalize (deserialize-atom atom)) (walk vj))))))])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
