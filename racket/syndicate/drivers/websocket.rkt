@@ -7,6 +7,7 @@
 (require "../demand-matcher.rkt")
 
 (require racket/unit)
+(require racket/tcp)
 (require net/tcp-sig)
 (require net/tcp-unit)
 (require net/ssl-tcp-unit)
@@ -18,6 +19,7 @@
 	 (struct-out websocket-remote-server)
 	 (struct-out websocket-ssl-options)
 	 (struct-out websocket-message)
+         (struct-out websocket-peer-details)
 	 spawn-websocket-driver)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -29,6 +31,10 @@
 (struct websocket-remote-server (url) #:prefab)
 (struct websocket-ssl-options (cert-file key-file) #:prefab)
 (struct websocket-message (from to body) #:prefab)
+
+(struct websocket-peer-details
+  (local-addr remote-addr local-ip local-port remote-ip remote-port)
+  #:prefab)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground-level communication messages
@@ -64,6 +70,14 @@
     [(message (at-meta (websocket-connection id local-addr remote-addr c control-ch)))
      (transition state (spawn-connection local-addr remote-addr id c control-ch))]
     [_ #f]))
+
+(define (ws-conn-peer-addresses c)
+  (local-require racket/tcp)
+  (local-require openssl)
+  (define ip (ws-conn-base-ip c))
+  (if (ssl-port? ip)
+      (ssl-addresses ip #t)
+      (tcp-addresses ip #t)))
 
 (define ((connection-handler server-addr) c dummy-state)
   (define control-ch (make-channel))
@@ -176,6 +190,8 @@
   (spawn websocket-connection-behaviour
 	 (connection-state local-addr remote-addr c control-ch)
          (patch-seq
+          (let-values (((la lp ra rp) (ws-conn-peer-addresses c)))
+            (assert (websocket-peer-details local-addr remote-addr la lp ra rp)))
           (sub (observe (websocket-message remote-addr local-addr ?))) ;; monitor peer
           (pub (websocket-message remote-addr local-addr ?)) ;; may send messages to peer
           (sub (websocket-message local-addr remote-addr ?)) ;; want segments from peer
