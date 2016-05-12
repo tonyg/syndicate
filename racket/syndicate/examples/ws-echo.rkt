@@ -6,7 +6,7 @@
 
 (spawn-websocket-driver)
 
-(define any-client (websocket-remote-client ?))
+(define any-client (websocket-remote-client ? ? ?))
 (define tcp-server-id (websocket-local-server 8081 #f))
 (define ssl-server-id (websocket-local-server 8084 (websocket-ssl-options "server-cert.pem"
                                                                           "private-key.pem")))

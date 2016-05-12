@@ -5,7 +5,7 @@
 
 (spawn-websocket-driver)
 
-(define any-client (websocket-remote-client ?))
+(define any-client (websocket-remote-client ? ? ?))
 (define server-id (websocket-local-server 8081 #f))
 
 (define (spawn-connection-handler c)

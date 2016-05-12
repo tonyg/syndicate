@@ -2,7 +2,11 @@
 
 (require racket/match)
 (require net/rfc6455)
-(require (only-in net/rfc6455/conn-api ws-conn-base-ip))
+(require (only-in net/rfc6455/conn-api
+                  ws-conn-base-ip
+                  ws-conn-peer-addresses
+                  ws-conn-host
+                  ws-conn-path))
 (require "../main.rkt")
 (require "../demand-matcher.rkt")
 
@@ -25,7 +29,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Protocol messages
 
-(struct websocket-remote-client (id) #:prefab)
+(struct websocket-remote-client (id host path) #:prefab)
 (struct websocket-local-server (port ssl-options) #:prefab)
 (struct websocket-local-client (id) #:prefab)
 (struct websocket-remote-server (url) #:prefab)
@@ -71,19 +75,17 @@
      (transition state (spawn-connection local-addr remote-addr id c control-ch))]
     [_ #f]))
 
-(define (ws-conn-peer-addresses c)
-  (local-require racket/tcp)
-  (local-require openssl)
-  (define ip (ws-conn-base-ip c))
-  (if (ssl-port? ip)
-      (ssl-addresses ip #t)
-      (tcp-addresses ip #t)))
-
 (define ((connection-handler server-addr) c dummy-state)
   (define control-ch (make-channel))
   (define id (gensym 'ws))
   (send-ground-message
-   (websocket-connection id server-addr (websocket-remote-client id) c control-ch))
+   (websocket-connection id
+                         server-addr
+                         (websocket-remote-client id
+                                                  (ws-conn-host c)
+                                                  (ws-conn-path c))
+                         c
+                         control-ch))
   (connection-thread-loop control-ch c id))
 
 (define (connection-thread-loop control-ch c id)
