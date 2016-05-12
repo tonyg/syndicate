@@ -31,6 +31,9 @@ Actor.prototype.handleEvent = function(e) {
   this.facets.forEach(function (f) {
     withCurrentFacet(f, function () { f.handleEvent(e); });
   });
+  this.facets.forEach(function (f) {
+    withCurrentFacet(f, function () { f.refresh(); });
+  });
   this.checkForTermination();
 };
 
@@ -84,7 +87,6 @@ Facet.prototype.handleEvent = function(e) {
   facet.endpoints.forEach(function(endpoint) {
     endpoint.handlerFn.call(facet.actor.state, e);
   });
-  facet.refresh();
 };
 
 Facet.prototype.addAssertion = function(assertionFn) {
