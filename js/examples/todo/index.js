@@ -1,5 +1,4 @@
-var DOM = Syndicate.DOM.DOM;
-var jQueryEvent = Syndicate.JQuery.jQueryEvent;
+
 
 assertion type todo(id, task, completed, assignee);
 message type deleteTodo(id);
@@ -8,23 +7,23 @@ var nextId = 0;
 function addTodo(task) {
   actor {
     this.id = nextId++;
-    this.domNode = new DomNode();
+    this.ui = new Syndicate.UI.Anchor();
     this.task = task;
     this.completed = false;
     this.assignee = null;
     react {
       assert todo(this.id, this.task, this.completed, this.assignee);
-      assert DOM('#todo-list', this.cls,
-                 Mustache.render($('#todo-list-item-template').html(), {
-                   id: this.id,
-                   checked: this.completed ? "checked" : "",
-                   task: this.task
+      assert this.ui.html('#todo-list',
+                     Mustache.render($('#todo-list-item-template').html(), {
+                       id: this.id,
+                       checked: this.completed ? "checked" : "",
+                       task: this.task
                  }));
-      on message jQueryEvent('.'+this.cls+' > .toggle', 'click', $e) {
+      on message this.ui.event('.toggle', 'click', $e) {
         console.log('toggle clicked');
         this.completed = e.target.value;
       }
-      on message jQueryEvent('.'+this.cls+' > .destroy', 'click', _) {
+      on message this.ui.event('.destroy', 'click', _) {
         console.log('destroy clicked');
         :: deleteTodo(this.id);
       }
@@ -36,8 +35,7 @@ function addTodo(task) {
 
 $(document).ready(function () {
   ground dataspace G {
-    Syndicate.JQuery.spawnJQueryDriver();
-    Syndicate.DOM.spawnDOMDriver();
+    Syndicate.UI.spawnUIDriver();
 
     addTodo('Buy milk');
     addTodo('Buy bread');
