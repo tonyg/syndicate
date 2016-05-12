@@ -13,35 +13,24 @@ This is a simple clickable button; each time the button is clicked,
 the number on the face of the button is incremented.
 
 The actor maintaining the counter also maintains the button's label
-and listens to click events. It uses the Syndicate/js DOM driver to
-publish the button's label text based on its internal state, and the
-Syndicate/js jQuery driver to subscribe to button click events.
+and listens to click events. It uses the Syndicate/js UI driver to
+publish the button's label text based on its internal state and to
+subscribe to button click events.
 
  - [DEMO](button/)
  - [Source code](button/index.js) using the Syndicate/js DSL
 
 ## DOM example
 
-This example demonstrates two actors, each using the Syndicate/js DOM
-driver to display user interface, and the jQuery driver to receive
-events from it. The first actor presents a button to the user, which
-when clicked sends a message to the other actor. The second actor
-receives messages from the first, updates its internal state, and
-reflects its new internal state in its visible UI.
+This example demonstrates two actors, each using the Syndicate/js UI
+driver to display user interface and receive events from it. The first
+actor presents a button to the user, which when clicked sends a
+message to the other actor. The second actor receives messages from
+the first, updates its internal state, and reflects its new internal
+state in its visible UI.
 
  - [DEMO](dom/)
  - [Source code](dom/index.js) in plain JavaScript
-
-## jQuery Example
-
-This example is similar to the button example, but uses plain
-JavaScript instead of the Syndicate/js DSL, calling out to Syndicate
-as a library. It uses the Syndicate/js jQuery driver to receive click
-events from the button, but does not use the Syndicate/js DOM driver;
-instead, it updates the DOM directly.
-
- - [DEMO](jquery/)
- - [Source code](jquery/index.js) in plain JavaScript
 
 ## Text Entry Widget
 

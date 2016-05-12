@@ -1,7 +1,7 @@
 ///////////////////////////////////////////////////////////////////////////
 // GUI
 
-var jQueryEvent = Syndicate.JQuery.jQueryEvent;
+var globalEvent = Syndicate.UI.globalEvent;
 assertion type fieldCommand(detail);
 assertion type fieldContents(text, pos);
 assertion type highlight(state);
@@ -36,7 +36,7 @@ function spawnGui() {
       var highlight = this.highlightState;
       var hLeft = highlight ? highlight[0] : 0;
       var hRight = highlight ? highlight[1] : 0;
-      $("#fieldContents")[0].innerHTML = highlight
+      document.getElementById("fieldContents").innerHTML = highlight
 	? piece(text, pos, 0, hLeft, "normal") +
 	piece(text, pos, hLeft, hRight, "highlight") +
 	piece(text, pos, hRight, text.length + 1, "normal")
@@ -44,18 +44,22 @@ function spawnGui() {
     };
 
     react {
-      on message jQueryEvent("#inputRow", "+keypress", $event) {
-        var keycode = event.keyCode;
+      on message globalEvent("#inputRow", "+keydown", $event) {
+        switch (event.keyCode) {
+          case 37 /* left  */: :: fieldCommand("cursorLeft"); break;
+          case 39 /* right */: :: fieldCommand("cursorRight"); break;
+          case 9 /* tab */: /* ignore */ break;
+          case 8 /* backspace */:
+            event.preventDefault(); // that this works here is a minor miracle
+	    :: fieldCommand("backspace");
+            break;
+          default: break;
+        }
+      }
+
+      on message globalEvent("#inputRow", "+keypress", $event) {
         var character = String.fromCharCode(event.charCode);
-        if (keycode === 37 /* left */) {
-          :: fieldCommand("cursorLeft");
-        } else if (keycode === 39 /* right */) {
-	  :: fieldCommand("cursorRight");
-        } else if (keycode === 9 /* tab */) {
-	  // ignore
-        } else if (keycode === 8 /* backspace */) {
-	  :: fieldCommand("backspace");
-        } else if (character) {
+        if (event.charCode && character) {
 	  :: fieldCommand(["insert", character]);
         }
       }
@@ -126,7 +130,7 @@ function spawnSearch() {
     this.highlight = false;
 
     this.search = function () {
-      var searchtext = $("#searchBox")[0].value;
+      var searchtext = document.getElementById("searchBox").value;
       if (searchtext) {
 	var pos = this.fieldValue.indexOf(searchtext);
 	this.highlight = (pos !== -1) && [pos, pos + searchtext.length];
@@ -138,7 +142,7 @@ function spawnSearch() {
     react {
       assert highlight(this.highlight);
 
-      on message jQueryEvent("#searchBox", "input", $event) {
+      on message globalEvent("#searchBox", "input", $event) {
         this.search();
       }
 
@@ -153,17 +157,14 @@ function spawnSearch() {
 ///////////////////////////////////////////////////////////////////////////
 // Main
 
-$(document).ready(function () {
-  ground dataspace G {
-    Syndicate.JQuery.spawnJQueryDriver();
-    Syndicate.DOM.spawnDOMDriver();
+ground dataspace G {
+  Syndicate.UI.spawnUIDriver();
 
-    spawnGui();
-    spawnModel();
-    spawnSearch();
-  }
+  spawnGui();
+  spawnModel();
+  spawnSearch();
+}
 
-  G.dataspace.setOnStateChange(function (mux, patch) {
-    $("#spy-holder").text(Syndicate.prettyTrie(mux.routingTable));
-  });
+G.dataspace.setOnStateChange(function (mux, patch) {
+  document.getElementById("spy-holder").innerText = Syndicate.prettyTrie(mux.routingTable);
 });

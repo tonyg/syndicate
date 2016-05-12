@@ -5,17 +5,15 @@ assertion type tvAlert(text);
 assertion type switchAction(on);
 assertion type componentPresent(name);
 
-var DOM = Syndicate.DOM.DOM;
-var jQueryEvent = Syndicate.JQuery.jQueryEvent;
-
 ///////////////////////////////////////////////////////////////////////////
 // TV
 
 function spawnTV() {
   actor {
+    var ui = new Syndicate.UI.Anchor();
     react {
       during tvAlert($text) {
-        assert DOM('#tv', 'alert', Mustache.render($('#alert_template').html(), { text: text }));
+        assert ui.context(text).html('#tv', Mustache.render($('#alert_template').html(), { text: text }));
       }
     }
   }
@@ -28,7 +26,7 @@ function spawnRemoteControl() {
   actor {
     react {
       assert componentPresent('remote control');
-      on message jQueryEvent('#remote-control', 'click', _) {
+      on message Syndicate.UI.globalEvent('#remote-control', 'click', _) {
         :: remoteClick();
       }
     }
@@ -63,23 +61,24 @@ function spawnRemoteListener() {
 function spawnStoveSwitch() {
   actor {
     this.powerOn = false;
+    this.ui = new Syndicate.UI.Anchor();
     react {
       assert componentPresent('stove switch');
       assert switchState(this.powerOn);
 
-      assert DOM('#stove-switch', 'switch-state',
-                 Mustache.render($('#stove_element_template').html(),
-                                 { imgurl: ("img/stove-coil-element-" +
-                                            (this.powerOn ? "hot" : "cold") + ".jpg") }));
+      assert this.ui.html('#stove-switch',
+                          Mustache.render($('#stove_element_template').html(),
+                                          { imgurl: ("img/stove-coil-element-" +
+                                                     (this.powerOn ? "hot" : "cold") + ".jpg") }));
 
-      on message jQueryEvent('#stove-switch-on', 'click', _) { this.powerOn = true; }
-      on message jQueryEvent('#stove-switch-off', 'click', _) { this.powerOn = false; }
+      on message Syndicate.UI.globalEvent('#stove-switch-on', 'click', _) { this.powerOn = true; }
+      on message Syndicate.UI.globalEvent('#stove-switch-off', 'click', _) { this.powerOn = false; }
 
       on message switchAction($newState) {
         this.powerOn = newState;
       }
     } until {
-      case message jQueryEvent('#kill-stove-switch', 'click', _);
+      case message Syndicate.UI.globalEvent('#kill-stove-switch', 'click', _);
     }
   }
 }
@@ -87,18 +86,19 @@ function spawnStoveSwitch() {
 function spawnPowerDrawMonitor() {
   actor {
     this.watts = 0;
+    this.ui = new Syndicate.UI.Anchor();
     react {
       assert componentPresent('power draw monitor');
       assert powerDraw(this.watts);
 
-      assert DOM('#power-draw-meter', 'power-draw',
-                 Mustache.render($('#power_draw_template').html(), { watts: this.watts }));
+      assert this.ui.html('#power-draw-meter',
+                          Mustache.render($('#power_draw_template').html(), { watts: this.watts }));
 
       on asserted switchState($on) {
         this.watts = on ? 1500 : 0;
       }
     } until {
-      case message jQueryEvent('#kill-power-draw-monitor', 'click', _);
+      case message Syndicate.UI.globalEvent('#kill-power-draw-monitor', 'click', _);
     }
   }
 }
@@ -207,7 +207,7 @@ function spawnChaosMonkey() {
           jKillButtons.prop('disabled', true);
         }
       }
-      on message jQueryEvent(spawnButtonSelector, 'click', _) {
+      on message Syndicate.UI.globalEvent(spawnButtonSelector, 'click', _) {
         spawnFunction();
       }
     }
@@ -219,8 +219,7 @@ function spawnChaosMonkey() {
 
 $(document).ready(function () {
   ground dataspace G {
-    Syndicate.JQuery.spawnJQueryDriver();
-    Syndicate.DOM.spawnDOMDriver();
+    Syndicate.UI.spawnUIDriver();
     Syndicate.Timer.spawnTimerDriver();
 
     spawnTV();

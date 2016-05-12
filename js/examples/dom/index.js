@@ -1,5 +1,5 @@
 var G;
-$(document).ready(function () {
+document.addEventListener('DOMContentLoaded', function () {
   var Dataspace = Syndicate.Dataspace;
   var sub = Syndicate.sub;
   var assert = Syndicate.assert;
@@ -10,18 +10,17 @@ $(document).ready(function () {
   G = new Syndicate.Ground(function () {
     console.log('starting ground boot');
 
-    Syndicate.DOM.spawnDOMDriver();
-    var DOM = Syndicate.DOM.DOM;
-    var jQueryEvent = Syndicate.JQuery.jQueryEvent;
+    Syndicate.UI.spawnUIDriver();
 
     Dataspace.spawn({
       boot: function () {
-	return assert(DOM("#clicker-holder", "clicker",
-                          '<button><span style="font-style: italic">Click me!</span></button>'))
-	  .andThen(sub(jQueryEvent("button.clicker", "click", __)));
+        var ui = new Syndicate.UI.Anchor();
+	return assert(ui.html("#clicker-holder",
+                              '<button><span style="font-style: italic">Click me!</span></button>'))
+	  .andThen(sub(Syndicate.UI.globalEvent("button", "click", __)));
       },
       handleEvent: function (e) {
-	if (e.type === "message" && jQueryEvent.isClassOf(e.message)) {
+	if (e.type === "message" && Syndicate.UI.globalEvent.isClassOf(e.message)) {
 	  Dataspace.send("bump_count");
 	}
       }
@@ -29,15 +28,17 @@ $(document).ready(function () {
 
     Dataspace.spawn({
       counter: 0,
+      ui: new Syndicate.UI.Anchor(),
       boot: function () {
 	this.updateState();
 	return sub("bump_count");
       },
       updateState: function () {
-	Dataspace.stateChange(retract(DOM.pattern)
-			      .andThen(assert(DOM("#counter-holder", "counter",
-                                                  '<div><p>The current count is: '+this.counter+
-                                                  '</p></div>'))));
+	Dataspace.stateChange(retract(this.ui.htmlPattern)
+			      .andThen(assert(this.ui.html(
+                                "#counter-holder",
+                                '<div><p>The current count is: '+this.counter+
+                                  '</p></div>'))));
       },
       handleEvent: function (e) {
 	if (e.type === "message" && e.message === "bump_count") {
@@ -49,7 +50,7 @@ $(document).ready(function () {
   });
 
   G.dataspace.setOnStateChange(function (mux, patch) {
-    $("#spy-holder").text(Syndicate.prettyTrie(mux.routingTable));
+    document.getElementById('spy-holder').innerText = Syndicate.prettyTrie(mux.routingTable);
   });
 
   G.startStepping();

@@ -1,9 +1,6 @@
 assertion type present(name, status);
 assertion type says(who, message);
 
-var DOM = Syndicate.DOM.DOM;
-var jQueryEvent = Syndicate.JQuery.jQueryEvent;
-
 var brokerConnected = Syndicate.Broker.brokerConnected;
 var brokerConnection = Syndicate.Broker.brokerConnection;
 var toBroker = Syndicate.Broker.toBroker;
@@ -19,14 +16,15 @@ function spawnChatApp() {
   if (!($("#nym").val())) { $("#nym").val("nym" + Math.floor(Math.random() * 65536)); }
 
   actor {
+    var ui = new Syndicate.UI.Anchor();
     react {
-      on asserted jQueryInput('#nym',    $v) { this.nym = v; }
-      on asserted jQueryInput('#status', $v) { this.status = v; }
+      on asserted inputValue('#nym',    $v) { this.nym = v; }
+      on asserted inputValue('#status', $v) { this.status = v; }
 
       on asserted brokerConnected($url) { outputState('connected to ' + url); }
       on retracted brokerConnected($url) { outputState('disconnected from ' + url); }
 
-      during jQueryInput('#wsurl', $url) {
+      during inputValue('#wsurl', $url) {
         assert brokerConnection(url);
 
         on message Syndicate.WakeDetector.wakeEvent() {
@@ -35,11 +33,12 @@ function spawnChatApp() {
 
         assert toBroker(url, present(this.nym, this.status));
         during fromBroker(url, present($who, $status)) {
-          assert DOM('#nymlist', 'present-nym',
-                     Mustache.render($('#nym_template').html(), { who: who, status: status }));
+          assert ui.context(who)
+            .html('#nymlist',
+                  Mustache.render($('#nym_template').html(), { who: who, status: status }));
         }
 
-        on message jQueryEvent('#send_chat', 'click', _) {
+        on message Syndicate.UI.globalEvent('#send_chat', 'click', _) {
           var inp = $("#chat_input");
           var utterance = inp.val();
           inp.val("");
@@ -79,21 +78,21 @@ function outputUtterance(who, what) {
 ///////////////////////////////////////////////////////////////////////////
 // Input control value monitoring
 
-assertion type jQueryInput(selector, value);
+assertion type inputValue(selector, value);
 
 function spawnInputChangeMonitor() {
   actor {
     react {
-      on asserted Syndicate.observe(jQueryInput($selector, _)) {
+      on asserted Syndicate.observe(inputValue($selector, _)) {
         actor {
           this.value = $(selector).val();
           react {
-            assert jQueryInput(selector, this.value);
-            on message jQueryEvent(selector, 'change', $e) {
+            assert inputValue(selector, this.value);
+            on message Syndicate.UI.globalEvent(selector, 'change', $e) {
               this.value = e.target.value;
             }
           } until {
-            case retracted Syndicate.observe(jQueryInput(selector, _));
+            case retracted Syndicate.observe(inputValue(selector, _));
           }
         }
       }
@@ -106,8 +105,7 @@ function spawnInputChangeMonitor() {
 
 $(document).ready(function () {
   ground dataspace G {
-    Syndicate.JQuery.spawnJQueryDriver();
-    Syndicate.DOM.spawnDOMDriver();
+    Syndicate.UI.spawnUIDriver();
     Syndicate.WakeDetector.spawnWakeDetector();
     Syndicate.Broker.spawnBrokerClientDriver();
     spawnInputChangeMonitor();

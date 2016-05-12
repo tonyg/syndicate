@@ -1,19 +1,14 @@
-var DOM = Syndicate.DOM.DOM;
-var jQueryEvent = Syndicate.JQuery.jQueryEvent;
+ground dataspace {
+  Syndicate.UI.spawnUIDriver();
 
-$(document).ready(function() {
-  ground dataspace {
-    Syndicate.DOM.spawnDOMDriver();
-    Syndicate.JQuery.spawnJQueryDriver();
-
-    actor {
-      this.counter = 0;
-      react {
-        assert DOM('#button-label', '', '' + this.counter);
-        on message jQueryEvent('#counter', 'click', _) {
-          this.counter++;
-        }
+  actor {
+    var counter = 0;
+    var ui = new Syndicate.UI.Anchor();
+    react {
+      assert ui.html('#button-label', '' + counter);
+      on message Syndicate.UI.globalEvent('#counter', 'click', _) {
+        counter++;
       }
     }
   }
-});
+}

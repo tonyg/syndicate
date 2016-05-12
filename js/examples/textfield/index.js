@@ -7,7 +7,7 @@ var Patch = Syndicate.Patch;
 var __ = Syndicate.__;
 var _$ = Syndicate._$;
 
-var jQueryEvent = Syndicate.JQuery.jQueryEvent;
+var globalEvent = Syndicate.UI.globalEvent;
 var fieldContents = Syndicate.Struct.makeConstructor('fieldContents', ['text', 'pos']);
 var highlight = Syndicate.Struct.makeConstructor('highlight', ['state']);
 var fieldCommand = Syndicate.Struct.makeConstructor('fieldCommand', ['detail']);
@@ -36,7 +36,8 @@ function spawnGui() {
     highlight: { state: false },
 
     boot: function () {
-      return Patch.sub(jQueryEvent("#inputRow", "+keypress", __))
+      return Patch.sub(globalEvent("#inputRow", "keypress", __))
+        .andThen(Patch.sub(globalEvent("#inputRow", "+keydown", __)))
 	.andThen(Patch.sub(fieldContents.pattern))
 	.andThen(Patch.sub(highlight.pattern));
     },
@@ -46,31 +47,40 @@ function spawnGui() {
     handleEvent: function (e) {
       var self = this;
       switch (e.type) {
-      case "message":
-	var event = e.message[2];
-	var keycode = event.keyCode;
-	var character = String.fromCharCode(event.charCode);
-	if (keycode === 37 /* left */) {
-	  Dataspace.send(fieldCommand("cursorLeft"));
-	} else if (keycode === 39 /* right */) {
-	  Dataspace.send(fieldCommand("cursorRight"));
-	} else if (keycode === 9 /* tab */) {
-	  // ignore
-	} else if (keycode === 8 /* backspace */) {
-	  Dataspace.send(fieldCommand("backspace"));
-	} else if (character) {
-	  Dataspace.send(fieldCommand(["insert", character]));
-	}
-	break;
-      case "stateChange":
-	Trie.projectObjects(e.patch.added, this.fieldContentsProjection).forEach(function (c) {
-	  self.field = c;
-	});
-	Trie.projectObjects(e.patch.added, this.highlightProjection).forEach(function (c) {
-	  self.highlight = c;
-	});
-	this.updateDisplay();
-	break;
+        case "message":
+	  var event = e.message[2];
+          switch (event.type) {
+            case "keydown":
+              switch (event.keyCode) {
+                case 37 /* left */: Dataspace.send(fieldCommand("cursorLeft")); break;
+                case 39 /* right */: Dataspace.send(fieldCommand("cursorRight")); break;
+                case 9 /* tab */: /* ignore */ break;
+                case 8 /* backspace */:
+                  event.preventDefault(); // that this works here is a minor miracle
+	          Dataspace.send(fieldCommand("backspace"));
+                  break;
+                default: break;
+              }
+              break;
+            case "keypress":
+	      var character = String.fromCharCode(event.charCode);
+              if (event.charCode && character) {
+	        Dataspace.send(fieldCommand(["insert", character]));
+	      }
+              break;
+            default:
+              break;
+          }
+	  break;
+        case "stateChange":
+	  Trie.projectObjects(e.patch.added, this.fieldContentsProjection).forEach(function (c) {
+	    self.field = c;
+	  });
+	  Trie.projectObjects(e.patch.added, this.highlightProjection).forEach(function (c) {
+	    self.highlight = c;
+	  });
+	  this.updateDisplay();
+	  break;
       }
     },
 
@@ -80,7 +90,7 @@ function spawnGui() {
       var highlight = this.highlight ? this.highlight.state : false;
       var hLeft = highlight ? highlight[0] : 0;
       var hRight = highlight ? highlight[1] : 0;
-      $("#fieldContents")[0].innerHTML = highlight
+      document.getElementById("fieldContents").innerHTML = highlight
 	? piece(text, pos, 0, hLeft, "normal") +
 	piece(text, pos, hLeft, hRight, "highlight") +
 	piece(text, pos, hRight, text.length + 1, "normal")
@@ -149,14 +159,14 @@ function spawnSearch() {
 
     boot: function () {
       this.publishState();
-      return Patch.sub(jQueryEvent("#searchBox", "input", __))
+      return Patch.sub(globalEvent("#searchBox", "input", __))
 	.andThen(Patch.sub(fieldContents.pattern));
     },
 
     fieldContentsProjection: fieldContents(_$("text"), _$("pos")),
     handleEvent: function (e) {
       var self = this;
-      if (jQueryEvent.isClassOf(e.message)) {
+      if (globalEvent.isClassOf(e.message)) {
 	this.search();
       }
       if (e.type === "stateChange") {
@@ -174,7 +184,7 @@ function spawnSearch() {
     },
 
     search: function () {
-      var searchtext = $("#searchBox")[0].value;
+      var searchtext = document.getElementById("searchBox").value;
       var oldHighlight = this.highlight;
       if (searchtext) {
 	var pos = this.fieldValue.indexOf(searchtext);
@@ -193,10 +203,9 @@ function spawnSearch() {
 // Main
 
 var G;
-$(document).ready(function () {
+document.addEventListener('DOMContentLoaded', function () {
   G = new Syndicate.Ground(function () {
-    Syndicate.JQuery.spawnJQueryDriver();
-    Syndicate.DOM.spawnDOMDriver();
+    Syndicate.UI.spawnUIDriver();
 
     spawnGui();
     spawnModel();
@@ -204,7 +213,7 @@ $(document).ready(function () {
   });
 
   G.dataspace.setOnStateChange(function (mux, patch) {
-    $("#spy-holder").text(Syndicate.prettyTrie(mux.routingTable));
+    document.getElementById("spy-holder").innerText = Syndicate.prettyTrie(mux.routingTable);
   });
 
   G.startStepping();

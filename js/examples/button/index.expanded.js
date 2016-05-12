@@ -1,19 +1,14 @@
 "use strict";
-var DOM = Syndicate.DOM.DOM;
-var jQueryEvent = Syndicate.JQuery.jQueryEvent;
+new Syndicate.Ground(function () {
+  Syndicate.UI.spawnUIDriver();
 
-$(document).ready(function() {
-  new Syndicate.Ground(function () {
-    Syndicate.DOM.spawnDOMDriver();
-    Syndicate.JQuery.spawnJQueryDriver();
-
-    Syndicate.Actor.spawnActor(new Object(), function() {
-      this.counter = 0;
-      Syndicate.Actor.createFacet()
-.addAssertion((function() { var _ = Syndicate.__; return Syndicate.Patch.assert(DOM('#button-label','',''+this.counter), 0); }))
-.onEvent(false, "message", (function() { var _ = Syndicate.__; return Syndicate.Patch.sub(jQueryEvent('#counter','click',_), 0); }), (function() { var _ = Syndicate.__; return { assertion: jQueryEvent('#counter','click',_), metalevel: 0 }; }), (function() {
-          this.counter++;
-        })).completeBuild();
-    });
-  }).startStepping();
-});
+  Syndicate.Actor.spawnActor(new Object(), function() {
+    var counter = 0;
+    var ui = new Syndicate.UI.Anchor();
+    Syndicate.Actor.createFacet()
+.addAssertion((function() { var _ = Syndicate.__; return Syndicate.Patch.assert(ui.html('#button-label',''+counter), 0); }))
+.onEvent(false, "message", (function() { var _ = Syndicate.__; return Syndicate.Patch.sub(Syndicate.UI.globalEvent('#counter','click',_), 0); }), (function() { var _ = Syndicate.__; return { assertion: Syndicate.UI.globalEvent('#counter','click',_), metalevel: 0 }; }), (function() {
+        counter++;
+      })).completeBuild();
+  });
+}).startStepping();
