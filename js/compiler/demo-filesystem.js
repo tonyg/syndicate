@@ -3,8 +3,8 @@
 var Syndicate = require('./src/main.js');
 
 assertion type file(name, content) = "file";
-assertion type saveFile(name, content) = "save";
-assertion type deleteFile(name) = "delete";
+message type saveFile(name, content) = "save";
+message type deleteFile(name) = "delete";
 
 ground dataspace {
   ///////////////////////////////////////////////////////////////////////////

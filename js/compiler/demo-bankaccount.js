@@ -3,7 +3,7 @@
 var Syndicate = require('./src/main.js');
 
 assertion type account(balance);
-assertion type deposit(amount);
+message type deposit(amount);
 
 ground dataspace {
   actor {
