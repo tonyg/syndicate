@@ -264,14 +264,16 @@ UIFragment.prototype.updateEventListeners = function (c, install) {
   self.currentAnchorNodes.forEach(function (anchorNode) {
     var uiNode = findInsertionPoint(anchorNode, self.fragmentId);
     while (uiNode && getBrand(uiNode, self.fragmentId)) {
-      var nodes = uiNode.querySelectorAll(c.selector);
-      for (var i = 0; i < nodes.length; i++) {
-        var n = nodes[i];
-        // addEventListener and removeEventListener are apparently idempotent.
-        if (install) {
-          n.addEventListener(cleanEventType(c.eventType), handlerClosure);
-        } else {
-          n.removeEventListener(cleanEventType(c.eventType), handlerClosure);
+      if ('querySelectorAll' in uiNode) {
+        var nodes = uiNode.querySelectorAll(c.selector);
+        for (var i = 0; i < nodes.length; i++) {
+          var n = nodes[i];
+          // addEventListener and removeEventListener are apparently idempotent.
+          if (install) {
+            n.addEventListener(cleanEventType(c.eventType), handlerClosure);
+          } else {
+            n.removeEventListener(cleanEventType(c.eventType), handlerClosure);
+          }
         }
       }
       uiNode = uiNode.nextSibling;
