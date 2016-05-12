@@ -287,7 +287,7 @@ UIFragment.prototype.updateEventListeners = function (c, install) {
 
 UIFragment.prototype.handleDomEvent = function (c, e) {
   Dataspace.send(uiEvent(this.fragmentId, c.selector, c.eventType, e));
-  return dealWithPreventDefault(this.eventType, event);
+  return dealWithPreventDefault(c.eventType, e);
 };
 
 ///////////////////////////////////////////////////////////////////////////
