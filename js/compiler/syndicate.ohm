@@ -13,13 +13,15 @@ Syndicate <: ES5 {
     | AssertionTypeDeclarationStatement
     | SendMessageStatement
 
+  FunctionBodyBlock = "{" FunctionBody "}"   // odd that this isn't in es5.ohm somewhere
+
   ActorStatement
-    = actor CallExpression Block -- withConstructor
-    | actor Block                -- noConstructor
+    = actor CallExpression FunctionBodyBlock -- withConstructor
+    | actor FunctionBodyBlock                -- noConstructor
 
   DataspaceStatement
-    = ground dataspace identifier? Block -- ground
-    | dataspace Block                    -- normal
+    = ground dataspace identifier? FunctionBodyBlock -- ground
+    | dataspace FunctionBodyBlock                    -- normal
 
   ActorFacetStatement
     = react FacetBlock until FacetStateTransitionBlock   -- state
@@ -37,12 +39,12 @@ Syndicate <: ES5 {
   FacetBlock = "{" FacetInitBlock? FacetSituation* FacetDoneBlock? "}"
   FacetStateTransitionBlock = "{" FacetStateTransition* "}"
 
-  FacetInitBlock = do Block
-  FacetDoneBlock = finally Block
+  FacetInitBlock = do FunctionBodyBlock
+  FacetDoneBlock = finally FunctionBodyBlock
 
   FacetSituation
     = assert FacetPattern AssertWhenClause? #(sc) -- assert
-    | on FacetEventPattern Block                  -- event
+    | on FacetEventPattern FunctionBodyBlock      -- event
     | during FacetPattern FacetBlock              -- during
 
   AssertWhenClause = when "(" Expression<withIn> ")"
@@ -57,8 +59,8 @@ Syndicate <: ES5 {
     | "(" Expression<withIn> ")" -- risingEdge
 
   FacetStateTransition
-    = case FacetTransitionEventPattern Block -- withContinuation
-    | case FacetTransitionEventPattern #(sc) -- noContinuation
+    = case FacetTransitionEventPattern FunctionBodyBlock -- withContinuation
+    | case FacetTransitionEventPattern #(sc)             -- noContinuation
 
   FacetPattern
     = LeftHandSideExpression metalevel decimalIntegerLiteral -- withMetalevel
