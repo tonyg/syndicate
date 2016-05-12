@@ -129,10 +129,10 @@
   (spawn (lambda (e buffered-messages-rev)
            (match e
              [(message (at-meta (websocket-connection _ _ _ c _)))
-              (when (not (exn? c))
-                (for [(m (reverse buffered-messages-rev))] (ws-send! c m))
-                (spawn-connection local-addr remote-addr id c control-ch))
-              (quit)]
+              (quit
+               (when (not (exn? c))
+                 (for [(m (reverse buffered-messages-rev))] (ws-send! c m))
+                 (spawn-connection local-addr remote-addr id c control-ch)))]
              [(message (websocket-message _ _ m))
               (transition (cons m buffered-messages-rev) '())]
              [_ #f]))
