@@ -39,6 +39,10 @@
          (until (retracted (advertise (websocket-message c server-id _)) #:meta-level 1)
            (assert (advertise (websocket-message server-id c _)) #:meta-level 1)
 
+           (on (asserted (websocket-peer-details server-id c _ _ $remote-addr $remote-port)
+                         #:meta-level 1)
+               (log-info "Connection ~v is from ~a:~a" c remote-addr remote-port))
+
            (on (message (timer-expired c _) #:meta-level 1)
                (arm-ping-timer!)
                (send-event 'ping))
