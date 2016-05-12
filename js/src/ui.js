@@ -10,6 +10,7 @@
 //
 // The design of this module aims to take these lessons into account.
 
+var Immutable = require('immutable');
 var Patch = require("./patch.js");
 var Trie = require("./trie.js");
 var DemandMatcher = require('./demand-matcher.js').DemandMatcher;
@@ -142,7 +143,8 @@ function UIFragment(fragmentId) {
   this.currentSelector = null;
   this.currentHtml = null;
 
-  this.eventClosures = {};
+  this.currentEventRegistrations = Immutable.Map();
+  // ^ Map from (Map of selector/eventType) to closure.
 }
 
 UIFragment.prototype.boot = function () {
@@ -220,6 +222,10 @@ UIFragment.prototype.updateContent = function (newSelector, newHtml) {
   self.currentAnchorNodes = newAnchors;
   self.currentSelector = newSelector;
   self.currentHtml = newHtml;
+
+  self.currentEventRegistrations.forEach(function (_handlerClosure, key) {
+    self.updateEventListeners(key.toObject(), true); // (re)install event listeners
+  });
 };
 
 UIFragment.prototype.handleEvent = function (e) {
@@ -240,21 +246,19 @@ UIFragment.prototype.handleEvent = function (e) {
   }
 };
 
-UIFragment.prototype.eventClosureKey = function (c) {
-  return c.selector + ' :: ' + c.eventType;
-};
-
 UIFragment.prototype.getEventClosure = function (c) {
   var self = this;
-  var key = self.eventClosureKey(c);
-  if (!(key in self.eventClosures)) {
-    self.eventClosures[key] = Dataspace.wrap(function (e) { return self.handleDomEvent(c, e); });
+  var key = Immutable.Map(c);
+  if (!self.currentEventRegistrations.has(key)) {
+    var handlerClosure = Dataspace.wrap(function (e) { return self.handleDomEvent(c, e); });
+    self.currentEventRegistrations = self.currentEventRegistrations.set(key, handlerClosure);
   }
-  return self.eventClosures[key];
+  return self.currentEventRegistrations.get(key);
 };
 
 UIFragment.prototype.clearEventClosure = function (c) {
-  delete this.eventClosures[this.eventClosureKey(c)];
+  var key = Immutable.Map(c);
+  this.currentEventRegistrations = this.currentEventRegistrations.remove(key);
 };
 
 UIFragment.prototype.updateEventListeners = function (c, install) {
@@ -281,7 +285,7 @@ UIFragment.prototype.updateEventListeners = function (c, install) {
   });
 
   if (!install) {
-    self.clearEventClosure(c);
+    this.clearEventClosure(c);
   }
 };
 
