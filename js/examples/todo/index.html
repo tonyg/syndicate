@@ -27,14 +27,14 @@
             <li data-id="{{id}}" class="{{hidden_class}} {{completed_class}}">
               <div class="view">
                 <input class="toggle" type="checkbox" {{checked}}>
-                <label>{{task}}</label>
+                <label>{{title}}</label>
                 <button class="destroy"></button>
               </div>
             </li>
           </template>
           <template id="todo-list-item-edit-template">
             <li data-id="{{id}}" class="editing">
-              <input value="{{task}}" class="edit">
+              <input value="{{title}}" class="edit">
             </li>
           </template>
         </ul>

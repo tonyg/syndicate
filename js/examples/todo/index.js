@@ -1,30 +1,53 @@
-assertion type todo(id, task, completed);
+assertion type todo(id, title, completed);
 message type deleteTodo(id);
 assertion type show(completed);
 assertion type currentLocationHash(hash);
 
+/*
+  To Do (ho ho ho)
+  spec is at: https://github.com/tastejs/todomvc/blob/master/app-spec.md
+
+  - file layout?
+  - README
+  - pattern the HTML more explicitly on the given template, keep changes to a minimum
+  - code style https://github.com/tastejs/todomvc/blob/master/contributing.md#code-style
+
+  - no todos: make sure #main and #footer are hidden
+  - mark all as complete/incomplete; make sure it is only ever checked when all the todos are checked
+  - count of active todos; pluralize correctly; format correctly
+  - hide "clear completed" button when no completed todos exist
+  - persist to localStorage; use correct keys and name.
+
+  - routing: spec requires that filtering be done "on a model level";
+    we, by using "hidden" class, are kind of partly doing it on a view
+    level. We could either continue to do this, or switch to a proper
+    model level approach, but then we'd lose stability of ordering!
+ */
+
+var ESCAPE_KEY_CODE = 27;
+var ENTER_KEY_CODE = 13;
+
 var nextId = 0;
-function addTodo(task) {
+function addTodo(title) {
+  title = title.trim();
+  if (!title) return;
+
   actor {
     this.id = nextId++;
     this.ui = new Syndicate.UI.Anchor();
-    this.task = task;
+    this.title = title;
     this.completed = false;
     this.editing = false;
     this.visible = false;
 
     react {
-      assert todo(this.id, this.task, this.completed);
+      assert todo(this.id, this.title, this.completed);
+
       during show(this.completed) {
-        do {
-          this.visible = true;
-          console.log('shown', this.id, this.task, this.visible);
-        }
-        finally {
-          this.visible = false;
-          console.log('hidden', this.id, this.task, this.visible);
-        }
+        do      { this.visible = true;  }
+        finally { this.visible = false; }
       }
+
       assert this.ui.html('#todo-list',
                           Mustache.render($(this.editing
                                             ? '#todo-list-item-edit-template'
@@ -34,21 +57,44 @@ function addTodo(task) {
                                             hidden_class: this.visible ? "" : "hidden",
                                             id: this.id,
                                             checked: this.completed ? "checked" : "",
-                                            task: this.task
+                                            title: this.title
                                           }));
+
       on message this.ui.event('.toggle', 'change', $e) {
         this.completed = e.target.checked;
       }
+
       on message this.ui.event('.destroy', 'click', _) {
-        console.log('destroy clicked');
         :: deleteTodo(this.id);
       }
+
       on message this.ui.event('label', 'dblclick', _) {
+        var self = this;
         this.editing = true;
+        focusMe(); // TODO this is gross
+        function focusMe() {
+          setTimeout(function () {
+            var q = 'li[data-id="'+self.id+'"] input.edit';
+            var n = document.querySelector(q);
+            if (!n) { return focusMe(); }
+            n.focus();
+            n.setSelectionRange(n.value.length, n.value.length);
+          }, 0);
+        }
+      }
+
+      on message this.ui.event('input.edit', 'keyup', $e) {
+        if (e.keyCode === ESCAPE_KEY_CODE || e.keyCode === ENTER_KEY_CODE) {
+          this.editing = false;
+        }
+      }
+      on message this.ui.event('input.edit', 'blur', $e) {
+        this.editing = false;
       }
       on message this.ui.event('input.edit', 'change', $e) {
-        this.task = e.target.value;
+        this.title = e.target.value.trim();
         this.editing = false;
+        if (!this.title) :: deleteTodo(this.id);
       }
     } until {
       case message deleteTodo(this.id);
@@ -84,17 +130,22 @@ ground dataspace G {
 
   actor {
     react {
+      on asserted currentLocationHash($hash) {
+        // TODO this is a bit icky too
+        var ns = document.querySelectorAll('ul.filters > li > a');
+        for (var i = 0; i < ns.length; i++) { ns[i].className = ''; }
+        var n = document.querySelector('ul.filters > li > a[href="#'+hash+'"]');
+        n.className = 'selected';
+      }
+
       during currentLocationHash('/') {
-        do { console.log('set hash to /'); }
         assert show(true);
         assert show(false);
       }
       during currentLocationHash('/active') {
-        do { console.log('set hash to /active'); }
         assert show(false);
       }
       during currentLocationHash('/completed') {
-        do { console.log('set hash to /completed'); }
         assert show(true);
       }
     }
