@@ -34,6 +34,11 @@ var _$ = Dataspace_._$;
 // do such a scan.
 var globalEvent = Struct.makeConstructor('globalEvent', ['selector', 'eventType', 'event']);
 
+// Message. As globalEvent, but instead of using a selector to choose
+// target DOM nodes, attaches an event handler to the browser "window"
+// object itself.
+var windowEvent = Struct.makeConstructor('windowEvent', ['eventType', 'event']);
+
 // Message. Like globalEvent, but applies only within the scope of the
 // UI fragment identified.
 var uiEvent = Struct.makeConstructor('uiEvent', ['fragmentId', 'selector', 'eventType', 'event']);
@@ -66,6 +71,16 @@ function spawnUIDriver() {
                       {
                         onDemandIncrease: function (c) {
                           Dataspace.spawn(new GlobalEventSupply(c.selector, c.eventType));
+                        }
+                      }));
+
+  var windowEventProj = windowEvent(_$('eventType'), __);
+  Dataspace.spawn(
+    new DemandMatcher([Patch.observe(windowEventProj)],
+                      [Patch.advertise(windowEventProj)],
+                      {
+                        onDemandIncrease: function (c) {
+                          Dataspace.spawn(new WindowEventSupply(c.eventType));
                         }
                       }));
 
@@ -126,6 +141,47 @@ GlobalEventSupply.prototype.handleEvent = function (e) {
   // TODO: don't be so crude about this ^. On the one hand, this lets
   // us ignore uiFragmentExists records coming and going; on the other
   // hand, we do potentially a lot of redundant work.
+  if (e.type === 'stateChange' && e.patch.project(this.demandPat).hasRemoved()) {
+    Dataspace.exit(); // trapexit will uninstall event listeners
+  }
+};
+
+///////////////////////////////////////////////////////////////////////////
+
+function WindowEventSupply(eventType) {
+  this.eventType = eventType;
+  this.demandPat = Patch.observe(windowEvent(this.eventType, __));
+}
+
+WindowEventSupply.prototype.boot = function () {
+  var self = this;
+  this.handlerClosure = Dataspace.wrap(function(e) { return self.handleDomEvent(e); });
+  this.updateEventListeners(true);
+
+  return Patch.sub(this.demandPat) // track demand
+    .andThen(Patch.pub(windowEvent(this.eventType, __))) // indicate our presence
+  ;
+};
+
+WindowEventSupply.prototype.updateEventListeners = function (install) {
+  if (install) {
+    window.addEventListener(cleanEventType(this.eventType), this.handlerClosure);
+  } else {
+    window.removeEventListener(cleanEventType(this.eventType), this.handlerClosure);
+  }
+};
+
+WindowEventSupply.prototype.trapexit = function () {
+  console.log('WindowEventSupply trapexit running', this.eventType);
+  this.updateEventListeners(false);
+};
+
+WindowEventSupply.prototype.handleDomEvent = function (event) {
+  Dataspace.send(windowEvent(this.eventType, event));
+  return dealWithPreventDefault(this.eventType, event);
+};
+
+WindowEventSupply.prototype.handleEvent = function (e) {
   if (e.type === 'stateChange' && e.patch.project(this.demandPat).hasRemoved()) {
     Dataspace.exit(); // trapexit will uninstall event listeners
   }
@@ -362,6 +418,7 @@ module.exports.newFragmentId = newFragmentId;
 module.exports.spawnUIDriver = spawnUIDriver;
 module.exports.Anchor = Anchor;
 module.exports.globalEvent = globalEvent;
+module.exports.windowEvent = windowEvent;
 module.exports.uiEvent = uiEvent;
 module.exports.uiFragment = uiFragment;
 module.exports.uiFragmentExists = uiFragmentExists;
