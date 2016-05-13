@@ -1,70 +1,67 @@
 <!doctype html>
-<html>
-  <head>
-    <title>Syndicate: TodoMVC</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href="style.css" rel="stylesheet">
-    <link href="todomvc/base.css" rel="stylesheet">
-    <link href="todomvc/index.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/2.2.1/mustache.min.js"></script>
-    <script src="../../third-party/jquery-2.2.0.min.js"></script>
-    <script src="../../dist/syndicatecompiler.js"></script>
-    <script src="../../dist/syndicate.js"></script>
-    <script type="text/syndicate-js" src="index.js"></script>
-  </head>
-  <body>
-    <section class="todoapp">
-      <header class="header">
-	<h1>todos</h1>
-	<input class="new-todo" placeholder="What needs to be done?" autofocus>
-      </header>
-      <section class="main">
-	<input class="toggle-all" type="checkbox">
-	<label for="toggle-all">Mark all as complete</label>
-	<ul class="todo-list" id="todo-list">
-          <template id="todo-list-item-view-template">
-            <li data-id="{{id}}" class="{{hidden_class}} {{completed_class}}">
-              <div class="view">
-                <input class="toggle" type="checkbox" {{checked}}>
-                <label>{{title}}</label>
-                <button class="destroy"></button>
-              </div>
-            </li>
-          </template>
-          <template id="todo-list-item-edit-template">
-            <li data-id="{{id}}" class="editing">
-              <input value="{{title}}" class="edit">
-            </li>
-          </template>
-        </ul>
-      </section>
-      <footer class="footer">
-	<span class="todo-count"></span>
-	<ul class="filters">
-	  <li>
-	    <a href="#/" class="selected">All</a>
-	  </li>
-	  <li>
-	    <a href="#/active">Active</a>
-	  </li>
-	  <li>
-	    <a href="#/completed">Completed</a>
-	  </li>
-	</ul>
-	<button class="clear-completed">Clear completed</button>
-      </footer>
-    </section>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Syndicate • TodoMVC</title>
+		<link rel="stylesheet" href="node_modules/todomvc-common/base.css">
+		<link rel="stylesheet" href="node_modules/todomvc-app-css/index.css">
+		<link rel="stylesheet" href="css/app.css">
 
-    <footer class="info">
-      <p>Double-click to edit a todo</p>
-      <p>Created by <a href="http://twitter.com/oscargodson">Oscar Godson</a></p>
-      <p>Refactored by <a href="https://github.com/cburgmer">Christoph Burgmer</a></p>
-      <p>Ported to Syndicate/js by <a href="http://twitter.com/leastfixedpoint">Tony Garnock-Jones</a></p>
-      <p>HTML structure and CSS taken from <a href="http://todomvc.com">TodoMVC</a></p>
-    </footer>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/2.2.1/mustache.min.js"></script>
+                <script src="../../dist/syndicatecompiler.js"></script>
+                <script src="../../dist/syndicate.js"></script>
+                <script type="text/syndicate-js" src="index.js"></script>
+	</head>
+	<body>
+		<section class="todoapp">
+			<header class="header">
+				<h1>todos</h1>
+				<input class="new-todo" placeholder="What needs to be done?" autofocus>
+			</header>
+			<section class="main">
+				<input class="toggle-all" type="checkbox">
+				<label for="toggle-all">Mark all as complete</label>
+				<ul class="todo-list">
+                                  <template id="todo-list-item-view-template">
+                                    <li data-id="{{id}}" class="{{hidden_class}} {{completed_class}}">
+                                      <div class="view">
+                                        <input class="toggle" type="checkbox" {{checked}}>
+                                        <label>{{title}}</label>
+                                        <button class="destroy"></button>
+                                      </div>
+                                    </li>
+                                  </template>
+                                  <template id="todo-list-item-edit-template">
+                                    <li data-id="{{id}}" class="editing">
+                                      <input value="{{title}}" class="edit">
+                                    </li>
+                                  </template>
+				</ul>
+			</section>
+			<footer class="footer">
+				<span class="todo-count"><strong>0</strong> item left</span>
+				<ul class="filters">
+					<li>
+						<a class="selected" href="#/">All</a>
+					</li>
+					<li>
+						<a href="#/active">Active</a>
+					</li>
+					<li>
+						<a href="#/completed">Completed</a>
+					</li>
+				</ul>
+				<button class="clear-completed">Clear completed</button>
+			</footer>
+		</section>
+		<footer class="info">
+			<p>Double-click to edit a todo</p>
+                        <p>Created by <a href="http://twitter.com/leastfixedpoint">Tony Garnock-Jones</a></p>
+			<p>Part of <a href="http://todomvc.com">TodoMVC</a></p>
+		</footer>
 
-    <hr>
-    <pre id="ds-state"></pre>
-  </body>
+                <hr>
+                <pre id="ds-state"></pre>
+	</body>
 </html>

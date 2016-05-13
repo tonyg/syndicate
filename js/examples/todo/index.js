@@ -1,7 +1,6 @@
 assertion type todo(id, title, completed);
 message type deleteTodo(id);
 assertion type show(completed);
-assertion type currentLocationHash(hash);
 
 /*
   To Do (ho ho ho)
@@ -27,6 +26,10 @@ assertion type currentLocationHash(hash);
 var ESCAPE_KEY_CODE = 27;
 var ENTER_KEY_CODE = 13;
 
+function getTemplate(id) {
+  return document.getElementById(id).innerHTML;
+}
+
 var nextId = 0;
 function addTodo(title) {
   title = title.trim();
@@ -48,10 +51,10 @@ function addTodo(title) {
         finally { this.visible = false; }
       }
 
-      assert this.ui.html('#todo-list',
-                          Mustache.render($(this.editing
-                                            ? '#todo-list-item-edit-template'
-                                            : '#todo-list-item-view-template').html(),
+      assert this.ui.html('.todo-list',
+                          Mustache.render(getTemplate(this.editing
+                                                      ? 'todo-list-item-edit-template'
+                                                      : 'todo-list-item-view-template'),
                                           {
                                             completed_class: this.completed ? "completed" : "",
                                             hidden_class: this.visible ? "" : "hidden",
@@ -115,22 +118,8 @@ ground dataspace G {
   }
 
   actor {
-    this.hash = hashFrom(document.location.toString());
-    function hashFrom(u) {
-      var i = u.indexOf('#');
-      return (i !== -1) ? u.slice(i + 1) : '/';
-    }
     react {
-      assert currentLocationHash(this.hash);
-      on message Syndicate.UI.windowEvent('hashchange', $e) {
-        this.hash = hashFrom(e.newURL);
-      }
-    }
-  }
-
-  actor {
-    react {
-      on asserted currentLocationHash($hash) {
+      on asserted Syndicate.UI.locationHash($hash) {
         // TODO this is a bit icky too
         var ns = document.querySelectorAll('ul.filters > li > a');
         for (var i = 0; i < ns.length; i++) { ns[i].className = ''; }
@@ -138,14 +127,14 @@ ground dataspace G {
         n.className = 'selected';
       }
 
-      during currentLocationHash('/') {
+      during Syndicate.UI.locationHash('/') {
         assert show(true);
         assert show(false);
       }
-      during currentLocationHash('/active') {
+      during Syndicate.UI.locationHash('/active') {
         assert show(false);
       }
-      during currentLocationHash('/completed') {
+      during Syndicate.UI.locationHash('/completed') {
         assert show(true);
       }
     }
@@ -157,5 +146,5 @@ ground dataspace G {
 }
 
 G.dataspace.setOnStateChange(function (mux, patch) {
-  $("#ds-state").text(Syndicate.prettyTrie(mux.routingTable));
+  document.getElementById("ds-state").innerText = Syndicate.prettyTrie(mux.routingTable);
 });
