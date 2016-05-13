@@ -51,6 +51,14 @@ var uiFragment = Struct.makeConstructor('uiFragment', ['fragmentId', 'selector',
 // Assertion. Asserted by respondent to a given uiFragment.
 var uiFragmentExists = Struct.makeConstructor('uiFragmentExists', ['fragmentId']);
 
+// Assertion. Current "location hash" -- the "#/path/part" fragment at
+// the end of window.location.
+var locationHash = Struct.makeConstructor('locationHash', ['value']);
+
+// Message. Causes window.location to be updated to have the given new
+// "location hash" value.
+var setLocationHash = Struct.makeConstructor('setLocationHash', ['value']);
+
 ///////////////////////////////////////////////////////////////////////////
 // ID allocators
 
@@ -63,7 +71,9 @@ function newFragmentId() {
 
 ///////////////////////////////////////////////////////////////////////////
 
-function spawnUIDriver() {
+function spawnUIDriver(options) {
+  options = options || {};
+
   var globalEventProj = globalEvent(_$('selector'), _$('eventType'), __);
   Dataspace.spawn(
     new DemandMatcher([Patch.observe(globalEventProj)],
@@ -92,6 +102,8 @@ function spawnUIDriver() {
                           Dataspace.spawn(new UIFragment(c.fragmentId));
                         }
                       }));
+
+  Dataspace.spawn(new LocationHashTracker(options.defaultLocationHash || '/'));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -414,6 +426,49 @@ Anchor.prototype.event = function (selector, eventType, event) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+function LocationHashTracker(defaultLocationHash) {
+  this.defaultLocationHash = defaultLocationHash;
+  this.hashValue = null;
+}
+
+LocationHashTracker.prototype.boot = function () {
+  var self = this;
+  this.loadHash();
+  this.handlerClosure = Dataspace.wrap(function (e) { self.handleDomEvent(e); });
+  window.addEventListener('hashchange', this.handlerClosure);
+
+  return Patch.assert(locationHash(this.hashValue))
+    .andThen(Patch.sub(setLocationHash(__)));
+};
+
+LocationHashTracker.prototype.trapexit = function () {
+  window.removeEventListener('hashchange', this.handlerClosure);
+};
+
+LocationHashTracker.prototype.loadHash = function () {
+  this.hashValue = window.location.hash;
+  if (this.hashValue.length && this.hashValue[0] === '#') {
+    this.hashValue = this.hashValue.slice(1);
+  }
+  if (!this.hashValue) {
+    this.hashValue = this.defaultLocationHash;
+  }
+};
+
+LocationHashTracker.prototype.handleDomEvent = function (e) {
+  this.loadHash();
+  Dataspace.stateChange(Patch.retract(locationHash(__))
+                        .andThen(Patch.assert(locationHash(this.hashValue))));
+};
+
+LocationHashTracker.prototype.handleEvent = function (e) {
+  if (e.type === 'message' && setLocationHash.isClassOf(e.message)) {
+    window.location.hash = e.message[0];
+  }
+};
+
+///////////////////////////////////////////////////////////////////////////
+
 module.exports.newFragmentId = newFragmentId;
 module.exports.spawnUIDriver = spawnUIDriver;
 module.exports.Anchor = Anchor;
@@ -422,3 +477,5 @@ module.exports.windowEvent = windowEvent;
 module.exports.uiEvent = uiEvent;
 module.exports.uiFragment = uiFragment;
 module.exports.uiFragmentExists = uiFragmentExists;
+module.exports.locationHash = locationHash;
+module.exports.setLocationHash = setLocationHash;
