@@ -21,6 +21,8 @@ assertion type show(completed);
     we, by using "hidden" class, are kind of partly doing it on a view
     level. We could either continue to do this, or switch to a proper
     model level approach, but then we'd lose stability of ordering!
+
+  - BUG: doesn't hide an item if in "Active" state and you click on the checkbox
  */
 
 var ESCAPE_KEY_CODE = 27;
