@@ -107,6 +107,15 @@ DemandMatcher.prototype.handlePatch = function (p) {
   var addedSupply = this.extractKeys(p.added, self.supplyProjections, sN, 'supply');
   var removedSupply = this.extractKeys(p.removed, self.supplyProjections, sN, 'supply');
 
+  // Though the added and removed sets of patches are always disjoint,
+  // *after projection* this may not hold. Cancel out any overlaps.
+  var demandOverlap = addedDemand.intersect(removedDemand);
+  var supplyOverlap = addedSupply.intersect(removedSupply);
+  addedDemand = addedDemand.subtract(demandOverlap);
+  removedDemand = removedDemand.subtract(demandOverlap);
+  addedSupply = addedSupply.subtract(supplyOverlap);
+  removedSupply = removedSupply.subtract(supplyOverlap);
+
   self.currentSupply = self.currentSupply.union(addedSupply);
   self.currentDemand = self.currentDemand.subtract(removedDemand);
 

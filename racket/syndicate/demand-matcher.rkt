@@ -51,6 +51,15 @@
                   (set)
                   (set)))
 
+(define (ensure-non-wild s kind spec direction t)
+  (when (not s)
+    (error 'demand-matcher
+           "Wildcard ~a of ~v ~a:\n~a"
+           kind
+           spec
+           direction
+           (trie->pretty-string t))))
+
 ;; DemandMatcher (Constreeof Action) Patch -> (Transition DemandMatcher)
 ;; Given a Patch from the environment, projects it into supply and
 ;; demand increase and decrease sets. Calls ChangeHandlers in response
@@ -69,12 +78,19 @@
   (define-values (added-supply removed-supply)
     (patch-project/set #:take supply-arity p supply-spec))
 
-  (when (not added-demand) (error 'demand-matcher "Wildcard demand of ~v:\n~a"
-                                  demand-spec
-                                  (trie->pretty-string (patch-added p))))
-  (when (not added-supply) (error 'demand-matcher "Wildcard supply of ~v:\n~a"
-                                  supply-spec
-                                  (trie->pretty-string (patch-added p))))
+  (ensure-non-wild added-demand 'demand demand-spec 'added (patch-added p))
+  (ensure-non-wild added-supply 'supply supply-spec 'added (patch-added p))
+  (ensure-non-wild removed-demand 'demand demand-spec 'removed (patch-removed p))
+  (ensure-non-wild removed-supply 'supply supply-spec 'removed (patch-removed p))
+
+  ;; Though the added and removed sets of patches are always disjoint,
+  ;; *after projection* this may not hold. Cancel out any overlaps.
+  (let ((overlap (set-intersect added-demand removed-demand)))
+    (set! added-demand (set-subtract added-demand overlap))
+    (set! removed-demand (set-subtract removed-demand overlap)))
+  (let ((overlap (set-intersect added-supply removed-supply)))
+    (set! added-supply (set-subtract added-supply overlap))
+    (set! removed-supply (set-subtract removed-supply overlap)))
 
   (set! supply (set-union supply added-supply))
   (set! demand (set-subtract demand removed-demand))
