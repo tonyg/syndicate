@@ -139,10 +139,14 @@ Dataspace.prototype.asChild = function (pid, f, omitLivenessCheck) {
 };
 
 Dataspace.prototype.kill = function (pid, exn) {
-  if (exn && exn.stack) {
-    console.log("Process exiting", pid, exn, exn.stack);
-  } else if (exn || Dataspace.noisy) {
-    console.log("Process exiting", pid, exn);
+  if (exn) {
+    if (exn.stack) {
+      console.error("Process crashed", pid, exn, exn.stack);
+    } else {
+      console.error("Process crashed", pid, exn);
+    }
+  } else if (Dataspace.noisy) {
+    console.log("Process exiting", pid);
   }
   var p = this.processTable.get(pid);
   this.processTable = this.processTable.set(pid, { behavior: Dataspace.inertBehavior });
