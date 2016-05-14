@@ -456,7 +456,7 @@ UIAttribute.prototype.boot = function () {
 };
 
 UIAttribute.prototype.trapexit = function () {
-  console.log('UIAttribute trapexit running', this.fragmentId);
+  console.log('UIAttribute trapexit running', this.selector, this.attribute, this.value);
   this.restoreSavedValues();
 };
 
