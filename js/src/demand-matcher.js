@@ -19,7 +19,7 @@ var FALLING =   IS_PRESENT | IS_CHANGING ;
 ///////////////////////////////////////////////////////////////////////////
 // Default task supervision strategy. See syndicate/doc/demand-matcher.md.
 
-function defaultTaskSupervisor(demandState, supplyState, supervisionState, taskFn, errorFn) {
+function defaultTaskSupervisor(demandState, supplyState, supervisionState, taskFn, onTaskExit) {
   var oldESI = supervisionState ? supervisionState.expectSupplyIncrease : false;
   var oldESD = supervisionState ? supervisionState.expectSupplyDecrease : false;
 
@@ -36,7 +36,7 @@ function defaultTaskSupervisor(demandState, supplyState, supervisionState, taskF
                   (demandState === HIGH)) && ((supplyState === LOW) ||
                                               (supplyState === FALLING))) {
     if ((demandState === HIGH) && !oldESD) {
-      errorFn("Syndicate: DemandMatcher detected unexpected drop in supply");
+      onTaskExit();
     } else {
       taskFn();
       newESI = true;
@@ -53,6 +53,10 @@ function defaultTaskSupervisor(demandState, supplyState, supervisionState, taskF
   }
 }
 
+function defaultOnTaskExit(captures) {
+  console.error("Syndicate: DemandMatcher detected unexpected drop in supply", captures);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 // DemandMatcher itself
 
@@ -62,6 +66,7 @@ function DemandMatcher(demandSpecs, supplySpecs, startTask, options) {
     demandMetaLevel: null,
     supplyMetaLevel: null,
     taskSupervisor: defaultTaskSupervisor,
+    onTaskExit: defaultOnTaskExit
   }, options);
 
   if (typeof startTask !== 'function') {
@@ -91,6 +96,7 @@ function DemandMatcher(demandSpecs, supplySpecs, startTask, options) {
 
   this.taskSupervisor = options.taskSupervisor;
   this.startTask = startTask;
+  this.onTaskExit = options.onTaskExit;
 
   this.currentDemand = Immutable.Set();
   this.currentSupply = Immutable.Set();
@@ -156,8 +162,8 @@ DemandMatcher.prototype.handlePatch = function (p) {
     function taskFn() {
       self.startTask(Trie.captureToObject(captures, self.demandProjectionNames));
     }
-    function errorFn(msg) {
-      console.error(msg, captures);
+    function onTaskExit() {
+      self.onTaskExit(Trie.captureToObject(captures, self.demandProjectionNames));
     }
 
     var demandState = computeState(self.currentDemand, addedDemand, removedDemand, captures);
@@ -167,8 +173,12 @@ DemandMatcher.prototype.handlePatch = function (p) {
                                                   supplyState,
                                                   oldSupervisionState,
                                                   taskFn,
-                                                  errorFn);
-    self.supervisionStates = self.supervisionStates.set(captures, newSupervisionState);
+                                                  onTaskExit);
+    if (newSupervisionState === null) {
+      self.supervisionStates = self.supervisionStates.remove(captures);
+    } else {
+      self.supervisionStates = self.supervisionStates.set(captures, newSupervisionState);
+    }
   });
 
   self.currentSupply = self.currentSupply.union(addedSupply).subtract(removedSupply);
