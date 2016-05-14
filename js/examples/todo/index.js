@@ -65,7 +65,8 @@ function addTodo(title) {
                                             id: this.id,
                                             checked: this.completed ? "checked" : "",
                                             title: this.title
-                                          }));
+                                          }),
+                         this.id);
 
       on message this.ui.event('.toggle', 'change', $e) {
         this.completed = e.target.checked;
