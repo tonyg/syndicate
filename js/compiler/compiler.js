@@ -155,6 +155,9 @@ var modifiedSourceActions = {
                         eventPattern.bindings,
                         block.asES5);
   },
+  FacetSituation_onEvent: function (_on, _event, id, block) {
+    return '\n.addOnEventHandler((function(' + id.asES5 + ') ' + block.asES5 + '))';
+  },
   FacetSituation_during: function(_during, pattern, facetBlock) {
     return buildOnEvent(false,
                         'asserted',

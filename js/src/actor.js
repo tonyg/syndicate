@@ -93,6 +93,10 @@ Facet.prototype.addAssertion = function(assertionFn) {
   return this.addEndpoint(new Endpoint(assertionFn, function(e) {}));
 };
 
+Facet.prototype.addOnEventHandler = function(handler) {
+  return this.addEndpoint(new Endpoint(function () { return Patch.emptyPatch; }, handler));
+};
+
 Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projectionFn, handlerFn) {
   var facet = this;
   switch (eventType) {
