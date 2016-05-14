@@ -249,23 +249,28 @@ actions (excluding warnings related to recovery etc.):
 ---------------------------------------------------------------------------
 
 Leave expS+ alone, set expS-:
+
      Y  -   -  +    -     -                  EXPDROP           -  Y    -     Y
      Y  Y   -       -     -                  EXPDROP           -  Y    -     Y
      Y  -   -       Y     -                  EXPDROP           -  -    Y     Y
 
 Leave expS+ alone, clear expS-:
+
      -  Y      -    -     Y                          GOTDROP   -  -    -     -
      Y  Y   -  -    -     Y                          GOTDROP   -  -    -     -
 
 Set expS+, leave expS- alone:
+
      -  -   +       -     -    START                           Y  -    Y     -
      -  Y   +  -    -     -    START                           Y  -    Y     -
 
 Set expS+, clear expS-:
+
      -  Y   +  -    -     Y    START                 GOTDROP   Y  -    Y     -
      Y  Y      -    -     Y    START                 GOTDROP   Y  -    Y     -
 
 Clear expS+, leave expS- alone:
+
      Y  -      +    Y     -          RUNNING                   Y  Y    -     -
      -  -      +    Y     Y          RUNNING                   -  Y    -     Y
      -  -   +  +    Y     Y          RUNNING                   Y  Y    -     Y
@@ -273,6 +278,7 @@ Clear expS+, leave expS- alone:
      Y  -   -  +    Y     Y          RUNNING                   -  Y    -     Y
 
 Clear expS+, set expS-:
+
      Y  -   -  +    Y     -          RUNNING EXPDROP           -  Y    -     Y
 
 ---------------------------------------------------------------------------
@@ -281,6 +287,7 @@ Now, let's look at those grouped by specific action (some rows will
 appear twice, because some rows involve more than one action):
 
 Expdrop:
+
      Y  -   -  +    -     -                  EXPDROP           -  Y    -     Y
      Y  Y   -       -     -                  EXPDROP           -  Y    -     Y
      Y  -   -       Y     -                  EXPDROP           -  -    Y     Y
@@ -291,6 +298,7 @@ Expdrop:
    falling, or (c) supply is expected to exist."
 
 Gotdrop:
+
      -  Y      -    -     Y                          GOTDROP   -  -    -     -
      Y  Y   -  -    -     Y                          GOTDROP   -  -    -     -
      -  Y   +  -    -     Y    START                 GOTDROP   Y  -    Y     -
@@ -299,6 +307,7 @@ Gotdrop:
  - "Clear expS- whenever a drop in supply is detected."
 
 Start:
+
      -  -   +       -     -    START                           Y  -    Y     -
      -  Y   +  -    -     -    START                           Y  -    Y     -
      -  Y   +  -    -     Y    START                 GOTDROP   Y  -    Y     -
@@ -310,6 +319,7 @@ Start:
    the 'unexpected drop' error case."
 
 Running:
+
      Y  -      +    Y     -          RUNNING                   Y  Y    -     -
      -  -      +    Y     Y          RUNNING                   -  Y    -     Y
      -  -   +  +    Y     Y          RUNNING                   Y  Y    -     Y
