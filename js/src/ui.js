@@ -51,6 +51,15 @@ var uiFragment = Struct.makeConstructor('uiFragment', ['fragmentId', 'selector',
 // Assertion. Asserted by respondent to a given uiFragment.
 var uiFragmentExists = Struct.makeConstructor('uiFragmentExists', ['fragmentId']);
 
+// Assertion. Causes the setup of DOM attributes on all nodes named by
+// the given selector that exist at the time of assertion.
+//
+// NOTE: Attribute "class" is a special case: it treats the value of
+// the attribute as a (string encoding of a) set. The given value is
+// split on whitespace, and each piece is added to the set of things
+// already present. (See the implementation for details.)
+var uiAttribute = Struct.makeConstructor('uiAttribute', ['selector', 'attribute', 'value']);
+
 // Assertion. Current "location hash" -- the "#/path/part" fragment at
 // the end of window.location.
 var locationHash = Struct.makeConstructor('locationHash', ['value']);
@@ -95,6 +104,13 @@ function spawnUIDriver(options) {
                       [uiFragmentExists(_$('fragmentId'))],
                       function (c) {
                         Dataspace.spawn(new UIFragment(c.fragmentId));
+                      }));
+
+  Dataspace.spawn(
+    new DemandMatcher([uiAttribute(_$('selector'), _$('attribute'), _$('value'))],
+                      [Patch.advertise(uiAttribute(_$('selector'), _$('attribute'), _$('value')))],
+                      function (c) {
+                        Dataspace.spawn(new UIAttribute(c.selector, c.attribute, c.value));
                       }));
 
   Dataspace.spawn(new LocationHashTracker(options.defaultLocationHash || '/'));
@@ -358,6 +374,86 @@ UIFragment.prototype.handleDomEvent = function (c, e) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+function UIAttribute(selector, attribute, value) {
+  this.selector = selector;
+  this.attribute = attribute;
+  this.value = value;
+
+  this.savedValues = [];
+  // ^ Array of {node: DOMNode, value: (U Null String)}, when attribute !== 'class'.
+  // ^ Array of {node: DOMNode}, when attribute === 'class'.
+}
+
+UIAttribute.prototype.boot = function () {
+  var a = uiAttribute(this.selector, this.attribute, this.value);
+  this.install();
+  return Patch.sub(a).andThen(Patch.pub(a));
+};
+
+UIAttribute.prototype.trapexit = function () {
+  console.log('UIAttribute trapexit running', this.fragmentId);
+  this.restoreSavedValues();
+};
+
+function splitClassValue(v) {
+  v = (v || '').trim();
+  return v ? v.split(/ +/) : [];
+}
+
+UIAttribute.prototype.install = function () {
+  var self = this;
+  var nodes = Array.prototype.slice.call(document.querySelectorAll(self.selector));
+
+  nodes.forEach(function (node) {
+    if (self.attribute === 'class') {
+      // Deliberately maintains duplicates, so we don't interfere with
+      // potential other UIAttribute instances on the same objects for
+      // the same attribute. See also restoreSavedValues.
+      var existing = splitClassValue(node.getAttribute('class'));
+      var toAdd = splitClassValue(self.value);
+      self.savedValues.push({node: node});
+      node.setAttribute('class', existing.concat(toAdd).join(' '));
+    } else {
+      self.savedValues.push({node: node, value: node.getAttribute(self.attribute)});
+      node.setAttribute(self.attribute, self.value);
+    }
+  });
+};
+
+UIAttribute.prototype.restoreSavedValues = function () {
+  var self = this;
+  self.savedValues.forEach(function (entry) {
+    if (self.attribute === 'class') {
+      var existing = splitClassValue(entry.node.getAttribute('class'));
+      var toRemove = splitClassValue(self.value);
+      toRemove.forEach(function (v) {
+        var i = existing.indexOf(v);
+        if (i !== -1) { existing.splice(i, 1); }
+      });
+      if (existing.length === 0) {
+        entry.node.removeAttribute('class');
+      } else {
+        entry.node.setAttribute('class', existing.join(' '));
+      }
+    } else {
+      if (entry.value === null) {
+        entry.node.removeAttribute(self.attribute);
+      } else {
+        entry.node.setAttribute(self.attribute, entry.value);
+      }
+    }
+  });
+  self.savedValues = [];
+};
+
+UIAttribute.prototype.handleEvent = function (e) {
+  if (e.type === 'stateChange' && e.patch.hasRemoved()) {
+    Dataspace.exit(); // trapexit will restore attributes
+  }
+};
+
+///////////////////////////////////////////////////////////////////////////
+
 function escapeDataAttributeName(s) {
   // Per https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset,
   // the rules seem to be:
@@ -471,5 +567,6 @@ module.exports.windowEvent = windowEvent;
 module.exports.uiEvent = uiEvent;
 module.exports.uiFragment = uiFragment;
 module.exports.uiFragmentExists = uiFragmentExists;
+module.exports.uiAttribute = uiAttribute;
 module.exports.locationHash = locationHash;
 module.exports.setLocationHash = setLocationHash;
