@@ -28,10 +28,12 @@ we can't just figure out what to do based on the presence or absence
 of demand and supply for a task. We also need to track a few more bits
 of information.
 
-When demand for a task drops briefly, we *expect* a drop in supply,
-*even demand increases again before we detect a supply drop*. For this
-reason, in some circumstances, the default task supervision strategy
-of DemandMatcher *recreates* supply on supply drop in some
+When demand for a task drops briefly, we expect a drop in supply in
+future, *even if demand increases again before we detect a supply
+drop*.
+
+For this reason, in some circumstances, the default task supervision
+strategy of DemandMatcher *recreates* supply on supply drop in some
 circumstances. It keeps track of whether a supply increase is
 expected, and of whether a supply decrease is expected for each task.
 
