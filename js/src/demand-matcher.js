@@ -3,43 +3,74 @@ var Trie = require('./trie.js');
 var Patch = require('./patch.js');
 var Util = require('./util.js');
 
-function ensureMatchingProjectionNames(specs) {
-  if (!(specs.length > 0)) {
-    throw new Error("Syndicate: DemandMatcher needs at least one spec");
+///////////////////////////////////////////////////////////////////////////
+// Protocol between DemandMatcher and taskSupervisor functions
+
+// Bits:
+var IS_CHANGING = 1;
+var IS_PRESENT  = 2;
+
+// Bit combinations:
+var LOW     = 0                          ;
+var RISING  =                IS_CHANGING ;
+var HIGH    =   IS_PRESENT               ;
+var FALLING =   IS_PRESENT | IS_CHANGING ;
+
+///////////////////////////////////////////////////////////////////////////
+// Default task supervision strategy. See syndicate/doc/demand-matcher.md.
+
+function defaultTaskSupervisor(demandState, supplyState, supervisionState, taskFn, errorFn) {
+  var oldESI = supervisionState ? supervisionState.expectSupplyIncrease : false;
+  var oldESD = supervisionState ? supervisionState.expectSupplyDecrease : false;
+
+  var newESI = oldESI;
+  var newESD = oldESD;
+
+  if ((demandState === FALLING) && ((supplyState === RISING) ||
+                                    (supplyState === HIGH) ||
+                                    oldESI)) {
+    newESD = true;
   }
 
-  var names = null;
-  specs.forEach(function (spec) {
-    if (names === null) {
-      names = Trie.projectionNames(spec);
+  if (!oldESI && ((demandState === RISING) ||
+                  (demandState === HIGH)) && ((supplyState === LOW) ||
+                                              (supplyState === FALLING))) {
+    if ((demandState === HIGH) && !oldESD) {
+      errorFn("Syndicate: DemandMatcher detected unexpected drop in supply");
     } else {
-      if (JSON.stringify(names) !== JSON.stringify(Trie.projectionNames(spec))) {
-        throw new Error("Syndicate: DemandMatcher needs identical capture names");
-      }
+      taskFn();
+      newESI = true;
     }
-  });
-  return names;
+  }
+
+  if (supplyState === FALLING) newESD = false;
+  if (supplyState === RISING)  newESI = false;
+
+  if (newESI || newESD) {
+    return { expectSupplyIncrease: newESI, expectSupplyDecrease: newESD };
+  } else {
+    return null;
+  }
 }
 
-function defaultHandler(side, movement) {
-  return function (captures) {
-    console.error("Syndicate: Unhandled "+movement+" in "+side, captures);
-  };
-}
+///////////////////////////////////////////////////////////////////////////
+// DemandMatcher itself
 
-function DemandMatcher(demandSpecs, supplySpecs, options) {
+function DemandMatcher(demandSpecs, supplySpecs, startTask, options) {
   options = Util.extend({
     metaLevel: 0,
     demandMetaLevel: null,
     supplyMetaLevel: null,
-    onDemandIncrease: defaultHandler('demand', 'increase'),
-    onDemandDecrease: function (captures) {},
-    onSupplyIncrease: function (captures) {},
-    onSupplyDecrease: defaultHandler('supply', 'decrease')
+    taskSupervisor: defaultTaskSupervisor,
   }, options);
+
+  if (typeof startTask !== 'function') {
+    throw new Error("Syndicate: DemandMatcher expects 'startTask' function as third argument");
+  }
 
   this.demandProjectionNames = ensureMatchingProjectionNames(demandSpecs);
   this.supplyProjectionNames = ensureMatchingProjectionNames(supplySpecs);
+  ensureMatchingProjectionNames([demandSpecs[0], supplySpecs[0]]);
 
   this.demandSpecs = demandSpecs;
   this.supplySpecs = supplySpecs;
@@ -58,13 +89,30 @@ function DemandMatcher(demandSpecs, supplySpecs, options) {
   this.demandProjections = demandSpecs.map(metaWrap(this.demandMetaLevel));
   this.supplyProjections = supplySpecs.map(metaWrap(this.supplyMetaLevel));
 
-  this.onDemandIncrease = options.onDemandIncrease;
-  this.onDemandDecrease = options.onDemandDecrease;
-  this.onSupplyIncrease = options.onSupplyIncrease;
-  this.onSupplyDecrease = options.onSupplyDecrease;
+  this.taskSupervisor = options.taskSupervisor;
+  this.startTask = startTask;
 
   this.currentDemand = Immutable.Set();
   this.currentSupply = Immutable.Set();
+  this.supervisionStates = Immutable.Map();
+}
+
+function ensureMatchingProjectionNames(specs) {
+  if (!(specs.length > 0)) {
+    throw new Error("Syndicate: DemandMatcher needs at least one spec");
+  }
+
+  var names = null;
+  specs.forEach(function (spec) {
+    if (names === null) {
+      names = Trie.projectionNames(spec);
+    } else {
+      if (JSON.stringify(names) !== JSON.stringify(Trie.projectionNames(spec))) {
+        throw new Error("Syndicate: DemandMatcher needs identical capture names");
+      }
+    }
+  });
+  return names;
 }
 
 DemandMatcher.prototype.boot = function () {
@@ -83,6 +131,50 @@ DemandMatcher.prototype.handleEvent = function (e) {
   }
 };
 
+DemandMatcher.prototype.handlePatch = function (p) {
+  var self = this;
+
+  var dN = self.demandProjectionNames.length;
+  var sN = self.supplyProjectionNames.length;
+  var addedDemand = self.extractKeys(p.added, self.demandProjections, dN, 'demand');
+  var removedDemand = self.extractKeys(p.removed, self.demandProjections, dN, 'demand');
+  var addedSupply = self.extractKeys(p.added, self.supplyProjections, sN, 'supply');
+  var removedSupply = self.extractKeys(p.removed, self.supplyProjections, sN, 'supply');
+
+  // Though the added and removed sets of patches are always disjoint,
+  // *after projection* this may not hold. Cancel out any overlaps.
+  var demandOverlap = addedDemand.intersect(removedDemand);
+  var supplyOverlap = addedSupply.intersect(removedSupply);
+  addedDemand = addedDemand.subtract(demandOverlap);
+  removedDemand = removedDemand.subtract(demandOverlap);
+  addedSupply = addedSupply.subtract(supplyOverlap);
+  removedSupply = removedSupply.subtract(supplyOverlap);
+
+  var allTasks = addedDemand.union(addedSupply).union(removedDemand).union(removedSupply);
+
+  allTasks.forEach(function (captures) {
+    function taskFn() {
+      self.startTask(Trie.captureToObject(captures, self.demandProjectionNames));
+    }
+    function errorFn(msg) {
+      console.error(msg, captures);
+    }
+
+    var demandState = computeState(self.currentDemand, addedDemand, removedDemand, captures);
+    var supplyState = computeState(self.currentSupply, addedSupply, removedSupply, captures);
+    var oldSupervisionState = self.supervisionStates.get(captures, null);
+    var newSupervisionState = self.taskSupervisor(demandState,
+                                                  supplyState,
+                                                  oldSupervisionState,
+                                                  taskFn,
+                                                  errorFn);
+    self.supervisionStates = self.supervisionStates.set(captures, newSupervisionState);
+  });
+
+  self.currentSupply = self.currentSupply.union(addedSupply).subtract(removedSupply);
+  self.currentDemand = self.currentDemand.union(addedDemand).subtract(removedDemand);
+};
+
 DemandMatcher.prototype.extractKeys = function (trie, projections, keyCount, whichSide) {
   var ks = Immutable.Set();
   projections.forEach(function (proj) {
@@ -97,53 +189,11 @@ DemandMatcher.prototype.extractKeys = function (trie, projections, keyCount, whi
   return ks;
 };
 
-DemandMatcher.prototype.handlePatch = function (p) {
-  var self = this;
-
-  var dN = self.demandProjectionNames.length;
-  var sN = self.supplyProjectionNames.length;
-  var addedDemand = this.extractKeys(p.added, self.demandProjections, dN, 'demand');
-  var removedDemand = this.extractKeys(p.removed, self.demandProjections, dN, 'demand');
-  var addedSupply = this.extractKeys(p.added, self.supplyProjections, sN, 'supply');
-  var removedSupply = this.extractKeys(p.removed, self.supplyProjections, sN, 'supply');
-
-  // Though the added and removed sets of patches are always disjoint,
-  // *after projection* this may not hold. Cancel out any overlaps.
-  var demandOverlap = addedDemand.intersect(removedDemand);
-  var supplyOverlap = addedSupply.intersect(removedSupply);
-  addedDemand = addedDemand.subtract(demandOverlap);
-  removedDemand = removedDemand.subtract(demandOverlap);
-  addedSupply = addedSupply.subtract(supplyOverlap);
-  removedSupply = removedSupply.subtract(supplyOverlap);
-
-  self.currentSupply = self.currentSupply.union(addedSupply);
-  self.currentDemand = self.currentDemand.subtract(removedDemand);
-
-  removedSupply.forEach(function (captures) {
-    if (self.currentDemand.has(captures)) {
-      self.onSupplyDecrease(Trie.captureToObject(captures, self.supplyProjectionNames));
-    }
-  });
-  addedSupply.forEach(function (captures) {
-    if (!self.currentDemand.has(captures)) {
-      self.onSupplyIncrease(Trie.captureToObject(captures, self.supplyProjectionNames));
-    }
-  });
-
-  removedDemand.forEach(function (captures) {
-    if (self.currentSupply.has(captures)) {
-      self.onDemandDecrease(Trie.captureToObject(captures, self.demandProjectionNames));
-    }
-  });
-  addedDemand.forEach(function (captures) {
-    if (!self.currentSupply.has(captures)) {
-      self.onDemandIncrease(Trie.captureToObject(captures, self.demandProjectionNames));
-    }
-  });
-
-  self.currentSupply = self.currentSupply.subtract(removedSupply);
-  self.currentDemand = self.currentDemand.union(addedDemand);
-};
+function computeState(current, added, removed, captures) {
+  var isPresent = current.has(captures);
+  var isChanging = added.has(captures) || removed.has(captures);
+  return (isPresent ? IS_PRESENT : 0) | (isChanging ? IS_CHANGING : 0);
+}
 
 ///////////////////////////////////////////////////////////////////////////
 

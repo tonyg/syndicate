@@ -31,12 +31,12 @@ function spawnBrokerClientDriver() {
       Dataspace.spawn(
         new DemandMatcher([brokerConnection(URL)],
                           [brokerConnection(URL)],
+                          function (c) {
+                            Dataspace.spawn(new BrokerClientConnection(c.url));
+                          },
                           {
                             demandMetaLevel: 1,
-                            supplyMetaLevel: 0,
-                            onDemandIncrease: function (c) {
-                              Dataspace.spawn(new BrokerClientConnection(c.url));
-                            }
+                            supplyMetaLevel: 0
                           }));
     }));
 }

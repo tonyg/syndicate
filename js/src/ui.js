@@ -78,29 +78,23 @@ function spawnUIDriver(options) {
   Dataspace.spawn(
     new DemandMatcher([Patch.observe(globalEventProj)],
                       [Patch.advertise(globalEventProj)],
-                      {
-                        onDemandIncrease: function (c) {
-                          Dataspace.spawn(new GlobalEventSupply(c.selector, c.eventType));
-                        }
+                      function (c) {
+                        Dataspace.spawn(new GlobalEventSupply(c.selector, c.eventType));
                       }));
 
   var windowEventProj = windowEvent(_$('eventType'), __);
   Dataspace.spawn(
     new DemandMatcher([Patch.observe(windowEventProj)],
                       [Patch.advertise(windowEventProj)],
-                      {
-                        onDemandIncrease: function (c) {
-                          Dataspace.spawn(new WindowEventSupply(c.eventType));
-                        }
+                      function (c) {
+                        Dataspace.spawn(new WindowEventSupply(c.eventType));
                       }));
 
   Dataspace.spawn(
     new DemandMatcher([uiFragment(_$('fragmentId'), __, __)],
                       [uiFragmentExists(_$('fragmentId'))],
-                      {
-                        onDemandIncrease: function (c) {
-                          Dataspace.spawn(new UIFragment(c.fragmentId));
-                        }
+                      function (c) {
+                        Dataspace.spawn(new UIFragment(c.fragmentId));
                       }));
 
   Dataspace.spawn(new LocationHashTracker(options.defaultLocationHash || '/'));

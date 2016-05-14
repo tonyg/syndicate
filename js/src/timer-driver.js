@@ -15,18 +15,14 @@ function spawnTimerDriver() {
   Dataspace.spawn(
     new DemandMatcher([Patch.observe(periodicTick(_$('intervalMS')))],
 		      [Patch.advertise(periodicTick(_$('intervalMS')))],
-		      {
-			onDemandIncrease: function (c) {
-			  Dataspace.spawn(new Tick(c.intervalMS));
-			}
+                      function (c) {
+			Dataspace.spawn(new Tick(c.intervalMS));
 		      }));
   Dataspace.spawn(
     new DemandMatcher([Patch.observe(timeLaterThan(_$('deadlineMS')))],
 		      [Patch.advertise(timeLaterThan(_$('deadlineMS')))],
-		      {
-			onDemandIncrease: function (c) {
-			  Dataspace.spawn(new Alarm(c.deadlineMS));
-			}
+                      function (c) {
+			Dataspace.spawn(new Alarm(c.deadlineMS));
 		      }));
 }
 

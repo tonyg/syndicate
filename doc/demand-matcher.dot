@@ -1,0 +1,57 @@
+digraph G {
+  node[shape=box];
+
+  // s0000 idle
+  // s1000 error
+  // s0100 supply
+  // s1100 running
+  // s1010 starting
+  // s0011 starting_unwanted
+  // s1011 starting_doomed
+  // s0101 unwanted
+  // s1101 running_doomed
+
+  idle -> starting [label="D+/start"];
+  supply -> starting [label="D+,S-/start"];
+  error -> idle [label="D-"];
+  error -> running [label="S+"];
+  error -> unwanted [label="D-,S+"];
+  running -> unwanted [label="D-"];
+  running -> error [label="S-/error"];
+
+  unwanted -> idle [label="S-"];
+  unwanted -> starting [label="D+,S-/start"];
+  running_doomed -> starting [label="S-/start"];
+  running_doomed -> idle [label="D-,S-"];
+
+  starting -> starting_unwanted [label="D-"];
+  starting -> running [label="S+"];
+  starting -> unwanted [label="D-,S+"];
+  starting_unwanted -> unwanted [label="S+"];
+  starting_unwanted -> running_doomed [label="D+,S+"];
+  starting_doomed -> running_doomed [label="S+"];
+  starting_doomed -> unwanted [label="D-,S+"];
+
+
+  idle -> supply [label="S+"];
+  idle -> running [label="D+S+"];
+  supply -> running [label="D+"];
+  supply -> idle [label="S-"];
+  running -> idle [label="D-,S-"];
+  unwanted -> running_doomed [label="D+"];
+  running_doomed -> unwanted [label="D-"];
+  starting_unwanted -> starting_doomed [label="D+"];
+  starting_doomed -> starting_unwanted [label="D-"];
+
+
+  // s0001 -> impossible [label="any"];
+  // s0010 -> impossible [label="any"];
+
+  // s1001 -> impossible [label="any"];
+
+  // s0110 -> impossible [label="any"];
+  // s1110 -> impossible [label="any"];
+  // s0111 -> impossible [label="any"];
+  // s1111 -> impossible [label="any"];
+
+}
