@@ -1,6 +1,11 @@
 assertion type todo(id, title, completed);
-message type deleteTodo(id);
 assertion type show(completed);
+assertion type activeTodoCount(n);
+assertion type completedTodoCount(n);
+assertion type totalTodoCount(n);
+
+message type deleteTodo(id);
+message type clearCompletedTodos();
 
 /*
   To Do (ho ho ho)
@@ -11,10 +16,7 @@ assertion type show(completed);
   - pattern the HTML more explicitly on the given template, keep changes to a minimum
   - code style https://github.com/tastejs/todomvc/blob/master/contributing.md#code-style
 
-  - no todos: make sure #main and #footer are hidden
   - mark all as complete/incomplete; make sure it is only ever checked when all the todos are checked
-  - count of active todos; pluralize correctly; format correctly
-  - hide "clear completed" button when no completed todos exist
   - persist to localStorage; use correct keys and name.
 
   - routing: spec requires that filtering be done "on a model level";
@@ -101,6 +103,10 @@ function addTodo(title) {
         this.editing = false;
         if (!this.title) :: deleteTodo(this.id);
       }
+
+      on message clearCompletedTodos() {
+        if (this.completed) :: deleteTodo(this.id);
+      }
     } until {
       case message deleteTodo(this.id);
     }
@@ -120,13 +126,42 @@ ground dataspace G {
   }
 
   actor {
+    var completedCount = 0;
+    var activeCount = 0;
     react {
-      on asserted Syndicate.UI.locationHash($hash) {
-        // TODO this is a bit icky too
-        var ns = document.querySelectorAll('ul.filters > li > a');
-        for (var i = 0; i < ns.length; i++) { ns[i].className = ''; }
-        var n = document.querySelector('ul.filters > li > a[href="#'+hash+'"]');
-        n.className = 'selected';
+      on asserted  todo(_, _, $completed) { if (completed) completedCount++; else activeCount++; }
+      on retracted todo(_, _, $completed) { if (completed) completedCount--; else activeCount--; }
+      assert activeTodoCount(activeCount);
+      assert completedTodoCount(completedCount);
+      assert totalTodoCount(activeCount + completedCount);
+    }
+  }
+
+  actor {
+    var ui = new Syndicate.UI.Anchor();
+    react {
+      during activeTodoCount($count) {
+        assert ui.context('count').html('.todo-count strong', '' + count);
+        assert ui.context('plural').html('.todo-count span.s', 's') when (count !== 1);
+      }
+      during completedTodoCount(0) {
+        assert Syndicate.UI.uiAttribute('button.clear-completed', 'class', 'hidden');
+      }
+      during totalTodoCount(0) {
+        assert Syndicate.UI.uiAttribute('section.main', 'class', 'hidden');
+        assert Syndicate.UI.uiAttribute('footer.footer', 'class', 'hidden');
+      }
+      on message Syndicate.UI.globalEvent('button.clear-completed', 'click', _) {
+        :: clearCompletedTodos();
+      }
+    }
+  }
+
+  actor {
+    react {
+      during Syndicate.UI.locationHash($hash) {
+        assert Syndicate.UI.uiAttribute('ul.filters > li > a[href="#'+hash+'"]',
+                                        'class', 'selected');
       }
 
       during Syndicate.UI.locationHash('/') {
@@ -147,6 +182,6 @@ ground dataspace G {
   addTodo('Finish PhD');
 }
 
-G.dataspace.setOnStateChange(function (mux, patch) {
-  document.getElementById("ds-state").innerText = Syndicate.prettyTrie(mux.routingTable);
-});
+// G.dataspace.setOnStateChange(function (mux, patch) {
+//   document.getElementById("ds-state").innerText = Syndicate.prettyTrie(mux.routingTable);
+// });
