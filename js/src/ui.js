@@ -408,9 +408,10 @@ UIFragment.prototype.updateEventListeners = function (c, install) {
   var handlerClosure = self.getEventClosure(c);
 
   self.currentAnchorNodes.forEach(function (anchorNode) {
-    var uiNode = findInsertionPoint(anchorNode, self.currentOrderBy, self.fragmentId);
-    if (uiNode) uiNode = uiNode.previousSibling;
-    while (uiNode && hasSortKey(uiNode, self.currentOrderBy, self.fragmentId)) {
+    var insertionPoint = findInsertionPoint(anchorNode, self.currentOrderBy, self.fragmentId);
+    while (1) {
+      var uiNode = insertionPoint ? insertionPoint.previousSibling : anchorNode.lastChild;
+      if (!(uiNode && hasSortKey(uiNode, self.currentOrderBy, self.fragmentId))) break;
       if ('querySelectorAll' in uiNode) {
         var nodes = uiNode.querySelectorAll(c.selector);
         for (var i = 0; i < nodes.length; i++) {
@@ -423,7 +424,7 @@ UIFragment.prototype.updateEventListeners = function (c, install) {
           }
         }
       }
-      uiNode = uiNode.previousSibling;
+      insertionPoint = uiNode;
     }
   });
 
