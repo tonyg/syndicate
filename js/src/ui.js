@@ -45,8 +45,11 @@ var uiEvent = Struct.makeConstructor('uiEvent', ['fragmentId', 'selector', 'even
 
 // Assertion. Causes the setup of DOM nodes corresponding to the given
 // HTML fragment, as immediate children of all nodes named by the
-// given selector that exist at the time of assertion.
-var uiFragment = Struct.makeConstructor('uiFragment', ['fragmentId', 'selector', 'html']);
+// given selector that exist at the time of assertion. The orderBy
+// field should be null, a string, or a number. Fragments are ordered
+// primarily by orderBy, and secondarily by fragmentId.
+var uiFragment = Struct.makeConstructor('uiFragment',
+                                        ['fragmentId', 'selector', 'html', 'orderBy']);
 
 // Assertion. Asserted by respondent to a given uiFragment.
 var uiFragmentExists = Struct.makeConstructor('uiFragmentExists', ['fragmentId']);
@@ -100,7 +103,7 @@ function spawnUIDriver(options) {
                       }));
 
   Dataspace.spawn(
-    new DemandMatcher([uiFragment(_$('fragmentId'), __, __)],
+    new DemandMatcher([uiFragment(_$('fragmentId'), __, __, __)],
                       [uiFragmentExists(_$('fragmentId'))],
                       function (c) {
                         Dataspace.spawn(new UIFragment(c.fragmentId));
@@ -213,13 +216,14 @@ WindowEventSupply.prototype.handleEvent = function (e) {
 
 function UIFragment(fragmentId) {
   this.fragmentId = fragmentId;
-  this.demandProj = uiFragment(this.fragmentId, _$('selector'), _$('html'));
+  this.demandProj = uiFragment(this.fragmentId, _$('selector'), _$('html'), _$('orderBy'));
   this.eventDemandProj =
     Patch.observe(uiEvent(this.fragmentId, _$('selector'), _$('eventType'), __));
 
   this.currentAnchorNodes = [];
   this.currentSelector = null;
   this.currentHtml = null;
+  this.currentOrderBy = null;
 
   this.currentEventRegistrations = Immutable.Map();
   // ^ Map from (Map of selector/eventType) to closure.
@@ -235,71 +239,128 @@ UIFragment.prototype.boot = function () {
 
 UIFragment.prototype.trapexit = function () {
   console.log('UIFragment trapexit running', this.fragmentId);
-  this.updateContent(null, null);
+  this.updateContent(null, null, null);
 };
 
-function brandNode(n, fragmentId, brandValue) {
+var SYNDICATE_SORT_KEY = '__syndicate_sort_key';
+
+function setSortKey(n, orderBy, fragmentId) {
+  var v = JSON.stringify([orderBy, fragmentId]);
   if ('dataset' in n) {
     // html element nodes etc.
-    n.dataset[fragmentId] = brandValue;
+    n.dataset[SYNDICATE_SORT_KEY] = v;
   } else {
     // text nodes, svg nodes, etc etc.
-    n[fragmentId] = brandValue;
+    n[SYNDICATE_SORT_KEY] = v;
   }
 }
 
-function getBrand(n, fragmentId) {
-  if ('dataset' in n && n.dataset[fragmentId]) return n.dataset[fragmentId];
-  if (n[fragmentId]) return n[fragmentId];
+function getSortKey(n) {
+  if ('dataset' in n && n.dataset[SYNDICATE_SORT_KEY]) {
+    return JSON.parse(n.dataset[SYNDICATE_SORT_KEY]);
+  }
+  if (n[SYNDICATE_SORT_KEY]) {
+    return JSON.parse(n[SYNDICATE_SORT_KEY]);
+  }
   return null;
 }
 
-function findInsertionPoint(n, fragmentId) {
+function hasSortKey(n, orderBy, fragmentId) {
+  var v = getSortKey(n);
+  if (!v) return false;
+  if (v[0] !== orderBy) return false;
+  if (v[1] !== fragmentId) return false;
+  return true;
+}
+
+function firstChildNodeIndex_withSortKey(n) {
   for (var i = 0; i < n.childNodes.length; i++) {
-    var c = n.childNodes[i];
-    if (getBrand(c, fragmentId)) return c;
+    if (getSortKey(n.childNodes[i])) return i;
   }
-  return null;
+  return n.childNodes.length;
 }
 
-function htmlToNodes(html) {
-  var e = document.createElement('arbitrarycontainer');
+// If *no* nodes have a sort key, returns a value that yields an empty
+// range in conjunction with firstChildNodeIndex_withSortKey.
+function lastChildNodeIndex_withSortKey(n) {
+  for (var i = n.childNodes.length - 1; i >= 0; i--) {
+    if (getSortKey(n.childNodes[i])) return i;
+  }
+  return n.childNodes.length - 1;
+}
+
+function isGreaterThan(a, b) {
+  if (typeof a > typeof b) return true;
+  if (typeof a < typeof b) return false;
+  return a > b;
+}
+
+function findInsertionPoint(n, orderBy, fragmentId) {
+  var lo = firstChildNodeIndex_withSortKey(n);
+  var hi = lastChildNodeIndex_withSortKey(n) + 1;
+  // lo <= hi, and [lo, hi) have sort keys.
+
+  while (lo < hi) { // when lo === hi, there's nothing more to examine.
+    var probe = (lo + hi) >> 1;
+    var probeSortKey = getSortKey(n.childNodes[probe]);
+
+    if ((isGreaterThan(probeSortKey[0], orderBy))
+        || ((probeSortKey[0] === orderBy) && (probeSortKey[1] > fragmentId)))
+    {
+      hi = probe;
+    } else {
+      lo = probe + 1;
+    }
+  }
+
+  // lo === hi now.
+  if (lo < n.childNodes.length) {
+    return n.childNodes[lo];
+  } else {
+    return null;
+  }
+}
+
+UIFragment.prototype.removeNodes = function () {
+  var self = this;
+
+  self.currentAnchorNodes.forEach(function (anchorNode) {
+    var insertionPoint = findInsertionPoint(anchorNode, self.currentOrderBy, self.fragmentId);
+    while (1) {
+      var n = insertionPoint ? insertionPoint.previousSibling : anchorNode.lastChild;
+      if (!(n && hasSortKey(n, self.currentOrderBy, self.fragmentId))) break;
+      n.parentNode.removeChild(n); // auto-updates previousSibling/lastChild
+    }
+  });
+};
+
+function htmlToNodes(parent, html) {
+  var e = parent.cloneNode(false);
   e.innerHTML = html;
   return Array.prototype.slice.call(e.childNodes);
 }
 
-UIFragment.prototype.updateContent = function (newSelector, newHtml) {
+UIFragment.prototype.updateContent = function (newSelector, newHtml, newOrderBy) {
   var self = this;
-  var newBrand = '' + (Date.now());
+
+  self.removeNodes();
 
   var newAnchors = (newSelector !== null)
       ? Array.prototype.slice.call(document.querySelectorAll(newSelector))
       : [];
 
   newAnchors.forEach(function (anchorNode) {
-    var insertionPoint = findInsertionPoint(anchorNode, self.fragmentId);
-    htmlToNodes(newHtml).forEach(function (newNode) {
-      brandNode(newNode, self.fragmentId, newBrand);
+    var insertionPoint = findInsertionPoint(anchorNode, newOrderBy, self.fragmentId);
+    htmlToNodes(anchorNode, newHtml).forEach(function (newNode) {
+      setSortKey(newNode, newOrderBy, self.fragmentId);
       anchorNode.insertBefore(newNode, insertionPoint);
     });
-  });
-
-  self.currentAnchorNodes.forEach(function (anchorNode) {
-    var insertionPoint = findInsertionPoint(anchorNode, self.fragmentId);
-    while (insertionPoint) {
-      var nextNode = insertionPoint.nextSibling;
-      var b = getBrand(insertionPoint, self.fragmentId);
-      if (!b) break; // we know all our-brand nodes will be adjacent
-      if (b !== newBrand) {
-        insertionPoint.parentNode.removeChild(insertionPoint);
-      }
-      insertionPoint = nextNode;
-    }
   });
 
   self.currentAnchorNodes = newAnchors;
   self.currentSelector = newSelector;
   self.currentHtml = newHtml;
+  self.currentOrderBy = newOrderBy;
 
   self.currentEventRegistrations.forEach(function (_handlerClosure, key) {
     self.updateEventListeners(key.toObject(), true); // (re)install event listeners
@@ -311,9 +372,12 @@ UIFragment.prototype.handleEvent = function (e) {
 
   if (e.type === 'stateChange') {
     var fragmentChanges = e.patch.projectObjects(self.demandProj);
-    fragmentChanges[0].forEach(function (c) { self.updateContent(c.selector, c.html); });
+    fragmentChanges[0].forEach(function (c) { self.updateContent(c.selector, c.html, c.orderBy); });
     fragmentChanges[1].forEach(function (c) {
-      if (c.selector === self.currentSelector && c.html === self.currentHtml) {
+      if (c.selector === self.currentSelector
+          && c.html === self.currentHtml
+          && c.orderBy === self.currentOrderBy)
+      {
         Dataspace.exit(); // trapexit will remove nodes
       }
     });
@@ -344,8 +408,9 @@ UIFragment.prototype.updateEventListeners = function (c, install) {
   var handlerClosure = self.getEventClosure(c);
 
   self.currentAnchorNodes.forEach(function (anchorNode) {
-    var uiNode = findInsertionPoint(anchorNode, self.fragmentId);
-    while (uiNode && getBrand(uiNode, self.fragmentId)) {
+    var uiNode = findInsertionPoint(anchorNode, self.currentOrderBy, self.fragmentId);
+    if (uiNode) uiNode = uiNode.previousSibling;
+    while (uiNode && hasSortKey(uiNode, self.currentOrderBy, self.fragmentId)) {
       if ('querySelectorAll' in uiNode) {
         var nodes = uiNode.querySelectorAll(c.selector);
         for (var i = 0; i < nodes.length; i++) {
@@ -358,7 +423,7 @@ UIFragment.prototype.updateEventListeners = function (c, install) {
           }
         }
       }
-      uiNode = uiNode.nextSibling;
+      uiNode = uiNode.previousSibling;
     }
   });
 
@@ -468,6 +533,10 @@ function escapeDataAttributeName(s) {
   // don't absolutely need escaping, because it's simpler and I don't
   // yet need to undo this transformation.
 
+  if (typeof s !== 'string') {
+    s = JSON.stringify(s);
+  }
+
   var result = '';
   for (var i = 0; i < s.length; i++) {
     var c = s[i];
@@ -497,7 +566,7 @@ function cleanEventType(eventType) {
 function Anchor(explicitFragmentId) {
   this.fragmentId =
     (typeof explicitFragmentId === 'undefined') ? newFragmentId() : explicitFragmentId;
-  this.htmlPattern = uiFragment(this.fragmentId, __, __);
+  this.htmlPattern = uiFragment(this.fragmentId, __, __, __);
   this.eventPattern = uiEvent(this.fragmentId, __, __, __);
 }
 
@@ -506,8 +575,11 @@ Anchor.prototype.context = function (/* ... */) {
   return new Anchor(this.fragmentId + '__' + extn);
 };
 
-Anchor.prototype.html = function (selector, html) {
-  return uiFragment(this.fragmentId, selector, html);
+Anchor.prototype.html = function (selector, html, orderBy) {
+  return uiFragment(this.fragmentId,
+                    selector,
+                    html,
+                    typeof orderBy === 'undefined' ? null : orderBy);
 };
 
 Anchor.prototype.event = function (selector, eventType, event) {
