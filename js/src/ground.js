@@ -6,6 +6,8 @@ var Dataspace = require('./dataspace.js').Dataspace;
 function Ground(bootFn) {
   var self = this;
   this.stepperId = null;
+  this.stepping = false;
+  this.startingFuel = 100;
   this.baseStack = Immutable.List.of({ dataspace: this, activePid: -1 });
   Dataspace.withDataspaceStack(this.baseStack, function () {
     self.dataspace = new Dataspace(bootFn);
@@ -31,12 +33,27 @@ Ground.prototype.markRunnable = function (pid) {
 Ground.prototype.startStepping = function () {
   var self = this;
   if (this.stepperId) return;
-  if (this.step()) {
-    this.stepperId = setTimeout(function () {
-      self.stepperId = null;
-      self.startStepping();
-    }, 0);
+
+  if (this.stepping) return;
+  this.stepping = true;
+  try {
+    var stillBusy = false;
+    for (var fuel = this.startingFuel; fuel > 0; fuel--) {
+      stillBusy = this.step();
+      if (!stillBusy) break;
+    }
+    if (stillBusy) {
+      this.stepperId = setTimeout(function () {
+        self.stepperId = null;
+        self.startStepping();
+      }, 0);
+    }
+  } catch (e) {
+    this.stepping = false;
+    throw e;
   }
+  this.stepping = false;
+
   return this; // because the syndicatec compiler chains startStepping after the ctor
 };
 
