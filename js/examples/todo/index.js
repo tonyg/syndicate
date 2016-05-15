@@ -1,13 +1,5 @@
 /*
-  To Do (ho ho ho)
-  spec is at: https://github.com/tastejs/todomvc/blob/master/app-spec.md
-
-  - file layout?
-  - README
-  - pattern the HTML more explicitly on the given template, keep changes to a minimum
-  - code style https://github.com/tastejs/todomvc/blob/master/contributing.md#code-style
-
-  - persist to localStorage; use correct keys and name.
+  todomvc spec is at: https://github.com/tastejs/todomvc/blob/master/app-spec.md
   - BUG: transitions don't happen because the nodes are being replaced rather than edited.
  */
 
@@ -238,7 +230,3 @@ ground dataspace G {
     }
   }
 }
-
-// G.dataspace.setOnStateChange(function (mux, patch) {
-//   document.getElementById("ds-state").innerText = Syndicate.prettyTrie(mux.routingTable);
-// });
