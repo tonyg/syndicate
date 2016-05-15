@@ -160,8 +160,14 @@
              [_ #f]))
          '()
          (patch-seq
-          (sub (websocket-connection id local-addr remote-addr ? control-ch) #:meta-level 1)
-          (sub (websocket-message local-addr remote-addr ?)))))
+          (pub (websocket-message remote-addr local-addr ?))
+          ;; ^ important to assert this here. If we don't, and the
+          ;; connection fails, then the requesting user client actor
+          ;; will hang indefinitely waiting for a sign the connection
+          ;; has been established. This way, if the connection fails,
+          ;; it looks like it came up briefly and went down again.
+          (sub (websocket-message local-addr remote-addr ?))
+          (sub (websocket-connection id local-addr remote-addr ? control-ch) #:meta-level 1))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Connection
