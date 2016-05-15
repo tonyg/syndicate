@@ -63,6 +63,9 @@ var uiFragmentExists = Struct.makeConstructor('ui-fragment-exists', ['fragmentId
 // already present. (See the implementation for details.)
 var uiAttribute = Struct.makeConstructor('ui-attribute', ['selector', 'attribute', 'value']);
 
+// Assertion. Similar to uiAttribute, but for properties of DOM nodes.
+var uiProperty = Struct.makeConstructor('ui-property', ['selector', 'property', 'value']);
+
 // Messages.
 // NOTE: These do not treat "class" specially!
 var setAttribute = Struct.makeConstructor('set-ui-attribute', ['selector', 'attribute', 'value']);
@@ -120,7 +123,16 @@ function spawnUIDriver(options) {
     new DemandMatcher([uiAttribute(_$('selector'), _$('attribute'), _$('value'))],
                       [Patch.advertise(uiAttribute(_$('selector'), _$('attribute'), _$('value')))],
                       function (c) {
-                        Dataspace.spawn(new UIAttribute(c.selector, c.attribute, c.value));
+                        Dataspace.spawn(new UIAttribute(
+                          c.selector, c.attribute, c.value, 'attribute'));
+                      }));
+
+  Dataspace.spawn(
+    new DemandMatcher([uiProperty(_$('selector'), _$('property'), _$('value'))],
+                      [Patch.advertise(uiProperty(_$('selector'), _$('property'), _$('value')))],
+                      function (c) {
+                        Dataspace.spawn(new UIAttribute(
+                          c.selector, c.property, c.value, 'property'));
                       }));
 
   Dataspace.spawn(new AttributeUpdater());
@@ -430,24 +442,31 @@ UIFragment.prototype.handleDomEvent = function (c, e) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-function UIAttribute(selector, attribute, value) {
+function UIAttribute(selector, key, value, kind) {
+  if (['attribute', 'property'].indexOf(kind) === -1) {
+    throw new Error("UIAttribute: kind must be 'attribute' or 'property'; got " + kind);
+  }
+
   this.selector = selector;
-  this.attribute = attribute;
+  this.key = key;
   this.value = value;
+  this.kind = kind;
 
   this.savedValues = [];
-  // ^ Array of {node: DOMNode, value: (U Null String)}, when attribute !== 'class'.
-  // ^ Array of {node: DOMNode}, when attribute === 'class'.
+  // ^ Array of {node: DOMNode, value: (U Null String)},
+  //   when attribute !== 'class' or kind !== 'attribute'.
+  // ^ Array of {node: DOMNode},
+  //   when attribute === 'class' and kind === 'attribute'.
 }
 
 UIAttribute.prototype.boot = function () {
-  var a = uiAttribute(this.selector, this.attribute, this.value);
+  var a = ((this.kind === 'attribute') ? uiAttribute : uiProperty)(this.selector, this.key, this.value);
   this.install();
   return Patch.sub(a).andThen(Patch.pub(a));
 };
 
 UIAttribute.prototype.trapexit = function () {
-  console.log('UIAttribute trapexit running', this.selector, this.attribute, this.value);
+  console.log('UIAttribute trapexit running', this.selector, this.key, this.value, this.kind);
   this.restoreSavedValues();
 };
 
@@ -458,20 +477,27 @@ function splitClassValue(v) {
 
 UIAttribute.prototype.install = function () {
   var self = this;
-  var nodes = Array.prototype.slice.call(document.querySelectorAll(self.selector));
-
-  nodes.forEach(function (node) {
-    if (self.attribute === 'class') {
-      // Deliberately maintains duplicates, so we don't interfere with
-      // potential other UIAttribute instances on the same objects for
-      // the same attribute. See also restoreSavedValues.
-      var existing = splitClassValue(node.getAttribute('class'));
-      var toAdd = splitClassValue(self.value);
-      self.savedValues.push({node: node});
-      node.setAttribute('class', existing.concat(toAdd).join(' '));
-    } else {
-      self.savedValues.push({node: node, value: node.getAttribute(self.attribute)});
-      node.setAttribute(self.attribute, self.value);
+  selectorMatch(document, self.selector).forEach(function (node) {
+    switch (self.kind) {
+      case 'attribute':
+        if (self.key === 'class') {
+          // Deliberately maintains duplicates, so we don't interfere
+          // with potential other UIAttribute instances on the same
+          // objects for the same attribute. See also
+          // restoreSavedValues.
+          var existing = splitClassValue(node.getAttribute('class'));
+          var toAdd = splitClassValue(self.value);
+          self.savedValues.push({node: node});
+          node.setAttribute('class', existing.concat(toAdd).join(' '));
+        } else {
+          self.savedValues.push({node: node, value: node.getAttribute(self.key)});
+          node.setAttribute(self.key, self.value);
+        }
+        break;
+      case 'property':
+        self.savedValues.push({node: node, value: node[self.key]});
+        node[self.key] = self.value;
+        break;
     }
   });
 };
@@ -479,24 +505,35 @@ UIAttribute.prototype.install = function () {
 UIAttribute.prototype.restoreSavedValues = function () {
   var self = this;
   self.savedValues.forEach(function (entry) {
-    if (self.attribute === 'class') {
-      var existing = splitClassValue(entry.node.getAttribute('class'));
-      var toRemove = splitClassValue(self.value);
-      toRemove.forEach(function (v) {
-        var i = existing.indexOf(v);
-        if (i !== -1) { existing.splice(i, 1); }
-      });
-      if (existing.length === 0) {
-        entry.node.removeAttribute('class');
-      } else {
-        entry.node.setAttribute('class', existing.join(' '));
-      }
-    } else {
-      if (entry.value === null) {
-        entry.node.removeAttribute(self.attribute);
-      } else {
-        entry.node.setAttribute(self.attribute, entry.value);
-      }
+    switch (self.kind) {
+      case 'attribute':
+        if (self.key === 'class') {
+          var existing = splitClassValue(entry.node.getAttribute('class'));
+          var toRemove = splitClassValue(self.value);
+          toRemove.forEach(function (v) {
+            var i = existing.indexOf(v);
+            if (i !== -1) { existing.splice(i, 1); }
+          });
+          if (existing.length === 0) {
+            entry.node.removeAttribute('class');
+          } else {
+            entry.node.setAttribute('class', existing.join(' '));
+          }
+        } else {
+          if (entry.value === null) {
+            entry.node.removeAttribute(self.key);
+          } else {
+            entry.node.setAttribute(self.key, entry.value);
+          }
+        }
+        break;
+      case 'property':
+        if (typeof entry.value === 'undefined') {
+          delete entry.node[self.key];
+        } else {
+          entry.node[self.key] = entry.value;
+        }
+        break;
     }
   });
   self.savedValues = [];
@@ -683,6 +720,7 @@ module.exports.uiEvent = uiEvent;
 module.exports.uiFragment = uiFragment;
 module.exports.uiFragmentExists = uiFragmentExists;
 module.exports.uiAttribute = uiAttribute;
+module.exports.uiProperty = uiProperty;
 module.exports.setAttribute = setAttribute;
 module.exports.removeAttribute = removeAttribute;
 module.exports.setProperty = setProperty;
