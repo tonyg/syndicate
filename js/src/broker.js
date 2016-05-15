@@ -55,7 +55,7 @@ function BrokerClientConnection(wsurl) {
   this.pingInterval = DEFAULT_PING_INTERVAL;
 
   this.localAssertions = Trie.emptyTrie;
-  this.remoteAssertions = Trie.emptyTrie;
+  this.connectionInterrupted = false;
 
   this.activityTimestamp = 0;
   this.idleTimer = null;
@@ -212,9 +212,15 @@ BrokerClientConnection.prototype.onmessage = function (wse) {
       var added = fromBroker(this.wsurl, Trie.embeddedTrie(e.patch.added));
       var removed = fromBroker(this.wsurl, Trie.embeddedTrie(e.patch.removed));
       var p = Patch.assert(added, 1).andThen(Patch.retract(removed, 1));
-      // console.log('incoming stateChange');
-      // console.log(p.pretty());
-      Dataspace.stateChange(p);
+      if (!p.isEmpty()) {
+        if (this.connectionInterrupted) {
+          p = Patch.retract(fromBroker(this.wsurl, __), 1).andThen(p);
+          this.connectionInterrupted = false;
+        }
+        // console.log('applying incoming stateChange');
+        // console.log(p.pretty());
+        Dataspace.stateChange(p);
+      }
       break;
     }
     case "message": {
@@ -229,6 +235,7 @@ BrokerClientConnection.prototype.onclose = function (e) {
 
   // console.log("onclose", e);
   Dataspace.stateChange(Patch.retract(brokerConnected(this.wsurl), 1));
+  this.connectionInterrupted = true;
 
   console.log("reconnecting to " + this.wsurl + " in " + this.reconnectDelay + "ms");
   setTimeout(Dataspace.wrap(function () { self.reconnect(); }), this.reconnectDelay);
