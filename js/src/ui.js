@@ -32,27 +32,27 @@ var _$ = Dataspace_._$;
 // well. WARNING: The simple implementation below currently scans the
 // whole document anytime a change is signalled; in future, it may not
 // do such a scan.
-var globalEvent = Struct.makeConstructor('globalEvent', ['selector', 'eventType', 'event']);
+var globalEvent = Struct.makeConstructor('global-event', ['selector', 'eventType', 'event']);
 
 // Message. As globalEvent, but instead of using a selector to choose
 // target DOM nodes, attaches an event handler to the browser "window"
 // object itself.
-var windowEvent = Struct.makeConstructor('windowEvent', ['eventType', 'event']);
+var windowEvent = Struct.makeConstructor('window-event', ['eventType', 'event']);
 
 // Message. Like globalEvent, but applies only within the scope of the
 // UI fragment identified.
-var uiEvent = Struct.makeConstructor('uiEvent', ['fragmentId', 'selector', 'eventType', 'event']);
+var uiEvent = Struct.makeConstructor('ui-event', ['fragmentId', 'selector', 'eventType', 'event']);
 
 // Assertion. Causes the setup of DOM nodes corresponding to the given
 // HTML fragment, as immediate children of all nodes named by the
 // given selector that exist at the time of assertion. The orderBy
 // field should be null, a string, or a number. Fragments are ordered
 // primarily by orderBy, and secondarily by fragmentId.
-var uiFragment = Struct.makeConstructor('uiFragment',
+var uiFragment = Struct.makeConstructor('ui-fragment',
                                         ['fragmentId', 'selector', 'html', 'orderBy']);
 
 // Assertion. Asserted by respondent to a given uiFragment.
-var uiFragmentExists = Struct.makeConstructor('uiFragmentExists', ['fragmentId']);
+var uiFragmentExists = Struct.makeConstructor('ui-fragment-exists', ['fragmentId']);
 
 // Assertion. Causes the setup of DOM attributes on all nodes named by
 // the given selector that exist at the time of assertion.
@@ -61,7 +61,7 @@ var uiFragmentExists = Struct.makeConstructor('uiFragmentExists', ['fragmentId']
 // the attribute as a (string encoding of a) set. The given value is
 // split on whitespace, and each piece is added to the set of things
 // already present. (See the implementation for details.)
-var uiAttribute = Struct.makeConstructor('uiAttribute', ['selector', 'attribute', 'value']);
+var uiAttribute = Struct.makeConstructor('ui-attribute', ['selector', 'attribute', 'value']);
 
 // Assertion. Current "location hash" -- the "#/path/part" fragment at
 // the end of window.location.
