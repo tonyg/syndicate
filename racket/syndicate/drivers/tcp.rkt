@@ -41,7 +41,11 @@
 			      spawn-tcp-listener)
 	(spawn-demand-matcher (advertise (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
                               (observe (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
-			      spawn-tcp-connection)))
+			      spawn-tcp-connection
+                              (lambda (local-addr remote-addr)
+                                (log-debug "Outbound TCP connection closed: ~v -> ~v"
+                                           local-addr
+                                           remote-addr)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Listener

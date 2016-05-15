@@ -59,7 +59,11 @@
                               spawn-websocket-listener)
         (spawn-demand-matcher (advertise outbound-conn-message-pat)
                               (observe outbound-conn-message-pat)
-                              spawn-websocket-connection)))
+                              spawn-websocket-connection
+                              (lambda (local-addr remote-addr)
+                                (log-debug "Outbound websocket connection closed: ~v -> ~v"
+                                           local-addr
+                                           remote-addr)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Listener
