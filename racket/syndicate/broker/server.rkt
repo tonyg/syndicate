@@ -107,12 +107,6 @@
                   (list (pattern->trie #t (at-meta ?))
                         (pattern->trie #t (observe (at-meta ?))))))
 
-(define (clean-patch p)
-  ;; TODO: this is gross. Linkage shouldn't be visible, and there
-  ;; should be some clean way of getting rid of observe(atMeta(...))
-  ;; and so on.
-  (patch-without-linkage (patch-pruned-by p stuff-to-prune)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ main
