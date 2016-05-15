@@ -52,6 +52,7 @@
 
          ;; trie-prune-branch
          trie-step
+         trie-step*
 
          projection->pattern
          projection-arity
@@ -662,6 +663,10 @@
     [((? branch?) _)
      (rlookup-sigma m (canonicalize key))]
     [(_ _) trie-empty]))
+
+;; Trie (Listof (U OpenParenthesis Sigma)) -> Trie
+(define (trie-step* t keys)
+  (foldl (lambda (key t) (trie-step t key)) t keys))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Projection
