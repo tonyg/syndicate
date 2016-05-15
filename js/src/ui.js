@@ -147,16 +147,8 @@ GlobalEventSupply.prototype.boot = function () {
 };
 
 GlobalEventSupply.prototype.updateEventListeners = function (install) {
-  var nodes = document.querySelectorAll(this.selector);
-  for (var i = 0; i < nodes.length; i++) {
-    var n = nodes[i];
-    // addEventListener and removeEventListener are apparently idempotent.
-    if (install) {
-      n.addEventListener(cleanEventType(this.eventType), this.handlerClosure);
-    } else {
-      n.removeEventListener(cleanEventType(this.eventType), this.handlerClosure);
-    }
-  }
+  selectorMatch(document, this.selector).forEach(
+    eventUpdater(cleanEventType(this.eventType), this.handlerClosure, install));
 };
 
 GlobalEventSupply.prototype.trapexit = function () {
@@ -353,9 +345,7 @@ UIFragment.prototype.updateContent = function (newSelector, newHtml, newOrderBy)
 
   self.removeNodes();
 
-  var newAnchors = (newSelector !== null)
-      ? Array.prototype.slice.call(document.querySelectorAll(newSelector))
-      : [];
+  var newAnchors = (newSelector !== null) ? selectorMatch(document, newSelector) : [];
 
   newAnchors.forEach(function (anchorNode) {
     var insertionPoint = findInsertionPoint(anchorNode, newOrderBy, self.fragmentId);
@@ -421,16 +411,8 @@ UIFragment.prototype.updateEventListeners = function (c, install) {
       var uiNode = insertionPoint ? insertionPoint.previousSibling : anchorNode.lastChild;
       if (!(uiNode && hasSortKey(uiNode, self.currentOrderBy, self.fragmentId))) break;
       if ('querySelectorAll' in uiNode) {
-        var nodes = uiNode.querySelectorAll(c.selector);
-        for (var i = 0; i < nodes.length; i++) {
-          var n = nodes[i];
-          // addEventListener and removeEventListener are apparently idempotent.
-          if (install) {
-            n.addEventListener(cleanEventType(c.eventType), handlerClosure);
-          } else {
-            n.removeEventListener(cleanEventType(c.eventType), handlerClosure);
-          }
-        }
+        selectorMatch(uiNode, c.selector).forEach(
+          eventUpdater(cleanEventType(c.eventType), handlerClosure, install));
       }
       insertionPoint = uiNode;
     }
@@ -570,6 +552,25 @@ function cleanEventType(eventType) {
   return (eventType.charAt(0) === '+') ? eventType.slice(1) : eventType;
 }
 
+function selectorMatch(n, selector) {
+  if (n && typeof n === 'object' && 'querySelectorAll' in n) {
+    return Array.prototype.slice.call(n.querySelectorAll(selector));
+  } else {
+    return [];
+  }
+}
+
+function eventUpdater(eventType, handlerClosure, install) {
+  return function (n) {
+    // addEventListener and removeEventListener are idempotent.
+    if (install) {
+      n.addEventListener(eventType, handlerClosure);
+    } else {
+      n.removeEventListener(eventType, handlerClosure);
+    }
+  };
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 function Anchor(explicitFragmentId) {
@@ -664,7 +665,7 @@ AttributeUpdater.prototype.handleEvent = function (e) {
       f = function (n, k) { delete n[k]; };
     }
     if (f) {
-      Array.prototype.slice.call(document.querySelectorAll(e.message[0])).forEach(function (n) {
+      selectorMatch(document, e.message[0]).forEach(function (n) {
         f(n, e.message[1]);
       });
     }
