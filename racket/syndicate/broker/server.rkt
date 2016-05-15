@@ -16,7 +16,7 @@
 (require json)
 (require "protocol.rkt")
 
-(struct broker-scope (host path) #:prefab)
+(struct broker-scope (host port path) #:prefab)
 (struct broker-data (scope assertion) #:prefab)
 
 (define broker-data-parenthesis (struct-type->parenthesis struct:broker-data))
@@ -25,7 +25,7 @@
 ;; Depends on timer driver and websocket driver running at the given metalevel.
 (define (spawn-broker-server port
                              #:ssl-options [ssl-options #f])
-  (define any-client (websocket-remote-client ? ? ?))
+  (define any-client any-websocket-remote-client)
   (define server-id (websocket-local-server port ssl-options))
   (spawn-demand-matcher (advertise (websocket-message (?! any-client) server-id ?))
                         (observe (websocket-message (?! any-client) server-id ?))
@@ -33,8 +33,9 @@
 			(lambda (c) (spawn-connection-handler c server-id))))
 
 (define (spawn-connection-handler c server-id)
-  (actor (define scope (broker-scope (websocket-remote-client-host c)
-                                     (websocket-remote-client-path c)))
+  (actor (define scope (broker-scope (websocket-remote-client-request-host c)
+                                     (websocket-remote-client-request-port c)
+                                     (websocket-remote-client-request-path c)))
 
          (define (arm-ping-timer!)
            (send! #:meta-level 1 (set-timer c (ping-interval) 'relative)))
@@ -86,6 +87,7 @@
                     (trie-step* t (list broker-data-parenthesis
                                         broker-scope-parenthesis
                                         (broker-scope-host scope)
+                                        (broker-scope-port scope)
                                         (broker-scope-path scope)))))))
 
 (define (wrap-patch scope p)

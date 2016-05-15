@@ -1,11 +1,22 @@
 #lang racket/base
 
+(provide (struct-out websocket-remote-client)
+	 (struct-out websocket-local-server)
+	 (struct-out websocket-local-client)
+	 (struct-out websocket-remote-server)
+	 (struct-out websocket-ssl-options)
+	 (struct-out websocket-message)
+         (struct-out websocket-peer-details)
+	 spawn-websocket-driver
+         any-websocket-remote-client)
+
+(require racket/exn)
 (require racket/match)
 (require net/rfc6455)
 (require (only-in net/rfc6455/conn-api
                   ws-conn-base-ip
                   ws-conn-peer-addresses
-                  ws-conn-host
+                  ws-conn-host+port
                   ws-conn-path))
 (require "../main.rkt")
 (require "../demand-matcher.rkt")
@@ -17,19 +28,10 @@
 (require net/ssl-tcp-unit)
 (require net/url)
 
-(provide (struct-out websocket-remote-client)
-	 (struct-out websocket-local-server)
-	 (struct-out websocket-local-client)
-	 (struct-out websocket-remote-server)
-	 (struct-out websocket-ssl-options)
-	 (struct-out websocket-message)
-         (struct-out websocket-peer-details)
-	 spawn-websocket-driver)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Protocol messages
 
-(struct websocket-remote-client (id host path) #:prefab)
+(struct websocket-remote-client (id request-host request-port request-path) #:prefab)
 (struct websocket-local-server (port ssl-options) #:prefab)
 (struct websocket-local-client (id) #:prefab)
 (struct websocket-remote-server (url) #:prefab)
@@ -39,6 +41,8 @@
 (struct websocket-peer-details
   (local-addr remote-addr local-ip local-port remote-ip remote-port)
   #:prefab)
+
+(define any-websocket-remote-client (websocket-remote-client ? ? ? ?))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground-level communication messages
@@ -82,11 +86,13 @@
 (define ((connection-handler server-addr) c dummy-state)
   (define control-ch (make-channel))
   (define id (gensym 'ws))
+  (define-values (client-host client-port) (ws-conn-host+port c))
   (send-ground-message
    (websocket-connection id
                          server-addr
                          (websocket-remote-client id
-                                                  (ws-conn-host c)
+                                                  client-host
+                                                  client-port
                                                   (ws-conn-path c))
                          c
                          control-ch))
