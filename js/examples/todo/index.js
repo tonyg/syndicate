@@ -14,6 +14,7 @@
 assertion type todoExists(id);
 assertion type todo(id, title, completed);
 
+message type createTodo(title);
 message type setTitle(id, title);
 message type setCompleted(id, completed);
 message type deleteTodo(id);
@@ -31,15 +32,11 @@ assertion type show(completed);
 
 //////////////////////////////////////////////////////////////////////////
 
-var nextId = 0;
-function todoListItemModel(title) {
-  title = title.trim();
-  if (!title) return;
-
+function todoListItemModel(initialId, initialTitle, initialCompleted) {
   actor {
-    this.id = nextId++;
-    this.title = title;
-    this.completed = false;
+    this.id = initialId;
+    this.title = initialTitle;
+    this.completed = initialCompleted;
 
     react {
       assert todoExists(this.id);
@@ -128,7 +125,8 @@ ground dataspace G {
   actor {
     react {
       on message Syndicate.UI.globalEvent('.new-todo', 'change', $e) {
-        todoListItemModel(e.target.value);
+        var newTitle = e.target.value.trim();
+        if (newTitle) :: createTodo(newTitle);
         e.target.value = "";
       }
     }
@@ -202,9 +200,43 @@ ground dataspace G {
     }
   }
 
-  todoListItemModel('Buy milk');
-  todoListItemModel('Buy bread');
-  todoListItemModel('Finish PhD');
+  actor {
+    var db;
+
+    if ('todos-syndicate' in localStorage) {
+      db = JSON.parse(localStorage['todos-syndicate']);
+      for (var i in db.todos) {
+        var t = db.todos[i];
+        todoListItemModel(t.id, t.title, t.completed);
+      }
+    } else {
+      db = {nextId: 0, todos: {}};
+      react until {
+        case asserted Syndicate.observe(createTodo(_)) {
+          :: createTodo('Buy milk');
+          :: createTodo('Buy bread');
+          :: createTodo('Finish PhD');
+        }
+      }
+    }
+
+    react {
+      on message createTodo($title) {
+        todoListItemModel(db.nextId++, title, false);
+      }
+
+      during todo($id, $title, $completed) {
+        do {
+          db.todos[id] = {id: id, title: title, completed: completed};
+          localStorage['todos-syndicate'] = JSON.stringify(db);
+        }
+        finally {
+          delete db.todos[id];
+          localStorage['todos-syndicate'] = JSON.stringify(db);
+        }
+      }
+    }
+  }
 }
 
 // G.dataspace.setOnStateChange(function (mux, patch) {
