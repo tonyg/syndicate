@@ -19,6 +19,7 @@ function Actor(state, bootFn) {
   this.facets = Immutable.Set();
   this.mux = new Mux.Mux();
   this.knowledge = Trie.emptyTrie;
+  this.pendingActions = [];
 
   this.boot = function() {
     var self = this;
@@ -33,13 +34,24 @@ Actor.prototype.handleEvent = function(e) {
   if (e.type === 'stateChange') {
     this.knowledge = e.patch.updateInterests(this.knowledge);
   }
+  if (this.pendingActions.length > 0) {
+    throw new Error('Syndicate: pendingActions must not be nonempty at start of handleEvent');
+  }
   this.facets.forEach(function (f) {
     withCurrentFacet(f, function () { f.handleEvent(e); });
   });
+  while (this.pendingActions.length) {
+    var entry = this.pendingActions.shift();
+    withCurrentFacet(entry.facet, entry.action);
+  }
   this.facets.forEach(function (f) {
     withCurrentFacet(f, function () { f.refresh(); });
   });
   this.checkForTermination();
+};
+
+Actor.prototype.pushAction = function (a) {
+  this.pendingActions.push({facet: Facet.current, action: a});
 };
 
 Actor.prototype.addFacet = function(facet) {
@@ -99,7 +111,10 @@ Facet.prototype.addAssertion = function(assertionFn) {
 };
 
 Facet.prototype.addOnEventHandler = function(handler) {
-  return this.addEndpoint(new Endpoint(function () { return Patch.emptyPatch; }, handler));
+  var facet = this;
+  return this.addEndpoint(new Endpoint(function () { return Patch.emptyPatch; }, function (e) {
+    facet.actor.pushAction(function () { handler(e); });
+  }));
 };
 
 Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projectionFn, handlerFn) {
@@ -115,7 +130,7 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
         // console.log(match);
         if (match) {
           if (isTerminal) { facet.terminate(); }
-          Util.kwApply(handlerFn, facet.actor.state, match);
+          facet.actor.pushAction(function () { Util.kwApply(handlerFn, facet.actor.state, match); });
         }
       }
     }));
@@ -133,7 +148,9 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
         if (objects && objects.size > 0) {
           // console.log(objects.toArray());
           if (isTerminal) { facet.terminate(); }
-          objects.forEach(function (o) { Util.kwApply(handlerFn, facet.actor.state, o); });
+          facet.actor.pushAction(function () {
+            objects.forEach(function (o) { Util.kwApply(handlerFn, facet.actor.state, o); });
+          });
         }
       }
     }));
@@ -144,7 +161,9 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
                                   var newValue = subscriptionFn.call(facet.actor.state);
                                   if (newValue && !this.currentValue) {
                                     if (isTerminal) { facet.terminate(); }
-                                    handlerFn.call(facet.actor.state);
+                                    facet.actor.pushAction(function () {
+                                      handlerFn.call(facet.actor.state);
+                                    });
                                   }
                                   this.currentValue = newValue;
                                 });
