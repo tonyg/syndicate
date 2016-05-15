@@ -1,7 +1,8 @@
 'use strict';
 
 var Immutable = require('immutable');
-var Dataspace = require('./dataspace.js').Dataspace;
+var _Dataspace = require('./dataspace.js');
+var Dataspace = _Dataspace.Dataspace;
 var Mux = require('./mux.js');
 var Patch = require('./patch.js');
 var Trie = require('./trie.js');
@@ -17,6 +18,7 @@ function Actor(state, bootFn) {
   this.state = state;
   this.facets = Immutable.Set();
   this.mux = new Mux.Mux();
+  this.knowledge = Trie.emptyTrie;
 
   this.boot = function() {
     var self = this;
@@ -28,6 +30,9 @@ function Actor(state, bootFn) {
 }
 
 Actor.prototype.handleEvent = function(e) {
+  if (e.type === 'stateChange') {
+    this.knowledge = e.patch.updateInterests(this.knowledge);
+  }
   this.facets.forEach(function (f) {
     withCurrentFacet(f, function () { f.handleEvent(e); });
   });
@@ -190,6 +195,8 @@ Facet.prototype.completeBuild = function() {
   withCurrentFacet(facet, function () {
     facet.initBlocks.forEach(function(b) { b.call(facet.actor.state); });
   });
+  var initialEvent = _Dataspace.stateChange(new Patch.Patch(facet.actor.knowledge, Trie.emptyTrie));
+  withCurrentFacet(facet, function () { facet.handleEvent(initialEvent); });
 };
 
 Facet.prototype.terminate = function() {
