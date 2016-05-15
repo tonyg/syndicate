@@ -8,6 +8,7 @@
   - code style https://github.com/tastejs/todomvc/blob/master/contributing.md#code-style
 
   - persist to localStorage; use correct keys and name.
+  - BUG: transitions don't happen because the nodes are being replaced rather than edited.
  */
 
 assertion type todoExists(id);
