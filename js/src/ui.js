@@ -63,6 +63,13 @@ var uiFragmentExists = Struct.makeConstructor('ui-fragment-exists', ['fragmentId
 // already present. (See the implementation for details.)
 var uiAttribute = Struct.makeConstructor('ui-attribute', ['selector', 'attribute', 'value']);
 
+// Messages.
+// NOTE: These do not treat "class" specially!
+var setAttribute = Struct.makeConstructor('set-ui-attribute', ['selector', 'attribute', 'value']);
+var removeAttribute = Struct.makeConstructor('remove-ui-attribute', ['selector', 'attribute']);
+var setProperty = Struct.makeConstructor('set-ui-property', ['selector', 'property', 'value']);
+var removeProperty = Struct.makeConstructor('remove-ui-property', ['selector', 'property']);
+
 // Assertion. Current "location hash" -- the "#/path/part" fragment at
 // the end of window.location.
 var locationHash = Struct.makeConstructor('locationHash', ['value']);
@@ -116,6 +123,7 @@ function spawnUIDriver(options) {
                         Dataspace.spawn(new UIAttribute(c.selector, c.attribute, c.value));
                       }));
 
+  Dataspace.spawn(new AttributeUpdater());
   Dataspace.spawn(new LocationHashTracker(options.defaultLocationHash || '/'));
 }
 
@@ -632,6 +640,39 @@ LocationHashTracker.prototype.handleEvent = function (e) {
 
 ///////////////////////////////////////////////////////////////////////////
 
+function AttributeUpdater() {
+}
+
+AttributeUpdater.prototype.boot = function () {
+  return Patch.sub(setAttribute(__, __, __))
+    .andThen(Patch.sub(removeAttribute(__, __)))
+    .andThen(Patch.sub(setProperty(__, __, __)))
+    .andThen(Patch.sub(removeProperty(__, __)))
+  ;
+};
+
+AttributeUpdater.prototype.handleEvent = function (e) {
+  if (e.type === 'message') {
+    var f = false;
+    if (setAttribute.isClassOf(e.message)) {
+      f = function (n, k) { n.setAttribute(k, e.message[2]); };
+    } else if (removeAttribute.isClassOf(e.message)) {
+      f = function (n, k) { n.removeAttribute(k); };
+    } else if (setProperty.isClassOf(e.message)) {
+      f = function (n, k) { n[k] = e.message[2]; };
+    } else if (removeProperty.isClassOf(e.message)) {
+      f = function (n, k) { delete n[k]; };
+    }
+    if (f) {
+      Array.prototype.slice.call(document.querySelectorAll(e.message[0])).forEach(function (n) {
+        f(n, e.message[1]);
+      });
+    }
+  }
+};
+
+///////////////////////////////////////////////////////////////////////////
+
 module.exports.newFragmentId = newFragmentId;
 module.exports.spawnUIDriver = spawnUIDriver;
 module.exports.Anchor = Anchor;
@@ -641,5 +682,9 @@ module.exports.uiEvent = uiEvent;
 module.exports.uiFragment = uiFragment;
 module.exports.uiFragmentExists = uiFragmentExists;
 module.exports.uiAttribute = uiAttribute;
+module.exports.setAttribute = setAttribute;
+module.exports.removeAttribute = removeAttribute;
+module.exports.setProperty = setProperty;
+module.exports.removeProperty = removeProperty;
 module.exports.locationHash = locationHash;
 module.exports.setLocationHash = setLocationHash;
