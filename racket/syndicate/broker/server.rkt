@@ -75,19 +75,29 @@
   value)
 
 (define (unwrap-patch scope p)
-  (patch-step* p (list broker-data-parenthesis
-                       broker-scope-parenthesis
-                       (broker-scope-host scope)
-                       (broker-scope-path scope))))
+  (match-define (patch added removed) p)
+  (patch (unwrap-trie scope added) (unwrap-trie scope removed)))
+
+(define (unwrap-trie scope t)
+  (if (trie-empty? t)
+      t
+      (let ((observations (trie-step t observe-parenthesis)))
+        (trie-union (trie-prepend observe-parenthesis (unwrap-trie scope observations))
+                    (trie-step* t (list broker-data-parenthesis
+                                        broker-scope-parenthesis
+                                        (broker-scope-host scope)
+                                        (broker-scope-path scope)))))))
 
 (define (wrap-patch scope p)
   (match-define (patch added removed) p)
   (patch (wrap-trie scope added) (wrap-trie scope removed)))
 
 (define (wrap-trie scope t)
-  (define observations (trie-step t observe-parenthesis))
-  (trie-union (trie-prepend observe-parenthesis (wrap-trie* scope observations))
-              (wrap-trie* scope t)))
+  (if (trie-empty? t)
+      t
+      (let ((observations (trie-step t observe-parenthesis)))
+        (trie-union (trie-prepend observe-parenthesis (wrap-trie scope observations))
+                    (wrap-trie* scope t)))))
 
 (define (wrap-trie* scope t)
   (pattern->trie #t (broker-data scope (embedded-trie t))))
