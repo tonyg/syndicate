@@ -681,7 +681,7 @@ function reconstructSequence(key, items) {
   if (key === SOA) {
     return items.toArray();
   } else {
-    return key.instantiate(items);
+    return key.instantiate(items.toArray());
   }
 }
 
