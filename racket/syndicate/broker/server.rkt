@@ -1,7 +1,9 @@
 #lang racket/base
 ;; Generic relay for WebSockets/TCP/etc-based participation in a network.
 
-(provide spawn-broker-server)
+(provide spawn-broker-server
+         (struct-out broker-scope)
+         (struct-out broker-data))
 
 (require racket/set)
 (require racket/match)
