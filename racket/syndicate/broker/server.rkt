@@ -106,11 +106,6 @@
 (define (wrap-trie* scope t)
   (pattern->trie #t (broker-data scope (embedded-trie t))))
 
-(define stuff-to-prune
-  (trie-union-all #:combiner (lambda (v1 v2) (trie-success #t))
-                  (list (pattern->trie #t (at-meta ?))
-                        (pattern->trie #t (observe (at-meta ?))))))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ main
