@@ -24,7 +24,7 @@
 				<label for="toggle-all">Mark all as complete</label>
 				<ul class="todo-list">
                                   <template id="todo-list-item-view-template">
-                                    <li data-id="{{id}}" class="{{hidden_class}} {{completed_class}}">
+                                    <li data-id="{{id}}" class="{{completed_class}}">
                                       <div class="view">
                                         <input class="toggle" type="checkbox" {{checked}}>
                                         <label>{{title}}</label>
@@ -34,7 +34,7 @@
                                   </template>
                                   <template id="todo-list-item-edit-template">
                                     <li data-id="{{id}}" class="editing">
-                                      <input value="{{title}}" class="edit">
+                                      <input value="{{title}}" class="edit -syndicate-focus">
                                     </li>
                                   </template>
 				</ul>

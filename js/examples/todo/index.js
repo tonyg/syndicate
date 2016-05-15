@@ -1,12 +1,3 @@
-assertion type todo(id, title, completed);
-assertion type show(completed);
-assertion type activeTodoCount(n);
-assertion type completedTodoCount(n);
-assertion type totalTodoCount(n);
-
-message type deleteTodo(id);
-message type clearCompletedTodos();
-
 /*
   To Do (ho ho ho)
   spec is at: https://github.com/tastejs/todomvc/blob/master/app-spec.md
@@ -16,16 +7,58 @@ message type clearCompletedTodos();
   - pattern the HTML more explicitly on the given template, keep changes to a minimum
   - code style https://github.com/tastejs/todomvc/blob/master/contributing.md#code-style
 
-  - mark all as complete/incomplete; make sure it is only ever checked when all the todos are checked
   - persist to localStorage; use correct keys and name.
-
-  - routing: spec requires that filtering be done "on a model level";
-    we, by using "hidden" class, are kind of partly doing it on a view
-    level. We could either continue to do this, or switch to a proper
-    model level approach, but then we'd lose stability of ordering!
-
-  - BUG: doesn't hide an item if in "Active" state and you click on the checkbox
  */
+
+assertion type todoExists(id);
+assertion type todo(id, title, completed);
+
+message type setTitle(id, title);
+message type setCompleted(id, completed);
+message type deleteTodo(id);
+message type clearCompletedTodos();
+message type setAllCompleted(completed);
+
+// Derived model state
+assertion type activeTodoCount(n);
+assertion type completedTodoCount(n);
+assertion type totalTodoCount(n);
+assertion type allCompleted();
+
+// View state
+assertion type show(completed);
+
+//////////////////////////////////////////////////////////////////////////
+
+var nextId = 0;
+function todoListItemModel(title) {
+  title = title.trim();
+  if (!title) return;
+
+  actor {
+    this.id = nextId++;
+    this.title = title;
+    this.completed = false;
+
+    react {
+      assert todoExists(this.id);
+      assert todo(this.id, this.title, this.completed);
+
+      on message setCompleted(this.id, $v) { this.completed = v; }
+      on message setAllCompleted($v)       { this.completed = v; }
+
+      on message setTitle(this.id, $v)     { this.title = v;     }
+
+      on message clearCompletedTodos() {
+        if (this.completed) :: deleteTodo(this.id);
+      }
+    } until {
+      case message deleteTodo(this.id);
+    }
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////
 
 var ESCAPE_KEY_CODE = 27;
 var ENTER_KEY_CODE = 13;
@@ -34,61 +67,37 @@ function getTemplate(id) {
   return document.getElementById(id).innerHTML;
 }
 
-var nextId = 0;
-function addTodo(title) {
-  title = title.trim();
-  if (!title) return;
-
+function todoListItemView(id) {
   actor {
-    this.id = nextId++;
     this.ui = new Syndicate.UI.Anchor();
-    this.title = title;
-    this.completed = false;
     this.editing = false;
-    this.visible = false;
-
     react {
-      assert todo(this.id, this.title, this.completed);
-
-      during show(this.completed) {
-        do      { this.visible = true;  }
-        finally { this.visible = false; }
+      during todo(id, $title, $completed) {
+        during show(completed) {
+          assert this.ui.html('.todo-list',
+                              Mustache.render(getTemplate(this.editing
+                                                          ? 'todo-list-item-edit-template'
+                                                          : 'todo-list-item-view-template'),
+                                              {
+                                                id: id,
+                                                title: title,
+                                                completed_class: completed ? "completed" : "",
+                                                checked: completed ? "checked" : "",
+                                              }),
+                              id);
+        }
       }
 
-      assert this.ui.html('.todo-list',
-                          Mustache.render(getTemplate(this.editing
-                                                      ? 'todo-list-item-edit-template'
-                                                      : 'todo-list-item-view-template'),
-                                          {
-                                            completed_class: this.completed ? "completed" : "",
-                                            hidden_class: this.visible ? "" : "hidden",
-                                            id: this.id,
-                                            checked: this.completed ? "checked" : "",
-                                            title: this.title
-                                          }),
-                         this.id);
-
       on message this.ui.event('.toggle', 'change', $e) {
-        this.completed = e.target.checked;
+        :: setCompleted(id, e.target.checked);
       }
 
       on message this.ui.event('.destroy', 'click', _) {
-        :: deleteTodo(this.id);
+        :: deleteTodo(id);
       }
 
       on message this.ui.event('label', 'dblclick', _) {
-        var self = this;
         this.editing = true;
-        focusMe(); // TODO this is gross
-        function focusMe() {
-          setTimeout(function () {
-            var q = 'li[data-id="'+self.id+'"] input.edit';
-            var n = document.querySelector(q);
-            if (!n) { return focusMe(); }
-            n.focus();
-            n.setSelectionRange(n.value.length, n.value.length);
-          }, 0);
-        }
       }
 
       on message this.ui.event('input.edit', 'keyup', $e) {
@@ -100,19 +109,17 @@ function addTodo(title) {
         this.editing = false;
       }
       on message this.ui.event('input.edit', 'change', $e) {
-        this.title = e.target.value.trim();
+        var newTitle = e.target.value.trim();
+        :: (newTitle ? setTitle(id, newTitle) : deleteTodo(id));
         this.editing = false;
-        if (!this.title) :: deleteTodo(this.id);
-      }
-
-      on message clearCompletedTodos() {
-        if (this.completed) :: deleteTodo(this.id);
       }
     } until {
-      case message deleteTodo(this.id);
+      case retracted todoExists(id);
     }
   }
 }
+
+///////////////////////////////////////////////////////////////////////////
 
 ground dataspace G {
   Syndicate.UI.spawnUIDriver();
@@ -120,8 +127,43 @@ ground dataspace G {
   actor {
     react {
       on message Syndicate.UI.globalEvent('.new-todo', 'change', $e) {
-        addTodo(e.target.value);
+        todoListItemModel(e.target.value);
         e.target.value = "";
+      }
+    }
+  }
+
+  actor {
+    this.ui = new Syndicate.UI.Anchor();
+
+    react {
+      during activeTodoCount($count) {
+        assert this.ui.context('count').html('.todo-count strong', '' + count);
+        assert this.ui.context('plural').html('.todo-count span.s', 's') when (count !== 1);
+      }
+
+      during totalTodoCount(0) {
+        assert Syndicate.UI.uiAttribute('section.main', 'class', 'hidden');
+        assert Syndicate.UI.uiAttribute('footer.footer', 'class', 'hidden');
+      }
+
+      during completedTodoCount(0) {
+        assert Syndicate.UI.uiAttribute('button.clear-completed', 'class', 'hidden');
+      }
+      on message Syndicate.UI.globalEvent('button.clear-completed', 'click', _) {
+        :: clearCompletedTodos();
+      }
+
+      during allCompleted() {
+        do      { :: Syndicate.UI.setProperty('.toggle-all', 'checked', true); }
+        finally { :: Syndicate.UI.setProperty('.toggle-all', 'checked', false); }
+      }
+      on message Syndicate.UI.globalEvent('.toggle-all', 'change', $e) {
+        :: setAllCompleted(e.target.checked);
+      }
+
+      on asserted todoExists($id) {
+        todoListItemView(id);
       }
     }
   }
@@ -135,26 +177,7 @@ ground dataspace G {
       assert activeTodoCount(activeCount);
       assert completedTodoCount(completedCount);
       assert totalTodoCount(activeCount + completedCount);
-    }
-  }
-
-  actor {
-    var ui = new Syndicate.UI.Anchor();
-    react {
-      during activeTodoCount($count) {
-        assert ui.context('count').html('.todo-count strong', '' + count);
-        assert ui.context('plural').html('.todo-count span.s', 's') when (count !== 1);
-      }
-      during completedTodoCount(0) {
-        assert Syndicate.UI.uiAttribute('button.clear-completed', 'class', 'hidden');
-      }
-      during totalTodoCount(0) {
-        assert Syndicate.UI.uiAttribute('section.main', 'class', 'hidden');
-        assert Syndicate.UI.uiAttribute('footer.footer', 'class', 'hidden');
-      }
-      on message Syndicate.UI.globalEvent('button.clear-completed', 'click', _) {
-        :: clearCompletedTodos();
-      }
+      assert allCompleted() when (completedCount > 0 && activeCount === 0);
     }
   }
 
@@ -178,9 +201,9 @@ ground dataspace G {
     }
   }
 
-  addTodo('Buy milk');
-  addTodo('Buy bread');
-  addTodo('Finish PhD');
+  todoListItemModel('Buy milk');
+  todoListItemModel('Buy bread');
+  todoListItemModel('Finish PhD');
 }
 
 // G.dataspace.setOnStateChange(function (mux, patch) {
