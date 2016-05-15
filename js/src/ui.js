@@ -352,6 +352,17 @@ function htmlToNodes(parent, html) {
   return Array.prototype.slice.call(e.childNodes);
 }
 
+function configureNode(n) {
+  // Runs post-insertion configuration of nodes.
+  // TODO: review this design.
+  selectorMatch(n, '.-syndicate-focus').forEach(function (n) {
+    if ('focus' in n && 'setSelectionRange' in n) {
+      n.focus();
+      n.setSelectionRange(n.value.length, n.value.length);
+    }
+  });
+}
+
 UIFragment.prototype.updateContent = function (newSelector, newHtml, newOrderBy) {
   var self = this;
 
@@ -364,6 +375,7 @@ UIFragment.prototype.updateContent = function (newSelector, newHtml, newOrderBy)
     htmlToNodes(anchorNode, newHtml).forEach(function (newNode) {
       setSortKey(newNode, newOrderBy, self.fragmentId);
       anchorNode.insertBefore(newNode, insertionPoint);
+      configureNode(newNode);
     });
   });
 
