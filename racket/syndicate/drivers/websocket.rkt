@@ -141,10 +141,12 @@
    (lambda ()
      (log-info "Connecting to ~a ~a" url (current-inexact-milliseconds))
      (define c (with-handlers [(exn? values)] (ws-connect (string->url url))))
-     (log-info "Connected to ~a ~a" url (current-inexact-milliseconds))
+     (when (exn? c)
+       (log-info "Connection to ~a failed: ~a" url (exn->string c)))
      (send-ground-message
       (websocket-connection id local-addr remote-addr c control-ch))
      (when (not (exn? c))
+       (log-info "Connected to ~a ~a" url (current-inexact-milliseconds))
        (connection-thread-loop control-ch c id))))
   (spawn (lambda (e buffered-messages-rev)
            (match e
