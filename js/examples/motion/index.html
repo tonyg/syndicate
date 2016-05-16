@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Syndicate: Motion</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="style.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/2.2.1/mustache.min.js"></script>
+    <script src="tinycolor.js"></script>
+    <script src="../../dist/syndicatecompiler.js"></script>
+    <script src="../../dist/syndicate.js"></script>
+    <script type="text/syndicate-js" src="index.js"></script>
+  </head>
+  <body>
+    <svg width="100%" viewBox="-10 -10 20 20" id="container">
+      <rect x="-10" y="-10" width="1" height="1" id="my_color"/>
+    </svg>
+    <template id="circle-template">
+      <circle fill="{{ color }}" r="0.2" cx="{{ x }}" cy ="{{ y }}" />
+      </template>
+    </div>
+
+    <!-- <hr> -->
+    <!-- <pre id="ds-state"></pre> -->
+  </body>
+</html>
