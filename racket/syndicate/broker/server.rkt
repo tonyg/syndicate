@@ -18,6 +18,8 @@
 (require json)
 (require "protocol.rkt")
 
+(define-logger syndicate-broker)
+
 (struct broker-scope (host port path) #:prefab)
 (struct broker-data (scope assertion) #:prefab)
 
@@ -48,13 +50,13 @@
 
          (arm-ping-timer!)
 
-         (log-info "\nStarting broker connection from ~v" c)
+         (log-syndicate-broker-info "Starting broker connection from ~v" c)
          (until (retracted (advertise (websocket-message c server-id _)) #:meta-level 1)
            (assert (advertise (websocket-message server-id c _)) #:meta-level 1)
 
            (on (asserted (websocket-peer-details server-id c _ _ $remote-addr $remote-port)
                          #:meta-level 1)
-               (log-info "Connection ~v is from ~a:~a" c remote-addr remote-port))
+               (log-syndicate-broker-info "Connection ~v is from ~a:~a" c remote-addr remote-port))
 
            (on (message (timer-expired c _) #:meta-level 1)
                (arm-ping-timer!)
@@ -71,10 +73,10 @@
             [(? patch? p) (send-event (log-packet c 'outbound 'patch (unwrap-patch scope p)))]
             [(message (broker-data (== scope) body))
              (send-event (message (log-packet c 'outbound 'message body)))]))
-         (log-info "\nEnding broker connection from ~v" c)))
+         (log-syndicate-broker-info "Ending broker connection from ~v" c)))
 
 (define (log-packet c direction kind value)
-  (log-info "\nBroker: ~v: ~a ~a\n~v" c direction kind value)
+  (log-syndicate-broker-debug "Broker: ~v: ~a ~a\n~v" c direction kind value)
   value)
 
 (define (unwrap-patch scope p)
