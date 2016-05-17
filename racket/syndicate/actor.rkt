@@ -152,7 +152,9 @@
 ;;   - role: Callee
 ;;       Asserts LinkActive while it runs. Should send LinkResult
 ;;       before termination to indicate success and communicate values
-;;       to Caller.
+;;       to Caller. Monitors (observe LinkActive) to detect
+;;       termination of the Caller; upon termination of the Caller,
+;;       terminates itself.
 ;;
 ;; A LinkActive is a (link-active Symbol Symbol), describing an
 ;; ongoing relationship between the indicated caller and callee.
@@ -340,10 +342,13 @@
 (define (generic-actor-behavior e s)
   (match e
     [(? patch/removed? p)
+     (define caller-id (actor-state-caller-id s))
+     (define self-id (actor-state-self-id s))
      (define continuation-table (actor-state-continuation-table s))
      (define quit?
-       (for/or [(callee-id (trie-project/set/single (patch-removed p) link-active-projection))]
-         (hash-has-key? continuation-table callee-id)))
+       (or (trie-lookup (patch-removed p) (observe (link-active caller-id self-id)) #f)
+           (for/or [(callee-id (trie-project/set/single (patch-removed p) link-active-projection))]
+             (hash-has-key? continuation-table callee-id))))
      (if quit? ;; TODO: raise exception instead? Signal the cause of the quit somehow?
          (quit)
          #f)]
@@ -753,6 +758,7 @@
                (define initial-subs
                  #,(if (eq? linkage-kind 'call)
                        #`(patch-seq sub-to-callees
+                                    (sub (observe (link-active caller-id self-id)))
                                     (core:assert (link-active caller-id self-id)))
                        #`sub-to-callees))
                ((extend-pending-patch *linkage-label* initial-subs) s))
