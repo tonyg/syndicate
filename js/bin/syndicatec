@@ -8,6 +8,8 @@ function compileAndPrint(inputSource) {
   var translatedSource = compiler.compileSyndicateSource(inputSource);
   if (translatedSource) {
     console.log(translatedSource);
+  } else {
+    process.exit(1);
   }
 }
 
