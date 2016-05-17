@@ -1,5 +1,6 @@
 ---
 title: Live Demos
+gh: 'https://github.com/tonyg/syndicate/blob/master/js/examples'
 ---
 
 # Syndicate/js Examples
@@ -18,7 +19,7 @@ publish the button's label text based on its internal state and to
 subscribe to button click events.
 
  - [DEMO](button/)
- - [Source code](button/index.js) using the Syndicate/js DSL
+ - [Source code]({{ page.gh }}/button/index.js) using the Syndicate/js DSL
 
 ## DOM example
 
@@ -30,7 +31,7 @@ the first, updates its internal state, and reflects its new internal
 state in its visible UI.
 
  - [DEMO](dom/)
- - [Source code](dom/index.js) in plain JavaScript
+ - [Source code]({{ page.gh }}/dom/index.js) in plain JavaScript
 
 ## Table sorting example
 
@@ -38,7 +39,7 @@ A tiny model-view-controller example demonstrating display and sorting
 of tabular data.
 
  - [DEMO](table/)
- - [Source code](table/index.js) using the Syndicate/js DSL
+ - [Source code]({{ page.gh }}/table/index.js) using the Syndicate/js DSL
 
 ## Text Entry Widget
 
@@ -70,10 +71,10 @@ directly, and one using the high-level Syndicate DSL.
 
  - High-level DSL implementation
     - [DEMO](textfield-dsl/)
-    - [Source code](textfield-dsl/index.js) using the Syndicate/js DSL
+    - [Source code]({{ page.gh }}/textfield-dsl/index.js) using the Syndicate/js DSL
  - Low-level implementation
     - [DEMO](textfield/)
-    - [Source code](textfield/index.js) in plain JavaScript
+    - [Source code]({{ page.gh }}/textfield/index.js) in plain JavaScript
 
 ## IoT Demo
 
@@ -106,7 +107,7 @@ about the
 that he and his collaborators have been developing.
 
  - [DEMO](iot/)
- - [Source code](iot/index.js) using the Syndicate/js DSL
+ - [Source code]({{ page.gh }}/iot/index.js) using the Syndicate/js DSL
 
 ## TodoMVC
 
@@ -119,4 +120,4 @@ details all of the features needed for a program to qualify as a
 TodoMVC implementation.
 
  - [TodoMVC demo](todo/)
- - [Source code](todo/index.js) using the Syndicate/js DSL
+ - [Source code]({{ page.gh }}/todo/index.js) using the Syndicate/js DSL
