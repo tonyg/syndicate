@@ -403,36 +403,53 @@ function subtract(o1, o2, subtractSuccessesOpt) {
 
 ///////////////////////////////////////////////////////////////////////////
 
-// Returns failureResult on failed match, otherwise the appropriate success
-// value contained in the trie r.
-function matchValue(r, v, failureResult) {
-  var vs = Immutable.List.of(v);
+// Returns failureResult on failed match, otherwise the appropriate
+// success value contained in the trie r. If wildcardUnionOpt
+// non-falsy, allows wildcards in "messages" v.
+function matchValue(r, v, failureResult, wildcardUnionOpt) {
+  return walk(Immutable.List.of(v), r);
 
-  while (!is_emptyTrie(r)) {
-    if (r instanceof $Success) {
-      return vs.isEmpty() ? r.value : failureResult;
+  function walk(vs, r) {
+    while (!is_emptyTrie(r)) {
+      if (r instanceof $Success) {
+        return vs.isEmpty() ? r.value : failureResult;
+      }
+
+      if (vs.isEmpty()) return failureResult;
+      var v = vs.first();
+      vs = vs.rest();
+
+      if (v === __) {
+        if (!wildcardUnionOpt) {
+          die("Cannot match wildcard in value unless wildcardUnionOpt non-falsy");
+        }
+
+        var seed = walk(vs, r.wild);
+        r.edges.forEach(function (keymap, arity) {
+          keymap.forEach(function (k, key) {
+            seed = wildcardUnionOpt(walk(Immutable.Repeat(__, arity).concat(vs), k), seed);
+          });
+        });
+        return seed;
+      }
+
+      if (typeof v === 'string' && v.substring(0, 2) === '__') {
+        die("Cannot match special string starting with __");
+      }
+
+      if (Array.isArray(v)) {
+        r = rlookup(r, v.length, SOA);
+        vs = Immutable.List(v).concat(vs);
+      } else if (Struct.isStructure(v)) {
+        r = rlookup(r, v.meta.arity, v.meta);
+        vs = Immutable.List(v.fields).concat(vs);
+      } else {
+        r = rlookup(r, 0, v);
+      }
     }
 
-    if (vs.isEmpty()) return failureResult;
-    var v = vs.first();
-    vs = vs.shift();
-
-    if (typeof v === 'string' && v.substring(0, 2) === '__') {
-      die("Cannot match special string starting with __");
-    }
-
-    if (Array.isArray(v)) {
-      r = rlookup(r, v.length, SOA);
-      vs = Immutable.List(v).concat(vs);
-    } else if (Struct.isStructure(v)) {
-      r = rlookup(r, v.meta.arity, v.meta);
-      vs = Immutable.List(v.fields).concat(vs);
-    } else {
-      r = rlookup(r, 0, v);
-    }
+    return failureResult;
   }
-
-  return failureResult;
 }
 
 function matchTrie(o1, o2, seed, combiner) {

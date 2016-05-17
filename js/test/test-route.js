@@ -40,19 +40,19 @@ describe("basic pattern compilation", function () {
 
   describe("of wildcard", function () {
     it("should match anything", function () {
-      expect(r.matchValue(mAny, 'hi')).to.eql(sAny);
-      expect(r.matchValue(mAny, ['A', 'hi'])).to.eql(sAny);
-      expect(r.matchValue(mAny, ['B', 'hi'])).to.eql(sAny);
-      expect(r.matchValue(mAny, ['A', [['hi']]])).to.eql(sAny);
+      expect(r.matchValue(mAny, 'hi', null)).to.eql(sAny);
+      expect(r.matchValue(mAny, ['A', 'hi'], null)).to.eql(sAny);
+      expect(r.matchValue(mAny, ['B', 'hi'], null)).to.eql(sAny);
+      expect(r.matchValue(mAny, ['A', [['hi']]], null)).to.eql(sAny);
     });
   });
 
   describe("of A followed by wildcard", function () {
     it("should match A followed by anything", function () {
-      expect(r.matchValue(mAAny, 'hi')).to.be(null);
-      expect(r.matchValue(mAAny, ['A', 'hi'])).to.eql(sAAny);
-      expect(r.matchValue(mAAny, ['B', 'hi'])).to.be(null);
-      expect(r.matchValue(mAAny, ['A', [['hi']]])).to.eql(sAAny);
+      expect(r.matchValue(mAAny, 'hi', null)).to.be(null);
+      expect(r.matchValue(mAAny, ['A', 'hi'], null)).to.eql(sAAny);
+      expect(r.matchValue(mAAny, ['B', 'hi'], null)).to.be(null);
+      expect(r.matchValue(mAAny, ['A', [['hi']]], null)).to.eql(sAAny);
     });
   });
 
@@ -539,7 +539,7 @@ describe('makeConstructor', function () {
     var inst = ctor(123, 234);
     var x = r.compilePattern(sA, ctor(123, r.__));
     checkPrettyTrie(x, [' foo<2> 123 ★ {["A"]}']);
-    expect(r.matchValue(x, ctor(123, 234))).to.eql(sA);
-    expect(r.matchValue(x, ctor(234, 123))).to.eql(null);
+    expect(r.matchValue(x, ctor(123, 234), null)).to.eql(sA);
+    expect(r.matchValue(x, ctor(234, 123), null)).to.eql(null);
   });
 });
