@@ -28,12 +28,17 @@
 
          (for-syntax analyze-pattern)
          syndicate-actor-prompt-tag-installed?
+
+         (struct-out predicate-match)
+         match-value/captures
          )
 
 (require (for-syntax racket/base))
 (require (for-syntax racket/sequence))
 (require "support/dsl.rkt")
+(require "support/struct.rkt")
 (require "pretty.rkt")
+(require "treap.rkt")
 
 (define&provide-dsl-helper-syntaxes "state/until/forever form"
   [on
@@ -554,7 +559,7 @@
                                s))))))
 
     (define (analyze-asserted-or-retracted! endpoint-index asserted? outer-expr-stx P-stx I-stxs L-stx)
-      (define-values (proj-stx pat match-pat bindings _instantiated)
+      (define-values (proj-stx pat bindings _instantiated)
         (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! endpoint-index #'sub pat #f L-stx)
       (add-event-handler!
@@ -589,7 +594,7 @@
           #`(at-meta #,(prepend-at-meta-stx context-stx stx (- level 1)))))
 
     (define (analyze-message-subscription! endpoint-index outer-expr-stx P-stx I-stxs L-stx)
-      (define-values (proj pat match-pat bindings _instantiated)
+      (define-values (proj pat bindings _instantiated)
         (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! endpoint-index #'sub pat #f L-stx)
       (add-event-handler!
@@ -598,8 +603,16 @@
              (match (actor-state-variables s)
                [(vector #,@binding-names)
                 (match #,evt-stx
-                  [(message #,(prepend-at-meta-stx outer-expr-stx match-pat (syntax-e L-stx)))
-                   #,(make-run-script-call outer-expr-stx #'s I-stxs)]
+                  [(message body)
+                   (define capture-vals
+                     (match-value/captures body
+                                           #,(prepend-at-meta-stx outer-expr-stx
+                                                                  proj
+                                                                  (syntax-e L-stx))))
+                   (and capture-vals
+                        (apply (lambda #,bindings
+                                 #,(make-run-script-call outer-expr-stx #'s I-stxs))
+                               capture-vals))]
                   [_ #f])])))))
 
     (define (analyze-event! index E-stx I-stxs)
@@ -632,12 +645,12 @@
 
     (define (analyze-during! index P-stx O-stxs)
       (define E-stx #`(asserted #,P-stx))
-      (define-values (_proj _pat _match-pat _bindings instantiated) (analyze-pattern E-stx P-stx))
+      (define-values (_proj _pat _bindings instantiated) (analyze-pattern E-stx P-stx))
       (define I-stx #`(until (retracted #,instantiated) #,@O-stxs))
       (analyze-event! index E-stx #`(#,I-stx)))
 
     (define (analyze-assertion! index Pred-stx outer-expr-stx P-stx L-stx)
-      (define-values (proj pat match-pat bindings _instantiated)
+      (define-values (proj pat bindings _instantiated)
         (analyze-pattern outer-expr-stx P-stx))
       (add-assertion-maintainer! index #'core:assert pat Pred-stx L-stx))
 
@@ -828,33 +841,31 @@
     (and (dollar-id? stx)
          (datum->syntax stx (string->symbol (substring (symbol->string (syntax-e stx)) 1)))))
 
-  ;; Syntax -> (Values Projection AssertionSetPattern MatchPattern (ListOf Identifier) Syntax)
+  ;; Syntax -> (Values Projection AssertionSetPattern (ListOf Identifier) Syntax)
   (define (analyze-pattern outer-expr-stx pat-stx0)
     (let walk ((pat-stx pat-stx0))
       (syntax-case pat-stx ($ ? quasiquote unquote quote)
         ;; Extremely limited support for quasiquoting and quoting
         [(quasiquote (unquote p)) (walk #'p)]
         [(quasiquote (p ...)) (walk #'(list (quasiquote p) ...))]
-        [(quasiquote p) (values #''p #''p #''p '() #''p)]
-        [(quote p) (values #''p #''p #''p '() #''p)]
+        [(quasiquote p) (values #''p #''p '() #''p)]
+        [(quote p) (values #''p #''p '() #''p)]
 
         [$v
          (dollar-id? #'$v)
          (with-syntax [(v (undollar #'$v))]
            (values #'(?!)
                    #'?
-                   #'v
                    (list #'v)
                    #'v))]
 
         [($ v p)
          (let ()
-           (define-values (pr g m bs _ins) (walk #'p))
+           (define-values (pr g bs _ins) (walk #'p))
            (when (not (null? bs))
              (raise-syntax-error #f "nested bindings not supported" outer-expr-stx pat-stx))
            (values #`(?! #,pr)
                    g
-                   #`(and v #,m)
                    (list #'v)
                    #'v))]
 
@@ -868,33 +879,29 @@
                                     "Predicate '?' matching only supported in message events"
                                     outer-expr-stx
                                     pat-stx)])
-           (define-values (pr g m bs ins) (walk #'p))
-           (values pr
+           (define-values (pr g bs ins) (walk #'p))
+           (values #`(predicate-match pred? #,pr)
                    g
-                   #`(? pred? #,m)
                    bs
                    ins))]
 
         [(ctor p ...)
          (let ()
            (define parts (if (identifier? #'ctor) #'(p ...) #'(ctor p ...)))
-           (define-values (pr g m bs ins)
-             (for/fold [(pr '()) (g '()) (m '()) (bs '()) (ins '())] [(p (syntax->list parts))]
-               (define-values (pr1 g1 m1 bs1 ins1) (walk p))
+           (define-values (pr g bs ins)
+             (for/fold [(pr '()) (g '()) (bs '()) (ins '())] [(p (syntax->list parts))]
+               (define-values (pr1 g1 bs1 ins1) (walk p))
                (values (cons pr1 pr)
                        (cons g1 g)
-                       (cons m1 m)
                        (append bs bs1)
                        (cons ins1 ins))))
            (if (identifier? #'ctor)
                (values (cons #'ctor (reverse pr))
                        (cons #'ctor (reverse g))
-                       (cons #'ctor (reverse m))
                        bs
                        (cons #'ctor (reverse ins)))
                (values (reverse pr)
                        (reverse g)
-                       (reverse m)
                        bs
                        (reverse ins))))]
 
@@ -909,16 +916,52 @@
                   (free-identifier=? #'non-pair #'_))
              (values #'?
                      #'?
-                     #'_
                      '()
                      #'_)
              (values #'non-pair
                      #'non-pair
-                     #'(== non-pair)
                      '()
                      #'non-pair))])))
 
   )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(struct predicate-match (predicate sub-pattern) #:transparent)
+
+;; Value Projection -> (Option (Listof Value))
+;; Match a single value against a projection, returning a list of
+;; captured values.
+(define (match-value/captures v p)
+  (define captures-rev
+    (let walk ((v v) (p p) (captures-rev '()))
+      (match* (v p)
+        [(_ (capture sub))
+         (match (walk v sub '())
+           [#f #f]
+           ['() (cons v captures-rev)]
+           [_ (error 'match-value/captures "Bindings in capture sub-patterns not supported")])]
+        [(_ (predicate-match pred? sub)) #:when (pred? v)
+         (walk v sub captures-rev)]
+        [(_ (== ?))
+         captures-rev]
+        [((cons v1 v2) (cons p1 p2))
+         (match (walk v1 p1 captures-rev)
+           [#f #f]
+           [c (walk v2 p2 c)])]
+        [((? vector? v) (? vector? p)) #:when (= (vector-length v) (vector-length p))
+         (for/fold [(c captures-rev)] [(vv (in-vector v)) (pp (in-vector p))]
+           (walk vv pp c))]
+        [(_ _) #:when (or (treap? v) (treap? p))
+         (error 'match-value/captures "Cannot match on treaps at present")]
+        [((? non-object-struct?) (? non-object-struct?))
+         #:when (eq? (struct->struct-type v) (struct->struct-type p))
+         (walk (struct->vector v) (struct->vector p) captures-rev)]
+        [(_ _) #:when (equal? v p)
+         captures-rev]
+        [(_ _)
+         #f])))
+  (and captures-rev (reverse captures-rev)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -966,31 +1009,42 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
-  (require racket/pretty (for-syntax racket/pretty))
+  (require rackunit)
 
-  (define (expand-and-print stx)
-    (pretty-print (syntax->datum (expand stx))))
+  (check-equal? (match-value/captures (list 1 2 3)
+                                      (list 1 2 3))
+                '())
+  (check-equal? (match-value/captures (list 1 2 3)
+                                      (list 1 22 3))
+                #f)
+  (check-equal? (match-value/captures (list 1 2 3)
+                                      (list (?!) (?!) (?!)))
+                (list 1 2 3))
+  (check-equal? (match-value/captures (list 1 2 3)
+                                      (list (?!) 2 (?!)))
+                (list 1 3))
+  (check-equal? (match-value/captures (list 1 2 3)
+                                      (list (?!) ? (?!)))
+                (list 1 3))
+  (check-equal? (match-value/captures (list 1 2 3)
+                                      (list (?!) (?! 2) (?!)))
+                (list 1 2 3))
+  (check-equal? (match-value/captures (list 1 2 3)
+                                      (list (?!) (?! 22) (?!)))
+                #f)
 
-  (begin-for-syntax
-    (define (analyze-and-print pat-stx)
-      (let-values (((pr g m bs ins) (analyze-pattern pat-stx pat-stx)))
-        (pretty-print `((pr ,(map syntax->datum pr))
-                        (g ,(map syntax->datum g))
-                        (m ,(map syntax->datum m))
-                        (bs ,(map syntax->datum bs))
-                        (ins ,(map syntax->datum ins))))))
+  (struct x (a b) #:prefab)
+  (struct y (z w) #:prefab)
 
-    #;(analyze-and-print #'`(hello ,$who)))
+  (check-equal? (match-value/captures (x 1 2) (x 1 2)) '())
+  (check-equal? (match-value/captures (x 1 22) (x 1 2)) #f)
+  (check-equal? (match-value/captures (x 1 2) (x 1 22)) #f)
+  (check-equal? (match-value/captures (x 1 2) (?! (x ? ?))) (list (x 1 2)))
+  (check-equal? (match-value/captures (x 1 2) (?! (x ? 2))) (list (x 1 2)))
+  (check-equal? (match-value/captures (x 1 2) (?! (x ? 22))) #f)
 
-  (expand
-   #'(actor
-      (until (rising-edge (= count 10))
-             #:collect [(count 0)]
-             (during `(present ,$p)
-                     #:collect [(utterance-count 0)]
-                     (on (message `(says ,p ,$what))
-                         (println "(~a) ~a says: ~a" utterance-count p what)
-                         (+ utterance-count 1)))
-             (on (message `(hello ,$who))
-                 (println "Got hello: ~a" who)
-                 (+ count 1))))))
+  (check-equal? (match-value/captures 123 (predicate-match even? ?)) #f)
+  (check-equal? (match-value/captures 124 (predicate-match even? ?)) '())
+  (check-equal? (match-value/captures (list 123) (list (predicate-match even? ?))) #f)
+  (check-equal? (match-value/captures (list 124) (list (predicate-match even? ?))) '())
+  (check-equal? (match-value/captures (list 124) (?! (list (predicate-match even? ?)))) '((124))))
