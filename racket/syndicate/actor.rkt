@@ -124,6 +124,8 @@
                      aggregates         ;; Aggregates
                      pending-patch      ;; (Option Patch) - aggregate patch being accumulated
                      mux                ;; Mux
+                     prev-assertions    ;; Trie - assertions from envt at the start of this event
+                     curr-assertions    ;; Trie - prev-assertions, updated by the incoming event
                      )
   #:transparent
   #:methods gen:syndicate-pretty-printable
@@ -302,6 +304,32 @@
 ;; Special mux label used to track linkage between actors.
 ;; TODO: Revisit this, it is a bit ugly
 (define *linkage-label* -2)
+
+;; Behavior
+(define (generic-query-updater e s)
+  (transition (if (patch? e)
+                  (let ((t (actor-state-curr-assertions s)))
+                    (struct-copy actor-state s
+                                 [prev-assertions t]
+                                 [curr-assertions (update-interests t e)]))
+                  s)
+              '()))
+
+(define (interests-pre-and-post-patch s pat)
+  (define (or* a b) (or a b))
+  (define old (trie-lookup (actor-state-prev-assertions s) pat #f #:wildcard-union or*))
+  (define new (trie-lookup (actor-state-curr-assertions s) pat #f #:wildcard-union or*))
+  (values old new))
+
+;; ActorState Pattern -> Boolean
+(define (interest-just-appeared-matching? s pat)
+  (define-values (old new) (interests-pre-and-post-patch s pat))
+  (and (not old) new))
+
+;; ActorState Pattern -> Boolean
+(define (interest-just-disappeared-matching? s pat)
+  (define-values (old new) (interests-pre-and-post-patch s pat))
+  (and old (not new)))
 
 ;; Behavior
 (define (generic-actor-behavior e s)
@@ -545,10 +573,14 @@
                                                     #'(patch-removed p))
                                               proj)))]
                      (lambda (s)
-                       (match (actor-state-variables s)
-                         [(vector #,@binding-names)
-                          (match-define (list #,@bindings) entry)
-                          #,(make-run-script-call outer-expr-stx #'s I-stxs)]))))]
+                       (define instantiated (instantiate-projection proj entry))
+                       (and (#,(if asserted?
+                                   #'interest-just-appeared-matching?
+                                   #'interest-just-disappeared-matching?) s instantiated)
+                            (match (actor-state-variables s)
+                              [(vector #,@binding-names)
+                               (match-define (list #,@bindings) entry)
+                               #,(make-run-script-call outer-expr-stx #'s I-stxs)])))))]
                  [_ #f]))))))
 
     (define (prepend-at-meta-stx context-stx stx level)
@@ -661,6 +693,11 @@
         [(E I0 I ...)
          (analyze-event! edge-index #'E #'((call-with-values (lambda () I0 I ...) return!)))]))
 
+    ;; ...the generic query-updater...
+    (add-query-updater!
+     (lambda (evt-stx)
+       #`(lambda (s) (generic-query-updater #,evt-stx s))))
+
     ;; ...and generic linkage-related behaviors.
     (add-event-handler!
      (lambda (evt-stx)
@@ -692,7 +729,9 @@
                                             (init-idx (in-naturals))]
                                    #`(cons #,init-idx #,init-stx))))
                             #f
-                            (mux)))
+                            (mux)
+                            trie-empty
+                            trie-empty))
 
              (define (subscribe-to-linkage s)
                (define sub-to-callees
@@ -885,7 +924,15 @@
 
 (define (pretty-print-actor-state s [p (current-output-port)])
   (match-define
-    (actor-state continuation-table caller-id self-id variables aggregates pending-patch mux)
+    (actor-state continuation-table
+                 caller-id
+                 self-id
+                 variables
+                 aggregates
+                 pending-patch
+                 mux
+                 prev-assertions
+                 curr-assertions)
     s)
   (fprintf p "ACTOR id ~a (caller-id ~a):\n" self-id caller-id)
   (fprintf p " - ~a pending continuations\n" (hash-count continuation-table))
@@ -905,6 +952,12 @@
     (newline p))
   (fprintf p " - pending-patch:\n")
   (display (indented-port-output 3 (lambda (p) (syndicate-pretty-print pending-patch p))) p)
+  (newline p)
+  (fprintf p " - previous assertions:\n")
+  (pretty-print-trie prev-assertions p #:indent 3)
+  (newline p)
+  (fprintf p " - current assertions:\n")
+  (pretty-print-trie curr-assertions p #:indent 3)
   (newline p)
   (fprintf p " - ")
   (display (indented-port-output 3 (lambda (p) (syndicate-pretty-print mux p)) #:first-line? #f) p)

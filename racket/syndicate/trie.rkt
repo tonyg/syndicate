@@ -55,6 +55,7 @@
          trie-step*
 
          projection->pattern
+         instantiate-projection
          projection-arity
          trie-project
          trie-key-set
@@ -543,7 +544,7 @@
 ;; Sigmas and OpenParentheses and runs them through the Trie r. If v
 ;; leads to a success Trie, returns the values contained in the
 ;; success Trie; otherwise, returns failure-result.
-(define (trie-lookup r v failure-result)
+(define (trie-lookup r v failure-result #:wildcard-union [wildcard-union #f])
   (define (walk vs r)
     (match r
       [(? trie-empty?) failure-result]
@@ -556,8 +557,14 @@
          (treap-get os (canonical-open-parenthesis arity type) (lambda () 'missing)))
        (match vs
          ['() failure-result]
-         [(cons (== ?) _)
-          (error 'trie-lookup "Cannot match wildcard as a value")]
+         [(cons (== ?) vs1)
+          (when (not wildcard-union) (error 'trie-lookup "Cannot match wildcard as a value"))
+          (let* ((seed (walk vs1 w))
+                 (seed (for/fold [(seed seed)] [(k (in-list (treap-values os)))]
+                         (wildcard-union seed (walk vs1 k))))
+                 (seed (for/fold [(seed seed)] [(k (in-list (treap-values h)))]
+                         (wildcard-union seed (walk vs1 k)))))
+            seed)]
          [(cons (? list? l) vs1)
           (match (get-open (length l) 'list)
             ['missing (walk vs1 w)]
@@ -678,6 +685,30 @@
     (match p
       [(capture sub) sub] ;; TODO: maybe enforce non-nesting here too?
       [(cons p1 p2) (cons (walk p1) (walk p2))]
+      [(? vector? v) (for/vector [(e (in-vector v))] (walk e))]
+      ;; TODO: consider options for treating treaps as compounds
+      ;; rather than (useless) atoms
+      [(? treap?) (error 'projection->pattern "Cannot match on treaps at present")]
+      [(? non-object-struct?)
+       (apply (struct-type-make-constructor (struct->struct-type p))
+	      (map walk (cdr (vector->list (struct->vector p)))))]
+      [other other])))
+
+;; Projection (Listof Pattern) -> Pattern
+;; Instantiates captures in its first argument with values from its second.
+;; ASSUMPTION: that each captured val matches the subpattern in each capture
+;; ASSUMPTION: (length captured-vals) == number of captures in p
+(define (instantiate-projection p captured-vals)
+  (define (consume-capture!)
+    (begin0 (car captured-vals)
+      (set! captured-vals (cdr captured-vals))))
+  (let walk ((p p))
+    (match p
+      [(capture sub) (consume-capture!)]
+      [(cons p1 p2)
+       (define s1 (walk p1))
+       (define s2 (walk p2))
+       (cons s1 s2)]
       [(? vector? v) (for/vector [(e (in-vector v))] (walk e))]
       ;; TODO: consider options for treating treaps as compounds
       ;; rather than (useless) atoms
