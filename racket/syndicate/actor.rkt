@@ -574,14 +574,16 @@
              (lambda (s)
                (match #,evt-stx
                  [(? #,(if asserted? #'patch/added? #'patch/removed?) p)
+                  (define entry-set
+                    (trie-project/set #:take proj-arity
+                                      #,(if asserted? #'(patch-added p) #'(patch-removed p))
+                                      proj))
+                  (when (not entry-set)
+                    (error #,(if asserted? #''asserted #''retracted)
+                           "Wildcard interest discovered while projecting by ~v" proj))
                   (sequence-transitions0*
                    s
-                   (for/list [(entry (in-set (trie-project/set
-                                              #:take proj-arity
-                                              #,(if asserted?
-                                                    #'(patch-added p)
-                                                    #'(patch-removed p))
-                                              proj)))]
+                   (for/list [(entry (in-set entry-set))]
                      (lambda (s)
                        (define instantiated (instantiate-projection proj entry))
                        (and (#,(if asserted?
