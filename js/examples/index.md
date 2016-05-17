@@ -32,6 +32,14 @@ state in its visible UI.
  - [DEMO](dom/)
  - [Source code](dom/index.js) in plain JavaScript
 
+## Table sorting example
+
+A tiny model-view-controller example demonstrating display and sorting
+of tabular data.
+
+ - [DEMO](table/)
+ - [Source code](table/index.js) using the Syndicate/js DSL
+
 ## Text Entry Widget
 
 This is a simple text entry GUI control, following a design of
@@ -99,3 +107,16 @@ that he and his collaborators have been developing.
 
  - [DEMO](iot/)
  - [Source code](iot/index.js) using the Syndicate/js DSL
+
+## TodoMVC
+
+An implementation of a
+[standard challenge problem](http://todomvc.com/) for web programming:
+a to-do list, backed by `localStorage`, with various nice UI features.
+The
+[specification](https://github.com/tastejs/todomvc/blob/master/app-spec.md)
+details all of the features needed for a program to qualify as a
+TodoMVC implementation.
+
+ - [TodoMVC demo](todo/)
+ - [Source code](todo/index.js) using the Syndicate/js DSL
