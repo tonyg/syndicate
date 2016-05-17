@@ -405,9 +405,7 @@ function subtract(o1, o2, subtractSuccessesOpt) {
 
 // Returns failureResult on failed match, otherwise the appropriate success
 // value contained in the trie r.
-function matchValue(r, v, failureResultOpt) {
-  var failureResult = failureResultOpt || null;
-
+function matchValue(r, v, failureResult) {
   var vs = Immutable.List.of(v);
 
   while (!is_emptyTrie(r)) {
