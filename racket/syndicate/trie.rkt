@@ -560,8 +560,9 @@
          [(cons (== ?) vs1)
           (when (not wildcard-union) (error 'trie-lookup "Cannot match wildcard as a value"))
           (let* ((seed (walk vs1 w))
-                 (seed (for/fold [(seed seed)] [(k (in-list (treap-values os)))]
-                         (wildcard-union seed (walk vs1 k))))
+                 (seed (for/fold [(seed seed)] [(entry (in-list (treap-to-alist os)))]
+                         (match-define (cons (open-parenthesis arity _) k) entry)
+                         (wildcard-union seed (walk (append (make-list arity ?) vs1) k))))
                  (seed (for/fold [(seed seed)] [(k (in-list (treap-values h)))]
                          (wildcard-union seed (walk vs1 k)))))
             seed)]
