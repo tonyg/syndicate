@@ -18,12 +18,22 @@
                        (log-info "del binding: ~v -> ~v" key value)))
             (log-info "key ~v retracted" key))))
 
+(actor (forever
+        (assert (ready 'other-listener))
+        (during (entry $key _)
+                #:init [(log-info "(other-listener) key ~v asserted" key)]
+                #:done [(log-info "(other-listener) key ~v retracted" key)]
+                (during (entry key $value)
+                        #:init [(log-info "(other-listener) ~v ---> ~v" key value)]
+                        #:done [(log-info "(other-listener) ~v -/-> ~v" key value)]))))
+
 (define (pause)
   (log-info "pause")
   (until (asserted (ready 'pause))
          (assert (ready 'pause))))
 
 (actor (until (asserted (ready 'listener)))
+       (until (asserted (ready 'other-listener)))
        (assert! (entry 'a 1))
        (assert! (entry 'a 2))
        (assert! (entry 'b 3))
