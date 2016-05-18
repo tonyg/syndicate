@@ -14,7 +14,7 @@ assertion type ready(what);
 assertion type entry(key, val);
 
 ground dataspace {
-  actor {
+  actor named 'listener' {
     react {
       assert ready("listener");
       on asserted entry($key, _) {
@@ -31,7 +31,7 @@ ground dataspace {
     }
   }
 
-  actor {
+  actor named 'other-listener' {
     react {
       assert ready('other-listener');
       during entry($key, _) {
@@ -56,7 +56,7 @@ ground dataspace {
     }
   }
 
-  actor {
+  actor named 'driver' {
     react until {
       case asserted ready("listener") {
         react until {

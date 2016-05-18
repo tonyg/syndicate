@@ -42,9 +42,15 @@ var forEachChild = (function () {
   return forEachChild;
 })();
 
-function buildActor(constructorES5, block) {
+function buildActor(constructorES5, nameExpOpt, block) {
+  var nameExpStr;
+  if (nameExpOpt.numChildren === 1) {
+    nameExpStr = ', ' + nameExpOpt.asES5;
+  } else {
+    nameExpStr = '';
+  }
   return 'Syndicate.Actor.spawnActor(new '+constructorES5+', '+
-    'function() ' + block.asES5 + ');';
+    'function() ' + block.asES5 + nameExpStr + ');';
 }
 
 function buildFacet(facetBlock, transitionBlock) {
@@ -79,11 +85,11 @@ function buildCaseEvent(eventPattern, body) {
 }
 
 var modifiedSourceActions = {
-  ActorStatement_noConstructor: function(_actor, block) {
-    return buildActor('Object()', block);
+  ActorStatement_noConstructor: function(_actor, _namedOpt, nameExpOpt, block) {
+    return buildActor('Object()', nameExpOpt, block);
   },
-  ActorStatement_withConstructor: function(_actor, ctorExp, block) {
-    return buildActor(ctorExp.asES5, block);
+  ActorStatement_withConstructor: function(_actor, ctorExp, _namedOpt, nameExpOpt, block) {
+    return buildActor(ctorExp.asES5, nameExpOpt, block);
   },
 
   DataspaceStatement_ground: function(_ground, _dataspace, maybeId, block) {

@@ -16,8 +16,8 @@ Syndicate <: ES5 {
   FunctionBodyBlock = "{" FunctionBody "}"   // odd that this isn't in es5.ohm somewhere
 
   ActorStatement
-    = actor CallExpression FunctionBodyBlock -- withConstructor
-    | actor FunctionBodyBlock                -- noConstructor
+    = actor CallExpression (named Expression<withIn>)? FunctionBodyBlock -- withConstructor
+    | actor (named Expression<withIn>)? FunctionBodyBlock                -- noConstructor
 
   DataspaceStatement
     = ground dataspace identifier? FunctionBodyBlock -- ground
@@ -82,6 +82,7 @@ Syndicate <: ES5 {
   ground = "ground" ~identifierPart
   message = "message" ~identifierPart
   metalevel = "metalevel" ~identifierPart
+  named = "named" ~identifierPart
   on = "on" ~identifierPart
   react = "react" ~identifierPart
   retracted = "retracted" ~identifierPart

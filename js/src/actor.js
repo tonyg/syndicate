@@ -10,17 +10,21 @@ var Util = require('./util.js');
 
 //---------------------------------------------------------------------------
 
-function spawnActor(state, bootFn) {
-  Dataspace.spawn(new Actor(state, bootFn));
+function spawnActor(state, bootFn, optName) {
+  Dataspace.spawn(new Actor(state, bootFn, optName));
 }
 
-function Actor(state, bootFn) {
+function Actor(state, bootFn, optName) {
   this.state = state;
   this.facets = Immutable.Set();
   this.mux = new Mux.Mux();
   this.previousKnowledge = Trie.emptyTrie;
   this.knowledge = Trie.emptyTrie;
   this.pendingActions = [];
+
+  if (typeof optName !== 'undefined') {
+    this.name = optName;
+  }
 
   this.boot = function() {
     var self = this;

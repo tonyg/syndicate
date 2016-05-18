@@ -113,17 +113,32 @@ Dataspace.exitDataspace = function () {
   Dataspace.enqueueAction(terminateDataspace());
 };
 
-Dataspace.inertBehavior = {
-  handleEvent: function (e) {}
+Dataspace.inertBehavior = function (oldBehavior) {
+  var b = { handleEvent: function (e) {} };
+  if ('name' in oldBehavior) {
+    b.name = oldBehavior.name;
+  }
+  return b;
 };
 
 // Instance methods
+
+Dataspace.prototype.debugName = function (pid) {
+  var p = this.processTable.get(pid, null);
+  if (p === null) {
+    return '(dead)[' + pid + ']';
+  }
+  if ('name' in p.behavior) {
+    return JSON.stringify(p.behavior.name) + '[' + pid + ']';
+  }
+  return '(anon)[' + pid + ']';
+};
 
 Dataspace.prototype.asChild = function (pid, f, omitLivenessCheck) {
   var self = this;
   var p = this.processTable.get(pid, null);
   if (!omitLivenessCheck && (p === null)) {
-    console.warn("Dataspace.asChild eliding invocation of dead process", pid);
+    console.warn("Dataspace.asChild eliding invocation of dead process", this.debugName(pid));
     return;
   }
 
@@ -141,15 +156,17 @@ Dataspace.prototype.asChild = function (pid, f, omitLivenessCheck) {
 Dataspace.prototype.kill = function (pid, exn) {
   if (exn) {
     if (exn.stack) {
-      console.error("Process crashed", pid, exn, exn.stack);
+      console.error("Process crashed", this.debugName(pid), exn, exn.stack);
     } else {
-      console.error("Process crashed", pid, exn);
+      console.error("Process crashed", this.debugName(pid), exn);
     }
   } else if (Dataspace.noisy) {
-    console.log("Process exiting", pid);
+    console.log("Process exiting", this.debugName(pid));
   }
   var p = this.processTable.get(pid);
-  this.processTable = this.processTable.set(pid, { behavior: Dataspace.inertBehavior });
+  this.processTable = this.processTable.set(pid, {
+    behavior: Dataspace.inertBehavior(p.behavior)
+  });
   if (p) {
     if (p.behavior.trapexit) {
       this.asChild(pid, function () { return p.behavior.trapexit(exn); }, true);
@@ -234,7 +251,8 @@ Dataspace.prototype.interpretAction = function (pid, action) {
 
     case 'message':
       if (Patch.observe.isClassOf(action.message)) {
-        console.warn('Process ' + pid + ' send message containing query', action.message);
+        console.warn('Process ' + this.debugName(pid) + ' sent message containing query',
+                     action.message);
       }
       if (pid !== 'meta' && Patch.atMeta.isClassOf(action.message)) {
         Dataspace.send(action.message[0]);
@@ -262,7 +280,7 @@ Dataspace.prototype.interpretAction = function (pid, action) {
     case 'terminate':
       var oldMux = this.mux.shallowCopy();
       this.deliverPatches(oldMux, this.mux.removeStream(pid));
-      if (Dataspace.noisy) console.log("Process exit complete", pid);
+      if (Dataspace.noisy) console.log("Process exit complete", this.debugName(pid));
       this.processTable = this.processTable.remove(pid);
       return true;
 
