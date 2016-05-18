@@ -18,6 +18,7 @@ function Actor(state, bootFn) {
   this.state = state;
   this.facets = Immutable.Set();
   this.mux = new Mux.Mux();
+  this.previousKnowledge = Trie.emptyTrie;
   this.knowledge = Trie.emptyTrie;
   this.pendingActions = [];
 
@@ -32,6 +33,7 @@ function Actor(state, bootFn) {
 
 Actor.prototype.handleEvent = function(e) {
   if (e.type === 'stateChange') {
+    this.previousKnowledge = this.knowledge;
     this.knowledge = e.patch.updateInterests(this.knowledge);
   }
   if (this.pendingActions.length > 0) {
@@ -81,6 +83,7 @@ function Facet(actor) {
   this.doneBlocks = Immutable.List();
   this.children = Immutable.Set();
   this.parent = Facet.current;
+  this.terminated = false;
 }
 
 Facet.current = null;
@@ -146,10 +149,18 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
                                           : e.patch.removed,
                                           spec);
         if (objects && objects.size > 0) {
-          // console.log(objects.toArray());
-          if (isTerminal) { facet.terminate(); }
           facet.actor.pushAction(function () {
-            objects.forEach(function (o) { Util.kwApply(handlerFn, facet.actor.state, o); });
+            var shouldTerminate = isTerminal;
+            objects.forEach(function (o) {
+              var instantiated = Trie.instantiateProjection(spec, o);
+              if (facet.interestWas(eventType, instantiated)) {
+                if (shouldTerminate) {
+                  shouldTerminate = false;
+                  facet.terminate();
+                }
+                Util.kwApply(handlerFn, facet.actor.state, o);
+              }
+            });
           });
         }
       }
@@ -172,6 +183,20 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
 
   default:
     throw new Error("Unsupported Facet eventType: " + eventType);
+  }
+};
+
+Facet.prototype.interestWas = function(assertedOrRetracted, pat) {
+  function orStar(a, b) { return (a || b); }
+  var oldExists = Trie.matchValue(this.actor.previousKnowledge, pat, false, orStar);
+  var newExists = Trie.matchValue(this.actor.knowledge, pat, false, orStar);
+  switch (assertedOrRetracted) {
+    case 'asserted':
+      return !oldExists && newExists;
+    case 'retracted':
+      return oldExists && !newExists;
+    default:
+      throw new Error("Unexpected assertedOrRetracted in Facet.interestWas: " + assertedOrRetracted);
   }
 };
 
@@ -220,20 +245,28 @@ Facet.prototype.completeBuild = function() {
 
 Facet.prototype.terminate = function() {
   var facet = this;
+
+  if (facet.terminated) return;
+  facet.terminated = true;
+
   var aggregate = Patch.emptyPatch;
   this.endpoints.forEach(function(endpoint, eid) {
     var r = facet.actor.mux.removeStream(eid);
     aggregate = aggregate.andThen(r.deltaAggregate);
   });
   Dataspace.stateChange(aggregate);
+
   this.endpoints = Immutable.Map();
   if (this.parent) {
     this.parent.children = this.parent.children.remove(this);
   }
+
   this.actor.removeFacet(this);
+
   withCurrentFacet(facet, function () {
     facet.doneBlocks.forEach(function(b) { b.call(facet.actor.state); });
   });
+
   this.children.forEach(function (child) {
     child.terminate();
   });

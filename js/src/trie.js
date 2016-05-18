@@ -765,6 +765,38 @@ function projectObjects(m, projection) {
   return trieKeysToObjects(trieKeys(project(m, projection), names.length), names);
 }
 
+// (Projection, CaptureObject) -> Pattern
+function instantiateProjection(p, obj) {
+  var captureCount = 0;
+  return walk(p);
+
+  function walk(p) {
+    if (isCapture(p)) {
+      var thisCapture = captureCount++;
+      var name = captureName(p);
+      return (name !== null) ? obj[name] : obj['$' + thisCapture];
+    }
+
+    if (Array.isArray(p)) {
+      var result = [];
+      for (var i = 0; i < p.length; i++) {
+	result.push(walk(p[i]));
+      }
+      return result;
+    }
+
+    if (Struct.isStructure(p)) {
+      var resultFields = [];
+      for (var i = 0; i < p.meta.arity; i++) {
+        resultFields[i] = walk(p[i]);
+      }
+      return new Struct.Structure(p.meta, resultFields);
+    }
+
+    return p;
+  }
+}
+
 function prettyTrie(m, initialIndent) {
   var acc = [];
   walk(initialIndent || 0, m);
@@ -928,6 +960,7 @@ module.exports.trieKeys = trieKeys;
 module.exports.captureToObject = captureToObject;
 module.exports.trieKeysToObjects = trieKeysToObjects;
 module.exports.projectObjects = projectObjects;
+module.exports.instantiateProjection = instantiateProjection;
 module.exports.prettyTrie = prettyTrie;
 module.exports.trieToJSON = trieToJSON;
 module.exports.trieFromJSON = trieFromJSON;
