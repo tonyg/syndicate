@@ -3,7 +3,6 @@
   - BUG: transitions don't happen because the nodes are being replaced rather than edited.
  */
 
-assertion type todoExists(id);
 assertion type todo(id, title, completed);
 
 message type createTodo(title);
@@ -31,7 +30,6 @@ function todoListItemModel(initialId, initialTitle, initialCompleted) {
     this.completed = initialCompleted;
 
     react {
-      assert todoExists(this.id);
       assert todo(this.id, this.title, this.completed);
 
       on message setCompleted(this.id, $v) { this.completed = v; }
@@ -63,6 +61,10 @@ function todoListItemView(id) {
     this.editing = false;
     react {
       during todo(id, $title, $completed) {
+        // BUG: terminate() kills off the during show subfacet
+        // entirely?!?! Yes, it should kill "its" children - but which
+        // are its children? We need some way of distinguishing by
+        // instantiation.
         during show(completed) {
           assert this.ui.html('.todo-list',
                               Mustache.render(getTemplate(this.editing
@@ -104,7 +106,7 @@ function todoListItemView(id) {
         this.editing = false;
       }
     } until {
-      case retracted todoExists(id);
+      case retracted todo(id, _, _);
     }
   }
 }
@@ -153,7 +155,7 @@ ground dataspace G {
         :: setAllCompleted(e.target.checked);
       }
 
-      on asserted todoExists($id) {
+      on asserted todo($id, _, _) {
         todoListItemView(id);
       }
     }
@@ -163,8 +165,8 @@ ground dataspace G {
     var completedCount = 0;
     var activeCount = 0;
     react {
-      on asserted  todo(_, _, $completed) { if (completed) completedCount++; else activeCount++; }
-      on retracted todo(_, _, $completed) { if (completed) completedCount--; else activeCount--; }
+      on asserted  todo($id, _, $completed) { if (completed) completedCount++; else activeCount++; }
+      on retracted todo($id, _, $completed) { if (completed) completedCount--; else activeCount--; }
       assert activeTodoCount(activeCount);
       assert completedTodoCount(completedCount);
       assert totalTodoCount(activeCount + completedCount);
@@ -217,10 +219,12 @@ ground dataspace G {
         todoListItemModel(db.nextId++, title, false);
       }
 
-      during todo($id, $title, $completed) {
-        do {
-          db.todos[id] = {id: id, title: title, completed: completed};
-          localStorage['todos-syndicate'] = JSON.stringify(db);
+      during todo($id, _, _) {
+        during todo(id, $title, $completed) {
+          do {
+            db.todos[id] = {id: id, title: title, completed: completed};
+            localStorage['todos-syndicate'] = JSON.stringify(db);
+          }
         }
         finally {
           delete db.todos[id];
