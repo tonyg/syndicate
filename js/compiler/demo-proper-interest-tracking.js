@@ -16,7 +16,7 @@ assertion type entry(key, val);
 ground dataspace {
   actor named 'listener' {
     react {
-      assert ready("listener");
+      assert ready('listener');
       on asserted entry($key, _) {
         console.log('key asserted', key);
         react {
@@ -50,7 +50,7 @@ ground dataspace {
     react {
       assert ready('pause');
     } until {
-      case asserted ready("pause") {
+      case asserted ready('pause') {
         return k();
       }
     }
@@ -58,7 +58,7 @@ ground dataspace {
 
   actor named 'driver' {
     react until {
-      case asserted ready("listener") {
+      case asserted ready('listener') {
         react until {
           case asserted ready('other-listener') {
             Dataspace.stateChange(Patch.assert(entry('a', 1)));
