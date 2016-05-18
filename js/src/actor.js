@@ -149,18 +149,18 @@ Facet.prototype.onEvent = function(isTerminal, eventType, subscriptionFn, projec
                                           : e.patch.removed,
                                           spec);
         if (objects && objects.size > 0) {
-          facet.actor.pushAction(function () {
-            var shouldTerminate = isTerminal;
-            objects.forEach(function (o) {
-              var instantiated = Trie.instantiateProjection(spec, o);
-              if (facet.interestWas(eventType, instantiated)) {
-                if (shouldTerminate) {
-                  shouldTerminate = false;
-                  facet.terminate();
-                }
-                Util.kwApply(handlerFn, facet.actor.state, o);
+          var shouldTerminate = isTerminal;
+          objects.forEach(function (o) {
+            var instantiated = Trie.instantiateProjection(spec, o);
+            if (facet.interestWas(eventType, instantiated)) {
+              if (shouldTerminate) {
+                shouldTerminate = false;
+                facet.terminate();
               }
-            });
+              facet.actor.pushAction(function () {
+                Util.kwApply(handlerFn, facet.actor.state, o);
+              });
+            }
           });
         }
       }

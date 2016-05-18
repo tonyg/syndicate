@@ -61,10 +61,6 @@ function todoListItemView(id) {
     this.editing = false;
     react {
       during todo(id, $title, $completed) {
-        // BUG: terminate() kills off the during show subfacet
-        // entirely?!?! Yes, it should kill "its" children - but which
-        // are its children? We need some way of distinguishing by
-        // instantiation.
         during show(completed) {
           assert this.ui.html('.todo-list',
                               Mustache.render(getTemplate(this.editing
