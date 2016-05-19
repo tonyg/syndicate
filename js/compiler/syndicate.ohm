@@ -16,8 +16,8 @@ Syndicate <: ES5 {
   FunctionBodyBlock = "{" FunctionBody "}"   // odd that this isn't in es5.ohm somewhere
 
   ActorStatement
-    = actor CallExpression (named Expression<withIn>)? FunctionBodyBlock -- withConstructor
-    | actor (named Expression<withIn>)? FunctionBodyBlock                -- noConstructor
+    = actor ~named CallExpression (named Expression<withIn>)? FunctionBodyBlock -- withConstructor
+    | actor (named Expression<withIn>)? FunctionBodyBlock                       -- noConstructor
 
   DataspaceStatement
     = ground dataspace identifier? FunctionBodyBlock -- ground
