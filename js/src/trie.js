@@ -797,16 +797,21 @@ function instantiateProjection(p, obj) {
   }
 }
 
-function prettyTrie(m, initialIndent) {
+function prettyTrie(m, optionsOpt) {
   var acc = [];
-  walk(initialIndent || 0, m);
+  var options = optionsOpt || {};
+  walk(options.initialIndent || 0, m);
   return acc.join('');
 
   function walk(i, m) {
     if (m instanceof $Success) {
       var v = m.value;
-      if (Immutable.Set.isSet(v)) { v = v.toArray(); }
-      acc.push(" {" + JSON.stringify(v) + "}");
+      if ('prettySuccess' in options) {
+        acc.push(" " + options.prettySuccess(v));
+      } else {
+        if (Immutable.Set.isSet(v)) { v = v.toArray(); }
+        acc.push(" {" + JSON.stringify(v) + "}");
+      }
       return;
     }
 
