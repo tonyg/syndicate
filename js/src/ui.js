@@ -102,7 +102,7 @@ function spawnUIDriver(options) {
                       [Patch.advertise(globalEventProj)],
                       function (c) {
                         Dataspace.spawn(new GlobalEventSupply(c.selector, c.eventType));
-                      }));
+                      }, { name: 'globalEventSupervisor' }));
 
   var windowEventProj = windowEvent(_$('eventType'), __);
   Dataspace.spawn(
@@ -110,14 +110,14 @@ function spawnUIDriver(options) {
                       [Patch.advertise(windowEventProj)],
                       function (c) {
                         Dataspace.spawn(new WindowEventSupply(c.eventType));
-                      }));
+                      }, { name: 'windowEventSupervisor' }));
 
   Dataspace.spawn(
     new DemandMatcher([uiFragment(_$('fragmentId'), __, __, __)],
                       [uiFragmentExists(_$('fragmentId'))],
                       function (c) {
                         Dataspace.spawn(new UIFragment(c.fragmentId));
-                      }));
+                      }, { name: 'uiFragmentSupervisor' }));
 
   Dataspace.spawn(
     new DemandMatcher([uiAttribute(_$('selector'), _$('attribute'), _$('value'))],
@@ -125,7 +125,7 @@ function spawnUIDriver(options) {
                       function (c) {
                         Dataspace.spawn(new UIAttribute(
                           c.selector, c.attribute, c.value, 'attribute'));
-                      }));
+                      }, { name: 'uiAttributeSupervisor' }));
 
   Dataspace.spawn(
     new DemandMatcher([uiProperty(_$('selector'), _$('property'), _$('value'))],
@@ -133,7 +133,7 @@ function spawnUIDriver(options) {
                       function (c) {
                         Dataspace.spawn(new UIAttribute(
                           c.selector, c.property, c.value, 'property'));
-                      }));
+                      }, { name: 'uiPropertySupervisor' }));
 
   Dataspace.spawn(new AttributeUpdater());
   Dataspace.spawn(new LocationHashTracker(options.defaultLocationHash || '/'));
@@ -145,6 +145,7 @@ function GlobalEventSupply(selector, eventType) {
   this.selector = selector;
   this.eventType = eventType;
   this.demandPat = Patch.observe(globalEvent(this.selector, this.eventType, __));
+  this.name = ['globalEvent', selector, eventType];
 }
 
 GlobalEventSupply.prototype.boot = function () {
@@ -188,6 +189,7 @@ GlobalEventSupply.prototype.handleEvent = function (e) {
 function WindowEventSupply(eventType) {
   this.eventType = eventType;
   this.demandPat = Patch.observe(windowEvent(this.eventType, __));
+  this.name = ['windowEvent', eventType];
 }
 
 WindowEventSupply.prototype.boot = function () {
@@ -239,6 +241,8 @@ function UIFragment(fragmentId) {
 
   this.currentEventRegistrations = Immutable.Map();
   // ^ Map from (Map of selector/eventType) to closure.
+
+  this.name = ['uiFragment', fragmentId];
 }
 
 UIFragment.prototype.boot = function () {
@@ -469,6 +473,8 @@ function UIAttribute(selector, key, value, kind) {
   //   when attribute !== 'class' or kind !== 'attribute'.
   // ^ Array of {node: DOMNode},
   //   when attribute === 'class' and kind === 'attribute'.
+
+  this.name = ['uiAttribute', selector, key, value, kind];
 }
 
 UIAttribute.prototype.boot = function () {
@@ -650,6 +656,7 @@ Anchor.prototype.event = function (selector, eventType, event) {
 function LocationHashTracker(defaultLocationHash) {
   this.defaultLocationHash = defaultLocationHash;
   this.hashValue = null;
+  this.name = 'LocationHashTracker';
 }
 
 LocationHashTracker.prototype.boot = function () {
@@ -691,6 +698,7 @@ LocationHashTracker.prototype.handleEvent = function (e) {
 ///////////////////////////////////////////////////////////////////////////
 
 function AttributeUpdater() {
+  this.name = 'AttributeUpdater';
 }
 
 AttributeUpdater.prototype.boot = function () {

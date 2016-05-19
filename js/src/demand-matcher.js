@@ -101,6 +101,10 @@ function DemandMatcher(demandSpecs, supplySpecs, startTask, options) {
   this.currentDemand = Immutable.Set();
   this.currentSupply = Immutable.Set();
   this.supervisionStates = Immutable.Map();
+
+  if ('name' in options) {
+    this.name = options.name;
+  }
 }
 
 function ensureMatchingProjectionNames(specs) {
