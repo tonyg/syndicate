@@ -111,6 +111,8 @@ that he and his collaborators have been developing.
 
 ## TodoMVC
 
+<img src="todo/todomvc-screenshot.png" alt="TodoMVC Example" class="rightfloat">
+
 An implementation of a
 [standard challenge problem](http://todomvc.com/) for web programming:
 a to-do list, backed by `localStorage`, with various nice UI features.
