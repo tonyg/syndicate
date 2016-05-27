@@ -8,6 +8,8 @@
 (provide (struct-out udp-remote-address)
 	 (struct-out udp-handle)
 	 (struct-out udp-listener)
+         (struct-out udp-multicast-group-member)
+         (struct-out udp-multicast-loopback)
 	 udp-address?
 	 udp-local-address?
 	 (struct-out udp-packet)
@@ -33,6 +35,14 @@
   (or (udp-handle? x)
       (udp-listener? x)))
 
+;; A UdpMembership is a (udp-multicast-group-member UdpLocalAddress String String),
+;; where the latter two arguments correspond to the last two arguments
+;; of `udp-multicast-join-group!`.
+(struct udp-multicast-group-member (local-address group-address interface) #:prefab)
+
+;; A UdpLoopback is a (udp-multicast-loopback UdpLocalAddress Boolean).
+(struct udp-multicast-loopback (local-address enabled?) #:prefab)
+
 ;; A UdpPacket is a (udp-packet UdpAddress UdpAddress Bytes), and
 ;; represents a packet appearing on our local "subnet" of the full UDP
 ;; network, complete with source, destination and contents.
@@ -50,18 +60,30 @@
   (define socket (udp:udp-open-socket #f #f))
 
   (match local-addr
-    [(udp-listener port) (udp:udp-bind! socket #f port)]
+    [(udp-listener port) (udp:udp-bind! socket #f port #t)]
     [(udp-handle _) (udp:udp-bind! socket #f 0)]) ;; kernel-allocated port number
 
   (define control-ch (make-channel))
   (thread (lambda () (udp-receiver-thread local-addr socket control-ch)))
 
+  (define peer-interest (observe (udp-packet (udp-remote-address ? ?) local-addr ?)))
+  (define (peer-quit? p) (not (trie-empty? (trie-project (patch-removed p) (?! peer-interest)))))
+
+  (define (update-multicast! p)
+    (for-trie ([(udp-multicast-group-member _ $group $interface) (patch-removed p)])
+      (udp:udp-multicast-leave-group! socket group interface))
+    (for-trie ([(udp-multicast-group-member _ $group $interface) (patch-added p)])
+      (udp:udp-multicast-join-group! socket group interface))
+    (for-trie ([(udp-multicast-loopback _ $enabled?) (patch-added p)])
+      (udp:udp-multicast-set-loopback! socket enabled?)))
+
   (spawn (lambda (e s)
 	   (match e
              [(? patch? p)
-              (cond [(trie-empty? (patch-removed p)) #f] ;; peer hasn't quit yet: do nothing.
-                    [else (channel-put control-ch 'quit)
-                          (quit)])]
+              (update-multicast! p)
+              (when (peer-quit? p)
+                (channel-put control-ch 'quit)
+                (quit))]
 	     [(message (at-meta (? udp-packet? p)))
 	      (transition s (message p))]
 	     [(message (udp-packet _ (udp-remote-address host port) body))
@@ -72,7 +94,9 @@
          (patch-seq (sub (udp-packet ? local-addr ?) #:meta-level 1)
                     (sub (udp-packet local-addr (udp-remote-address ? ?) ?))
                     (pub (udp-packet (udp-remote-address ? ?) local-addr ?))
-                    (sub (observe (udp-packet (udp-remote-address ? ?) local-addr ?))))))
+                    (sub (udp-multicast-group-member local-addr ? ?))
+                    (sub (udp-multicast-loopback local-addr ?))
+                    (sub peer-interest))))
 
 ;; UdpLocalAddress UdpSocket Channel -> Void
 (define (udp-receiver-thread local-addr socket control-ch)
