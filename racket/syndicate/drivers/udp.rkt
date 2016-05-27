@@ -14,7 +14,7 @@
 	 spawn-udp-driver)
 
 ;; A UdpAddress is one of
-;; -- a (udp-address String Uint16), representing a remote socket
+;; -- a (udp-remote-address String Uint16), representing a remote socket
 ;; -- a (udp-handle Any), representing a local socket on a kernel-assigned port
 ;; -- a (udp-listener Uint16), representing a local socket on a user-assigned port
 ;; Note that udp-handle-ids must be chosen carefully: they are scoped
