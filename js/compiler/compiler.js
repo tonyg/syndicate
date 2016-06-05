@@ -54,10 +54,11 @@ function buildActor(constructorES5, nameExpOpt, block) {
 }
 
 function buildFacet(facetBlock, transitionBlock) {
-  return 'Syndicate.Actor.createFacet()' +
+  return '(function () { ' + (facetBlock ? facetBlock.facetVarDecls : '') +
+    '\nSyndicate.Actor.createFacet()' +
     (facetBlock ? facetBlock.asES5 : '') +
     (transitionBlock ? transitionBlock.asES5 : '') +
-    '.completeBuild();';
+    '.completeBuild(); })();';
 }
 
 function buildOnEvent(isTerminal, eventType, subscription, projection, bindings, body) {
@@ -136,7 +137,7 @@ var modifiedSourceActions = {
     return 'Syndicate.Dataspace.send(' + expr.asES5 + ')' + sc.interval.contents;
   },
 
-  FacetBlock: function(_leftParen, init, situations, done, _rightParen) {
+  FacetBlock: function(_leftParen, _varStmts, init, situations, done, _rightParen) {
     return (init ? init.asES5 : '') + situations.asES5.join('') + (done ? done.asES5 : '');
   },
   FacetStateTransitionBlock: function(_leftParen, transitions, _rightParen) {
@@ -170,7 +171,8 @@ var modifiedSourceActions = {
                         pattern.subscription,
                         pattern.projection,
                         pattern.bindings,
-                        '{ Syndicate.Actor.createFacet()' +
+                        '{ ' + facetBlock.facetVarDecls +
+                        '\nSyndicate.Actor.createFacet()' +
                         facetBlock.asES5 +
                         buildOnEvent(true,
                                      'retracted',
@@ -194,6 +196,12 @@ var modifiedSourceActions = {
 };
 
 semantics.extendAttribute('modifiedSource', modifiedSourceActions);
+
+semantics.addAttribute('facetVarDecls', {
+  FacetBlock: function (_leftParen, varDecls, _init, _situations, _done, _rightParen) {
+    return varDecls.asES5;
+  }
+});
 
 semantics.addAttribute('asSyndicateStructureArguments', {
   FormalParameterList: function(formals) {
