@@ -199,7 +199,7 @@ semantics.extendAttribute('modifiedSource', modifiedSourceActions);
 
 semantics.addAttribute('facetVarDecls', {
   FacetBlock: function (_leftParen, varDecls, _init, _situations, _done, _rightParen) {
-    return varDecls.asES5;
+    return varDecls.asES5.join(' ');
   }
 });
 
