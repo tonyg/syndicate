@@ -1,0 +1,26 @@
+template {
+    display: none;
+}
+
+#map {
+    width: 100%;
+    height: 75vh;
+}
+
+.row {
+    display: flex;
+}
+
+.row fieldset {
+    flex: 1;
+    border: none;
+}
+
+.row fieldset label {
+    display: inline-block;
+}
+
+.row fieldset input {
+    display: inline-block;
+    width: 100%;
+}

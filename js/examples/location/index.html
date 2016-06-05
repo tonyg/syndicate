@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Syndicate: Location</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <link href="style.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/2.2.1/mustache.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/blueimp-md5/2.3.0/js/md5.min.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAgjLSNu9Cx4V1bNxhSTM4ZzqADbGoYmZ0"></script>
+    <script src="../../dist/syndicatecompiler.js"></script>
+    <script src="../../dist/syndicate.js"></script>
+    <script type="text/syndicate-js" src="index.js"></script>
+  </head>
+  <body>
+    <template id="json">
+      <pre>{{ blob }}</pre>
+    </template>
+    <template id="info">
+      <div>
+        <p>
+          {{ email }}<br>
+          {{ address}}<br>
+          <small>Last update: {{ timestamp }}</small>
+        </p>
+      </div>
+    </template>
+    <template id="markerList-option">
+      <option value="{{ id }}">{{ email }}</option>
+    </template>
+
+    <div id="map"></div>
+
+    <div class="row">
+      <fieldset>
+        <label for="my_email">Email (or name):</label>
+        <input type="email" name="my_email" id="my_email">
+      </fieldset>
+      <fieldset>
+        <label for="group">Group key:</label>
+        <input type="text" name="group" id="group">
+      </fieldset>
+    </div>
+
+    <div class="row">
+      <fieldset>
+        <select id="markerList"></select>
+        <button id="findMarker">Find</button>
+      </fieldset>
+    </div>
+  </body>
+</html>
