@@ -609,7 +609,11 @@ function cleanEventType(eventType) {
 
 function selectorMatch(n, selector) {
   if (n && typeof n === 'object' && 'querySelectorAll' in n) {
-    return Array.prototype.slice.call(n.querySelectorAll(selector));
+    if (selector === '.') {
+      return [n];
+    } else {
+      return Array.prototype.slice.call(n.querySelectorAll(selector));
+    }
   } else {
     return [];
   }
