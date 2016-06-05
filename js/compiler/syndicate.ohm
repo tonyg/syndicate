@@ -36,7 +36,7 @@ Syndicate <: ES5 {
   //---------------------------------------------------------------------------
   // Ongoing event handlers.
 
-  FacetBlock = "{" VariableStatement* FacetInitBlock? FacetSituation* FacetDoneBlock? "}"
+  FacetBlock = "{" (VariableStatement | FunctionDeclaration)* FacetInitBlock? FacetSituation* FacetDoneBlock? "}"
   FacetStateTransitionBlock = "{" FacetStateTransition* "}"
 
   FacetInitBlock = do FunctionBodyBlock
