@@ -3,6 +3,7 @@
 var Immutable = require('immutable');
 var _Dataspace = require('./dataspace.js');
 var Dataspace = _Dataspace.Dataspace;
+var __ = _Dataspace.__;
 var Mux = require('./mux.js');
 var Patch = require('./patch.js');
 var Trie = require('./trie.js');
@@ -226,8 +227,7 @@ Facet.prototype.refresh = function() {
   var facet = this;
   var aggregate = Patch.emptyPatch;
   this.endpoints.forEach(function(endpoint, eid) {
-    var patch =
-        Patch.retract(Syndicate.__).andThen(endpoint.subscriptionFn.call(facet.actor.state));
+    var patch = Patch.retract(__).andThen(endpoint.subscriptionFn.call(facet.actor.state));
     var r = facet.actor.mux.updateStream(eid, patch);
     aggregate = aggregate.andThen(r.deltaAggregate);
   });
