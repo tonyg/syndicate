@@ -110,7 +110,11 @@
 	      (handle-evt c-input-port
 			  (lambda (dummy)
 			    (define msg
-			      (with-handlers ([exn:fail:network? (lambda (e) eof)])
+			      (with-handlers ([exn:fail:network? (lambda (e) eof)]
+                                              [exn:fail? (lambda (e)
+                                                           (log-error "Unexpected ws-recv error: ~a"
+                                                                      (exn->string e))
+                                                           eof)])
 				(ws-recv c #:payload-type 'text)))
 			    (send-ground-message (websocket-incoming-message id msg))
 			    (loop (or blocked? (eof-object? msg))))))))
