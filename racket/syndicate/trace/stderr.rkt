@@ -163,7 +163,7 @@
                    (syndicate-pretty-print (transition-state t) (current-error-port)))))))]
 	[('internal-action (list pids a old-w))
          (define pidstr (format-pids pids))
-         (define oldcount (hash-count (dataspace-behaviors old-w)))
+         (define oldcount (hash-count (dataspace-process-table old-w)))
          (match a
            [(? spawn?)
             ;; Handle this in internal-action-result
@@ -193,19 +193,19 @@
          (when (transition? t)
            (define new-w (transition-state t))
            (define pidstr (format-pids pids))
-           (define newcount (hash-count (dataspace-behaviors new-w)))
+           (define newcount (hash-count (dataspace-process-table new-w)))
            (match a
              [(? spawn?)
               (when (or show-process-lifecycle? show-actions?)
                 (define newpid (mux-next-pid (dataspace-mux old-w)))
                 (define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
                 (define interests (mux-interests-of (dataspace-mux new-w) newpid))
-                (define behavior (hash-ref (dataspace-behaviors new-w) newpid '#:missing-behavior))
+                (define info (hash-ref (dataspace-process-table new-w) newpid '#:missing-behavior))
                 (define state (hash-ref (dataspace-states new-w) newpid '#:missing-state))
                 (with-color BRIGHT-GREEN
                   (output "~a ~v spawned from ~a (~a total processes now)\n"
                           newpidstr
-                          behavior
+                          info
                           pidstr
                           newcount))
                 (unless (boring-state? state)

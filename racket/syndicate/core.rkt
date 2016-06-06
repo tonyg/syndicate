@@ -104,11 +104,17 @@
 ;; A PID is a Nat.
 ;; A Label is a PID or 'meta.
 
+;; Long-lived process data: (process-info Any Behavior)
+(struct process-info (name behavior) #:transparent)
+
+;; Sentinel
+(define missing-process-info (process-info #f #f))
+
 ;; VM private states
 (struct dataspace (mux ;; Multiplexer
                    pending-action-queue ;; (Queueof (Cons Label (U Action 'quit)))
                    runnable-pids ;; (Setof PID)
-                   behaviors ;; (HashTable PID Behavior)
+                   process-table ;; (HashTable PID ProcessInfo)
                    states ;; (HashTable PID Any)
                    )
   #:transparent
@@ -183,7 +189,8 @@
   (filter (lambda (x) (and (action? x) (not (patch-empty? x)))) (flatten actions)))
 
 (define (send-event e pid w)
-  (define behavior (hash-ref (dataspace-behaviors w) pid #f))
+  (define behavior (process-info-behavior
+                    (hash-ref (dataspace-process-table w) pid missing-process-info)))
   (define old-state (hash-ref (dataspace-states w) pid #f))
   (if (not behavior)
       w
@@ -220,7 +227,7 @@
                (cons pid (trace-pid-stack))
                (exn->string exn)))
   (struct-copy dataspace w
-               [behaviors (hash-remove (dataspace-behaviors w) pid)]
+               [process-table (hash-remove (dataspace-process-table w) pid)]
                [states (hash-remove (dataspace-states w) pid)]))
 
 (define (invoke-process pid thunk k-ok k-exn)
@@ -250,14 +257,14 @@
   (syntax-rules ()
     [(_ #:name name-exp behavior-exp initial-state-exp initial-action-tree-exp)
      (spawn (lambda ()
-              (list (let ((name name-exp)
-                          (beh behavior-exp))
-                      (if name (procedure-rename beh name) beh))
-                    (transition initial-state-exp initial-action-tree-exp))))]
+              (list behavior-exp
+                    (transition initial-state-exp initial-action-tree-exp)
+                    name-exp)))]
     [(_ behavior-exp initial-state-exp initial-action-tree-exp)
      (spawn (lambda ()
               (list behavior-exp
-                    (transition initial-state-exp initial-action-tree-exp))))]))
+                    (transition initial-state-exp initial-action-tree-exp)
+                    #f)))]))
 
 (define-syntax-rule (spawn/stateless behavior-exp initial-action-tree-exp)
   (spawn-process (stateless-behavior-wrap behavior-exp)
@@ -270,8 +277,12 @@
     [(? quit? q) q]
     [actions (transition state actions)]))
 
-(define-syntax-rule (spawn-dataspace boot-action ...)
-  (make-spawn-dataspace (lambda () (list boot-action ...))))
+(define-syntax spawn-dataspace
+  (syntax-rules ()
+    [(spawn-dataspace #:name name-exp boot-action ...)
+     (make-spawn-dataspace #:name name-exp (lambda () (list boot-action ...)))]
+    [(spawn-dataspace boot-action ...)
+     (make-spawn-dataspace (lambda () (list boot-action ...)))]))
 
 (define (make-dataspace boot-actions)
   (dataspace (mux)
@@ -280,10 +291,11 @@
              (hash)
              (hash)))
 
-(define (make-spawn-dataspace boot-actions-thunk)
+(define (make-spawn-dataspace #:name [name #f] boot-actions-thunk)
   (spawn (lambda ()
            (list dataspace-handle-event
-                 (transition (make-dataspace (boot-actions-thunk)) '())))))
+                 (transition (make-dataspace (boot-actions-thunk)) '())
+                 name))))
 
 (define (transition-bind k t0)
   (match t0
@@ -348,15 +360,15 @@
      (invoke-process 'booting
                      (lambda ()
                        (match (boot)
-                         [(and results (list (? procedure?) (? general-transition?)))
+                         [(and results (list (? procedure?) (? general-transition?) _))
                           results]
                          [other
                           (error 'spawn
                                  "Spawn boot procedure must yield boot spec; received ~v"
                                  other)]))
                      (lambda (results)
-                       (match-define (list behavior initial-transition) results)
-                       (create-process w behavior initial-transition))
+                       (match-define (list behavior initial-transition name) results)
+                       (create-process w behavior initial-transition name))
                      (lambda (exn)
                        (log-error "Spawned process in dataspace ~a died with exception:\n~a"
                                   (trace-pid-stack)
@@ -386,7 +398,7 @@
                        (send-event m pid w))
                      '()))]))
 
-(define (create-process w behavior initial-transition)
+(define (create-process w behavior initial-transition name)
   (if (not initial-transition)
       (transition w '()) ;; Uh, ok
       (let ()
@@ -409,9 +421,10 @@
         (define-values (new-mux new-pid delta delta-aggregate)
           (mux-add-stream (dataspace-mux w) initial-patch))
         (let* ((w (struct-copy dataspace w
-                               [behaviors (hash-set (dataspace-behaviors w)
-                                                    new-pid
-                                                    behavior)]))
+                               [process-table (hash-set (dataspace-process-table w)
+                                                        new-pid
+                                                        (process-info name
+                                                                      behavior))]))
                (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions)))
           (deliver-patches w new-mux new-pid delta delta-aggregate)))))
 
@@ -434,7 +447,7 @@
 		  '())))
 
 (define (pretty-print-dataspace w [p (current-output-port)])
-  (match-define (dataspace mux qs runnable behaviors states) w)
+  (match-define (dataspace mux qs runnable process-table states) w)
   (fprintf p "DATASPACE:\n")
   (fprintf p " - ~a queued actions\n" (queue-length qs))
   (fprintf p " - ~a runnable pids ~a\n" (set-count runnable) (set->list runnable))
@@ -443,11 +456,18 @@
   (display (indented-port-output 3 (lambda (p) (syndicate-pretty-print mux p)) #:first-line? #f) p)
   (newline p)
   (for ([pid (set-union (hash-keys (mux-interest-table mux)) (hash-keys states))])
-    (fprintf p " ---- process ~a, behavior ~v, STATE:\n" pid (hash-ref behaviors pid #f))
+    (define i (hash-ref process-table pid missing-process-info))
+    (fprintf p " ---- process ~a, name ~v, behavior ~v, STATE:\n"
+             pid
+             (process-info-name i)
+             (process-info-behavior i))
     (define state (hash-ref states pid #f))
     (display (indented-port-output 6 (lambda (p) (syndicate-pretty-print state p))) p)
     (newline p)
-    (fprintf p "      process ~a, behavior ~v, CLAIMS:\n" pid (hash-ref behaviors pid #f))
+    (fprintf p "      process ~a, name ~v, behavior ~v, CLAIMS:\n"
+             pid
+             (process-info-name i)
+             (process-info-behavior i))
     (display (indented-port-output 6 (lambda (p)
                                        (pretty-print-trie (mux-interests-of mux pid) p)))
              p)

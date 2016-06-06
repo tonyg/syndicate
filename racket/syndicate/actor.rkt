@@ -251,6 +251,10 @@
    (lambda (k) (spawn-instruction linkage-kind action-fn k))))
 
 (begin-for-syntax
+  (define-splicing-syntax-class name
+    (pattern (~seq #:name N))
+    (pattern (~seq) #:attr N #'#f))
+
   (define-splicing-syntax-class init
     (pattern (~seq #:init [I ...]))
     (pattern (~seq) #:attr [I 1] '()))
@@ -267,7 +271,7 @@
 (define-syntax (state stx)
   (syntax-parse stx
     [(_ init:init [bs:bindings O ...] [E Oe ...] ...)
-     (expand-state 'call #'(init.I ...) #'(bs.id ...) #'(bs.init ...) #'(O ...) #'([E Oe ...] ...))]))
+     (expand-state #'#f 'call #'(init.I ...) #'(bs.id ...) #'(bs.init ...) #'(O ...) #'([E Oe ...] ...))]))
 
 ;; Sugar
 (define-syntax (until stx)
@@ -284,14 +288,15 @@
 ;; Spawn actors with 'actor linkage
 (define-syntax (actor stx)
   (syntax-parse stx
-    [(_ I ...)
-     (expand-state 'actor #'(I ... (return/no-link-result!)) #'() #'() #'() #'())]))
+    [(_ name:name I ...)
+     (expand-state #'name.N 'actor #'(I ... (return/no-link-result!)) #'() #'() #'() #'())]))
 
 ;; Spawn whole dataspaces
 (define-syntax (dataspace stx)
   (syntax-parse stx
     [(_ I ...)
-     (expand-state 'dataspace
+     (expand-state #'#f
+                   'dataspace
                    #'(I
                       ...
                       (perform-core-action! (quit-dataspace))
@@ -486,7 +491,7 @@
     (pattern (~seq #:meta-level level:integer))
     (pattern (~seq) #:attr level #'0))
 
-  (define (expand-state linkage-kind init-actions binding-names binding-inits ongoings edges)
+  (define (expand-state name-exp linkage-kind init-actions binding-names binding-inits ongoings edges)
     ;; ----------------------------------------
     (define binding-count (length (syntax->list binding-names)))
     ;; ----------------------------------------
@@ -781,7 +786,8 @@
                                           subscribe-to-linkage
                                           (maintain-assertions #f)
                                           perform-pending-patch
-                                          run-init-actions))))))
+                                          run-init-actions)
+                   #,name-exp)))))
 
     ;; (local-require racket/pretty)
     ;; (pretty-print (syntax->datum action-fn-stx))
