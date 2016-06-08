@@ -39,6 +39,7 @@
 (require "support/struct.rkt")
 (require "pretty.rkt")
 (require "treap.rkt")
+(require "effect.rkt")
 
 (define&provide-dsl-helper-syntaxes "state/until/forever form"
   [on
@@ -82,10 +83,10 @@
 ;; side-effects.
 
 ;; An Instruction is one of
-;; - (patch-instruction Patch (Void -> Instruction))
-;; - (action-instruction Action (Void -> Instruction))
+;; - (patch-instruction Patch)
+;; - (action-instruction Action)
 ;; - (return-instruction (Option (Listof Any)))
-;; - (spawn-instruction LinkageKind (Symbol Symbol -> Spawn) (Void -> Instruction))
+;; - (spawn-instruction LinkageKind (Symbol Symbol -> Spawn))
 ;; - (script-complete-instruction Variables)
 ;; and represents a side-effect for an actor to take in its
 ;; interactions with the outside world.
@@ -113,10 +114,10 @@
 ;; (Background is done differently, with a new continuation for the
 ;; background script, and a self-send to activate it. (TODO))
 ;;
-(struct patch-instruction (patch k) #:transparent)
-(struct action-instruction (action k) #:transparent)
+(struct patch-instruction (patch) #:transparent)
+(struct action-instruction (action) #:transparent)
 (struct return-instruction (result-values) #:transparent)
-(struct spawn-instruction (linkage-kind action-fn k) #:transparent)
+(struct spawn-instruction (linkage-kind action-fn) #:transparent)
 (struct script-complete-instruction (variables) #:transparent)
 
 ;; An ActorState is an (actor-state ... as below), describing the
@@ -183,46 +184,25 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Producing Instruction side-effects
 
-(define prompt (make-continuation-prompt-tag 'syndicate-hll))
+(define syndicate-tag (make-effect-tag 'syndicate))
 
 (define (syndicate-actor-prompt-tag-installed?)
-  (continuation-prompt-available? prompt))
+  (effect-available? syndicate-tag))
 
-;; (Any ... -> Nothing) -> (Any ... -> Instruction)
-(define (reply-to k)
-  (lambda reply-values
-    (call-with-continuation-prompt (lambda ()
-                                     (apply k reply-values)
-                                     (error 'reply-to "Script returned directly"))
-                                   prompt)))
-
-;; (-> Instruction) -> Nothing
-(define (call-in-raw-context/abort proc)
-  (abort-current-continuation prompt proc))
-
-;; ((Any ... -> Instruction) -> Instruction)
-(define (call-in-raw-context proc)
-  (when (not (syndicate-actor-prompt-tag-installed?))
-    (error 'call-in-raw-context
-           "Attempt to invoke imperative Syndicate actor action outside actor context."))
-  (call-with-composable-continuation
-   (lambda (k) (abort-current-continuation prompt (lambda () (proc (reply-to k)))))
-   prompt))
+(define do! (perform syndicate-tag))
+(define do/abort! (perform/abort syndicate-tag))
 
 ;; Returns void
 (define (assert! P #:meta-level [meta-level 0])
-  (call-in-raw-context
-   (lambda (k) (patch-instruction (core:assert P #:meta-level meta-level) k))))
+  (do! (patch-instruction (core:assert P #:meta-level meta-level))))
 
 ;; Returns void
 (define (retract! P #:meta-level [meta-level 0])
-  (call-in-raw-context
-   (lambda (k) (patch-instruction (retract P #:meta-level meta-level) k))))
+  (do! (patch-instruction (retract P #:meta-level meta-level))))
 
 ;; Returns void
 (define (patch! p)
-  (call-in-raw-context
-   (lambda (k) (patch-instruction p k))))
+  (do! (patch-instruction p)))
 
 ;; Returns void
 (define (send! M #:meta-level [meta-level 0])
@@ -230,25 +210,21 @@
 
 ;; Returns void
 (define (perform-core-action! A)
-  (call-in-raw-context
-   (lambda (k) (action-instruction A k))))
+  (do! (action-instruction A)))
 
 ;; Does not return to caller; instead, terminates the current actor
 ;; after sending a link-result to the calling actor.
 (define (return! . result-values)
-  (call-in-raw-context/abort
-   (lambda () (return-instruction result-values))))
+  (do/abort! (return-instruction result-values)))
 
 ;; Does not return to caller; instead, terminates the current actor
 ;; without sending a link-result to the calling actor.
 (define (return/no-link-result!)
-  (call-in-raw-context/abort
-   (lambda () (return-instruction #f))))
+  (do/abort! (return-instruction #f)))
 
 ;; Returns new variables, plus values from spawned actor if any.
 (define (spawn! linkage-kind action-fn)
-  (call-in-raw-context
-   (lambda (k) (spawn-instruction linkage-kind action-fn k))))
+  (do! (spawn-instruction linkage-kind action-fn)))
 
 (begin-for-syntax
   (define-splicing-syntax-class name
@@ -388,10 +364,10 @@
   ;;           callee-id
   ;;           reply-values
   ;;           continuation)
-  (handle-actor-syscall (transition (struct-copy actor-state s [continuation-table new-table])
-                                    '())
-                        (apply continuation
-                               (append reply-values (vector->list (actor-state-variables s))))))
+  (handle-effects (transition (struct-copy actor-state s [continuation-table new-table]) '())
+                  (lambda (_void)
+                    (apply continuation
+                           (append reply-values (vector->list (actor-state-variables s)))))))
 
 ;; ActorState -> Transition
 (define (perform-pending-patch s)
@@ -410,70 +386,65 @@
 
 ;; ActorState Script -> Transition
 (define (run-script s script)
-  (handle-actor-syscall (transition s '())
-                        ((reply-to (lambda (dummy)
-                                     (define new-variables (script))
-                                     (call-in-raw-context/abort
-                                      (lambda ()
-                                        (script-complete-instruction new-variables)))))
-                         (void))))
+  (handle-effects (transition s '())
+                  (lambda (_void) (do/abort! (script-complete-instruction (script))))))
 
 (define (actor-body->spawn-action thunk)
-  (match ((reply-to (lambda (dummy)
-                      (actor (thunk))
-                      (error '%%boot "Reached end of boot thunk")))
-          (void))
-    [(spawn-instruction 'actor action-fn _get-next-instr)
-     (action-fn (gensym 'root-actor) (gensym 'boot-actor))]))
+  (with-effect #:shallow syndicate-tag k
+    ([(spawn-instruction 'actor action-fn)
+      (action-fn (gensym 'root-actor) (gensym 'boot-actor))])
+    (begin (actor (thunk))
+           (error '%%boot "Reached end of boot thunk"))))
 
-;; Transition Instruction -> Transition
-(define (handle-actor-syscall t instr)
-  (match instr
-    [(patch-instruction p get-next-instr)
-     (handle-actor-syscall (sequence-transitions t
-                                                 (extend-pending-patch *adhoc-label* p))
-                           (get-next-instr (void)))]
-    [(action-instruction a get-next-instr)
-     (handle-actor-syscall (sequence-transitions t
-                                                 perform-pending-patch
-                                                 (lambda (s) (transition s a)))
-                           (get-next-instr (void)))]
-    [(return-instruction result-values)
-     (sequence-transitions t
-                           perform-pending-patch
-                           (lambda (s)
-                             (if result-values
-                                 (quit (message (link-result (actor-state-caller-id s)
-                                                             (actor-state-self-id s)
-                                                             result-values)))
-                                 (quit))))]
-    [(spawn-instruction linkage-kind action-fn get-next-instr)
-     (define blocking? (eq? linkage-kind 'call))
-     (define next-t
-       (sequence-transitions t
-                             perform-pending-patch
-                             (lambda (s)
-                               (define callee-id (gensym linkage-kind))
-                               (define spawn-action (action-fn callee-id (actor-state-self-id s)))
-                               (transition (if blocking?
-                                               (store-continuation s callee-id get-next-instr)
-                                               s)
-                                           (if (eq? linkage-kind 'dataspace)
-                                               (spawn-dataspace spawn-action)
-                                               spawn-action)))))
-     (if blocking?
-         next-t
-         (handle-actor-syscall next-t (get-next-instr (void))))]
-    [(script-complete-instruction new-variables)
-     (sequence-transitions t
-                           ;; NB: Does not perform-pending-patch here.
-                           ;; Instead, the script runner will now
-                           ;; update ongoing subscriptions and
-                           ;; incorporate the pending patch into that
-                           ;; process.
-                           (lambda (s)
-                             (transition (struct-copy actor-state s [variables new-variables])
-                                         '())))]))
+;; Transition (Void -> Instruction) -> Transition
+(define (handle-effects t get-this-instr)
+  (with-effect #:shallow syndicate-tag get-next-instr
+    ([(patch-instruction p)
+      (handle-effects (sequence-transitions t (extend-pending-patch *adhoc-label* p))
+                      get-next-instr)]
+     [(action-instruction a)
+      (handle-effects (sequence-transitions t
+                                            perform-pending-patch
+                                            (lambda (s) (transition s a)))
+                      get-next-instr)]
+     [(return-instruction result-values)
+      (sequence-transitions t
+                            perform-pending-patch
+                            (lambda (s)
+                              (if result-values
+                                  (quit (message (link-result (actor-state-caller-id s)
+                                                              (actor-state-self-id s)
+                                                              result-values)))
+                                  (quit))))]
+     [(spawn-instruction linkage-kind action-fn)
+      (define blocking? (eq? linkage-kind 'call))
+      (define next-t
+        (sequence-transitions t
+                              perform-pending-patch
+                              (lambda (s)
+                                (define callee-id (gensym linkage-kind))
+                                (define spawn-action
+                                  (action-fn callee-id (actor-state-self-id s)))
+                                (transition (if blocking?
+                                                (store-continuation s callee-id get-next-instr)
+                                                s)
+                                            (if (eq? linkage-kind 'dataspace)
+                                                (spawn-dataspace spawn-action)
+                                                spawn-action)))))
+      (if blocking?
+          next-t
+          (handle-effects next-t get-next-instr))]
+     [(script-complete-instruction new-variables)
+      (sequence-transitions t
+                            ;; NB: Does not perform-pending-patch here.
+                            ;; Instead, the script runner will now
+                            ;; update ongoing subscriptions and
+                            ;; incorporate the pending patch into that
+                            ;; process.
+                            (lambda (s)
+                              (transition (struct-copy actor-state s [variables new-variables])
+                                          '())))])
+    (get-this-instr (void))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compilation of HLL actors
