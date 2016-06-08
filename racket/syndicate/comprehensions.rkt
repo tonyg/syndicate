@@ -7,7 +7,7 @@
          for-trie)
 
 (require "core.rkt"
-         (only-in "actor.rkt" analyze-pattern)
+         "pattern.rkt"
          (for-syntax racket/syntax)
          (for-syntax syntax/strip-context)
          (for-syntax racket/match))
