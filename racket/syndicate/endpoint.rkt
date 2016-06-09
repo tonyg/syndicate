@@ -61,7 +61,8 @@
                                 initial-actions))
   (list endpoint-group-handle-event
         (transition final-g (incorporate-cumulative-patch final-actions
-                                                          final-cumulative-patch))))
+                                                          final-cumulative-patch))
+        #f))
 
 (define (endpoint-action? a)
   (or (action? a)
