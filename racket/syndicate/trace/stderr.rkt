@@ -10,7 +10,6 @@
 (require "../core.rkt")
 (require "../trace.rkt")
 (require "../mux.rkt")
-(require "../endpoint.rkt")
 (require "../pretty.rkt")
 
 (define (env-aref varname default alist)
