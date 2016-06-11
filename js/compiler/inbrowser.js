@@ -28,7 +28,7 @@ function translateSyndicateScripts() {
 
   var output = compiler.compileSyndicateSource(allSourceText);
   var f = new Function(output);
-  f();
+  f.call(window);
 }
 
 document.addEventListener('DOMContentLoaded', translateSyndicateScripts, false);
