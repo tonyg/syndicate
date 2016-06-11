@@ -1,4 +1,4 @@
-assertion type location(id, email, timestamp, lat, lng);
+assertion type locationRecord(id, email, timestamp, lat, lng) = 'location';
 message type findMarker(id);
 
 var brokerConnection = Syndicate.Broker.brokerConnection;
@@ -44,11 +44,11 @@ ground dataspace G {
 
     var watchId = ('geolocation' in navigator)
         && navigator.geolocation.watchPosition(Syndicate.Dataspace.wrap(function (pos) {
-          :: location(id,
-                      email_element.value.trim(),
-                      +new Date(),
-                      pos.coords.latitude,
-                      pos.coords.longitude);
+          :: locationRecord(id,
+                            email_element.value.trim(),
+                            +new Date(),
+                            pos.coords.latitude,
+                            pos.coords.longitude);
           if (!mapInitialized && map) {
             mapInitialized = true;
             map.setCenter({lat: pos.coords.latitude, lng: pos.coords.longitude});
@@ -78,11 +78,11 @@ ground dataspace G {
         :: findMarker(document.getElementById('markerList').value);
       }
 
-      on message ($loc = location(_, _, _, _, _)) {
+      on message ($loc = locationRecord(_, _, _, _, _)) {
         currentLocation = loc;
       }
 
-      during fromBroker(wsurl, location($id, $email, _, _, _)) {
+      during fromBroker(wsurl, locationRecord($id, $email, _, _, _)) {
         var ui = new Syndicate.UI.Anchor();
         var marker = new google.maps.Marker({
           map: map,
@@ -123,7 +123,7 @@ ground dataspace G {
           selectMarker();
           if (latestPosition) map.panTo(latestPosition);
         }
-        on asserted fromBroker(wsurl, location(id, email, $timestamp, $lat, $lng)) {
+        on asserted fromBroker(wsurl, locationRecord(id, email, $timestamp, $lat, $lng)) {
           latestTimestamp = new Date(timestamp);
           latestPosition = {lat: lat, lng: lng};
           marker.setPosition(latestPosition);
