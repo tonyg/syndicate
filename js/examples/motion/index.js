@@ -22,7 +22,7 @@ ground dataspace G {
       return Math.max(Math.min(v, limit), -limit);
     }
 
-    var wsurl = 'ws://demo-broker.syndicate-lang.org:8000/';
+    var wsurl = 'wss://demo-broker.syndicate-lang.org:8443/';
     react {
       assert brokerConnection(wsurl);
 
