@@ -152,7 +152,7 @@ var modifiedSourceActions = {
   },
 
   FacetSituation_assert: function(_assert, expr, whenClause, _sc) {
-    return '\n.addAssertion(' + buildSubscription([expr], 'assert', 'pattern', whenClause) + ')';
+    return '\n.addAssertion(' + buildSubscription([expr], 'assert', 'pattern', whenClause, null) + ')';
   },
   FacetSituation_event: function(_on, eventPattern, block) {
     return buildOnEvent(false,
@@ -166,18 +166,20 @@ var modifiedSourceActions = {
     return '\n.addOnEventHandler((function(' + id.asES5 + ') ' + block.asES5 + '))';
   },
   FacetSituation_during: function(_during, pattern, facetBlock) {
+    var cachedAssertionVar = gensym('cachedAssertion');
     return buildOnEvent(false,
                         'asserted',
                         pattern.subscription,
                         pattern.projection,
                         pattern.bindings,
                         '{ ' + facetBlock.facetVarDecls +
+                        '\nvar '+cachedAssertionVar+' = '+pattern.instantiatedAssertion+';'+
                         '\nSyndicate.Actor.createFacet()' +
                         facetBlock.asES5 +
                         buildOnEvent(true,
                                      'retracted',
-                                     pattern.instantiatedSubscription,
-                                     pattern.instantiatedProjection,
+                                     pattern.instantiatedSubscription(cachedAssertionVar),
+                                     pattern.instantiatedProjection(cachedAssertionVar),
                                      [],
                                      '{}') +
                         '.completeBuild(); }');
@@ -221,7 +223,7 @@ semantics.addAttribute('eventType', {
   FacetTransitionEventPattern_risingEdge: function (_lp, expr, _rp) { return 'risingEdge'; }
 });
 
-function buildSubscription(children, patchMethod, mode, whenClause) {
+function buildSubscription(children, patchMethod, mode, whenClause, cachedAssertionVar) {
   var fragments = [];
   var hasWhenClause = (whenClause && (whenClause.numChildren === 1));
   fragments.push('(function() { var _ = Syndicate.__; return ');
@@ -233,7 +235,11 @@ function buildSubscription(children, patchMethod, mode, whenClause) {
   } else {
     fragments.push('{ assertion: ');
   }
-  children.forEach(function (c) { c.buildSubscription(fragments, mode); });
+  if (cachedAssertionVar) {
+    fragments.push(cachedAssertionVar);
+  } else {
+    children.forEach(function (c) { c.buildSubscription(fragments, mode); });
+  }
   if (patchMethod) {
     fragments.push(', ');
   } else {
@@ -254,25 +260,35 @@ function buildSubscription(children, patchMethod, mode, whenClause) {
 
 semantics.addAttribute('subscription', {
   _default: function(children) {
-    return buildSubscription(children, 'sub', 'pattern', null);
+    return buildSubscription(children, 'sub', 'pattern', null, null);
   }
 });
 
-semantics.addAttribute('instantiatedSubscription', {
+semantics.addAttribute('instantiatedAssertion', {
   _default: function(children) {
-    return buildSubscription(children, 'sub', 'instantiated', null);
+    var fragments = [];
+    fragments.push('(function() { var _ = Syndicate.__; return ');
+    children.forEach(function (c) { c.buildSubscription(fragments, 'instantiated'); });
+    fragments.push('; })()');
+    return fragments.join('');
   }
 });
 
-semantics.addAttribute('instantiatedProjection', {
+semantics.addOperation('instantiatedSubscription(cachedAssertionVar)', {
   _default: function(children) {
-    return buildSubscription(children, null, 'instantiated', null);
+    return buildSubscription(children, 'sub', 'instantiated', null, this.args.cachedAssertionVar);
+  }
+});
+
+semantics.addOperation('instantiatedProjection(cachedAssertionVar)', {
+  _default: function(children) {
+    return buildSubscription(children, null, 'instantiated', null, this.args.cachedAssertionVar);
   }
 });
 
 semantics.addAttribute('projection', {
   _default: function(children) {
-    return buildSubscription(children, null, 'projection', null);
+    return buildSubscription(children, null, 'projection', null, null);
   }
 });
 

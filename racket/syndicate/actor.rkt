@@ -624,7 +624,7 @@
     (define (analyze-during! index P-stx O-stxs)
       (define E-stx #`(asserted #,P-stx))
       (define-values (_proj _pat _bindings instantiated) (analyze-pattern E-stx P-stx))
-      (define I-stx #`(until (retracted #,instantiated) #,@O-stxs))
+      (define I-stx #`(let ((p #,instantiated)) (until (retracted p) #,@O-stxs)))
       (analyze-event! index E-stx #`(#,I-stx)))
 
     (define (analyze-assertion! index Pred-stx outer-expr-stx P-stx L-stx)
