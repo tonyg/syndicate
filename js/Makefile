@@ -34,12 +34,19 @@ deploy-copy:
 
 	git clone .. TEMP_CHECKOUT
 	cp -a dist/. TEMP_CHECKOUT/js/dist/.
-	for m in TEMP_CHECKOUT/js/examples/*/Makefile; do \
-		$(MAKE) -C "`dirname $$m`"; \
-	done
+	$(MAKE) -C TEMP_CHECKOUT/js freshen-examples
 	for d in examples dist third-party; do \
 		[ ! -d $(SYNDICATE_WEB)/$$d ] || (cd $(SYNDICATE_WEB); git rm -rf $$d); \
 		cp -a TEMP_CHECKOUT/js/$$d $(SYNDICATE_WEB)/$$d; \
 		(cd $(SYNDICATE_WEB); git add -f $$d); \
 	done
 	rm -rf TEMP_CHECKOUT
+
+clean-examples:
+	for m in examples/*/Makefile; do \
+		$(MAKE) -C "`dirname $$m`" clean; \
+	done
+freshen-examples:
+	for m in examples/*/Makefile; do \
+		$(MAKE) -C "`dirname $$m`"; \
+	done
