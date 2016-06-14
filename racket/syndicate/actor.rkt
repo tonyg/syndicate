@@ -623,10 +623,12 @@
                           #,(make-run-script-call E-stx #'s I-stxs)
                           (transition s '())))))))]))
 
-    (define (analyze-during! index P-stx O-stxs)
-      (define E-stx #`(asserted #,P-stx))
+    (define (analyze-during! index P-stx L-stx O-stxs)
+      (define E-stx #`(asserted #,P-stx #:meta-level #,L-stx))
       (define-values (_proj _pat _bindings instantiated) (analyze-pattern E-stx P-stx))
-      (define I-stx #`(let ((p #,instantiated)) (until (retracted p) #,@O-stxs)))
+      (define I-stx #`(let ((p #,instantiated))
+                        (until (retracted p #:meta-level #,L-stx)
+                               #,@O-stxs)))
       (analyze-event! index E-stx #`(#,I-stx)))
 
     (define (analyze-assertion! index Pred-stx outer-expr-stx P-stx L-stx)
@@ -672,8 +674,8 @@
          (analyze-event! ongoing-index #'E #'(I ...))]
         [(on-event clause ...)
          (analyze-on-event! ongoing-index #'(clause ...) ongoing)]
-        [(during P O ...)
-         (analyze-during! ongoing-index #'P #'(O ...))]
+        [(during P L:meta-level O ...)
+         (analyze-during! ongoing-index #'P #'L.level #'(O ...))]
         [(assert w:when-pred P L:meta-level)
          (analyze-assertion! ongoing-index #'w.Pred ongoing #'P #'L.level)]
         [(query [query-spec ...] I ...)
