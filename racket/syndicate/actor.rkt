@@ -22,6 +22,8 @@
 
          patch-without-linkage
 
+         ? ;; from pattern.rkt
+
          ;;----------------------------------------
          (struct-out actor-state)
          pretty-print-actor-state

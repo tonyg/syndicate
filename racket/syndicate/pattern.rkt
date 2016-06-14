@@ -4,6 +4,7 @@
 (provide (for-syntax analyze-pattern)
          (struct-out predicate-match)
          match-value/captures
+         ?
          )
 
 (require (for-syntax racket/base))
