@@ -141,7 +141,7 @@
              (values #'?
                      #'?
                      '()
-                     #'_)
+                     #'?)
              (values #'non-pair
                      #'non-pair
                      '()
