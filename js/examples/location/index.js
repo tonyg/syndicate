@@ -53,6 +53,12 @@ ground dataspace G {
             mapInitialized = true;
             map.setCenter({lat: pos.coords.latitude, lng: pos.coords.longitude});
           }
+        }, function (err) {
+          console.error(err);
+          alert(err);
+        }, {
+          enableHighAccuracy: true,
+          timeout: 15000
         }));
 
     react {
