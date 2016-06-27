@@ -115,9 +115,13 @@
 		   #:combiner (lambda (v1 v2 acc) (tset-union v2 acc))))
 
 (define (mux-route-message m body)
-  (if (trie-lookup (mux-routing-table m) body #f) ;; some other stream has declared body
+  (if (trie-lookup (mux-routing-table m) body #f #:wildcard-union (lambda (a b) (or a b)))
+      ;; some other stream has declared body
       '()
-      (tset->list (trie-lookup (mux-routing-table m) (observe body) datum-tset-empty))))
+      (tset->list (trie-lookup (mux-routing-table m)
+                               (observe body)
+                               datum-tset-empty
+                               #:wildcard-union tset-union))))
 
 (define (mux-interests-of m label)
   (hash-ref (mux-interest-table m) label trie-empty))

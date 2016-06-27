@@ -24,34 +24,36 @@
 ;; Match a single value against a projection, returning a list of
 ;; captured values.
 (define (match-value/captures v p)
-  (define captures-rev
-    (let walk ((v v) (p p) (captures-rev '()))
-      (match* (v p)
-        [(_ (capture sub))
-         (match (walk v sub '())
-           [#f #f]
-           ['() (cons v captures-rev)]
-           [_ (error 'match-value/captures "Bindings in capture sub-patterns not supported")])]
-        [(_ (predicate-match pred? sub)) #:when (pred? v)
-         (walk v sub captures-rev)]
-        [(_ (== ?))
-         captures-rev]
-        [((cons v1 v2) (cons p1 p2))
-         (match (walk v1 p1 captures-rev)
-           [#f #f]
-           [c (walk v2 p2 c)])]
-        [((? vector? v) (? vector? p)) #:when (= (vector-length v) (vector-length p))
-         (for/fold [(c captures-rev)] [(vv (in-vector v)) (pp (in-vector p))]
-           (walk vv pp c))]
-        [(_ _) #:when (or (treap? v) (treap? p))
-         (error 'match-value/captures "Cannot match on treaps at present")]
-        [((? non-object-struct?) (? non-object-struct?))
-         #:when (eq? (struct->struct-type v) (struct->struct-type p))
-         (walk (struct->vector v) (struct->vector p) captures-rev)]
-        [(_ _) #:when (equal? v p)
-         captures-rev]
-        [(_ _)
-         #f])))
+  (define (walk v p captures-rev)
+    (match* (v p)
+      [(_ (capture sub))
+       (match (walk v sub '())
+         [#f #f]
+         ['() (cons v captures-rev)]
+         [_ (error 'match-value/captures "Bindings in capture sub-patterns not supported")])]
+      [(_ (predicate-match pred? sub)) #:when (pred? v)
+       (walk v sub captures-rev)]
+      [((== ?) _)
+       captures-rev]
+      [(_ (== ?))
+       captures-rev]
+      [((cons v1 v2) (cons p1 p2))
+       (match (walk v1 p1 captures-rev)
+         [#f #f]
+         [c (walk v2 p2 c)])]
+      [((? vector? v) (? vector? p)) #:when (= (vector-length v) (vector-length p))
+       (for/fold [(c captures-rev)] [(vv (in-vector v)) (pp (in-vector p))]
+         (walk vv pp c))]
+      [(_ _) #:when (or (treap? v) (treap? p))
+       (error 'match-value/captures "Cannot match on treaps at present")]
+      [((? non-object-struct?) (? non-object-struct?))
+       #:when (eq? (struct->struct-type v) (struct->struct-type p))
+       (walk (struct->vector v) (struct->vector p) captures-rev)]
+      [(_ _) #:when (equal? v p)
+       captures-rev]
+      [(_ _)
+       #f]))
+  (define captures-rev (walk v p '()))
   (and captures-rev (reverse captures-rev)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
