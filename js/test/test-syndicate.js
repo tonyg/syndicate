@@ -33,6 +33,12 @@ function traceEvent(trace) {
   }
 }
 
+function attributedTraceEvent(attribution, trace) {
+  return function(item) {
+    trace([attribution, (item.type === "stateChange") ? item.patch.pretty() : item]);
+  }
+}
+
 function checkTrace(bootConfiguration, expected) {
   expect(configurationTrace(bootConfiguration)).to.eql(expected);
 }
@@ -149,3 +155,28 @@ describe("nested actor with an echoey protocol", function () {
 //     }, [["isPresent", true]]);
 //   });
 // });
+
+describe("broadcast message delivery", function () {
+  it("should work", function () {
+    checkTrace(function (trace) {
+      Dataspace.spawn({
+        boot: function () { return Patch.sub(["Alice", __]); },
+        handleEvent: attributedTraceEvent("Alice", trace)
+      });
+      Dataspace.spawn({
+        boot: function () { return Patch.sub(["Bob", __]); },
+        handleEvent: attributedTraceEvent("Bob", trace)
+      });
+      Dataspace.spawn({
+        boot: function () {
+          Dataspace.send(["Alice", "For Alice's eyes only"]);
+          Dataspace.send(["Bob", "Dear Bob, how are you? Kind regards, etc."]);
+          Dataspace.send([__, "Important announcement!"]);
+        }
+      })
+    }, [["Alice", Syndicate.message(["Alice", "For Alice's eyes only"])],
+        ["Bob", Syndicate.message(["Bob", "Dear Bob, how are you? Kind regards, etc."])],
+        ["Alice", Syndicate.message([__, "Important announcement!"])],
+        ["Bob", Syndicate.message([__, "Important announcement!"])]]);
+  });
+});
