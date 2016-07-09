@@ -97,8 +97,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Parameters. Many of these are *updated* during facet execution!
 
+(define (empty-field-table)
+  (hash))
+
 ;; Parameterof FieldTable
-(define current-field-table (make-parameter (hash)))
+(define current-field-table (make-parameter (empty-field-table)))
 
 ;; Parameterof ActorState
 (define current-actor-state (make-parameter #f))
@@ -547,12 +550,16 @@
                                          '()
                                          (seteqv)
                                          parent-fid)))
-  (when parent-fid
-    (update-facet! parent-fid (lambda (f)
-                                (and f
-                                     (struct-copy facet f
-                                                  [children (set-add (facet-children f) fid)])))))
-  (with-current-facet fid (current-field-table) #f
+  (define starting-field-table
+    (if parent-fid
+        (match (lookup-facet parent-fid)
+          [#f (current-field-table)] ;; TODO: Is this correct???
+          [f
+           (store-facet! parent-fid (struct-copy facet f
+                                                 [children (set-add (facet-children f) fid)]))
+           (facet-field-table f)])
+        (empty-field-table)))
+  (with-current-facet fid starting-field-table #f
     (setup-proc)
     (update-facet! fid (lambda (f) (and f
                                         (struct-copy facet f

@@ -23,11 +23,6 @@
 (define (draggable-shape name orig-x orig-y image)
   (define (window-at x y) (window name x y 10 (seal image)))
   (define (mouse-left-event-type? t) (member t '("leave" "button-up")))
-  ;;
-  ;; N.B. Currently (9 July 2016), fields are not properly
-  ;; garbage-collected on tail-calls between states, as you pick up
-  ;; and put down shapes, you'll see their field-tables grow.
-  ;;
   (define (idle ticks0 x0 y0)
     (react (field [ticks ticks0] [x x0] [y y0])
            (assert (window-at (x) (y)) #:meta-level 1)
