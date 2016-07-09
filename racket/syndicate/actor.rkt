@@ -23,6 +23,7 @@
          asserted
          retracted
          rising-edge
+         (rename-out [core:message message])
 
          suspend-script
 
@@ -33,6 +34,8 @@
 
          syndicate-effects-available?
          suspend-script*
+
+         ? ;; from pattern.rkt
 
          ;;
 

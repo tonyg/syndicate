@@ -23,24 +23,27 @@
 (define (draggable-shape name orig-x orig-y image)
   (define (window-at x y) (window name x y 10 (seal image)))
   (define (mouse-left-event-type? t) (member t '("leave" "button-up")))
-  (define (idle ticks x y)
-    ;; TODO: Once "tail-calls" between `state`s are fixed, remove the
-    ;; ugly returning-of-an-immediately-called-thunk-from-the-
-    ;; termination-handlers here and in `dragging`.
-    ((state [#:collect [(ticks ticks) (x x) (y y)]
-             (assert (window-at x y) #:meta-level 1)
-             (on (message (tick-event) #:meta-level 1)
-                 (define new-ticks (+ ticks 1))
-                 (define displacement (* (cos (* new-ticks 10 1/180 pi)) 4))
-                 (values new-ticks x (+ y displacement)))]
-       [(message (mouse-event $mx $my name "button-down") #:meta-level 1)
-        (lambda () (dragging mx my (- mx x) (- my y)))])))
-  (define (dragging mx my dx dy)
-    ((state [#:collect [(mx mx) (my my)]
-             (assert (window-at (- mx dx) (- my dy)) #:meta-level 1)
-             (on (message (mouse-event $mx $my _ "drag") #:meta-level 1) (values mx my))]
-       [(message (mouse-event $mx $my _ (? mouse-left-event-type? $t)) #:meta-level 1)
-        (lambda () (idle 0 (- mx dx) (- my dy)))])))
+  ;;
+  ;; N.B. Currently (9 July 2016), fields are not properly
+  ;; garbage-collected on tail-calls between states, as you pick up
+  ;; and put down shapes, you'll see their field-tables grow.
+  ;;
+  (define (idle ticks0 x0 y0)
+    (react (field [ticks ticks0] [x x0] [y y0])
+           (assert (window-at (x) (y)) #:meta-level 1)
+           (on (message (tick-event) #:meta-level 1)
+               (ticks (+ (ticks) 1))
+               (y (+ (y) (* (cos (* (ticks) 10 1/180 pi)) 4))))
+           (stop-when (message (mouse-event $mx $my name "button-down") #:meta-level 1)
+                      (dragging mx my (- mx (x)) (- my (y))))))
+  (define (dragging mx0 my0 dx dy)
+    (react (field [mx mx0] [my my0])
+           (assert (window-at (- (mx) dx) (- (my) dy)) #:meta-level 1)
+           (on (message (mouse-event $nmx $nmy _ "drag") #:meta-level 1)
+               (mx nmx)
+               (my nmy))
+           (stop-when (message (mouse-event $mx $my _ (? mouse-left-event-type? $t)) #:meta-level 1)
+                      (idle 0 (- mx dx) (- my dy)))))
   (actor (idle 0 orig-x orig-y)))
 
 (big-bang-dataspace #:width 640
