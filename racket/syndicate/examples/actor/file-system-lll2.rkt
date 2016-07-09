@@ -59,7 +59,7 @@
 (define (sleep sec)
   (define timer-id (gensym 'sleep))
   (until (message (timer-expired timer-id _))
-         #:init [(send! (set-timer timer-id (* sec 1000.0) 'relative))]))
+         (on-start (send! (set-timer timer-id (* sec 1000.0) 'relative)))))
 
 ;; Shell
 (let ((e (read-bytes-line-evt (current-input-port) 'any)))

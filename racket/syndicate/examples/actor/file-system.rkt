@@ -13,22 +13,22 @@
 
 (spawn-timer-driver)
 
-(actor (forever #:collect [(files (hash))]
-                (on (asserted (observe (file $name _)))
-                    (printf "At least one reader exists for ~v\n" name)
-                    (begin0 (until (retracted (observe (file name _)))
-                                   #:collect [(content (hash-ref files name #f))]
-                                   (assert (file name content))
-                                   (on (message (save (file name $content))) content)
-                                   (on (message (delete name)) #f))
-                      (printf "No remaining readers exist for ~v\n" name)))
-                (on (message (save (file $name $content))) (hash-set files name content))
-                (on (message (delete $name)) (hash-remove files name))))
+(actor (react (field [files (hash)])
+              (on (asserted (observe (file $name _)))
+                  (printf "At least one reader exists for ~v\n" name)
+                  (begin0 (until (retracted (observe (file name _)))
+                                 (field [content (hash-ref (files) name #f)])
+                                 (assert (file name (content)))
+                                 (on (message (save (file name $new-content))) (content new-content))
+                                 (on (message (delete name)) (content #f)))
+                    (printf "No remaining readers exist for ~v\n" name)))
+                (on (message (save (file $name $content))) (files (hash-set (files) name content)))
+                (on (message (delete $name)) (files (hash-remove (files) name)))))
 
 (define (sleep sec)
   (define timer-id (gensym 'sleep))
   (until (message (timer-expired timer-id _))
-         #:init [(send! (set-timer timer-id (* sec 1000.0) 'relative))]))
+         (on-start (send! (set-timer timer-id (* sec 1000.0) 'relative)))))
 
 ;; Shell
 (let ((e (read-bytes-line-evt (current-input-port) 'any)))

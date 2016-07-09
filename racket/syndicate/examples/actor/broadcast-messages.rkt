@@ -5,11 +5,11 @@
 
 (struct envelope (destination message) #:prefab)
 
-(actor (forever (on (message (envelope 'alice $message))
-                    (log-info "Alice received ~v" message))))
+(actor (react (on (message (envelope 'alice $message))
+                  (log-info "Alice received ~v" message))))
 
-(actor (forever (on (message (envelope 'bob $message))
-                    (log-info "Bob received ~v" message))))
+(actor (react (on (message (envelope 'bob $message))
+                  (log-info "Bob received ~v" message))))
 
 (actor
  (log-info "Waiting for Alice and Bob.")

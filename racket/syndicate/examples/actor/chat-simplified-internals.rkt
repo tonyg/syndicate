@@ -40,13 +40,13 @@
 (actor (forever (assert (advertise (observe (tcp-channel _ us _))))
                 (on (asserted (advertise (tcp-channel $them us _)))
                     (define id (seal (list them us)))
-                    (actor (state [(assert (tcp-remote-open id))
-                                   (on (message (tcp-channel them us $bs))
-                                       (send! (tcp-incoming-data id bs)))
-                                   (on (message (tcp-outgoing-data id $bs))
-                                       (send! (tcp-channel us them bs)))]
-                                  [(retracted (advertise (tcp-channel them us _))) (void)]
-                                  [(retracted (tcp-local-open id)) (void)])))))
+                    (actor (react (stop-when (retracted (advertise (tcp-channel them us _))))
+                                  (stop-when (retracted (tcp-local-open id)))
+                                  (assert (tcp-remote-open id))
+                                  (on (message (tcp-channel them us $bs))
+                                      (send! (tcp-incoming-data id bs)))
+                                  (on (message (tcp-outgoing-data id $bs))
+                                      (send! (tcp-channel us them bs))))))))
 
-(forever (on (asserted (tcp-remote-open $id))
-             (spawn-session id)))
+(actor (forever (on (asserted (tcp-remote-open $id))
+                    (spawn-session id))))

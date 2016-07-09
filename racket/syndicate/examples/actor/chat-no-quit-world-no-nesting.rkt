@@ -31,6 +31,7 @@
 
 (spawn-tcp-driver)
 (define us (tcp-listener 5999))
-(forever (assert (advertise (observe (tcp-channel _ us _))))
-         (on (asserted (advertise (tcp-channel $them us _)))
-             (spawn-session them us)))
+(actor
+ (forever (assert (advertise (observe (tcp-channel _ us _))))
+          (on (asserted (advertise (tcp-channel $them us _)))
+              (spawn-session them us))))

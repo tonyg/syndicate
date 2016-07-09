@@ -19,9 +19,10 @@
 (struct foo (x y) #:prefab)
 
 (actor (define x 123)
-       (forever
+       (react
         (assert (foo x 999))
         (during (foo x $v)
-                #:init [(log-info "x=~a v=~a" x v)
-                        (when (= x 123) (set! x 124))]
-                #:done [(log-info "finally for x=~a v=~a" x v)])))
+                (log-info "x=~a v=~a" x v)
+                (when (= x 123) (set! x 124))
+                (on-stop
+                 (log-info "finally for x=~a v=~a" x v)))))

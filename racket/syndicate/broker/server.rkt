@@ -121,7 +121,7 @@
       [_ #f]))
   (run-ground (spawn-timer-driver)
               (spawn-websocket-driver)
-              (dataspace (perform-core-action! (spawn-broker-server 8000))
+              (dataspace (schedule-action! (spawn-broker-server 8000))
                          (when ssl-options
-                           (perform-core-action! (spawn-broker-server 8443 #:ssl-options ssl-options)))
+                           (schedule-action! (spawn-broker-server 8443 #:ssl-options ssl-options)))
                          (forever))))

@@ -3,6 +3,8 @@
 ;; given in Honda/Yoshida/Carbone 2008, "Multiparty Asynchronous
 ;; Session Types".
 
+;; TODO:: code this up in Syndicate/js. See whether the killing-child-facets problems exists there.
+
 ;; SAMPLE OUTPUT:
 ;;---------------------------------------------------------------------------
 ;; A learns that the price of "Catch 22" is 2.22
@@ -89,38 +91,43 @@
 ;; SELLER
 ;;
 (define (seller)
-  (actor (forever #:collect [(books (hash "The Wind in the Willows" 3.95
-                                          "Catch 22" 2.22
-                                          "Candide" 34.95))
-                             (next-order-id 10001483)]
+  (actor (react (field [books (hash "The Wind in the Willows" 3.95
+                                    "Catch 22" 2.22
+                                    "Candide" 34.95)]
+                       [next-order-id 10001483])
 
-                  ;; Give quotes to interested parties.
-                  ;;
-                  (during (observe (book-quote $title _))
-                          (assert (book-quote title (hash-ref books title #f))))
+                ;; Give quotes to interested parties.
+                ;;
+                (during (observe (book-quote $title _))
+                        (assert (book-quote title (hash-ref (books) title #f))))
 
-                  ;; Respond to order requests.
-                  ;;
-                  (on (asserted (observe (order $title $offer-price _ _)))
-                      (define asking-price (hash-ref books title #f))
-                      (cond
+                ;; Respond to order requests.
+                ;;
+                (on (asserted (observe (order $title $offer-price _ _)))
+                    (define asking-price (hash-ref (books) title #f))
+                    (cond
 
-                        [(or (not asking-price) (< offer-price asking-price))
-                         ;; We cannot sell a book we do not have, and we will not sell for less
-                         ;; than our asking price.
-                         ;;
-                         (while-relevant-assert (order title offer-price #f #f))]
+                      [(or (not asking-price) (< offer-price asking-price))
+                       ;; We cannot sell a book we do not have, and we will not sell for less
+                       ;; than our asking price.
+                       ;;
+                       (while-relevant-assert (order title offer-price #f #f))]
 
-                        [else
-                         ;; Tell the ordering party their order ID and delivery date.
-                         ;;
-                         (actor
-                          (while-relevant-assert
-                           (order title offer-price next-order-id "March 9th")))
+                      [else
+                       ;; Allocate an order ID.
+                       ;;
+                       (define order-id (next-order-id))
+                       (next-order-id (+ order-id 1))
 
-                         ;; Remove the book from our shelves, and increment our order ID.
-                         ;;
-                         (values (hash-remove books title) (+ next-order-id 1))])))))
+                       ;; Remove the book from our shelves.
+                       ;;
+                       (books (hash-remove (books) title))
+
+                       ;; Tell the ordering party their order ID and delivery date.
+                       ;;
+                       (actor
+                        (while-relevant-assert
+                         (order title offer-price order-id "March 9th")))])))))
 
 ;; Serial SPLIT-PROPOSER
 ;;
@@ -136,7 +143,8 @@
 
        ;; First, retrieve a quote for the title, and analyze the result.
        ;;
-       (match (state [] [(asserted (book-quote title $price)) price])
+       (match (react/suspend (yield)
+                (stop-when (asserted (book-quote title $price)) (yield price)))
          [#f
           (log-info "A learns that ~v is out-of-stock." title)
           (try-to-buy remaining-titles)]
@@ -161,31 +169,14 @@
 
               [else
                ;; Make our proposal, and wait for a response.
-               ;; SEE NOTE (A).
                ;;
-               (match (state [] [(asserted (split-proposal title price contribution $accepted?))
-                                 accepted?])
-                 [#t
-                  (log-info "A learns that the split-proposal for ~v was accepted" title)
-                  (try-to-buy remaining-titles)]
-                 [#f
-                  (log-info "A learns that the split-proposal for ~v was rejected" title)
-                  ;; Offer to contribute a little more.
-                  (try-to-split (+ contribution (/ (- price contribution) 2)))])]))])]))
-
-  ;; NOTE (A): Wrote this originally where the anchor to this note is found. The code here
-  ;; doesn't release assertions properly; we fall foul of the "run the continuation clauses
-  ;; while the subscriptions are still active" property of the current actor.rkt
-  ;; implementation.
-  ;;
-  ;; (state []
-  ;;        [(asserted (split-proposal title price contribution #t))
-  ;;         (log-info "A learns that the split-proposal for ~v was accepted" title)
-  ;;         (try-to-buy remaining-titles)]
-  ;;        [(asserted (split-proposal title price contribution #f))
-  ;;         (log-info "A learns that the split-proposal for ~v was rejected" title)
-  ;;         (try-to-split (+ contribution (/ (- price contribution) 2)))])
-  ;;
+               (react
+                (stop-when (asserted (split-proposal title price contribution #t))
+                           (log-info "A learns that the split-proposal for ~v was accepted" title)
+                           (try-to-buy remaining-titles))
+                (stop-when (asserted (split-proposal title price contribution #f))
+                           (log-info "A learns that the split-proposal for ~v was rejected" title)
+                           (try-to-split (+ contribution (/ (- price contribution) 2)))))]))])]))
 
   (actor (try-to-buy (list "Catch 22"
                            "Encyclopaedia Brittannica"
@@ -195,11 +186,11 @@
 ;; Serial SPLIT-DISPOSER
 ;;
 (define (buyer-b)
-  (actor (forever
+  (actor (react
 
           ;; This actor maintains a record of the amount of money it has to spend.
           ;;
-          #:collect [(funds 5.00)]
+          (field [funds 5.00])
 
           (on (asserted (observe (split-proposal $title $price $their-contribution _)))
 
@@ -210,8 +201,8 @@
                         price)
 
               (cond
-                [(> my-contribution funds)
-                 (log-info "B hasn't enough funds (~a remaining)" funds)
+                [(> my-contribution (funds))
+                 (log-info "B hasn't enough funds (~a remaining)" (funds))
                  (while-relevant-assert (split-proposal title price their-contribution #f))]
 
                 [else
@@ -221,16 +212,17 @@
                  ;; actual purchase now that we have agreed on a split.
                  ;;
                  (actor (define-values (order-id delivery-date)
-                          (state
-                           [;; While we are in this state, waiting for order confirmation, take
-                            ;; the opportunity to signal to our SPLIT-PROPOSER that we accepted
-                            ;; their proposal.
-                            ;;
-                            (assert (split-proposal title price their-contribution #t))]
-                           [(asserted (order title price $id $date))
-                            ;; We have received order confirmation from the SELLER.
-                            ;;
-                            (values id date)]))
+                          (react/suspend (yield)
+                           ;; While we are in this state, waiting for order confirmation, take
+                           ;; the opportunity to signal to our SPLIT-PROPOSER that we accepted
+                           ;; their proposal.
+                           ;;
+                           (assert (split-proposal title price their-contribution #t))
+
+                           (stop-when (asserted (order title price $id $date))
+                                      ;; We have received order confirmation from the SELLER.
+                                      ;;
+                                      (yield id date))))
                         (log-info "The order for ~v has id ~a, and will be delivered on ~a"
                                   title
                                   order-id
@@ -239,10 +231,10 @@
                  ;; Meanwhile, update our records of our available funds, and continue to wait
                  ;; for more split-proposals to arrive.
                  ;;
-                 (define remaining-funds (- funds my-contribution))
+                 (define remaining-funds (- (funds) my-contribution))
                  (log-info "B accepts the offer, leaving them with ~a remaining funds"
                            remaining-funds)
-                 remaining-funds])))))
+                 (funds remaining-funds)])))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

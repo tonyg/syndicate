@@ -29,18 +29,18 @@
                                         (path A C (set-add seen A) (+ link-cost path-cost)))))))
 
 (actor (forever (during (path-exists $from $to)
-                        #:collect [(costs (set)) (least +inf.0)]
-                        (assert (min-cost from to least))
+                        (field [costs (set)] [least +inf.0])
+                        (assert (min-cost from to (least)))
                         (on (asserted (path from to _ $cost))
-                            (values (set-add costs cost)
-                                    (min least cost)))
+                            (costs (set-add (costs) cost))
+                            (least (min (least) cost)))
                         (on (retracted (path from to _ $cost))
-                            (define new-costs (set-remove costs cost))
-                            (values new-costs
-                                    (for/fold [(least +inf.0)] [(x new-costs)] (min x least)))))))
+                            (define new-costs (set-remove (costs) cost))
+                            (costs new-costs)
+                            (least (for/fold [(least +inf.0)] [(x new-costs)] (min x least)))))))
 
 (actor (forever (during (path $from $to $seen $cost)
-                        #:init [(displayln `(+ ,(path from to seen cost)))]
-                        #:done [(displayln `(- ,(path from to seen cost)))])))
+                        (on-start (displayln `(+ ,(path from to seen cost))))
+                        (on-stop (displayln `(- ,(path from to seen cost)))))))
 (actor (forever (on (asserted (min-cost $from $to $cost))
                     (displayln (min-cost from to cost)))))

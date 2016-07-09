@@ -7,7 +7,7 @@
 (struct ready (what) #:prefab)
 (struct entry (key val) #:prefab)
 
-(actor (forever
+(actor (react
         (assert (ready 'listener))
         (on (asserted (entry $key _))
             (log-info "key ~v asserted" key)
@@ -18,19 +18,20 @@
                        (log-info "del binding: ~v -> ~v" key value)))
             (log-info "key ~v retracted" key))))
 
-(actor (forever
+(actor (react
         (assert (ready 'other-listener))
         (during (entry $key _)
-                #:init [(log-info "(other-listener) key ~v asserted" key)]
-                #:done [(log-info "(other-listener) key ~v retracted" key)]
+                (log-info "(other-listener) key ~v asserted" key)
+                (on-stop (log-info "(other-listener) key ~v retracted" key))
                 (during (entry key $value)
-                        #:init [(log-info "(other-listener) ~v ---> ~v" key value)]
-                        #:done [(log-info "(other-listener) ~v -/-> ~v" key value)]))))
+                        (log-info "(other-listener) ~v ---> ~v" key value)
+                        (on-stop (log-info "(other-listener) ~v -/-> ~v" key value))))))
 
 (define (pause)
   (log-info "pause")
-  (until (asserted (ready 'pause))
-         (assert (ready 'pause))))
+  (define token (gensym 'pause)) ;; FIXME:: If we use the same token every time, need epochs!
+  (until (asserted (ready token))
+         (assert (ready token))))
 
 (actor (until (asserted (ready 'listener)))
        (until (asserted (ready 'other-listener)))
