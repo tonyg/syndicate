@@ -42,8 +42,10 @@
          [#f #f]
          [c (walk v2 p2 c)])]
       [((? vector? v) (? vector? p)) #:when (= (vector-length v) (vector-length p))
-       (for/fold [(c captures-rev)] [(vv (in-vector v)) (pp (in-vector p))]
-         (walk vv pp c))]
+       (define limit (vector-length v))
+       (do ((c captures-rev (walk (vector-ref v i) (vector-ref p i) c))
+            (i 0 (+ i 1)))
+           ((or (= i limit) (not c)) c))]
       [(_ _) #:when (or (treap? v) (treap? p))
        (error 'match-value/captures "Cannot match on treaps at present")]
       [((? non-object-struct?) (? non-object-struct?))
