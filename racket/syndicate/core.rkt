@@ -223,7 +223,8 @@
 
 (define (disable-process pid exn w)
   (when exn
-    (log-error "Process ~a died with exception:\n~a"
+    (log-error "Process ~v ~a died with exception:\n~a"
+               (process-info-name (hash-ref (dataspace-process-table w) pid missing-process-info))
                (cons pid (trace-pid-stack))
                (exn->string exn)))
   (struct-copy dataspace w

@@ -40,10 +40,6 @@
 
 ;; Event (Option PID) Process (Option Exception) (Option Transition) -> Void
 (define (trace-process-step-result e pid beh st exn t)
-  (when exn
-    (log-error "Process ~a died with exception:\n~a"
-	       (cons-pid pid)
-	       (exn->string exn)))
   (record-trace-event 'process-step-result (list (cons-pid pid) e beh st exn t)))
 
 ;; (Option PID) Action Dataspace -> Void
