@@ -86,6 +86,7 @@
                      facets ;; (Hash FID Facet)
                      previous-knowledge ;; AssertionSet
                      knowledge ;; AssertionSet
+                     field-table ;; FieldTable
                      ) #:prefab)
 
 (struct facet (field-table ;; FieldTable
@@ -100,11 +101,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Parameters. Many of these are *updated* during facet execution!
 
-(define (empty-field-table)
-  (hash))
-
 ;; Parameterof FieldTable
-(define current-field-table (make-parameter (empty-field-table)))
+(define current-field-table (make-parameter 'unset:current-field-table))
 
 ;; Parameterof ActorState
 (define current-actor-state (make-parameter #f))
@@ -433,9 +431,13 @@
 (define (make-field name initial-value)
   (define desc (field-descriptor name field-counter))
   (set! field-counter (+ field-counter 1))
-  (current-field-table (hash-set (current-field-table)
-                                 desc
-                                 (box initial-value)))
+  (define b (box initial-value))
+  (if (current-facet-id)
+      (current-field-table (hash-set (current-field-table) desc b))
+      (let ((a (current-actor-state)))
+        (current-actor-state
+         (struct-copy actor-state a
+                      [field-table (hash-set (actor-state-field-table a) desc b)]))))
   (field-handle desc))
 
 (define (get-field-box desc)
@@ -566,7 +568,7 @@
            (store-facet! parent-fid (struct-copy facet f
                                                  [children (set-add (facet-children f) fid)]))
            (facet-field-table f)])
-        (empty-field-table)))
+        (actor-state-field-table (current-actor-state))))
   (with-current-facet fid starting-field-table #f
     (setup-proc)
     (update-facet! fid (lambda (f) (and f
@@ -624,7 +626,8 @@
                   (actor-state (mux)
                                (hasheqv)
                                trie-empty
-                               trie-empty))
+                               trie-empty
+                               (hash)))
                  (current-pending-patch patch-empty)
                  (current-pending-actions '())
                  (current-pending-scripts (make-empty-pending-scripts)))
