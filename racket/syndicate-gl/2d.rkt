@@ -146,8 +146,8 @@
     [(is-a? i bitmap%)
      i]
     [(image:image? i)
-     (define w (image:image-width i))
-     (define h (image:image-height i))
+     (define w (max 1 (image:image-width i)))
+     (define h (max 1 (image:image-height i)))
      (define bm (make-object bitmap% w h #f #t))
      (define dc (send bm make-dc))
      (send i draw dc
