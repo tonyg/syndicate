@@ -211,7 +211,7 @@
        (begin
          (when (and (in-script?) (current-facet-id))
            (error 'field
-                  "~a: Cannot declare fields in script; are you missing a (react ...)?"
+                  "~a: Cannot declare fields in a script; are you missing a (react ...)?"
                   #,(source-location->string stx)))
          (define id (make-field 'id init))
          ...))]))
