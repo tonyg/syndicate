@@ -720,22 +720,24 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Immediate actions
 
-(define (send! M #:meta-level [meta-level 0])
+(define (ensure-in-script! who)
   (when (not (in-script?))
-    (error
-     'send!
-     "Attempt to send message outside script; are you missing an (on ...)? (msg: ~v, metalevel: ~v)"
-     M
-     meta-level))
+    (error who "Attempt to perform action outside script; are you missing an (on ...)?")))
+
+(define (send! M #:meta-level [meta-level 0])
+  (ensure-in-script! 'send!)
   (schedule-action! (core:message (core:prepend-at-meta M meta-level))))
 
 (define *adhoc-label* -1)
 
 (define (assert! P #:meta-level [meta-level 0])
+  (ensure-in-script! 'assert!)
   (update-stream! *adhoc-label* (core:assert P #:meta-level meta-level)))
 
 (define (retract! P #:meta-level [meta-level 0])
+  (ensure-in-script! 'retract!)
   (update-stream! *adhoc-label* (core:retract P #:meta-level meta-level)))
 
 (define (patch! p)
+  (ensure-in-script! 'patch!)
   (update-stream! *adhoc-label* p))
