@@ -207,9 +207,14 @@
 (define-syntax (field stx)
   (syntax-parse stx
     [(_ [id:id init] ...)
-     (syntax/loc stx
-       (begin (define id (make-field 'id init))
-              ...))]))
+     (quasisyntax/loc stx
+       (begin
+         (when (and (in-script?) (current-facet-id))
+           (error 'field
+                  "~a: Cannot declare fields in script; are you missing a (react ...)?"
+                  #,(source-location->string stx)))
+         (define id (make-field 'id init))
+         ...))]))
 
 (define-syntax (assert stx)
   (syntax-parse stx
