@@ -1,7 +1,5 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Simple mutable box and count-to-infinity box client.
-
-(require syndicate/actor)
 
 (struct set-box (new-value) #:transparent)
 (struct box-state (value) #:transparent)

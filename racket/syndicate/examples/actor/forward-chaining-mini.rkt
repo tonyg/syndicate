@@ -1,7 +1,5 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Minimal syndicate/actor variation on examples/forward-chaining.rkt.
-
-(require syndicate/actor)
 
 (actor (react (assert `(parent john douglas))))
 (actor (react (assert `(parent bob john))))

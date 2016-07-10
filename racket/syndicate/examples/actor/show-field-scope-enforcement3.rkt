@@ -1,7 +1,5 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Demonstrates that fields may not be passed between sibling facets.
-
-(require syndicate/actor)
 
 (actor (react
         (on (message `(read-from ,$this-field))

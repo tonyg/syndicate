@@ -1,6 +1,5 @@
-#lang syndicate
+#lang syndicate/actor
 
-(require syndicate/actor)
 (require syndicate/drivers/tcp)
 
 (spawn-tcp-driver)

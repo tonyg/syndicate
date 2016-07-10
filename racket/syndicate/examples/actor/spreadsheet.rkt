@@ -1,7 +1,6 @@
-#lang syndicate
+#lang syndicate/actor
 ;; A toy spreadsheet model.
 
-(require syndicate/actor)
 (require racket/match)
 (require racket/set)
 

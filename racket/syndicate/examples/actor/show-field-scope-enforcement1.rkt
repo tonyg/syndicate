@@ -1,7 +1,5 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Demonstrates that fields may not be passed between actors.
-
-(require syndicate/actor)
 
 (actor #:name 'reading-actor
        (react

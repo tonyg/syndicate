@@ -1,9 +1,8 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Toy file system, based on the example in the ESOP2016 submission.
 ;; Low-level implementation, without subconversation.
 
 (require (only-in syndicate [assert core:assert]))
-(require syndicate/actor)
 (require syndicate/drivers/timer)
 (require (only-in racket/port read-bytes-line-evt))
 (require (only-in racket/string string-trim string-split))

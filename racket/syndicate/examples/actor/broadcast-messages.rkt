@@ -1,7 +1,5 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Demonstrate sending a message to multiple receivers.
-
-(require syndicate/actor)
 
 (struct envelope (destination message) #:prefab)
 

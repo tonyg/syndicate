@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Illustrates a (now fixed) bug where mutation altering a
 ;; subscription caused the `retracted` half of a during instance to be
 ;; lost.
@@ -13,8 +13,6 @@
 ;; x=124 v=999
 ;;
 ;; Should eventually be turned into some kind of test case.
-
-(require syndicate/actor)
 
 (struct foo (x y) #:prefab)
 

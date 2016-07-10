@@ -1,8 +1,6 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Demonstrates that fields may used in a child facet of a declaring
 ;; facet, but not the other way around.
-
-(require syndicate/actor)
 
 (actor #:name 'reading-actor
        (react

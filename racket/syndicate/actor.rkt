@@ -48,6 +48,9 @@
          (struct-out endpoint)
          )
 
+(module reader syntax/module-reader
+  syndicate/actor-lang)
+
 (require racket/set)
 (require racket/match)
 

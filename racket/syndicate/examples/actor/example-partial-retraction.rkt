@@ -1,8 +1,6 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Illustrates the response of asserted / retracted / during to
 ;; observation of assertions discarding some of their dimensions.
-
-(require syndicate/actor)
 
 (struct ready (what) #:prefab)
 (struct entry (key val) #:prefab)

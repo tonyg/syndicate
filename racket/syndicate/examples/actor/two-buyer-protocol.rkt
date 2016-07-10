@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/actor
 ;; An extended two-buyer book-purchase protocol, based loosely on that
 ;; given in Honda/Yoshida/Carbone 2008, "Multiparty Asynchronous
 ;; Session Types".
@@ -44,8 +44,6 @@
 ;; A has bought everything they wanted!
 ;; The order for "The Wind in the Willows" has id 10001485, and will be delivered on March 9th
 ;;---------------------------------------------------------------------------
-
-(require syndicate/actor)
 
 ;; Role: SELLER
 ;;  - when interest in (book-quote $title _) appears,

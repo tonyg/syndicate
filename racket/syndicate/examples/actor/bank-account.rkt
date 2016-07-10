@@ -1,7 +1,5 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Hello-worldish "bank account" example.
-
-(require syndicate/actor)
 
 (struct account (balance) #:prefab)
 (struct deposit (amount) #:prefab)
