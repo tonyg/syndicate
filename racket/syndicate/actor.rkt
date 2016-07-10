@@ -63,6 +63,7 @@
 (require "patch.rkt")
 (require "trie.rkt")
 (require "pattern.rkt")
+(require "dataflow.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Definitions and Structures
@@ -79,14 +80,21 @@
      (fprintf p "#<field-handle:~a>" (field-descriptor-name (field-handle-desc h))))]
   #:property prop:procedure
   (case-lambda
-    [(handle) (unbox (get-field-box (field-handle-desc handle)))]
-    [(handle v) (set-box! (get-field-box (field-handle-desc handle)) v)]))
+    [(handle)
+     (define desc (field-handle-desc handle))
+     (dataflow-record-observation! (actor-state-field-dataflow (current-actor-state)) desc)
+     (unbox (get-field-box desc))]
+    [(handle v)
+     (define desc (field-handle-desc handle))
+     (dataflow-record-damage! (actor-state-field-dataflow (current-actor-state)) desc)
+     (set-box! (get-field-box desc) v)]))
 
 (struct actor-state (mux ;; Mux
                      facets ;; (Hash FID Facet)
                      previous-knowledge ;; AssertionSet
                      knowledge ;; AssertionSet
                      field-table ;; FieldTable
+                     field-dataflow ;; DataflowGraph
                      ) #:prefab)
 
 (struct facet (field-table ;; FieldTable
@@ -529,8 +537,11 @@
   (define-values (new-eid delta-aggregate)
     (let ()
       (define a (current-actor-state))
-      (define-values (new-mux new-eid _delta delta-aggregate)
-        (mux-add-stream (actor-state-mux a) (patch-fn)))
+      (define new-eid (mux-next-pid (actor-state-mux a)))
+      (define-values (new-mux _new-eid _delta delta-aggregate)
+        (mux-add-stream (actor-state-mux a)
+                        (parameterize ((current-dataflow-subject-id (list (current-facet-id) new-eid)))
+                          (patch-fn))))
       (current-actor-state (struct-copy actor-state a [mux new-mux]))
       (values new-eid delta-aggregate)))
   (update-facet! (current-facet-id)
@@ -588,6 +599,7 @@
        (begin
          (for [((eid ep) (in-hash (facet-endpoints f)))]
            (define a (current-actor-state))
+           (dataflow-forget-subject! (actor-state-field-dataflow a) (list fid eid))
            (define-values (new-mux _eid _delta delta-aggregate)
              (mux-remove-stream (actor-state-mux a) eid))
            (current-actor-state (struct-copy actor-state a [mux new-mux]))
@@ -627,7 +639,8 @@
                                (hasheqv)
                                trie-empty
                                trie-empty
-                               (hash)))
+                               (hash)
+                               (make-dataflow-graph)))
                  (current-pending-patch patch-empty)
                  (current-pending-actions '())
                  (current-pending-scripts (make-empty-pending-scripts)))
@@ -645,8 +658,7 @@
             (script)
             #t)
       (loop)))
-  (for ([(fid f) (in-hash (actor-state-facets (current-actor-state)))])
-    (refresh-facet! fid f))
+  (refresh-facet-assertions!)
   (flush-pending-patch!)
   (define pending-actions (current-pending-actions))
   (current-pending-actions '())
@@ -654,10 +666,17 @@
       (core:quit pending-actions)
       (core:transition (current-actor-state) pending-actions)))
 
-(define (refresh-facet! fid f)
-  (with-current-facet fid (facet-field-table f) #f
-    (for [((eid ep) (in-hash (facet-endpoints f)))]
-      (update-stream! eid (compose-patch ((endpoint-patch-fn ep)) (core:retract ?))))))
+(define (refresh-facet-assertions!)
+  (dataflow-repair-damage! (actor-state-field-dataflow (current-actor-state))
+                           (lambda (subject-id)
+                             (match-define (list fid eid) subject-id)
+                             (define f (lookup-facet fid))
+                             (when f
+                               (with-current-facet fid (facet-field-table f) #f
+                                 (define ep (hash-ref (facet-endpoints f) eid))
+                                 (define new-patch ((endpoint-patch-fn ep)))
+                                 (update-stream! eid (compose-patch new-patch
+                                                                    (core:retract ?))))))))
 
 (define (update-stream! eid patch)
   (define a (current-actor-state))

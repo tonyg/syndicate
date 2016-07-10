@@ -16,11 +16,11 @@
 
 (struct foo (x y) #:prefab)
 
-(actor (define x 123)
+(actor (field [x 123])
        (react
-        (assert (foo x 999))
-        (during (foo x $v)
-                (log-info "x=~a v=~a" x v)
-                (when (= x 123) (set! x 124))
+        (assert (foo (x) 999))
+        (during (foo (x) $v)
+                (log-info "x=~a v=~a" (x) v)
+                (when (= (x) 123) (x 124))
                 (on-stop
-                 (log-info "finally for x=~a v=~a" x v)))))
+                 (log-info "finally for x=~a v=~a" (x) v)))))
