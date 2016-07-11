@@ -28,73 +28,36 @@ var Syndicate = require('../../src/main.js');
 
 /// ### Role: SELLER
 ///
-///  - when interest in `bookQuote($title, _)` appears,
-///    asserts `bookQuote(title, Maybe Float)`, `false` meaning not available,
-///    and otherwise an asking-price.
-///  - when interest in `order($title, $offer-price, _, _)` appears,
-///    asserts `order(title, offer-price, false, false)` for "no sale", otherwise
-///    `order(title, offer-price, PositiveInteger, String)`, an accepted sale.
+/// When interest in `bookQuote($title, _)` appears, asserts
+/// `bookQuote(title, Maybe Float)`, `false` meaning not available,
+/// and otherwise an asking-price.
+///
+/// When interest in `order($title, $offer-price, _, _)` appears,
+/// asserts `order(title, offer-price, false, false)` for "no sale",
+/// otherwise `order(title, offer-price, PositiveInteger, String)`, an
+/// accepted sale.
 
 /// ### Role: BUYER
 ///
-///  - observes `bookQuote(title, $price)` to learn prices.
-///  - observes `order(title, offer-price, $id, $delivery-date)` to make orders.
+/// Observes `bookQuote(title, $price)` to learn prices.
+///
+/// Observes `order(title, offer-price, $id, $delivery-date)` to make orders.
 
 /// ### Role: SPLIT-PROPOSER
 ///
-///  - observes `splitProposal(title, asking-price, contribution, $accepted)`
-///    to make a split-proposal and learn whether it was accepted or not.
+/// Observes `splitProposal(title, asking-price, contribution,
+/// $accepted)` to make a split-proposal and learn whether it was
+/// accepted or not.
 
 /// ### Role: SPLIT-DISPOSER
 ///
-///  - when interest in `splitProposal($title, $asking-price, $contribution, _)`
-///    appears, asserts `splitProposal(title, askingPrice, contribution, true)`
-///    to indicate they are willing to go through with the deal, in which case
-///    they then perform the role of BUYER for title/asking-price, or asserts
-///    `splitProposal(title, asking-price, contribution, false)` to indicate they
-///    are unwilling to go through with the deal.
-
-/// ## A Sample Run
-///
-/// Run the program with `../../bin/syndicatec index.js | node` from a
-/// checkout of the Syndicate repository.
-///
-///     A learns that the price of Catch 22 is 2.22
-///     A makes an offer to split the price of Catch 22 contributing 1.11
-///     B is being asked to contribute 1.11 toward Catch 22 at price 2.22
-///     B accepts the offer, leaving them with 3.8899999999999997 remaining funds
-///     A learns that the split-proposal for Catch 22 was accepted
-///     A learns that Encyclopaedia Brittannica is out-of-stock.
-///     The order for Catch 22 has id 10001483, and will be delivered on March 9th
-///     A learns that the price of Candide is 34.95
-///     A makes an offer to split the price of Candide contributing 17.475
-///     B is being asked to contribute 17.475 toward Candide at price 34.95
-///     B hasn't enough funds (3.8899999999999997 remaining)
-///     A learns that the split-proposal for Candide was rejected
-///     A makes an offer to split the price of Candide contributing 26.212500000000002
-///     B is being asked to contribute 8.7375 toward Candide at price 34.95
-///     B hasn't enough funds (3.8899999999999997 remaining)
-///     A learns that the split-proposal for Candide was rejected
-///     A makes an offer to split the price of Candide contributing 30.581250000000004
-///     B is being asked to contribute 4.368749999999999 toward Candide at price 34.95
-///     B hasn't enough funds (3.8899999999999997 remaining)
-///     A learns that the split-proposal for Candide was rejected
-///     A makes an offer to split the price of Candide contributing 32.765625
-///     B is being asked to contribute 2.184375000000003 toward Candide at price 34.95
-///     B accepts the offer, leaving them with 1.7056249999999968 remaining funds
-///     A learns that the split-proposal for Candide was accepted
-///     A learns that the price of The Wind in the Willows is 3.95
-///     A makes an offer to split the price of The Wind in the Willows contributing 1.975
-///     The order for Candide has id 10001484, and will be delivered on March 9th
-///     B is being asked to contribute 1.975 toward The Wind in the Willows at price 3.95
-///     B hasn't enough funds (1.7056249999999968 remaining)
-///     A learns that the split-proposal for The Wind in the Willows was rejected
-///     A makes an offer to split the price of The Wind in the Willows contributing 2.9625000000000004
-///     B is being asked to contribute 0.9874999999999998 toward The Wind in the Willows at price 3.95
-///     B accepts the offer, leaving them with 0.718124999999997 remaining funds
-///     A learns that the split-proposal for The Wind in the Willows was accepted
-///     A has bought everything they wanted!
-///     The order for The Wind in the Willows has id 10001485, and will be delivered on March 9th
+/// When interest in `splitProposal($title, $asking-price,
+/// $contribution, _)` appears, asserts `splitProposal(title,
+/// askingPrice, contribution, true)` to indicate they are willing to
+/// go through with the deal, in which case they then perform the role
+/// of BUYER for title/asking-price, or asserts `splitProposal(title,
+/// asking-price, contribution, false)` to indicate they are unwilling
+/// to go through with the deal.
 
 /// ## The Code
 
@@ -156,8 +119,7 @@ function seller() {
 
     react {
       on asserted
-        Syndicate.observe(order($title, $offerPrice, _, _))
-      {
+        Syndicate.observe(order($title, $offerPrice, _, _)) {
 
 /// We cannot sell a book we do not have, and we will not sell for
 /// less than our asking price.
@@ -252,22 +214,20 @@ function buyerA() {
 
         react until {
           case asserted
-            splitProposal(title, price, contribution, true)
-          {
-            console.log("A learns that the split-proposal for "+
-                        title+" was accepted");
-            buyBooks();
-          }
+            splitProposal(title, price, contribution, true) {
+              console.log("A learns that the split-proposal for "+
+                          title+" was accepted");
+              buyBooks();
+            }
 
           case asserted
-            splitProposal(title, price, contribution, false)
-          {
-            console.log("A learns that the split-proposal for "+
-                        title+" was rejected");
-            trySplit(title,
-                     price,
-                     contribution + ((price - contribution) / 2));
-          }
+            splitProposal(title, price, contribution, false) {
+              console.log("A learns that the split-proposal for "+
+                          title+" was rejected");
+              trySplit(title,
+                       price,
+                       contribution + ((price - contribution) / 2));
+            }
         }
       }
     }
@@ -349,3 +309,45 @@ ground dataspace {
   buyerA();
   buyerB();
 }
+
+/// ## A Sample Run
+///
+/// Run the program with `../../bin/syndicatec index.js | node` from a
+/// checkout of the Syndicate repository.
+///
+///     A learns that the price of Catch 22 is 2.22
+///     A makes an offer to split the price of Catch 22 contributing 1.11
+///     B is being asked to contribute 1.11 toward Catch 22 at price 2.22
+///     B accepts the offer, leaving them with 3.8899999999999997 remaining funds
+///     A learns that the split-proposal for Catch 22 was accepted
+///     A learns that Encyclopaedia Brittannica is out-of-stock.
+///     The order for Catch 22 has id 10001483, and will be delivered on March 9th
+///     A learns that the price of Candide is 34.95
+///     A makes an offer to split the price of Candide contributing 17.475
+///     B is being asked to contribute 17.475 toward Candide at price 34.95
+///     B hasn't enough funds (3.8899999999999997 remaining)
+///     A learns that the split-proposal for Candide was rejected
+///     A makes an offer to split the price of Candide contributing 26.212500000000002
+///     B is being asked to contribute 8.7375 toward Candide at price 34.95
+///     B hasn't enough funds (3.8899999999999997 remaining)
+///     A learns that the split-proposal for Candide was rejected
+///     A makes an offer to split the price of Candide contributing 30.581250000000004
+///     B is being asked to contribute 4.368749999999999 toward Candide at price 34.95
+///     B hasn't enough funds (3.8899999999999997 remaining)
+///     A learns that the split-proposal for Candide was rejected
+///     A makes an offer to split the price of Candide contributing 32.765625
+///     B is being asked to contribute 2.184375000000003 toward Candide at price 34.95
+///     B accepts the offer, leaving them with 1.7056249999999968 remaining funds
+///     A learns that the split-proposal for Candide was accepted
+///     A learns that the price of The Wind in the Willows is 3.95
+///     A makes an offer to split the price of The Wind in the Willows contributing 1.975
+///     The order for Candide has id 10001484, and will be delivered on March 9th
+///     B is being asked to contribute 1.975 toward The Wind in the Willows at price 3.95
+///     B hasn't enough funds (1.7056249999999968 remaining)
+///     A learns that the split-proposal for The Wind in the Willows was rejected
+///     A makes an offer to split the price of The Wind in the Willows contributing 2.9625000000000004
+///     B is being asked to contribute 0.9874999999999998 toward The Wind in the Willows at price 3.95
+///     B accepts the offer, leaving them with 0.718124999999997 remaining funds
+///     A learns that the split-proposal for The Wind in the Willows was accepted
+///     A has bought everything they wanted!
+///     The order for The Wind in the Willows has id 10001485, and will be delivered on March 9th
