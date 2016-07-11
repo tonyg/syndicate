@@ -3,8 +3,6 @@
 ;; given in Honda/Yoshida/Carbone 2008, "Multiparty Asynchronous
 ;; Session Types".
 
-;; TODO:: code this up in Syndicate/js. See whether the killing-child-facets problems exists there.
-
 ;; SAMPLE OUTPUT:
 ;;---------------------------------------------------------------------------
 ;; A learns that the price of "Catch 22" is 2.22
