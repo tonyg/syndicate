@@ -40,28 +40,33 @@ function compareByInterval(node, otherNode) {
   return node.interval.startIdx - otherNode.interval.startIdx;
 }
 
+function translateNonterminalCode(children, nodeTranslator) {
+  var flatChildren = flattenIterNodes(children).sort(compareByInterval);
+  var childResults = flatChildren.map(nodeTranslator);
+  if (flatChildren.length === 0 || childResults.every(isUndefined)) {
+    return undefined;
+  }
+  var code = '';
+  var interval = flatChildren[0].interval.collapsedLeft();
+  for (var i = 0; i < flatChildren.length; ++i) {
+    if (childResults[i] == null) {
+      // Grow the interval to include this node.
+      interval = interval.coverageWith(flatChildren[i].interval.collapsedRight());
+    } else {
+      interval = interval.coverageWith(flatChildren[i].interval.collapsedLeft());
+      code += interval.contents + childResults[i];
+      interval = flatChildren[i].interval.collapsedRight();
+    }
+  }
+  code += interval.contents;
+  return code;
+}
+
 // Semantic actions for the `modifiedSource` attribute (see below).
 var modifiedSourceActions = {
   _nonterminal: function(children) {
-    var flatChildren = flattenIterNodes(children).sort(compareByInterval);
-    var childResults = flatChildren.map(function(n) { return n.modifiedSource; });
-    if (flatChildren.length === 0 || childResults.every(isUndefined)) {
-      return undefined;
-    }
-    var code = '';
-    var interval = flatChildren[0].interval.collapsedLeft();
-    for (var i = 0; i < flatChildren.length; ++i) {
-      if (childResults[i] == null) {
-        // Grow the interval to include this node.
-        interval = interval.coverageWith(flatChildren[i].interval.collapsedRight());
-      } else {
-        interval = interval.coverageWith(flatChildren[i].interval.collapsedLeft());
-        code +=  interval.contents + childResults[i];
-        interval = flatChildren[i].interval.collapsedRight();
-      }
-    }
-    code += interval.contents;
-    return code;
+    return translateNonterminalCode(children,
+                                    function(n) { return n.modifiedSource; });
   },
   _iter: function(_) {
     throw new Error('_iter semantic action should never be hit');
@@ -90,5 +95,6 @@ semantics.addAttribute('asES5', {
 
 module.exports = {
   grammar: g,
-  semantics: semantics
+  semantics: semantics,
+  translateNonterminalCode: translateNonterminalCode
 };

@@ -141,7 +141,7 @@ var modifiedSourceActions = {
     return (init ? init.asES5 : '') + situations.asES5.join('') + (done ? done.asES5 : '');
   },
   FacetStateTransitionBlock: function(_leftParen, transitions, _rightParen) {
-    return transitions.asES5;
+    return transitions.asES5.join('');
   },
 
   FacetInitBlock: function(_init, block) {
@@ -238,7 +238,7 @@ function buildSubscription(children, patchMethod, mode, whenClause, cachedAssert
   if (cachedAssertionVar) {
     fragments.push(cachedAssertionVar);
   } else {
-    children.forEach(function (c) { c.buildSubscription(fragments, mode); });
+    children.forEach(function (c) { fragments.push(c.buildSubscription(mode)); });
   }
   if (patchMethod) {
     fragments.push(', ');
@@ -268,7 +268,7 @@ semantics.addAttribute('instantiatedAssertion', {
   _default: function(children) {
     var fragments = [];
     fragments.push('(function() { var _ = Syndicate.__; return ');
-    children.forEach(function (c) { c.buildSubscription(fragments, 'instantiated'); });
+    children.forEach(function (c) { fragments.push(c.buildSubscription('instantiated')); });
     fragments.push('; })()');
     return fragments.join('');
   }
@@ -307,43 +307,41 @@ semantics.addAttribute('metalevel', {
   }
 });
 
-semantics.addOperation('buildSubscription(acc,mode)', {
+semantics.addOperation('buildSubscription(mode)', {
   FacetEventPattern_messageEvent: function(_kw, pattern) {
-    pattern.buildSubscription(this.args.acc, this.args.mode);
+    return pattern.buildSubscription(this.args.mode);
   },
   FacetEventPattern_assertedEvent: function(_kw, pattern) {
-    pattern.buildSubscription(this.args.acc, this.args.mode);
+    return pattern.buildSubscription(this.args.mode);
   },
   FacetEventPattern_retractedEvent: function(_kw, pattern) {
-    pattern.buildSubscription(this.args.acc, this.args.mode);
+    return pattern.buildSubscription(this.args.mode);
   },
 
   FacetTransitionEventPattern_facetEvent: function (pattern) {
-    pattern.buildSubscription(this.args.acc, this.args.mode);
+    return pattern.buildSubscription(this.args.mode);
   },
 
   FacetPattern: function (v) {
-    v.children[0].buildSubscription(this.args.acc, this.args.mode); // both branches!
+    return v.children[0].buildSubscription(this.args.mode); // both branches!
   },
 
   AssignmentExpression_assignment: function (lhsExpr, _assignmentOperator, rhsExpr) {
     var i = lhsExpr.interval.contents;
     if (i[0] === '$' && i.length > 1) {
       switch (this.args.mode) {
-        case 'pattern': rhsExpr.buildSubscription(this.args.acc, this.args.mode); break;
-        case 'instantiated': lhsExpr.buildSubscription(this.args.acc, this.args.mode); break;
-        case 'projection': {
-          this.args.acc.push('(Syndicate._$(' + JSON.stringify(i.slice(1)) + ',');
-          rhsExpr.buildSubscription(this.args.acc, this.args.mode);
-          this.args.acc.push('))');
-          break;
-        }
+        case 'pattern': return rhsExpr.buildSubscription(this.args.mode);
+        case 'instantiated': return lhsExpr.buildSubscription(this.args.mode);
+        case 'projection':
+          return '(Syndicate._$(' + JSON.stringify(i.slice(1)) + ',' +
+            rhsExpr.buildSubscription(this.args.mode) +
+            '))';
         default: throw new Error('Unexpected buildSubscription mode ' + this.args.mode);
       }
     } else {
-      lhsExpr.buildSubscription(this.args.acc, this.args.mode);
-      _assignmentOperator.buildSubscription(this.args.acc, this.args.mode);
-      rhsExpr.buildSubscription(this.args.acc, this.args.mode);
+      return lhsExpr.buildSubscription(this.args.mode) +
+        _assignmentOperator.buildSubscription(this.args.mode) +
+        rhsExpr.buildSubscription(this.args.mode);
     }
   },
 
@@ -351,23 +349,24 @@ semantics.addOperation('buildSubscription(acc,mode)', {
     var i = this.interval.contents;
     if (i[0] === '$' && i.length > 1) {
       switch (this.args.mode) {
-        case 'pattern': this.args.acc.push('_'); break;
-        case 'instantiated': this.args.acc.push(i.slice(1)); break;
-        case 'projection': this.args.acc.push('(Syndicate._$(' + JSON.stringify(i.slice(1)) + '))'); break;
+        case 'pattern': return '_';
+        case 'instantiated': return i.slice(1);
+        case 'projection': return '(Syndicate._$(' + JSON.stringify(i.slice(1)) + '))';
         default: throw new Error('Unexpected buildSubscription mode ' + this.args.mode);
       }
     } else {
-      this.args.acc.push(i);
+      return i;
     }
   },
   _terminal: function() {
-    this.args.acc.push(this.interval.contents);
+    return undefined;
   },
   _nonterminal: function(children) {
     var self = this;
-    forEachChild(children, function (c) {
-      c.buildSubscription(self.args.acc, self.args.mode);
-    });
+    return ES5.translateNonterminalCode(children,
+                                        function(n) {
+                                          return n.buildSubscription(self.args.mode);
+                                        });
   }
 });
 
