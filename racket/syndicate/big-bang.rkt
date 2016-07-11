@@ -90,6 +90,8 @@
        [(cons e rest)
         (let ((b (struct-copy bb b [inbound rest])))
           (interpret-actions b (deliver b e) #t))])]
+    [(<quit> _ _)
+     (struct-copy bb b [halted? #t])]
     [(transition new-dataspace actions)
      (let process-actions ((b (struct-copy bb b [dataspace new-dataspace])) (actions actions))
        (match actions

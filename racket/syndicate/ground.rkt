@@ -93,6 +93,9 @@
 	  (match resulting-transition
 	    [#f ;; inert
 	     (await-interrupt #t w interests)]
+            [(<quit> _ _)
+             (log-info "run-ground: Terminating by request")
+             (void)]
 	    [(transition w actions)
 	     (let process-actions ((actions actions) (interests interests))
 	       (match actions
