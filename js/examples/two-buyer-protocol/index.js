@@ -6,13 +6,15 @@
 var Syndicate = require('../../src/main.js');
 /// -->
 
+/// # {{ page.title }}
+///
 /// This is an extended two-buyer book-purchase protocol, based
 /// loosely on an example given in:
 ///
 /// > K. Honda, N. Yoshida, and M. Carbone, “Multiparty asynchronous
 /// > session types,” POPL 2008.
 
-/// # The Scenario
+/// ## The Scenario
 ///
 /// A book-seller responds to requests for book prices when asked. A
 /// pair of prospective buyers run through a shopping list. For each
@@ -22,9 +24,9 @@ var Syndicate = require('../../src/main.js');
 /// different split. If the second buyer agrees to a split, it then
 /// negotiates the purchase of the book with the book-seller.
 
-/// # The Protocol
+/// ## The Protocol
 
-/// ## Role: SELLER
+/// ### Role: SELLER
 ///
 ///  - when interest in `bookQuote($title, _)` appears,
 ///    asserts `bookQuote(title, Maybe Float)`, `false` meaning not available,
@@ -33,17 +35,17 @@ var Syndicate = require('../../src/main.js');
 ///    asserts `order(title, offer-price, false, false)` for "no sale", otherwise
 ///    `order(title, offer-price, PositiveInteger, String)`, an accepted sale.
 
-/// ## Role: BUYER
+/// ### Role: BUYER
 ///
 ///  - observes `bookQuote(title, $price)` to learn prices.
 ///  - observes `order(title, offer-price, $id, $delivery-date)` to make orders.
 
-/// ## Role: SPLIT-PROPOSER
+/// ### Role: SPLIT-PROPOSER
 ///
 ///  - observes `splitProposal(title, asking-price, contribution, $accepted)`
 ///    to make a split-proposal and learn whether it was accepted or not.
 
-/// ## Role: SPLIT-DISPOSER
+/// ### Role: SPLIT-DISPOSER
 ///
 ///  - when interest in `splitProposal($title, $asking-price, $contribution, _)`
 ///    appears, asserts `splitProposal(title, askingPrice, contribution, true)`
@@ -52,7 +54,7 @@ var Syndicate = require('../../src/main.js');
 ///    `splitProposal(title, asking-price, contribution, false)` to indicate they
 ///    are unwilling to go through with the deal.
 
-/// # A Sample Run
+/// ## A Sample Run
 ///
 /// Run the program with `../../bin/syndicatec index.js | node` from a
 /// checkout of the Syndicate repository.
@@ -94,9 +96,9 @@ var Syndicate = require('../../src/main.js');
 ///     A has bought everything they wanted!
 ///     The order for The Wind in the Willows has id 10001485, and will be delivered on March 9th
 
-/// # The Code
+/// ## The Code
 
-/// ## Type Declarations
+/// ### Type Declarations
 
 /// First, we declare *assertion types* for our protocol.
 
@@ -105,7 +107,7 @@ assertion type order(title, price, id, deliveryDate);
 
 assertion type splitProposal(title, price, contribution, accepted);
 
-/// ## Utilities
+/// ### Utilities
 
 /// This routine is under consideration for possible addition to the
 /// core library.
@@ -118,7 +120,7 @@ function whileRelevantAssert(P) {
   }
 }
 
-/// ## Implementation: SELLER
+/// ### Implementation: SELLER
 
 function seller() {
   actor {
@@ -134,26 +136,36 @@ function seller() {
     };
     this.nextOrderId = 10001483;
 
+/// Looking up a price yields `false` if no such book is in our
+/// inventory.
+
+    this.priceOf = function (title) {
+      return (title in this.books) && this.books[title];
+    };
+
 /// The seller responds to interest in bookQuotes by asserting a
 /// responsive record, if one exists.
 
     react {
       during Syndicate.observe(bookQuote($title, _)) {
-        assert bookQuote(title, title in this.books ? this.books[title] : false);
+        assert bookQuote(title, this.priceOf(title));
       }
     }
 
 /// It also responds to order requests.
 
     react {
-      on asserted Syndicate.observe(order($title, $offerPrice, _, _)) {
+      on asserted
+        Syndicate.observe(order($title, $offerPrice, _, _))
+      {
 
 /// We cannot sell a book we do not have, and we will not sell for
 /// less than our asking price.
 
-        var askingPrice = title in this.books ? this.books[title] : false;
+        var askingPrice = this.priceOf(title);
         if ((askingPrice === false) || (offerPrice < askingPrice)) {
-          whileRelevantAssert(order(title, offerPrice, false, false));
+          whileRelevantAssert(
+            order(title, offerPrice, false, false));
         } else {
 
 /// But if we can sell it, we do so by allocating an order ID and
@@ -163,7 +175,8 @@ function seller() {
           delete this.books[title];
 
           actor {
-            whileRelevantAssert(order(title, offerPrice, orderId, "March 9th"));
+            whileRelevantAssert(
+              order(title, offerPrice, orderId, "March 9th"));
           }
         }
       }
@@ -171,7 +184,7 @@ function seller() {
   }
 }
 
-/// ## Implementation: SPLIT-PROPOSER and book-quote-requestor
+/// ### Implementation: SPLIT-PROPOSER and book-quote-requestor
 
 function buyerA() {
   actor {
@@ -207,7 +220,8 @@ function buyerA() {
             console.log("A learns that "+title+" is out-of-stock.");
             buyBooks();
           } else {
-            console.log("A learns that the price of "+title+" is "+price);
+            console.log("A learns that the price of "+title+
+                        " is "+price);
 
 /// Next, repeatedly make split offers to a SPLIT-DISPOSER until
 /// either one is accepted, or the contribution from the
@@ -237,14 +251,22 @@ function buyerA() {
 /// Make our proposal, and wait for a response.
 
         react until {
-          case asserted splitProposal(title, price, contribution, true) {
-            console.log("A learns that the split-proposal for "+title+" was accepted");
+          case asserted
+            splitProposal(title, price, contribution, true)
+          {
+            console.log("A learns that the split-proposal for "+
+                        title+" was accepted");
             buyBooks();
           }
 
-          case asserted splitProposal(title, price, contribution, false) {
-            console.log("A learns that the split-proposal for "+title+" was rejected");
-            trySplit(title, price, contribution + ((price - contribution) / 2));
+          case asserted
+            splitProposal(title, price, contribution, false)
+          {
+            console.log("A learns that the split-proposal for "+
+                        title+" was rejected");
+            trySplit(title,
+                     price,
+                     contribution + ((price - contribution) / 2));
           }
         }
       }
@@ -252,7 +274,7 @@ function buyerA() {
   }
 }
 
-/// ## Implementation: SPLIT-DISPOSER and BUYER
+/// ### Implementation: SPLIT-DISPOSER and BUYER
 
 function buyerB() {
   actor {
@@ -266,16 +288,23 @@ function buyerB() {
 /// `splitProposal`.
 
     react {
-      on asserted Syndicate.observe(splitProposal($title, $price, $theirContribution, _)) {
+      on asserted
+        Syndicate.observe(splitProposal($title,
+                                        $price,
+                                        $theirContribution,
+                                        _))
+      {
         var myContribution = price - theirContribution;
-        console.log("B is being asked to contribute "+myContribution+" toward "+title+
-                    " at price "+price);
+        console.log("B is being asked to contribute "+myContribution+
+                    " toward "+title+" at price "+price);
 
 /// We may not be able to afford contributing this much.
 
         if (myContribution > this.funds) {
-          console.log("B hasn't enough funds ("+this.funds+" remaining)");
-          whileRelevantAssert(splitProposal(title, price, theirContribution, false));
+          console.log("B hasn't enough funds ("+this.funds+
+                      " remaining)");
+          whileRelevantAssert(
+            splitProposal(title, price, theirContribution, false));
         } else {
 
 /// But if we *can* afford it, update our remaining funds and spawn a
@@ -283,7 +312,8 @@ function buyerB() {
 /// on a split.
 
           var remainingFunds = this.funds - myContribution;
-          console.log("B accepts the offer, leaving them with "+remainingFunds+" remaining funds");
+          console.log("B accepts the offer, leaving them with "+
+                      remainingFunds+" remaining funds");
           this.funds = remainingFunds;
 
           actor {
@@ -292,7 +322,10 @@ function buyerB() {
 /// While waiting for order confirmation, take the opportunity to
 /// signal to our SPLIT-PROPOSER that we accepted their proposal.
 
-              assert splitProposal(title, price, theirContribution, true);
+              assert splitProposal(title,
+                                   price,
+                                   theirContribution,
+                                   true);
 
 /// When order confirmation arrives, this purchase is completed.
 
@@ -309,7 +342,7 @@ function buyerB() {
   }
 }
 
-/// ## Starting Configuration
+/// ### Starting Configuration
 
 ground dataspace {
   seller();
