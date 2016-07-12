@@ -724,10 +724,13 @@
                (apply k results)))))
         (define resume-parent
           (lambda results
-            (let ((invoking-fid (current-facet-id)))
-              (when (not (equal? invoking-fid suspended-fid))
-                (terminate-facet! invoking-fid)))
-            (push-script! 0 (lambda () (apply raw-resume-parent results)))))
+            (abort-current-continuation
+             prompt-tag
+             (lambda ()
+               (let ((invoking-fid (current-facet-id)))
+                 (when (not (equal? invoking-fid suspended-fid))
+                   (terminate-facet! invoking-fid)))
+               (push-script! 0 (lambda () (apply raw-resume-parent results)))))))
         (proc resume-parent))))
    prompt-tag))
 
