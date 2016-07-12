@@ -1,7 +1,5 @@
-#lang syndicate/monolithic
+#lang syndicate/actor
 
-
-(require syndicate/demand-matcher)
 (require "ip.rkt")
 (require "tcp.rkt")
 (require "udp.rkt")
@@ -19,100 +17,72 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (let ()
-  (local-require racket/set racket/string)
+  (local-require (only-in racket/string string-trim))
+
+  (struct says (who what) #:prefab)
+  (struct present (who) #:prefab)
 
   (define (spawn-session them us)
-    (define user (gensym 'user))
-    (define remote-detector (at-meta (?!)))
-    (define peer-detector (advertise `(,(?!) says ,?)))
-    (define (send-to-remote fmt . vs)
-      (message (at-meta (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs))))))
-    (define (say who fmt . vs)
-      (unless (equal? who user) (send-to-remote "~a ~a\n" who (apply format fmt vs))))
-    (list (send-to-remote "Welcome, ~a.\n" user)
-          (spawn
-           (lambda (e peers)
-             (match e
-               [(message (at-meta (tcp-channel _ _ bs)))
-                (transition peers (message `(,user says ,(string-trim (bytes->string/utf-8 bs)))))]
-               [(message `(,who says ,what))
-                (transition peers (say who "says: ~a" what))]
-               [(scn assertions)
-                (if (trie-empty? (trie-project assertions remote-detector))
-                    (quit (send-to-remote "Goodbye!\n"))
-                    (let ((new-peers (trie-project/set/single assertions peer-detector)))
-                      (define arrived (set-subtract new-peers peers))
-                      (define departed (set-subtract peers new-peers))
-                      (transition new-peers
-                                  (list (for/list [(who arrived)] (say who "arrived."))
-                                        (for/list [(who departed)] (say who "departed."))))))]
-               [#f #f]))
-           (set)
-           (scn/union
-            (subscription `(,? says ,?)) ;; read actual chat messages
-            (subscription (advertise `(,? says ,?))) ;; observe peer presence
-            (advertisement `(,user says ,?)) ;; advertise our presence
-            (subscription (tcp-channel them us ?) #:meta-level 1) ;; read from remote client
-            (subscription (advertise (tcp-channel them us ?)) #:meta-level 1) ;; monitor remote client
-            (advertisement (tcp-channel us them ?) #:meta-level 1) ;; we will write to remote client
-            ))))
+    (actor (define (send-to-remote fmt . vs)
+             (send! (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs)))
+                    #:meta-level 1))
 
-  (spawn-dataspace
-   (spawn-demand-matcher (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
-                         (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
-                         #:meta-level 1
-                         spawn-session))
-  )
+           (define (say who fmt . vs)
+             (unless (equal? who user)
+               (send-to-remote "~a ~a\n" who (apply format fmt vs))))
 
-(let ()
-  (spawn (lambda (e s)
-	   (match e
-	     [(message (udp-packet src dst body))
+           (define user (gensym 'user))
+           (send-to-remote "Welcome, ~a.\n" user)
+
+           (until (retracted (advertise (tcp-channel them us _)) #:meta-level 1)
+                  (assert (present user))
+                  (on (asserted (present $who)) (say who "arrived."))
+                  (on (retracted (present $who)) (say who "departed."))
+
+                  (on (message (says $who $what)) (say who "says: ~a" what))
+
+                  (assert (advertise (tcp-channel us them _)) #:meta-level 1)
+                  (on (message (tcp-channel them us $bs) #:meta-level 1)
+                      (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
+
+  (dataspace (define us (tcp-listener 5999))
+             (forever (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
+                      (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
+                          (spawn-session them us)))))
+
+(let ((dst (udp-listener 6667)))
+  (actor (react
+          (on (message (udp-packet $src dst $body))
 	      (log-info "Got packet from ~v: ~v" src body)
-	      (transition s (message
-                             (udp-packet dst
-                                         src
-                                         (string->bytes/utf-8 (format "You said: ~a" body)))))]
-	     [_ #f]))
-	 (void)
-	 (scn (subscription (udp-packet ? (udp-listener 6667) ?)))))
+              (send! (udp-packet dst src (string->bytes/utf-8 (format "You said: ~a" body))))))))
 
 (let ()
-  (define (spawn-session them us)
-    (list
-     (message 'bump)
-     (spawn (lambda (e s)
-	      (match e
-		[(message `(counter ,counter))
-		 (define response
-		   (string->bytes/utf-8
-		    (format (string-append
-			     "HTTP/1.0 200 OK\r\n\r\n"
-			     "<h1>Hello world from syndicate-monolithic-netstack!</h1>\n"
-			     "<p>This is running on syndicate-monolithic's own\n"
-			     "<a href='https://github.com/tonyg/syndicate/'>\n"
-			     "TCP/IP stack</a>.</p>\n"
-			     "<p>There have been ~a requests prior to this one.</p>")
-			    counter)))
-		 (quit (message (at-meta (tcp-channel us them response))))]
-		[_ #f]))
-	    (void)
-	    (scn/union (subscription `(counter ,?))
-                       (subscription (tcp-channel them us ?) #:meta-level 1)
-                       (subscription (advertise (tcp-channel them us ?)) #:meta-level 1)
-                       (advertisement (tcp-channel us them ?) #:meta-level 1)))))
+  (dataspace
+   (actor (react (field [counter 0])
+                 (on (message 'bump)
+                     (send! `(counter ,(counter)))
+                     (counter (+ (counter) 1)))))
 
-  (spawn-dataspace
-   (spawn (lambda (e counter)
-	    (match e
-	      [(message 'bump)
-	       (transition (+ counter 1) (message `(counter ,counter)))]
-	      [_ #f]))
-	  0
-	  (scn (subscription 'bump)))
-   (spawn-demand-matcher (advertise (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 80)) ?))
-                         (observe (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 80)) ?))
-			 #:meta-level 1
-			 spawn-session))
+   (forever (define us (tcp-listener 80))
+            (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
+            (during/actor (advertise (tcp-channel ($ them (tcp-address _ _)) us _)) #:meta-level 1
+                          (log-info "Got connection from ~v" them)
+                          (field [done? #f])
+                          (stop-when (rising-edge (done?)))
+                          (assert (advertise (tcp-channel us them _)) #:meta-level 1)
+                          (on (message (tcp-channel them us _) #:meta-level 1)) ;; ignore input
 
-  )
+                          (on-start (send! 'bump))
+                          (on (message `(counter ,$counter))
+                              (define response
+                                (string->bytes/utf-8
+                                 (format (string-append
+                                          "HTTP/1.0 200 OK\r\n\r\n"
+                                          "<h1>Hello world from syndicate-netstack!</h1>\n"
+                                          "<p>This is running on syndicate's own\n"
+                                          "<a href='https://github.com/tonyg/syndicate/'>\n"
+                                          "TCP/IP stack</a>.</p>\n"
+                                          "<p>There have been ~a requests prior to this one.</p>\n")
+                                         counter)))
+                              (send! (tcp-channel us them response) #:meta-level 1)
+                              (done? #t))))))
