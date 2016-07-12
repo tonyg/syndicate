@@ -31,6 +31,7 @@
          assert!
          retract!
          patch!
+         flush!
 
          syndicate-effects-available?
          suspend-script*
@@ -763,3 +764,9 @@
 (define (patch! p)
   (ensure-in-script! 'patch!)
   (update-stream! *adhoc-label* p))
+
+(define (flush!)
+  (ensure-in-script! 'flush!)
+  (define ack (gensym 'flush!))
+  (until (core:message ack)
+         (on-start (send! ack))))
