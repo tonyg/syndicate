@@ -10,8 +10,8 @@
 
 (require racket/set)
 (require racket/match)
-(require syndicate-monolithic)
-(require syndicate-monolithic/demand-matcher)
+(require syndicate/monolithic)
+(require syndicate/demand-matcher)
 (require bitsyntax)
 
 (require "dump-bytes.rkt")

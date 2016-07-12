@@ -8,9 +8,9 @@
 
 (require racket/set)
 (require racket/match)
-(require syndicate-monolithic)
-(require syndicate-monolithic/drivers/timer)
-(require syndicate-monolithic/demand-matcher)
+(require syndicate/monolithic)
+(require syndicate/drivers/timer)
+(require syndicate/demand-matcher)
 (require bitsyntax)
 
 (require "dump-bytes.rkt")

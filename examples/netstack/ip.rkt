@@ -13,9 +13,9 @@
 (require racket/set)
 (require racket/match)
 (require (only-in racket/string string-split))
-(require syndicate-monolithic)
-(require syndicate-monolithic/drivers/timer)
-(require syndicate-monolithic/demand-matcher)
+(require syndicate/monolithic)
+(require syndicate/drivers/timer)
+(require syndicate/demand-matcher)
 (require bitsyntax)
 
 (require "dump-bytes.rkt")
@@ -23,6 +23,7 @@
 (require "checksum.rkt")
 (require "ethernet.rkt")
 (require "arp.rkt")
+(require "on-claim.rkt")
 
 (struct ip-packet (source-interface ;; string for an ethernet interface, or #f for local interfaces
 		   source

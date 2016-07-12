@@ -13,8 +13,9 @@
 (require racket/match)
 (require racket/async-channel)
 
-(require syndicate-monolithic)
-(require syndicate-monolithic/demand-matcher)
+(require syndicate/monolithic)
+(require syndicate/demand-matcher)
+(require "on-claim.rkt")
 
 (require packet-socket)
 (require bitsyntax)

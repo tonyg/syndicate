@@ -1,7 +1,6 @@
-#lang syndicate-monolithic
+#lang syndicate/monolithic
 
-(require syndicate-monolithic/demand-matcher)
-(require syndicate-monolithic/drivers/timer)
+(require syndicate/drivers/timer)
 (require "demo-config.rkt")
 (require "ethernet.rkt")
 (require "arp.rkt")
