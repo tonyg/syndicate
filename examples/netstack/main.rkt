@@ -1,19 +1,17 @@
 #lang syndicate/monolithic
 
+(require/activate syndicate/drivers/timer)
+(require/activate "ethernet.rkt")
+(require/activate "arp.rkt")
+
 (require syndicate/demand-matcher)
-(require syndicate/drivers/timer)
 (require "demo-config.rkt")
-(require "ethernet.rkt")
-(require "arp.rkt")
 (require "ip.rkt")
 (require "tcp.rkt")
 (require "udp.rkt")
 
 ;;(log-events-and-actions? #t)
 
-(spawn-timer-driver)
-(spawn-ethernet-driver)
-(spawn-arp-driver)
 (spawn-ip-driver)
 (spawn-tcp-driver)
 (spawn-udp-driver)

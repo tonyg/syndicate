@@ -1,4 +1,4 @@
-#lang racket/base
+#lang syndicate/actor
 ;; Ethernet driver
 
 (provide (struct-out ethernet-packet)
@@ -9,13 +9,10 @@
 	 ethernet-packet-pattern
 	 lookup-ethernet-hwaddr)
 
+(require/activate syndicate/drivers/timer)
 (require racket/set)
 (require racket/match)
 (require racket/async-channel)
-
-(require syndicate/monolithic)
-(require syndicate/demand-matcher)
-(require "on-claim.rkt")
 
 (require packet-socket)
 (require bitsyntax)
@@ -32,52 +29,44 @@
 (log-info "Device names: ~a" interface-names)
 
 (define (spawn-ethernet-driver)
-  (spawn-demand-matcher (observe (ethernet-packet (ethernet-interface (?!) ?) #t ? ? ? ?))
-                        (ethernet-interface (?!) ?)
-			spawn-interface-tap))
+  (actor #:name 'ethernet-driver
+   (react (during/actor
+           (observe (ethernet-packet (ethernet-interface $interface-name _) #t _ _ _ _))
+           #:name (list 'ethernet-interface interface-name)
 
-(define (spawn-interface-tap interface-name)
-  (define h (raw-interface-open interface-name))
-  (define interface (ethernet-interface interface-name (raw-interface-hwaddr h)))
-  (cond
-   [(not h)
-    (log-error "ethernet: Couldn't open interface ~v" interface-name)
-    '()]
-   [else
-    (log-info "Opened interface ~a, yielding handle ~v" interface-name h)
-    (define control-ch (make-async-channel))
-    (thread (lambda () (interface-packet-read-loop interface h control-ch)))
-    (spawn (lambda (e h)
-	     (match e
-               [(scn g)
-		(if (trie-empty? g)
-		    (begin (async-channel-put control-ch 'quit)
-                           (quit))
-		    (begin (async-channel-put control-ch 'unblock)
-			   #f))]
-	       [(message (at-meta (? ethernet-packet? p)))
-		;; (log-info "Interface ~a inbound packet ~a -> ~a (type 0x~a)"
-		;; 	  (ethernet-interface-name (ethernet-packet-interface p))
-		;; 	  (pretty-bytes (ethernet-packet-source p))
-		;; 	  (pretty-bytes (ethernet-packet-destination p))
-		;; 	  (number->string (ethernet-packet-ethertype p) 16))
-		;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
-		(transition h (message p))]
-	       [(message (? ethernet-packet? p))
-		;; (log-info "Interface ~a OUTBOUND packet ~a -> ~a (type 0x~a)"
-		;; 	  (ethernet-interface-name (ethernet-packet-interface p))
-		;; 	  (pretty-bytes (ethernet-packet-source p))
-		;; 	  (pretty-bytes (ethernet-packet-destination p))
-		;; 	  (number->string (ethernet-packet-ethertype p) 16))
-		;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
-		(raw-interface-write h (encode-ethernet-packet p))
-		#f]
-	       [_ #f]))
-	   h
-           (scn/union (assertion interface)
-                      (subscription (ethernet-packet interface #f ? ? ? ?))
-                      (subscription (observe (ethernet-packet interface #t ? ? ? ?)))
-                      (subscription (ethernet-packet interface #t ? ? ? ?) #:meta-level 1)))]))
+           (define h (raw-interface-open interface-name))
+           (when (not h) (error 'ethernet "Couldn't open interface ~v" interface-name))
+           (log-info "Opened interface ~a, yielding handle ~v" interface-name h)
+
+           (define interface (ethernet-interface interface-name (raw-interface-hwaddr h)))
+           (assert interface)
+
+           (define control-ch (make-async-channel))
+           (thread (lambda () (interface-packet-read-loop interface h control-ch)))
+
+           (on-start (flush!) ;; ensure all subscriptions are in place
+                     (async-channel-put control-ch 'unblock)
+                     (actor #:name (list 'ethernet-interface-quit-monitor interface-name)
+                            (react (on (retracted interface)
+                                       (async-channel-put control-ch 'quit)))))
+
+           (on (message ($ p (ethernet-packet interface #t _ _ _ _)) #:meta-level 1)
+               ;; (log-info "Interface ~a inbound packet ~a -> ~a (type 0x~a)"
+               ;;           (ethernet-interface-name (ethernet-packet-interface p))
+               ;;           (pretty-bytes (ethernet-packet-source p))
+               ;;           (pretty-bytes (ethernet-packet-destination p))
+               ;;           (number->string (ethernet-packet-ethertype p) 16))
+               ;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
+               (send! p))
+
+           (on (message ($ p (ethernet-packet interface #f _ _ _ _)))
+               ;; (log-info "Interface ~a OUTBOUND packet ~a -> ~a (type 0x~a)"
+               ;;           (ethernet-interface-name (ethernet-packet-interface p))
+               ;;           (pretty-bytes (ethernet-packet-source p))
+               ;;           (pretty-bytes (ethernet-packet-destination p))
+               ;;           (number->string (ethernet-packet-ethertype p) 16))
+               ;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
+               (raw-interface-write h (encode-ethernet-packet p)))))))
 
 (define (interface-packet-read-loop interface h control-ch)
   (define (blocked)
@@ -121,14 +110,16 @@
 (define (ethernet-packet-pattern interface-name from-wire? ethertype)
   (ethernet-packet (ethernet-interface interface-name ?) from-wire? ? ? ethertype ?))
 
-(define (lookup-ethernet-hwaddr base-interests interface-name k)
-  (on-claim #:timeout-msec 5000
-            #:on-timeout (lambda ()
-                           (log-info "Lookup of ethernet interface ~v failed" interface-name)
-                           '())
-            (lambda (_g hwaddrss)
-              (and (not (set-empty? hwaddrss))
-                   (let ((hwaddr (car (set-first hwaddrss))))
-                     (k hwaddr))))
-            base-interests
-            (ethernet-interface interface-name (?!))))
+(define (lookup-ethernet-hwaddr interface-name)
+  (define timer-id (gensym 'lookup-ethernet-hwaddr))
+  (react/suspend (k)
+                 (on-start (send! (set-timer timer-id 5000 'relative)))
+                 (stop-when (message (timer-expired timer-id _))
+                            (log-info "Lookup of ethernet interface ~v failed" interface-name)
+                            (k #f))
+                 (stop-when (asserted (ethernet-interface interface-name $hwaddr))
+                            (k hwaddr))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(spawn-ethernet-driver)
