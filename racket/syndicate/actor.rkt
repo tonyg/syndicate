@@ -4,7 +4,6 @@
          dataspace
 
          react
-         react/independent
          react/suspend
          until
          forever
@@ -176,14 +175,6 @@
     [(_ O ...)
      (quasisyntax/loc stx
        (add-facet! #:substate #t
-                   #,(source-location->string stx)
-                   (lambda () (begin/void-default O ...))))]))
-
-(define-syntax (react/independent stx)
-  (syntax-parse stx
-    [(_ O ...)
-     (quasisyntax/loc stx
-       (add-facet! #:substate #f
                    #,(source-location->string stx)
                    (lambda () (begin/void-default O ...))))]))
 
