@@ -1,6 +1,6 @@
 #lang syndicate/actor
 
-(require syndicate/drivers/tcp)
+(require/activate syndicate/drivers/tcp)
 (require (only-in racket/string string-trim))
 
 (struct says (who what) #:prefab)
@@ -29,7 +29,6 @@
                 (on (message (tcp-channel them us $bs) #:meta-level 1)
                     (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
 
-(spawn-tcp-driver)
 (dataspace (define us (tcp-listener 5999))
            (forever (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
                     (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)

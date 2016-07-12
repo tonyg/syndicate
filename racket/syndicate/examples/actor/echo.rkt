@@ -1,8 +1,6 @@
 #lang syndicate/actor
 
-(require syndicate/drivers/tcp)
-
-(spawn-tcp-driver)
+(require/activate syndicate/drivers/tcp)
 
 (define server-id (tcp-listener 5999))
 (actor

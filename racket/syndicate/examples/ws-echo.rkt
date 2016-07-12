@@ -1,10 +1,7 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Websocket server that echoes all it receives
 
-(require syndicate/drivers/websocket)
-(require syndicate/actor)
-
-(spawn-websocket-driver)
+(require/activate syndicate/drivers/websocket)
 
 (define any-client any-websocket-remote-client)
 (define tcp-server-id (websocket-local-server 8081 #f))

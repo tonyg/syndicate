@@ -1,9 +1,7 @@
 #lang syndicate
 
-(require "../drivers/websocket.rkt")
+(require/activate "../drivers/websocket.rkt")
 (require "../demand-matcher.rkt")
-
-(spawn-websocket-driver)
 
 (define any-client any-websocket-remote-client)
 (define server-id (websocket-local-server 8081 #f))

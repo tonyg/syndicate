@@ -1,8 +1,6 @@
 #lang syndicate
 
-(require "../drivers/udp.rkt")
-
-(spawn-udp-driver)
+(require/activate "../drivers/udp.rkt")
 
 (spawn (lambda (e s)
          (match e

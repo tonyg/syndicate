@@ -6,10 +6,28 @@
 (require "main.rkt")
 
 (provide (rename-out [module-begin #%module-begin])
+         activate
+         require/activate
 	 (except-out (all-from-out racket/base) #%module-begin)
 	 (all-from-out racket/match)
 	 (all-from-out "main.rkt")
 	 (for-syntax (all-from-out racket/base)))
+
+(define-syntax (activate stx)
+  (syntax-case stx ()
+    [(_ module-path ...)
+     #'(begin
+         (let ()
+           (local-require (submod module-path syndicate-main))
+           (activate!))
+         ...)]))
+
+(define-syntax (require/activate stx)
+  (syntax-case stx ()
+    [(_ module-path ...)
+     #'(begin
+         (require module-path ...)
+         (activate module-path ...))]))
 
 (define-syntax (module-begin stx)
   (unless (eq? (syntax-local-context) 'module-begin)
@@ -21,7 +39,17 @@
 	 (if (null? forms)
 	     (let ((final-stx
 		    #`(#%module-begin #,@(reverse final-forms)
-				      (run-ground #,@(reverse action-ids)))))
+                                      (module+ syndicate-main
+                                        (provide boot-actions activate!)
+                                        (define activated? #f)
+                                        (define boot-actions (list #,@(reverse action-ids)))
+                                        (define (activate!)
+                                          (when (not activated?)
+                                            (set! activated? #t)
+                                            boot-actions)))
+                                      (module+ main
+                                        (require (submod ".." syndicate-main))
+                                        (run-ground (activate!))))))
 	       ;;(pretty-print (syntax->datum final-stx))
 	       final-stx)
 	     (syntax-case (local-expand (car forms)

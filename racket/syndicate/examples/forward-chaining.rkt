@@ -3,9 +3,7 @@
 (require racket/set)
 (require "../trie.rkt")
 (require "../demand-matcher.rkt")
-(require "../drivers/timer.rkt")
-
-(spawn-timer-driver)
+(require/activate "../drivers/timer.rkt")
 
 (spawn (lambda (e old-count)
          (match e

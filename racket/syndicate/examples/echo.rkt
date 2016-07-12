@@ -1,11 +1,10 @@
 #lang syndicate
 
-(require "../drivers/tcp.rkt")
+(require/activate "../drivers/tcp.rkt")
 (require "../demand-matcher.rkt")
 
 (define server-id (tcp-listener 5999))
 
-(spawn-tcp-driver)
 (spawn-demand-matcher (advertise (tcp-channel (?!) server-id ?))
                       (observe (tcp-channel (?!) server-id ?))
                       (lambda (c)

@@ -1,4 +1,4 @@
-#lang racket/base
+#lang syndicate
 
 (provide (struct-out websocket-remote-client)
 	 (struct-out websocket-local-server)
@@ -11,14 +11,12 @@
          any-websocket-remote-client)
 
 (require racket/exn)
-(require racket/match)
 (require net/rfc6455)
 (require (only-in net/rfc6455/conn-api
                   ws-conn-base-ip
                   ws-conn-peer-addresses
                   ws-conn-host+port
                   ws-conn-path))
-(require "../main.rkt")
 (require "../demand-matcher.rkt")
 
 (require racket/unit)
@@ -221,3 +219,7 @@
           (sub (websocket-message local-addr remote-addr ?)) ;; want segments from peer
           (sub (websocket-incoming-message id ?) #:meta-level 1) ;; segments from driver thd
           )))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(spawn-websocket-driver)

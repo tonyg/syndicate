@@ -1,7 +1,7 @@
 #lang syndicate
 
 (require (only-in racket/string string-trim))
-(require "../drivers/tcp.rkt")
+(require/activate "../drivers/tcp.rkt")
 (require "../demand-matcher.rkt")
 
 (define (spawn-session them us)
@@ -39,7 +39,6 @@
           (pub (tcp-channel us them ?) #:meta-level 1) ;; we will write to remote client
           ))))
 
-(spawn-tcp-driver)
 (spawn-dataspace
  (spawn-demand-matcher (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
                        (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))

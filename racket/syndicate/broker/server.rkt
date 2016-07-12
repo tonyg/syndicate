@@ -1,4 +1,4 @@
-#lang racket/base
+#lang syndicate/actor
 ;; Generic relay for WebSockets/TCP/etc-based participation in a network.
 
 (provide spawn-broker-server
@@ -110,18 +110,14 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(module+ main
-  (require syndicate/ground)
-  (require syndicate/actor)
-  (require syndicate/drivers/timer)
-  (require syndicate/drivers/websocket)
-  (define ssl-options
-    (match (current-command-line-arguments)
-      [(vector c p) (websocket-ssl-options c p)]
-      [_ #f]))
-  (run-ground (spawn-timer-driver)
-              (spawn-websocket-driver)
-              (dataspace (schedule-action! (spawn-broker-server 8000))
-                         (when ssl-options
-                           (schedule-action! (spawn-broker-server 8443 #:ssl-options ssl-options)))
-                         (forever))))
+(require/activate syndicate/drivers/timer)
+(require/activate syndicate/drivers/websocket)
+
+(let ((ssl-options
+       (match (current-command-line-arguments)
+         [(vector c p) (websocket-ssl-options c p)]
+         [_ #f])))
+  (dataspace (schedule-action! (spawn-broker-server 8000))
+             (when ssl-options
+               (schedule-action! (spawn-broker-server 8443 #:ssl-options ssl-options)))
+             (forever)))

@@ -1,10 +1,8 @@
-#lang racket/base
+#lang syndicate
 
-(require racket/match)
 (require racket/exn)
 (require (prefix-in tcp: racket/tcp))
 (require (only-in racket/port read-bytes-avail!-evt))
-(require "../main.rkt")
 (require "../demand-matcher.rkt")
 
 (require racket/unit)
@@ -187,3 +185,7 @@
           (sub (tcp-channel local-addr remote-addr ?)) ;; want segments from peer
           (sub (tcp-channel remote-addr local-addr ?) #:meta-level 1) ;; segments from driver thread
           )))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(spawn-tcp-driver)

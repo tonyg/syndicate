@@ -1,18 +1,15 @@
-#lang syndicate
+#lang syndicate/actor
 ;; Websocket echo client
 ;; racket ws-echo-client.rkt ws://localhost:8081/
 ;; racket ws-echo-client.rkt wss://localhost:8084/
 
-(require syndicate/drivers/websocket)
-(require syndicate/actor)
+(require/activate syndicate/drivers/websocket)
 (require racket/port)
 
 (define url
   (match (current-command-line-arguments)
     [(vector url) url]
     [(vector) "http://localhost:8081/ws-echo"]))
-
-(spawn-websocket-driver)
 
 (define c (websocket-local-client (gensym 'c)))
 (define s (websocket-remote-server url))

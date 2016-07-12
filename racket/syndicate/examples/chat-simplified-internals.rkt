@@ -3,7 +3,7 @@
 ;; driver's protocol.
 
 (require (only-in racket/string string-trim))
-(require "../drivers/tcp.rkt")
+(require/activate "../drivers/tcp.rkt")
 (require "../demand-matcher.rkt")
 
 (struct tcp-remote-open (id) #:prefab)
@@ -62,8 +62,6 @@
           (sub (tcp-remote-open id)) ;; monitor remote client
           (assert (tcp-local-open id)) ;; indicate our end of the connection is up
           ))))
-
-(spawn-tcp-driver)
 
 (spawn-demand-matcher (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
                       (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))

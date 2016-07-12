@@ -2,15 +2,13 @@
 ;; Toy file system, based on the example in the ESOP2016 submission.
 ;; syndicate/actor implementation, using "during" instead of "on asserted/until retracted".
 
-(require syndicate/drivers/timer)
+(require/activate syndicate/drivers/timer)
 (require (only-in racket/port read-bytes-line-evt))
 (require (only-in racket/string string-trim string-split))
 
 (struct file (name content) #:prefab)
 (struct save (file) #:prefab)
 (struct delete (name) #:prefab)
-
-(spawn-timer-driver)
 
 (actor (react (field [files (hash)])
               (during (observe (file $name _))

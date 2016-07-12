@@ -1,9 +1,7 @@
 #lang syndicate
 
 (require "../endpoint.rkt")
-(require "../drivers/timer.rkt")
-
-(spawn-timer-driver)
+(require/activate "../drivers/timer.rkt")
 
 (define ((log-it eid) e u)
   (log-info "endpoint ~a state ~a: ~v" eid u e)

@@ -1,12 +1,8 @@
-#lang syndicate
+#lang syndicate/actor
 
-(require syndicate/actor)
-(require syndicate/drivers/timer)
-(require syndicate/drivers/udp)
+(require/activate syndicate/drivers/timer)
+(require/activate syndicate/drivers/udp)
 (require racket/random file/sha1)
-
-(spawn-timer-driver)
-(spawn-udp-driver)
 
 ;; IANA offers guidelines for choosing multicast addresses [1].
 ;;

@@ -3,7 +3,7 @@
 ;; Low-level implementation, without subconversation.
 
 (require (only-in syndicate [assert core:assert]))
-(require syndicate/drivers/timer)
+(require/activate syndicate/drivers/timer)
 (require (only-in racket/port read-bytes-line-evt))
 (require (only-in racket/string string-trim string-split))
 (require racket/set)
@@ -13,8 +13,6 @@
 (struct delete (name) #:prefab)
 
 (struct fs-state (files monitored) #:prefab)
-
-(spawn-timer-driver)
 
 (define (update-file state name new-content)
   (transition (struct-copy fs-state state

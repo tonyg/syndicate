@@ -1,7 +1,6 @@
 #lang syndicate/actor
 ;; A toy spreadsheet model.
 
-(require racket/match)
 (require racket/set)
 
 (define-namespace-anchor ns)

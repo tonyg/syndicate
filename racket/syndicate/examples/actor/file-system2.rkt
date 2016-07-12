@@ -2,7 +2,7 @@
 ;; Toy file system, based on the example in the ESOP2016 submission.
 ;; syndicate/actor implementation, without subconversation.
 
-(require syndicate/drivers/timer)
+(require/activate syndicate/drivers/timer)
 (require (only-in racket/port read-bytes-line-evt))
 (require (only-in racket/string string-trim string-split))
 (require racket/set)
@@ -10,8 +10,6 @@
 (struct file (name content) #:prefab)
 (struct save (file) #:prefab)
 (struct delete (name) #:prefab)
-
-(spawn-timer-driver)
 
 (actor (react (field [files (hash)] [monitored (set)])
               (on (asserted (observe (file $name _)))

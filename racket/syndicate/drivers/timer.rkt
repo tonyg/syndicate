@@ -1,4 +1,4 @@
-#lang racket/base
+#lang syndicate
 ;; Timer driver.
 
 ;; Uses mutable state internally, but because the scope of the
@@ -6,9 +6,7 @@
 ;; correct linear use of the various pointers.
 
 (require racket/set)
-(require racket/match)
 (require data/heap)
-(require "../main.rkt")
 
 (struct pending-timer (deadline label) #:transparent)
 
@@ -126,3 +124,7 @@
 (define (timer-evt msecs)
   (handle-evt (alarm-evt msecs)
 	      (lambda (_) (current-inexact-milliseconds))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(spawn-timer-driver)

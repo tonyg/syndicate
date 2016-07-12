@@ -1,7 +1,7 @@
 #lang syndicate
 
 (require (only-in racket/port read-line-evt))
-(require "../drivers/timer.rkt")
+(require/activate "../drivers/timer.rkt")
 
 (define (quasi-spy e s)
   (printf "----------------------------------------\n")
@@ -55,7 +55,6 @@
          (quit))]
     [_ #f]))
 
-(spawn-timer-driver)
 (message (set-timer 'tick 1000 'relative))
 (spawn ticker
        1

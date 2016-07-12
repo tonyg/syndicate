@@ -1,8 +1,6 @@
-#lang racket/base
+#lang syndicate
 
-(require racket/match)
 (require (prefix-in udp: racket/udp))
-(require "../main.rkt")
 (require "../demand-matcher.rkt")
 
 (provide (struct-out udp-remote-address)
@@ -112,3 +110,7 @@
 				     (subbytes buffer 0 len)))
 			(loop)))))
   (udp:udp-close socket))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(spawn-udp-driver)

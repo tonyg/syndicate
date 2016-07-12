@@ -1,13 +1,11 @@
 #lang syndicate/actor
 
-(require syndicate/drivers/tcp)
+(require/activate syndicate/drivers/tcp)
 (require (only-in racket/port read-bytes-line-evt))
 
 (define local-handle (tcp-handle 'chat))
 (define remote-handle (tcp-address "localhost" 5999))
 (define stdin-evt (read-bytes-line-evt (current-input-port) 'any))
-
-(spawn-tcp-driver)
 
 (actor
  (react/suspend (quit)

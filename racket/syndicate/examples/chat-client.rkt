@@ -1,12 +1,11 @@
 #lang syndicate
 
 (require (only-in racket/port read-bytes-line-evt))
-(require "../drivers/tcp.rkt")
+(require/activate "../drivers/tcp.rkt")
 
 (define local-handle (tcp-handle 'chat))
 (define remote-handle (tcp-address "localhost" 5999))
 
-(spawn-tcp-driver)
 (spawn/stateless (lambda (e)
                    (match e
                      [(? patch/removed?) (quit)]

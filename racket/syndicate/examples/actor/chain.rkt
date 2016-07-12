@@ -1,8 +1,6 @@
 #lang syndicate/actor
 
-(require syndicate/drivers/timer)
-
-(spawn-timer-driver)
+(require/activate syndicate/drivers/timer)
 
 (define (sleep sec)
   (define timer-id (gensym 'sleep))

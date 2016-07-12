@@ -3,7 +3,7 @@
 ;; Low-level implementation.
 
 (require (only-in syndicate [assert core:assert]))
-(require syndicate/drivers/timer)
+(require/activate syndicate/drivers/timer)
 (require (only-in racket/port read-bytes-line-evt))
 (require (only-in racket/string string-trim string-split))
 (require racket/set)
@@ -11,8 +11,6 @@
 (struct file (name content) #:prefab)
 (struct save (file) #:prefab)
 (struct delete (name) #:prefab)
-
-(spawn-timer-driver)
 
 (define (file-system-event-handler e files)
   (match-event e
