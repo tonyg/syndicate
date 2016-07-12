@@ -259,8 +259,8 @@
     [(cons p rest) (compose-patch (patch-seq* rest) p)]))
 
 (define (compute-patch old-base new-base)
-  (patch (trie-subtract new-base old-base)
-         (trie-subtract old-base new-base)))
+  (patch (trie-subtract new-base old-base #:combiner (lambda (v1 v2) trie-empty))
+         (trie-subtract old-base new-base #:combiner (lambda (v1 v2) trie-empty))))
 
 (define (biased-intersection object subject)
   (trie-intersect object
