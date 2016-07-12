@@ -13,6 +13,7 @@
          patch/added?
          patch/removed?
          lift-patch
+         drop-interests
          drop-patch
          strip-interests
          label-interests

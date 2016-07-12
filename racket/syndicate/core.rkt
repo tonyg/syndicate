@@ -39,6 +39,7 @@
          meta-label?
 
          prepend-at-meta
+         observe-at-meta
          assert
          retract
          sub
