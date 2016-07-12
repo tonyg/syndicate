@@ -279,14 +279,14 @@
 
 (define-syntax (during/actor stx)
   (syntax-parse stx
-    [(_ P L:meta-level O ...)
+    [(_ P L:meta-level name:name O ...)
      (define E-stx (syntax/loc #'P (asserted P #:meta-level L.level)))
      (define-values (_proj _pat _bindings instantiated)
        (analyze-pattern E-stx #'P))
      (quasisyntax/loc stx
        (on #,E-stx
            (let ((p #,instantiated))
-             (actor
+             (actor #:name name.N
               (react (stop-when (retracted p #:meta-level L.level))
                      O ...)))))]))
 
