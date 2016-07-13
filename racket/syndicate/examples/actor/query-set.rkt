@@ -42,11 +42,15 @@
                             (hash-set (field-name) key new-entries))))))
     field-name))
 
+(define-syntax-rule (define/query-set id P expr) (define id (query-set id P expr)))
+(define-syntax-rule (define/query-hash id P k v) (define id (query-hash id P k v)))
+(define-syntax-rule (define/query-hash-set id P k v) (define id (query-hash-set id P k v)))
+
 (actor #:name 'queryer
        (forever
-        (define as-set (query-set as-set `(item ,$a ,$b) (list a b)))
-        (define as-hash (query-hash as-hash `(item ,$a ,$b) a b))
-        (define as-hash-set (query-hash-set as-hash-set `(item ,$a ,$b) a b))
+        (define/query-set as-set `(item ,$a ,$b) (list a b))
+        (define/query-hash as-hash `(item ,$a ,$b) a b)
+        (define/query-hash-set as-hash-set `(item ,$a ,$b) a b)
 
         (on (message 'dump)
             (printf "----------------------------------------\n")
