@@ -4,7 +4,9 @@
 
 (actor #:name 'queryer
        (forever
-        (define/query-set as-set `(item ,$a ,$b) (list a b))
+        (define/query-set as-set `(item ,$a ,$b) (list a b)
+          #:on-add (log-info "as-set adding ~v/~v" a b)
+          #:on-remove (log-info "as-set removing ~v/~v" a b))
         (define/query-hash as-hash `(item ,$a ,$b) a b)
         (define/query-hash-set as-hash-set `(item ,$a ,$b) a b)
 
