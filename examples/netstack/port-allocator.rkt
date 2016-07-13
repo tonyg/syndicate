@@ -1,38 +1,37 @@
-#lang racket/base
+#lang syndicate/actor
 ;; UDP/TCP port allocator
 
 (provide spawn-port-allocator
-	 (struct-out port-allocation-request))
+         allocate-port!
+	 (struct-out port-allocation-request)
+         (struct-out port-allocation-reply))
 
 (require racket/set)
-(require racket/match)
-(require syndicate/monolithic)
 (require "ip.rkt")
 
-(struct port-allocation-request (type k) #:prefab)
+(struct port-allocation-request (reqid type) #:prefab)
+(struct port-allocation-reply (reqid port) #:prefab)
 
-(struct port-allocator-state (used-ports local-ips) #:transparent)
+(define (spawn-port-allocator allocator-type query-used-ports)
+  (actor #:name (list 'port-allocator allocator-type)
+         (react
+          (define local-ips (query-local-ip-addresses))
+          (define used-ports (query-used-ports))
 
-(define (spawn-port-allocator allocator-type observer-gestalt compute-used-ports)
-  (spawn #:name (string->symbol (format "port-allocator:~a" allocator-type))
-         (lambda (e s)
-	   (match e
-	     [(scn g)
-	      (define local-ips (or (gestalt->local-ip-addresses g) (set)))
-	      (define new-used-ports (compute-used-ports g local-ips))
-	      (log-info "port-allocator ~v used ports: ~v" allocator-type new-used-ports)
-	      (transition (port-allocator-state new-used-ports local-ips) '())]
-	     [(message (port-allocation-request _ k))
-	      (define currently-used-ports (port-allocator-state-used-ports s))
-	      (let randomly-allocate-until-unused ()
-		(define p (+ 1024 (random 64512)))
-		(if (set-member? currently-used-ports p)
-		    (randomly-allocate-until-unused)
-		    (transition (struct-copy port-allocator-state s
-				  [used-ports (set-add currently-used-ports p)])
-				(k p (port-allocator-state-local-ips s)))))]
-	     [_ #f]))
-	 (port-allocator-state (set) (set))
-         (scn/union (subscription (port-allocation-request allocator-type ?))
-                    observe-local-ip-addresses-gestalt
-                    observer-gestalt)))
+          ;; TODO: How can I get this to run whenever used-ports changes?
+          ;; (log-info "port-allocator ~v used ports: ~v" allocator-type new-used-ports)
+
+          (on (message (port-allocation-request $reqid allocator-type))
+              (define currently-used-ports (used-ports))
+              (let randomly-allocate-until-unused ()
+                (define p (+ 1024 (random 64512)))
+                (if (set-member? currently-used-ports p)
+                    (randomly-allocate-until-unused)
+                    (begin (used-ports (set-add currently-used-ports p))
+                           (send! (port-allocation-reply reqid p)))))))))
+
+(define (allocate-port! type)
+  (define reqid (gensym 'allocate-port!))
+  (react/suspend (done)
+    (stop-when (message (port-allocation-reply reqid $port)) (done port))
+    (on-start (send! (port-allocation-request reqid type)))))

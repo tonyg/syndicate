@@ -1,17 +1,14 @@
 #lang syndicate/actor
 
-(require "ip.rkt")
-(require "tcp.rkt")
-(require "udp.rkt")
 
 ;;(log-events-and-actions? #t)
 
 (require/activate syndicate/drivers/timer)
 (require/activate "ethernet.rkt")
 (require/activate "arp.rkt")
-(spawn-ip-driver)
-(spawn-tcp-driver)
-(spawn-udp-driver)
+(require/activate "ip.rkt")
+(require/activate "tcp.rkt")
+(require/activate "udp.rkt")
 (require/activate "demo-config.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
