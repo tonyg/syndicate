@@ -2,11 +2,13 @@
 
 (require racket/set)
 
+(require (submod syndicate/actor priorities))
+
 (define-syntax-rule (track-set field-name P expr)
   (let ()
     (field [field-name (set)])
-    (on (asserted P) (field-name (set-add (field-name) expr)))
-    (on (retracted P) (field-name (set-remove (field-name) expr)))
+    (on (asserted P) #:priority *track-priority* (field-name (set-add (field-name) expr)))
+    (on (retracted P) #:priority *track-priority* (field-name (set-remove (field-name) expr)))
     field-name))
 
 (define-syntax-rule (track-hash field-name P key-expr value-expr)

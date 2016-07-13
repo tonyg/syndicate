@@ -107,6 +107,36 @@
 (struct endpoint (id patch-fn handler-fn) #:prefab)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Script priorities. These are used to ensure that the results of
+;; some *side effects* are visible to certain pieces of code.
+
+(module priorities racket/base
+  (require (for-syntax racket/base))
+
+  (define-syntax (define-priority-levels stx)
+    (let loop ((counter 0) (stx (syntax-case stx ()
+                                  [(_ level ...) #'(level ...)])))
+      (syntax-case stx ()
+        [()
+         #'(void)]
+        [(#:count c)
+         #`(begin (define c #,counter)
+                  (provide c))]
+        [(this-level more ...)
+         #`(begin (define this-level #,counter)
+                  (provide this-level)
+                  #,(loop (+ counter 1) #'(more ...)))])))
+
+  (define-priority-levels ;; highest-priority to lowest-priority
+    *track-priority*
+    *track-handler-priority*
+    *normal-priority*
+    *rising-edge-priority*
+    #:count priority-count))
+
+(require (submod "." priorities))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Parameters. Many of these are *updated* during facet execution!
 
 ;; Parameterof FieldTable
@@ -125,7 +155,7 @@
 (define current-pending-actions (make-parameter '()))
 
 (define (make-empty-pending-scripts)
-  (vector '() '()))
+  (make-vector priority-count '()))
 
 ;; Parameterof (Vector (List Script) (List Script))
 (define current-pending-scripts (make-parameter (make-empty-pending-scripts)))
@@ -147,7 +177,11 @@
 
   (define-splicing-syntax-class meta-level
     (pattern (~seq #:meta-level level:integer))
-    (pattern (~seq) #:attr level #'0)))
+    (pattern (~seq) #:attr level #'0))
+
+  (define-splicing-syntax-class priority
+    (pattern (~seq #:priority level))
+    (pattern (~seq) #:attr level #'*normal-priority*)))
 
 (define-syntax (actor stx)
   (syntax-parse stx
@@ -230,8 +264,8 @@
 
 (define-syntax (stop-when stx)
   (syntax-parse stx
-    [(_ E script ...)
-     (analyze-event stx #'E #t (syntax/loc stx (begin/void-default script ...)))]))
+    [(_ E prio:priority script ...)
+     (analyze-event stx #'E #t (syntax/loc stx (begin/void-default script ...)) #'prio.level)]))
 
 (define-syntax (on-start stx)
   (syntax-parse stx
@@ -254,7 +288,7 @@
                     (core:match-event e
                       clause ...))))]))
 
-(define (on-event* where proc #:priority [priority 0])
+(define (on-event* where proc #:priority [priority *normal-priority*])
   (add-endpoint! where
                  (lambda () patch-empty)
                  (lambda (e)
@@ -262,8 +296,8 @@
 
 (define-syntax (on stx)
   (syntax-parse stx
-    [(_ E script ...)
-     (analyze-event stx #'E #f (syntax/loc stx (begin/void-default script ...)))]))
+    [(_ E prio:priority script ...)
+     (analyze-event stx #'E #f (syntax/loc stx (begin/void-default script ...)) #'prio.level)]))
 
 (define-syntax (during stx)
   (syntax-parse stx
@@ -324,7 +358,8 @@
                                                script-stx
                                                asserted?
                                                P-stx
-                                               meta-level)
+                                               meta-level
+                                               priority-stx)
   (define-values (proj-stx pat bindings _instantiated)
     (analyze-pattern event-stx P-stx))
   (define event-predicate-stx (if asserted? #'patch/added? #'patch/removed?))
@@ -352,6 +387,7 @@
                                    (let ((instantiated (instantiate-projection proj entry)))
                                      (and (#,change-detector-stx instantiated)
                                           (schedule-script!
+                                           #:priority #,priority-stx
                                            #,(if terminal? #'#t #'#f)
                                            (lambda ()
                                              (match-define (list #,@bindings) entry)
@@ -375,7 +411,7 @@
       stx
       #`(at-meta #,(prepend-at-meta-stx stx (- level 1)))))
 
-(define-for-syntax (analyze-event outer-expr-stx event-stx terminal? script-stx)
+(define-for-syntax (analyze-event outer-expr-stx event-stx terminal? script-stx priority-stx)
   (syntax-parse event-stx
     #:literals [core:message asserted retracted rising-edge]
     [(core:message P L:meta-level)
@@ -393,14 +429,17 @@
                               #,(prepend-at-meta-stx proj (syntax-e #'L.level))))
                            (and capture-vals
                                 (schedule-script!
+                                 #:priority #,priority-stx
                                  #,(if terminal? #'#t #'#f)
                                  (lambda ()
                                    (apply (lambda #,bindings #,script-stx)
                                           capture-vals))))]))))]
     [(asserted P L:meta-level)
-     (analyze-asserted/retracted outer-expr-stx event-stx terminal? script-stx #t #'P #'L.level)]
+     (analyze-asserted/retracted outer-expr-stx event-stx terminal? script-stx
+                                 #t #'P #'L.level priority-stx)]
     [(retracted P L:meta-level)
-     (analyze-asserted/retracted outer-expr-stx event-stx terminal? script-stx #f #'P #'L.level)]
+     (analyze-asserted/retracted outer-expr-stx event-stx terminal? script-stx
+                                 #f #'P #'L.level priority-stx)]
     [(rising-edge Pred)
      (define field-name (format "~a:rising-edge" (source-location->string event-stx)))
      (quasisyntax/loc outer-expr-stx
@@ -413,9 +452,10 @@
                       (when (not (eq? old-val new-val))
                         (edge-state new-val)
                         (when new-val
-                          (schedule-script! #,(if terminal? #'#t #'#f)
+                          (schedule-script! #:priority #,priority-stx
+                                            #,(if terminal? #'#t #'#f)
                                             (lambda () #,script-stx)))))
-                    #:priority 1)))]))
+                    #:priority *rising-edge-priority*)))]))
 
 (define-syntax (begin/void-default stx)
   (syntax-parse stx
@@ -489,7 +529,7 @@
          (lambda () (apply proc args))
          prompt-tag)))))
 
-(define (schedule-script! #:priority [priority 0] terminal? thunk)
+(define (schedule-script! #:priority [priority *normal-priority*] terminal? thunk)
   (if terminal?
       (let ((f (terminate-facet! (current-facet-id))))
         (when f ;; only want to run a terminal script if we genuinely terminated
@@ -730,7 +770,8 @@
                (let ((invoking-fid (current-facet-id)))
                  (when (not (equal? invoking-fid suspended-fid))
                    (terminate-facet! invoking-fid)))
-               (push-script! 0 (lambda () (apply raw-resume-parent results)))))))
+               (push-script! *normal-priority*
+                             (lambda () (apply raw-resume-parent results)))))))
         (proc resume-parent))))
    prompt-tag))
 
