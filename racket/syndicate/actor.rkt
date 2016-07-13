@@ -26,6 +26,13 @@
 
          suspend-script
 
+         query-set
+         query-hash
+         query-hash-set
+         define/query-set
+         define/query-hash
+         define/query-hash-set
+
          send!
          assert!
          retract!
@@ -334,6 +341,46 @@
     [(_ proc)
      (quasisyntax/loc stx
        (suspend-script* #,(source-location->string stx) proc))]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Queries
+
+(define-syntax-rule (query-set field-name P expr)
+  (let ()
+    (field [field-name (set)])
+    (on (asserted P) #:priority *query-priority*
+        (field-name (set-add (field-name) expr)))
+    (on (retracted P) #:priority *query-priority*
+        (field-name (set-remove (field-name) expr)))
+    field-name))
+
+(define-syntax-rule (query-hash field-name P key-expr value-expr)
+  (let ()
+    (field [field-name (hash)])
+    (on (asserted P) #:priority *query-priority*
+        (let ((key key-expr))
+          (when (hash-has-key? (field-name) key)
+            (log-warning "query-hash: field ~v with pattern ~v: overwriting existing entry ~v"
+                         'field-name
+                         'P
+                         key))
+          (field-name (hash-set (field-name) key value-expr))))
+    (on (retracted P) #:priority *query-priority*
+        (field-name (hash-remove (field-name) key-expr)))
+    field-name))
+
+(define-syntax-rule (query-hash-set field-name P key-expr value-expr)
+  (let ()
+    (field [field-name (hash)])
+    (on (asserted P) #:priority *query-priority*
+        (field-name (hashset-add (field-name) key-expr value-expr)))
+    (on (retracted P) #:priority
+        *query-priority* (field-name (hashset-remove (field-name) key-expr value-expr)))
+    field-name))
+
+(define-syntax-rule (define/query-set id P expr) (define id (query-set id P expr)))
+(define-syntax-rule (define/query-hash id P k v) (define id (query-hash id P k v)))
+(define-syntax-rule (define/query-hash-set id P k v) (define id (query-hash-set id P k v)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax-time support
