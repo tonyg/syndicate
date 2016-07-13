@@ -6,6 +6,7 @@
 (require "core.rkt")
 (require "drivers/timer.rkt")
 (require "pretty.rkt")
+(require "support/hash.rkt")
 
 (provide (except-out (struct-out demand-matcher) demand-matcher)
 	 (rename-out [make-demand-matcher demand-matcher])
@@ -179,9 +180,7 @@
                          start-task
                          on-task-exit
                          actions))
-      (values (if new-supervision-state
-                  (hash-set supervision-states captures new-supervision-state)
-                  (hash-remove supervision-states captures))
+      (values (hash-set/remove supervision-states captures new-supervision-state)
               (cons actions new-actions))))
 
   (transition (struct-copy demand-matcher d

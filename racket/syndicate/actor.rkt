@@ -64,6 +64,7 @@
 (require "trie.rkt")
 (require "pattern.rkt")
 (require "dataflow.rkt")
+(require "support/hash.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Definitions and Structures
@@ -506,10 +507,7 @@
   (define a (current-actor-state))
   (current-actor-state
    (struct-copy actor-state a
-                [facets
-                 (if new-facet
-                     (hash-set (actor-state-facets a) fid new-facet)
-                     (hash-remove (actor-state-facets a) fid))])))
+                [facets (hash-set/remove (actor-state-facets a) fid new-facet)])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Entering and Leaving Facet Context; Queueing of Work Items

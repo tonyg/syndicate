@@ -12,6 +12,7 @@
          dataflow-repair-damage!)
 
 (require racket/set)
+(require "support/hash.rkt")
 
 (struct dataflow-graph (edges-forward ;; object-id -> (Setof subject-id)
                         edges-reverse ;; subject-id -> (Setof object-id)
@@ -26,25 +27,13 @@
                   (hash)
                   (set)))
 
-(define (hash-set-add ht k v [set-ctor set])
-  (hash-set ht k (set-add (hash-ref ht k set-ctor) v)))
-
-(define (hash-set-remove ht k v)
-  (define old (hash-ref ht k #f))
-  (if old
-      (let ((new (set-remove old v)))
-        (if (set-empty? new)
-            (hash-remove ht k)
-            (hash-set ht k new)))
-      ht))
-
 (define (dataflow-record-observation! g object-id)
   (define subject-id (current-dataflow-subject-id))
   (when subject-id
     (define fwd (dataflow-graph-edges-forward g))
-    (set-dataflow-graph-edges-forward! g (hash-set-add fwd object-id subject-id))
+    (set-dataflow-graph-edges-forward! g (hashset-add fwd object-id subject-id))
     (define rev (dataflow-graph-edges-reverse g))
-    (set-dataflow-graph-edges-reverse! g (hash-set-add rev subject-id object-id))))
+    (set-dataflow-graph-edges-reverse! g (hashset-add rev subject-id object-id))))
 
 (define (dataflow-record-damage! g object-id)
   (set-dataflow-graph-damaged-nodes! g (set-add (dataflow-graph-damaged-nodes g) object-id)))
@@ -55,7 +44,7 @@
   (set-dataflow-graph-edges-reverse! g (hash-remove rev subject-id))
   (for [(object-id (in-set subject-objects))]
     (define fwd (dataflow-graph-edges-forward g))
-    (set-dataflow-graph-edges-forward! g (hash-set-remove fwd object-id subject-id))))
+    (set-dataflow-graph-edges-forward! g (hashset-remove fwd object-id subject-id))))
 
 (define (dataflow-repair-damage! g repair-node!)
   (define repaired-this-round (set))

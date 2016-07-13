@@ -1,45 +1,40 @@
 #lang syndicate/actor
 
 (require racket/set)
+(require syndicate/support/hash)
 
 (require (submod syndicate/actor priorities))
 
 (define-syntax-rule (query-set field-name P expr)
   (let ()
     (field [field-name (set)])
-    (on (asserted P) #:priority *query-priority* (field-name (set-add (field-name) expr)))
-    (on (retracted P) #:priority *query-priority* (field-name (set-remove (field-name) expr)))
+    (on (asserted P) #:priority *query-priority*
+        (field-name (set-add (field-name) expr)))
+    (on (retracted P) #:priority *query-priority*
+        (field-name (set-remove (field-name) expr)))
     field-name))
 
 (define-syntax-rule (query-hash field-name P key-expr value-expr)
   (let ()
     (field [field-name (hash)])
-    (on (asserted P)
+    (on (asserted P) #:priority *query-priority*
         (let ((key key-expr))
           (when (hash-has-key? (field-name) key)
             (log-warning "query-hash: ~a: overwriting existing entry ~v"
                          'field-name
                          key))
           (field-name (hash-set (field-name) key value-expr))))
-    (on (retracted P) (field-name (hash-remove (field-name) key-expr)))
+    (on (retracted P) #:priority *query-priority*
+        (field-name (hash-remove (field-name) key-expr)))
     field-name))
 
 (define-syntax-rule (query-hash-set field-name P key-expr value-expr)
   (let ()
     (field [field-name (hash)])
-    (on (asserted P)
-        (let ((key key-expr))
-          (field-name (hash-set (field-name)
-                                key
-                                (set-add (hash-ref (field-name) key set)
-                                         value-expr)))))
-    (on (retracted P)
-        (let ((key key-expr))
-          (let ((new-entries (set-remove (hash-ref (field-name) key set)
-                                         value-expr)))
-            (field-name (if (set-empty? new-entries)
-                            (hash-remove (field-name) key)
-                            (hash-set (field-name) key new-entries))))))
+    (on (asserted P) #:priority *query-priority*
+        (field-name (hashset-add (field-name) key-expr value-expr)))
+    (on (retracted P) #:priority
+        *query-priority* (field-name (hashset-remove (field-name) key-expr value-expr)))
     field-name))
 
 (define-syntax-rule (define/query-set id P expr) (define id (query-set id P expr)))
