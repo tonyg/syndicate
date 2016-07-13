@@ -128,8 +128,8 @@
                   #,(loop (+ counter 1) #'(more ...)))])))
 
   (define-priority-levels ;; highest-priority to lowest-priority
-    *track-priority*
-    *track-handler-priority*
+    *query-priority*
+    *query-handler-priority*
     *normal-priority*
     *rising-edge-priority*
     #:count priority-count))

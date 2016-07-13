@@ -4,27 +4,27 @@
 
 (require (submod syndicate/actor priorities))
 
-(define-syntax-rule (track-set field-name P expr)
+(define-syntax-rule (query-set field-name P expr)
   (let ()
     (field [field-name (set)])
-    (on (asserted P) #:priority *track-priority* (field-name (set-add (field-name) expr)))
-    (on (retracted P) #:priority *track-priority* (field-name (set-remove (field-name) expr)))
+    (on (asserted P) #:priority *query-priority* (field-name (set-add (field-name) expr)))
+    (on (retracted P) #:priority *query-priority* (field-name (set-remove (field-name) expr)))
     field-name))
 
-(define-syntax-rule (track-hash field-name P key-expr value-expr)
+(define-syntax-rule (query-hash field-name P key-expr value-expr)
   (let ()
     (field [field-name (hash)])
     (on (asserted P)
         (let ((key key-expr))
           (when (hash-has-key? (field-name) key)
-            (log-warning "track-hash: ~a: overwriting existing entry ~v"
+            (log-warning "query-hash: ~a: overwriting existing entry ~v"
                          'field-name
                          key))
           (field-name (hash-set (field-name) key value-expr))))
     (on (retracted P) (field-name (hash-remove (field-name) key-expr)))
     field-name))
 
-(define-syntax-rule (track-hash-set field-name P key-expr value-expr)
+(define-syntax-rule (query-hash-set field-name P key-expr value-expr)
   (let ()
     (field [field-name (hash)])
     (on (asserted P)
@@ -42,24 +42,24 @@
                             (hash-set (field-name) key new-entries))))))
     field-name))
 
-(actor #:name 'tracker
+(actor #:name 'queryer
        (forever
-        (define as-set (track-set as-set `(item ,$a ,$b) (list a b)))
-        (define as-hash (track-hash as-hash `(item ,$a ,$b) a b))
-        (define as-hash-set (track-hash-set as-hash-set `(item ,$a ,$b) a b))
+        (define as-set (query-set as-set `(item ,$a ,$b) (list a b)))
+        (define as-hash (query-hash as-hash `(item ,$a ,$b) a b))
+        (define as-hash-set (query-hash-set as-hash-set `(item ,$a ,$b) a b))
 
         (on (message 'dump)
             (printf "----------------------------------------\n")
-            (printf "Tracked as-set:\n")
+            (printf "Queried as-set:\n")
             (for [(item (as-set))]
               (match-define (list a b) item)
               (printf "  ~v -> ~v\n" a b))
             (newline)
-            (printf "Tracked as-hash:\n")
+            (printf "Queried as-hash:\n")
             (for [((k v) (in-hash (as-hash)))]
               (printf "  ~v -> ~v\n" k v))
             (newline)
-            (printf "Tracked as-hash-set:\n")
+            (printf "Queried as-hash-set:\n")
             (for [((k vs) (in-hash (as-hash-set)))]
               (printf "  ~v -> ~v\n" k vs))
             (printf "----------------------------------------\n")
