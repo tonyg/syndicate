@@ -139,7 +139,6 @@
     *query-priority*
     *query-handler-priority*
     *normal-priority*
-    *rising-edge-priority*
     #:count priority-count))
 
 (require (submod "." priorities))
@@ -514,21 +513,25 @@
      (analyze-asserted/retracted outer-expr-stx event-stx terminal? script-stx
                                  #f #'P #'L.level priority-stx)]
     [(rising-edge Pred)
-     (define field-name (format "~a:rising-edge" (source-location->string event-stx)))
+     (define field-name
+       (datum->syntax event-stx
+                      (string->symbol
+                       (format "~a:rising-edge" (source-location->string event-stx)))))
      (quasisyntax/loc outer-expr-stx
        (let ()
-         (field [edge-state #f])
-         (on-event* #,(source-location->string outer-expr-stx)
-                    (lambda (e)
-                      (define old-val (edge-state))
-                      (define new-val Pred)
-                      (when (not (eq? old-val new-val))
-                        (edge-state new-val)
-                        (when new-val
-                          (schedule-script! #:priority #,priority-stx
-                                            #,(if terminal? #'#t #'#f)
-                                            (lambda () #,script-stx)))))
-                    #:priority *rising-edge-priority*)))]))
+         (field [#,field-name #f])
+         (add-endpoint! #,(source-location->string outer-expr-stx)
+                        (lambda ()
+                          (define old-val (#,field-name))
+                          (define new-val Pred)
+                          (when (not (eq? old-val new-val))
+                            (#,field-name new-val)
+                            (when new-val
+                              (schedule-script! #:priority #,priority-stx
+                                                #,(if terminal? #'#t #'#f)
+                                                (lambda () #,script-stx))))
+                          patch-empty)
+                        void)))]))
 
 (define-syntax (begin/void-default stx)
   (syntax-parse stx
@@ -750,17 +753,22 @@
       (schedule-script! #f script-proc)
       (run-scripts!))))
 
-(define (run-scripts!)
-  (let loop ()
+(define (scripts-pending?)
+  (for/or [(scripts (in-vector (current-pending-scripts)))]
+    (not (null? scripts))))
+
+(define (run-all-pending-scripts!)
+  (when (scripts-pending?)
     (define pending-scripts (current-pending-scripts))
     (current-pending-scripts (make-empty-pending-scripts))
-    (when (for*/fold [(did-something? #f)]
-                     [(scripts (in-vector pending-scripts))
-                      (script (in-list (reverse scripts)))]
-            (script)
-            #t)
-      (loop)))
-  (refresh-facet-assertions!)
+    (for* [(scripts (in-vector pending-scripts))
+           (script (in-list (reverse scripts)))]
+      (script))
+    (refresh-facet-assertions!)
+    (run-all-pending-scripts!)))
+
+(define (run-scripts!)
+  (run-all-pending-scripts!)
   (flush-pending-patch!)
   (define pending-actions (current-pending-actions))
   (current-pending-actions '())
