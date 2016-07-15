@@ -9,6 +9,7 @@
          forever
 
          field
+         field/c
          assert
          stop-when
          on-start
@@ -60,6 +61,7 @@
 
 (require racket/set)
 (require racket/match)
+(require racket/contract)
 
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))
@@ -96,6 +98,32 @@
      (define desc (field-handle-desc handle))
      (dataflow-record-damage! (actor-state-field-dataflow (current-actor-state)) desc)
      (set-box! (get-field-box desc) v)]))
+
+(define (make-field-proxy field guard wrap)
+  (case-lambda
+    [() (wrap (field))]
+    [(x) (field (guard x))]))
+
+(define (field/c ctc)
+  (let ([ctc (coerce-contract 'field/c ctc)])
+    (make-contract #:name (build-compound-type-name 'field/c ctc)
+                   #:first-order
+                   (lambda (f) (and (field-handle? f)
+                                    (ctc (f))))
+                   #:late-neg-projection
+                   (lambda (blame)
+                     (define proc (get/build-late-neg-projection ctc))
+                     (define blame/c (blame-add-context blame "the field of"))
+                     (define proj (proc (blame-swap blame/c)))
+                     (lambda (f neg-party)
+                       (define proj-with-blame (lambda (x) (proj x neg-party)))
+                       (cond
+                         [(field-handle? f)
+                          (make-field-proxy f proj-with-blame proj-with-blame)]
+                         [else (raise-blame-error blame/c
+                                                  #:missing-party neg-party
+                                                  f
+                                                  '(expected: "a field"))]))))))
 
 (struct actor-state (mux ;; Mux
                      facets ;; (Hash FID Facet)
