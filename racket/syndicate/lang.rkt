@@ -4,6 +4,7 @@
 
 (require racket/match)
 (require "main.rkt")
+(require (submod "actor.rkt" for-module-begin))
 
 (provide (rename-out [module-begin #%module-begin])
          activate
@@ -74,6 +75,16 @@
        (define (accumulate-action action action-ids final-forms remaining-forms)
 	 (define temp (car (generate-temporaries (list action))))
 	 (accumulate-actions (cons temp action-ids)
-			     (cons #`(define #,temp #,action) final-forms)
+			     (cons #`(define #,temp (capture-actor-actions (lambda () #,action)))
+                                   final-forms)
 			     remaining-forms))
        (accumulate-actions '() '() (syntax->list #'(forms ...))))]))
+
+(define (capture-actor-actions thunk)
+  (call-with-syndicate-effects
+   (lambda ()
+     (parameterize ((current-pending-actions '())
+                    (current-pending-patch patch-empty))
+       (define result (thunk))
+       (flush-pending-patch!)
+       (cons result (current-pending-actions))))))

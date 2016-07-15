@@ -598,9 +598,8 @@
         (fid (current-facet-id)))
     (lambda args
       (with-current-facet fid field-table #t
-        (call-with-continuation-prompt
-         (lambda () (apply proc args))
-         prompt-tag)))))
+        (call-with-syndicate-effects
+         (lambda () (apply proc args)))))))
 
 (define (schedule-script! #:priority [priority *normal-priority*] terminal? thunk)
   (if terminal?
@@ -727,7 +726,7 @@
          ;; children's stop-scripts run before ours.
          (with-current-facet fid (facet-field-table f) #t
            (for [(script (in-list (reverse (facet-stop-scripts f))))]
-             (call-with-continuation-prompt script prompt-tag)))
+             (call-with-syndicate-effects script)))
 
          f)))
 
@@ -822,6 +821,15 @@
 
 (define (syndicate-effects-available?)
   (continuation-prompt-available? prompt-tag))
+
+(define (call-with-syndicate-effects thunk)
+  (call-with-continuation-prompt thunk prompt-tag))
+
+(module+ for-module-begin
+  (provide call-with-syndicate-effects
+           flush-pending-patch!
+           current-pending-actions
+           current-pending-patch))
 
 (define (suspend-script* where proc)
   (when (not (in-script?))
