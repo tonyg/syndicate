@@ -39,8 +39,7 @@
        (define (accumulate-actions action-ids final-forms forms)
 	 (if (null? forms)
 	     (let ((final-stx
-		    #`(#%module-begin #,@(reverse final-forms)
-                                      (module+ syndicate-main
+		    #`(#%module-begin (module+ syndicate-main
                                         (provide boot-actions activate!)
                                         (define activated? #f)
                                         (define boot-actions (list #,@(reverse action-ids)))
@@ -48,6 +47,7 @@
                                           (when (not activated?)
                                             (set! activated? #t)
                                             boot-actions)))
+                                      #,@(reverse final-forms)
                                       (module+ main
                                         (require (submod ".." syndicate-main))
                                         (run-ground (activate!))))))
@@ -55,7 +55,7 @@
 	       final-stx)
 	     (syntax-case (local-expand (car forms)
 					'module
-                                        (kernel-form-identifier-list)) ()
+                                        (cons #'module+ (kernel-form-identifier-list))) ()
 	       [(head rest ...)
 		(if (free-identifier=? #'head #'begin)
 		    (accumulate-actions action-ids
@@ -63,7 +63,7 @@
 					(append (syntax->list #'(rest ...)) (cdr forms)))
 		    (if (ormap (lambda (i) (free-identifier=? #'head i))
 			       (syntax->list #'(define-values define-syntaxes begin-for-syntax
-						 module module*
+						 module module* module+
 						 #%module-begin
 						 #%require #%provide)))
 			(accumulate-actions action-ids
