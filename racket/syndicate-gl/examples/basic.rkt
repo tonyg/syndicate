@@ -1,7 +1,6 @@
-#lang racket
+#lang syndicate/actor
 
-(require (only-in syndicate seal))
-(require syndicate/actor)
+(require racket/set)
 (require 2htdp/image)
 (require "../2d.rkt")
 
@@ -53,14 +52,15 @@
                       (define fps (/ counter (/ sim-time-ms 1000.0)))
                       (i (text (format "~a fps" fps) 22 "black")))))))
 
-(2d-dataspace (spawn-keyboard-integrator)
-              (spawn-background)
-              ;; (spawn-frame-counter)
-              (spawn-player-avatar)
-              (actor (react (assert (simple-sprite 0 50 50 50 50 (circle 50 "solid" "orange"))
-                                    #:meta-level 1)
-                            (assert (simple-sprite -1 60 60 50 50 (circle 50 "solid" "green"))
-                                    #:meta-level 1)))
-              (actor (until (message (key-event #\q #t _) #:meta-level 1))
-                     (assert! 'stop #:meta-level 1)))
-(exit 0)
+(spawn-keyboard-integrator)
+(spawn-background)
+;; (spawn-frame-counter)
+(spawn-player-avatar)
+(actor (react (assert (simple-sprite 0 50 50 50 50 (circle 50 "solid" "orange"))
+                      #:meta-level 1)
+              (assert (simple-sprite -1 60 60 50 50 (circle 50 "solid" "green"))
+                      #:meta-level 1)))
+(actor (until (message (key-event #\q #t _) #:meta-level 1))
+       (assert! 'stop #:meta-level 1))
+
+(module+ main (current-ground-dataspace (2d-dataspace)))

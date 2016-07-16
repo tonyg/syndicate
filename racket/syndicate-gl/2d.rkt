@@ -387,9 +387,10 @@
 
     (super-new (style '(gl no-autoclear)))))
 
-(define (2d-dataspace #:width [width #f]
-                      #:height [height #f]
-                      . boot-actions)
+(define ((2d-dataspace #:width [width #f]
+                       #:height [height #f]
+                       #:exit? [exit? #t])
+         . boot-actions)
   (collect-garbage 'incremental)
   (collect-garbage 'major)
   (define frame (new frame%
@@ -404,4 +405,5 @@
     (error '2d-dataspace "OpenGL context failed to initialize"))
   (send c focus)
   (send frame show #t)
-  (yield 'wait))
+  (yield 'wait)
+  (when exit? (exit 0)))

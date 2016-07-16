@@ -1029,10 +1029,8 @@
 
 (define game-level 3) ;; used to specify meta-level to reach external I/O
 
-(2d-dataspace #:width 600 #:height 400
-              (spawn-keyboard-integrator)
-              (spawn-scene-manager)
-              (spawn-dataspace (spawn-score-keeper)
-                               (spawn-level-spawner 0)
-                               )
-              )
+((2d-dataspace #:width 600 #:height 400)
+ (spawn-keyboard-integrator)
+ (spawn-scene-manager)
+ (spawn-dataspace (spawn-score-keeper)
+                  (spawn-level-spawner 0)))

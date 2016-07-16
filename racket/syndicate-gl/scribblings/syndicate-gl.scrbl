@@ -13,14 +13,16 @@
 
 @section{Creating Dataspaces}
 
-@defproc[(2d-dataspace [#:width width number? 640]
-                       [#:height height number? 480]
-                       [boot-actions action?] ...)
+@defproc[((2d-dataspace [#:width width number? 640]
+                        [#:height height number? 480]
+                        [#:exit? exit? boolean? #t])
+          [boot-actions action?] ...)
          any/c]{
 Create and run a @racket[frame%] with dimensions @racket[width] and
 @racket[height] controlled by a Syndicate dataspace. The dataspace is
-initialized with the given @racket[boot-actions]. Runs (blocking) while the
-@racket[frame%] is active.
+initialized with the given @racket[boot-actions]. Runs (blocking)
+while the @racket[frame%] is active. If @racket[exit?] is true, calls
+@racket[(exit 0)] once the dataspace exits.
 }
 
 @defproc[(spawn-keyboard-integrator
