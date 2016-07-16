@@ -9,6 +9,7 @@
 (provide (rename-out [module-begin #%module-begin])
          activate
          require/activate
+         current-ground-dataspace
 	 (except-out (all-from-out racket/base) #%module-begin)
 	 (all-from-out racket/match)
 	 (all-from-out "main.rkt")
@@ -30,6 +31,8 @@
          (require module-path ...)
          (activate module-path ...))]))
 
+(define current-ground-dataspace (make-parameter #f))
+
 (define-syntax (module-begin stx)
   (unless (eq? (syntax-local-context) 'module-begin)
     (raise-syntax-error #f "allowed only around a module body" stx))
@@ -47,10 +50,12 @@
                                           (when (not activated?)
                                             (set! activated? #t)
                                             boot-actions)))
+                                      (module+ main
+                                        (current-ground-dataspace run-ground))
                                       #,@(reverse final-forms)
                                       (module+ main
                                         (require (submod ".." syndicate-main))
-                                        (run-ground (activate!))))))
+                                        ((current-ground-dataspace) (activate!))))))
 	       ;;(pretty-print (syntax->datum final-stx))
 	       final-stx)
 	     (syntax-case (local-expand (car forms)

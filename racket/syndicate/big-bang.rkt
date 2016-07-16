@@ -157,23 +157,27 @@
             (stop-when bb-halted?)
             extra-clause ...))
 
-(define-syntax-rule (big-bang-dataspace** width height boot-actions extra-clause ...)
-  (if (and width height)
-      (big-bang-dataspace* boot-actions (to-draw render width height) extra-clause ...)
-      (big-bang-dataspace* boot-actions (to-draw render) extra-clause ...)))
+(define-syntax-rule (big-bang-dataspace** width height exit? boot-actions extra-clause ...)
+  (begin
+    (if (and width height)
+        (big-bang-dataspace* boot-actions (to-draw render width height) extra-clause ...)
+        (big-bang-dataspace* boot-actions (to-draw render) extra-clause ...))
+    (when exit? (exit 0))))
 
-(define (big-bang-dataspace #:width [width #f]
-                            #:height [height #f]
-                            . boot-actions)
-  (big-bang-dataspace** width height boot-actions))
+(define ((big-bang-dataspace #:width [width #f]
+                             #:height [height #f]
+                             #:exit? [exit? #t])
+         . boot-actions)
+  (big-bang-dataspace** width height exit? boot-actions))
 
-(define (big-bang-dataspace/universe #:width [width #f]
-                                     #:height [height #f]
-                                     #:register [ip LOCALHOST]
-                                     #:port [port-number SQPORT]
-                                     #:name [world-name (gensym 'syndicate)]
-                                     . boot-actions)
-  (big-bang-dataspace** width height boot-actions
+(define ((big-bang-dataspace/universe #:width [width #f]
+                                      #:height [height #f]
+                                      #:exit? [exit? #t]
+                                      #:register [ip LOCALHOST]
+                                      #:port [port-number SQPORT]
+                                      #:name [world-name (gensym 'syndicate)])
+         . boot-actions)
+  (big-bang-dataspace** width height exit? boot-actions
                         (on-receive (lambda (b sexps)
                                       (inject b (for/list ((m sexps)) (message (from-server m))))))
                         (register ip)

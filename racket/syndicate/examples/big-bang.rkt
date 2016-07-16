@@ -1,7 +1,7 @@
-#lang racket
+#lang syndicate
 
-(require "../main.rkt")
 (require "../big-bang.rkt")
+(require racket/math)
 
 (define (button #:background [background "grey"]
                 #:foreground [foreground "white"]
@@ -50,21 +50,22 @@
                     (mouse-sub name)
                     (move-to orig-x orig-y))))
 
-(big-bang-dataspace #:width 640
-                    #:height 480
-                    (spawn (lambda (e s)
-                             (match e
-                               [(? patch? p)
-                                (define-values (in out)
-                                  (patch-project/set/single p (at-meta (?! (active-window ?)))))
-                                (transition s (update-window 'active-window-label 300 0
-                                                             (text (format "~v" in) 22 "black")))]
-                               [_ #f]))
-                           (void)
-                           (sub (active-window ?) #:meta-level 1))
-                    (button #:background "red" 'stop-button 0 0 "Exit"
-                            (lambda () (assert 'stop #:meta-level 1)))
-                    (draggable-shape 'c1 50 50 (circle 30 "solid" "orange"))
-                    (draggable-shape 's1 100 100 (star 40 "solid" "firebrick")))
+(spawn (lambda (e s)
+         (match e
+           [(? patch? p)
+            (define-values (in out)
+              (patch-project/set/single p (at-meta (?! (active-window ?)))))
+            (transition s (update-window 'active-window-label 300 0
+                                         (text (format "~v" in) 22 "black")))]
+           [_ #f]))
+       (void)
+       (sub (active-window ?) #:meta-level 1))
+(button #:background "red" 'stop-button 0 0 "Exit"
+        (lambda () (assert 'stop #:meta-level 1)))
+(draggable-shape 'c1 50 50 (circle 30 "solid" "orange"))
+(draggable-shape 's1 100 100 (star 40 "solid" "firebrick"))
 
-(exit 0)
+(module+ main
+  (current-ground-dataspace
+   (big-bang-dataspace #:width 640
+                       #:height 480)))
