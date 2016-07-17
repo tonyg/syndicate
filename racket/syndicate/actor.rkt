@@ -333,12 +333,13 @@
 
 (define-syntax (on-event stx)
   (syntax-parse stx
-    [(_ clause ...)
+    [(_ prio:priority clause ...)
      (quasisyntax/loc stx
        (on-event* #,(source-location->string stx)
                   (lambda (e)
                     (core:match-event e
-                      clause ...))))]))
+                      clause ...))
+                  #:priority prio.level))]))
 
 (define (on-event* where proc #:priority [priority *normal-priority*])
   (add-endpoint! where
