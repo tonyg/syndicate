@@ -10,7 +10,7 @@
          activate
          require/activate
          current-ground-dataspace
-	 (except-out (all-from-out racket/base) #%module-begin)
+	 (except-out (all-from-out racket/base) #%module-begin sleep)
 	 (all-from-out racket/match)
 	 (all-from-out "main.rkt")
 	 (for-syntax (all-from-out racket/base)))
