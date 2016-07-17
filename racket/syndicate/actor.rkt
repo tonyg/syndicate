@@ -27,9 +27,15 @@
 
          suspend-script
 
+         query-value
          query-set
          query-hash
          query-hash-set
+         query-value*
+         query-set*
+         query-hash*
+         query-hash-set*
+         define/query-value
          define/query-set
          define/query-hash
          define/query-hash-set
@@ -391,29 +397,67 @@
 
   (define (schedule-query-handler-stxs maybe-expr-stx)
     (if maybe-expr-stx
-        #`((schedule-script! #:priority *query-handler-priority*
+        (quasisyntax/loc maybe-expr-stx
+          ((schedule-script! #:priority *query-handler-priority*
                              #f
-                             (lambda () #,maybe-expr-stx)))
+                             (lambda () #,maybe-expr-stx))))
         #'())))
+
+(define-syntax (query-value stx)
+  (syntax-parse stx
+    [(_ field-name absent-expr args ...)
+     (quasisyntax/loc stx
+       (let ()
+         (field [field-name absent-expr])
+         (query-value* field-name absent-expr args ...)))]))
+
+(define-syntax (query-value* stx)
+  (syntax-parse stx
+    [(_ field-name absent-expr P expr on-add:on-add on-remove:on-remove)
+     (quasisyntax/loc stx
+       (let ()
+         (on (asserted P) #:priority *query-priority*
+             #,@(schedule-query-handler-stxs (attribute on-add.expr))
+             (field-name expr))
+         (on (retracted P) #:priority *query-priority*
+             #,@(schedule-query-handler-stxs (attribute on-remove.expr))
+             (field-name absent-expr))
+         field-name))]))
 
 (define-syntax (query-set stx)
   (syntax-parse stx
-    [(_ field-name P expr on-add:on-add on-remove:on-remove)
-     #`(let ()
+    [(_ field-name args ...)
+     (quasisyntax/loc stx
+       (let ()
          (field [field-name (set)])
+         (query-set* field-name args ...)))]))
+
+(define-syntax (query-set* stx)
+  (syntax-parse stx
+    [(_ field-name P expr on-add:on-add on-remove:on-remove)
+     (quasisyntax/loc stx
+       (let ()
          (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name (set-add (field-name) expr)))
          (on (retracted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (set-remove (field-name) expr)))
-         field-name)]))
+         field-name))]))
 
 (define-syntax (query-hash stx)
   (syntax-parse stx
-    [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
-     #`(let ()
+    [(_ field-name args ...)
+     (quasisyntax/loc stx
+       (let ()
          (field [field-name (hash)])
+         (query-hash* field-name args ...)))]))
+
+(define-syntax (query-hash* stx)
+  (syntax-parse stx
+    [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
+     (quasisyntax/loc stx
+       (let ()
          (on (asserted P) #:priority *query-priority*
              (let ((key key-expr))
                (when (hash-has-key? (field-name) key)
@@ -426,21 +470,30 @@
          (on (retracted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (hash-remove (field-name) key-expr)))
-         field-name)]))
+         field-name))]))
 
 (define-syntax (query-hash-set stx)
   (syntax-parse stx
-    [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
-     #`(let ()
+    [(_ field-name args ...)
+     (quasisyntax/loc stx
+       (let ()
          (field [field-name (hash)])
+         (query-hash-set* field-name args ...)))]))
+
+(define-syntax (query-hash-set* stx)
+  (syntax-parse stx
+    [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
+     (quasisyntax/loc stx
+       (let ()
          (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name (hashset-add (field-name) key-expr value-expr)))
          (on (retracted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (hashset-remove (field-name) key-expr value-expr)))
-         field-name)]))
+         field-name))]))
 
+(define-syntax-rule (define/query-value id ae P x ...) (define id (query-value id ae P x ...)))
 (define-syntax-rule (define/query-set id P x ...) (define id (query-set id P x ...)))
 (define-syntax-rule (define/query-hash id P x ...) (define id (query-hash id P x ...)))
 (define-syntax-rule (define/query-hash-set id P x ...) (define id (query-hash-set id P x ...)))
@@ -492,7 +545,7 @@
                           (error 'asserted
                                  "Wildcard interest discovered while projecting by ~v at ~a"
                                  proj
-                                 #,(source-location->string event-stx)))
+                                 #,(source-location->string P-stx)))
                         #,(let ((entry-handler-stx
                                  (quasisyntax/loc script-stx
                                    (let ((instantiated (instantiate-projection proj entry)))
@@ -513,7 +566,7 @@
                                       [else
                                        (error 'asserted
                                               "Multiple assertions triggered stop-when at ~a"
-                                              #,(source-location->string event-stx))]))
+                                              #,(source-location->string P-stx))]))
                                 #`(for [(entry (in-set entry-set))]
                                     #,entry-handler-stx)))])))))
 

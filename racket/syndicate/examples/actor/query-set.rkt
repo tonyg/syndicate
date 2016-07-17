@@ -4,6 +4,7 @@
 
 (actor #:name 'queryer
        (forever
+        (define/query-value as-value 'absent `(item ,$a ,$b) (list a b))
         (define/query-set as-set `(item ,$a ,$b) (list a b)
           #:on-add (log-info "as-set adding ~v/~v" a b)
           #:on-remove (log-info "as-set removing ~v/~v" a b))
@@ -12,6 +13,8 @@
 
         (on (message 'dump)
             (printf "----------------------------------------\n")
+            (printf "Queried as-value: ~v\n" (as-value))
+            (newline)
             (printf "Queried as-set:\n")
             (for [(item (as-set))]
               (match-define (list a b) item)
