@@ -12,14 +12,14 @@
 
 (let ()
   (define local-handle (tcp-handle 'httpclient))
-  (define remote-handle (tcp-address "129.10.115.92" 80))
+  (define remote-handle (tcp-address "81.4.107.66" 80))
 
   (actor (react
           (assert (advertise (tcp-channel local-handle remote-handle _)))
           (on (asserted (advertise (tcp-channel remote-handle local-handle _)))
               (send! (tcp-channel local-handle
                                   remote-handle
-                                  #"GET / HTTP/1.0\r\nHost: stockholm.ccs.neu.edu\r\n\r\n")))
+                                  #"GET / HTTP/1.0\r\nHost: leastfixedpoint.com\r\n\r\n")))
           (stop-when (retracted (advertise (tcp-channel remote-handle local-handle _)))
                      (printf "URL fetcher exiting.\n"))
           (on (message (tcp-channel remote-handle local-handle $bs))
