@@ -133,7 +133,7 @@
 
     (define active-state-vectors
       (query-set active-state-vectors
-                 (observe (observe (tcp-packet _ $si $sp $di $dp _ _ _ _ _ _)))
+                 (observe (tcp-packet #t $si $sp $di $dp _ _ _ _ _ _))
                  (list si sp di dp)))
 
     (define (state-vector-active? statevec)
