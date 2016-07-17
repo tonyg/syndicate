@@ -200,9 +200,10 @@
              (else #f))))
         (else #f)))
 
-    ;; TODO: again, want to print this when local-ips or
-    ;; active-state-vectors change.
-    ;; (log-info "gestalt yielded statevecs ~v and local-ips ~v" statevecs local-ips)
+    (begin/dataflow
+      (log-info "SCN yielded statevecs ~v and local-ips ~v"
+                (active-state-vectors)
+                (local-ips)))
 
     (define (deliver-outbound-packet p)
       (match-define (tcp-packet #f

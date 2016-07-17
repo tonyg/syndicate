@@ -18,8 +18,8 @@
           (define local-ips (query-local-ip-addresses))
           (define used-ports (query-used-ports))
 
-          ;; TODO: How can I get this to run whenever used-ports changes?
-          ;; (log-info "port-allocator ~v used ports: ~v" allocator-type new-used-ports)
+          (begin/dataflow
+            (log-info "port-allocator ~v used ports: ~v" allocator-type (used-ports)))
 
           (on (message (port-allocation-request $reqid allocator-type))
               (define currently-used-ports (used-ports))
