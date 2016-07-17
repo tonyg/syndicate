@@ -19,6 +19,8 @@
          on
          during
          during/actor
+         begin/dataflow
+         define/dataflow
 
          asserted
          retracted
@@ -376,6 +378,30 @@
              (actor #:name name.N
               (react (stop-when (retracted p #:meta-level L.level))
                      O ...)))))]))
+
+(define-syntax (begin/dataflow stx)
+  (syntax-parse stx
+    [(_ expr ...)
+     (quasisyntax/loc stx
+       (let ()
+         (add-endpoint! #,(source-location->string stx)
+                        (lambda ()
+                          (define subject-id (current-dataflow-subject-id))
+                          (schedule-script!
+                           #f
+                           (lambda ()
+                             (parameterize ((current-dataflow-subject-id subject-id))
+                               expr ...)))
+                          patch-empty)
+                        void)))]))
+
+(define-syntax (define/dataflow stx)
+  (syntax-parse stx
+    [(_ fieldname expr)
+     (quasisyntax/loc stx
+       (begin
+         (field [fieldname #f])
+         (begin/dataflow (fieldname expr))))]))
 
 (define-syntax (asserted stx) (raise-syntax-error #f "asserted: Used outside event spec" stx))
 (define-syntax (retracted stx) (raise-syntax-error #f "retracted: Used outside event spec" stx))

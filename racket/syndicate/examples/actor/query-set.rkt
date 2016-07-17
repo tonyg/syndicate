@@ -11,6 +11,19 @@
         (define/query-hash as-hash `(item ,$a ,$b) a b)
         (define/query-hash-set as-hash-set `(item ,$a ,$b) a b)
 
+        (field [as-value-notification-counter 0])
+
+        (begin/dataflow
+          (log-info "Notification counter: ~v" (as-value-notification-counter))
+          (local-require (only-in racket/base sleep))
+          (sleep 1))
+
+        (let ((shadow-counter 0))
+          (begin/dataflow
+            (log-info "as-value is now: ~v" (as-value))
+            (set! shadow-counter (+ shadow-counter 1))
+            (as-value-notification-counter shadow-counter)))
+
         (on (message 'dump)
             (printf "----------------------------------------\n")
             (printf "Queried as-value: ~v\n" (as-value))
