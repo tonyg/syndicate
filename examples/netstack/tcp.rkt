@@ -318,7 +318,14 @@
            ;; ^ the most recent time we heard from our peer
            [user-timeout-base-time (current-inexact-milliseconds)]
            ;; ^ when the index of the first outbound unacknowledged byte changed
+           [most-recent-time (current-inexact-milliseconds)]
+           ;; ^ updated by timer expiry; a field, to trigger quit checks
            [quit-because-reset? #f])
+
+    (let ()
+      (local-require (submod syndicate/actor priorities))
+      (on-event #:priority *query-priority*
+                [_ (most-recent-time (current-inexact-milliseconds))]))
 
     (define (next-expected-seqn)
       (define b (inbound))
@@ -423,11 +430,11 @@
 
     ;; Number -> Boolean
     (define (heard-from-peer-within-msec? msec)
-      (<= (- (current-inexact-milliseconds) (latest-peer-activity-time)) msec))
+      (<= (- (most-recent-time) (latest-peer-activity-time)) msec))
 
     (define (user-timeout-expired?)
       (and (not (all-output-acknowledged?))
-           (> (- (current-inexact-milliseconds) (user-timeout-base-time))
+           (> (- (most-recent-time) (user-timeout-base-time))
               user-timeout-msec)))
 
     (define (send-set-transmit-check-timer!)
