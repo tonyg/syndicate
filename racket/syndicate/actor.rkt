@@ -123,11 +123,12 @@
                      (define proc (get/build-late-neg-projection ctc))
                      (define blame/c (blame-add-context blame "the field of"))
                      (define proj (proc (blame-swap blame/c)))
+                     (define proj-pos (lambda (x) (proj x (blame-positive blame))))
                      (lambda (f neg-party)
-                       (define proj-with-blame (lambda (x) (proj x neg-party)))
+                       (define proj-neg (lambda (x) (proj x neg-party)))
                        (cond
                          [(field-handle? f)
-                          (make-field-proxy f proj-with-blame proj-with-blame)]
+                          (make-field-proxy f proj-neg proj-pos)]
                          [else (raise-blame-error blame/c
                                                   #:missing-party neg-party
                                                   f
