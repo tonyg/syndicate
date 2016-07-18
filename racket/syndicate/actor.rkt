@@ -288,7 +288,7 @@
   (syntax-case stx ()
     [(_ id init contract)
      (if (syntax-e #'contract)
-         #'(define/contract id contract (make-field 'id init))
+         #'(define/contract id (field/c contract) (make-field 'id init))
          #'(define id (make-field 'id init)))]))
 
 (define-syntax (field stx)
