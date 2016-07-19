@@ -112,27 +112,38 @@
     [() (wrap (field))]
     [(x) (field (guard x))]))
 
-(define (field/c ctc)
-  (let ([ctc (coerce-contract 'field/c ctc)])
-    (make-contract #:name (build-compound-type-name 'field/c ctc)
-                   #:first-order
-                   (lambda (f) (and (field-handle? f)
-                                    (ctc (f))))
-                   #:late-neg-projection
-                   (lambda (blame)
-                     (define proc (get/build-late-neg-projection ctc))
-                     (define blame/c (blame-add-context blame "the field of"))
-                     (define proj (proc (blame-swap blame/c)))
-                     (define proj-pos (lambda (x) (proj x (blame-positive blame))))
-                     (lambda (f neg-party)
-                       (define proj-neg (lambda (x) (proj x neg-party)))
-                       (cond
-                         [(field-handle? f)
-                          (make-field-proxy f proj-neg proj-pos)]
-                         [else (raise-blame-error blame/c
-                                                  #:missing-party neg-party
-                                                  f
-                                                  '(expected: "a field"))]))))))
+(define/subexpression-pos-prop (field/c ctc)
+  (make-field/c (coerce-contract 'field/c ctc)))
+
+(define-struct field/c (ctc)
+  #:property prop:custom-write custom-write-property-proc
+  #:omit-define-syntaxes
+  #:property prop:contract
+  (build-contract-property
+   #:name
+   (lambda (ctc) (build-compound-type-name 'field/c (field/c-ctc ctc)))
+   #:first-order
+   (lambda (ctc)
+     (let ([ctc (field/c-ctc ctc)])
+       (lambda (f) (and (field-handle? f)
+                        (ctc (f))))))
+   #:late-neg-projection
+   (lambda (ctc)
+     (let ([ctc (field/c-ctc ctc)])
+       (lambda (blame)
+         (define proc (get/build-late-neg-projection ctc))
+         (define blame/c (blame-add-context blame "the field of"))
+         (define proj (proc (blame-swap blame/c)))
+         (define proj-pos (lambda (x) (proj x (blame-positive blame))))
+         (lambda (f neg-party)
+           (define proj-neg (lambda (x) (proj x neg-party)))
+           (cond
+             [(field-handle? f)
+              (make-field-proxy f proj-neg proj-pos)]
+             [else (raise-blame-error blame/c
+                                      #:missing-party neg-party
+                                      f
+                                      '(expected: "a field"))])))))))
 
 (struct actor-state (mux ;; Mux
                      facets ;; (Hash FID Facet)
