@@ -236,11 +236,7 @@
 
   (define-splicing-syntax-class priority
     (pattern (~seq #:priority level))
-    (pattern (~seq) #:attr level #'*normal-priority*))
-
-  (define-splicing-syntax-class field-contract
-    (pattern (~seq #:contract contract))
-    (pattern (~seq) #:attr contract #'#f)))
+    (pattern (~seq) #:attr level #'*normal-priority*)))
 
 (define-syntax (actor stx)
   (syntax-parse stx
@@ -297,21 +293,21 @@
 
 (define-syntax (define-field stx)
   (syntax-case stx ()
-    [(_ id init contract)
-     (if (syntax-e #'contract)
-         #'(define/contract id (field/c contract) (make-field 'id init))
-         #'(define id (make-field 'id init)))]))
+    [(_ id init)
+     #'(define id (make-field 'id init))]
+    [(_ id init #:contract contract)
+     #'(define/contract id (field/c contract) (make-field 'id init))]))
 
 (define-syntax (field stx)
   (syntax-parse stx
-    [(_ [id:id init contract:field-contract] ...)
+    [(_ [id:id init maybe-contract ...] ...)
      (quasisyntax/loc stx
        (begin
          (when (and (in-script?) (current-facet-id))
            (error 'field
                   "~a: Cannot declare fields in a script; are you missing a (react ...)?"
                   #,(source-location->string stx)))
-         (define-field id init contract.contract)
+         (define-field id init maybe-contract ...)
          ...))]))
 
 (define-syntax (assert stx)
