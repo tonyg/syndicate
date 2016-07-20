@@ -249,7 +249,10 @@
 
   (define-splicing-syntax-class priority
     (pattern (~seq #:priority level))
-    (pattern (~seq) #:attr level #'*normal-priority*)))
+    (pattern (~seq) #:attr level #'*normal-priority*))
+
+  (define-splicing-syntax-class field-contract
+    (pattern (~seq #:contract in (~optional out #:defaults ([out #f]))))))
 
 (define-syntax (actor stx)
   (syntax-parse stx
@@ -305,11 +308,14 @@
        (react/suspend (continue) O ...))]))
 
 (define-syntax (define-field stx)
-  (syntax-case stx ()
+  (syntax-parse stx
     [(_ id init)
      #'(define id (make-field 'id init))]
-    [(_ id init #:contract contract)
-     #'(define/contract id (field/c contract) (make-field 'id init))]))
+    [(_ id init contract:field-contract)
+     (with-syntax ([ctc (if (attribute contract.out)
+                            #'(field/c contract.in contract.out)
+                            #'(field/c contract.in))])
+       #'(define/contract id ctc (make-field 'id init)))]))
 
 (define-syntax (field stx)
   (syntax-parse stx
