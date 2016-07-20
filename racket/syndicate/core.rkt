@@ -71,6 +71,7 @@
 (require "functional-queue.rkt")
 (require "trie.rkt")
 (require "patch.rkt")
+(require "hierarchy.rkt")
 (require "trace.rkt")
 (require "mux.rkt")
 (require "pretty.rkt")
@@ -226,7 +227,7 @@
   (when exn
     (log-error "Process ~v ~a died with exception:\n~a"
                (process-info-name (hash-ref (dataspace-process-table w) pid missing-process-info))
-               (cons pid (trace-pid-stack))
+               (append (current-actor-path) (list pid))
                (exn->string exn)))
   (struct-copy dataspace w
                [process-table (hash-remove (dataspace-process-table w) pid)]
@@ -234,7 +235,7 @@
 
 (define (invoke-process pid thunk k-ok k-exn)
   (define-values (ok? result)
-    (call-in-trace-context
+    (call/extended-actor-path
      pid
      (lambda ()
        (with-handlers ([(lambda (exn) #t) (lambda (exn) (values #f exn))])
@@ -373,7 +374,7 @@
                        (create-process w behavior initial-transition name))
                      (lambda (exn)
                        (log-error "Spawned process in dataspace ~a died with exception:\n~a"
-                                  (trace-pid-stack)
+                                  (current-actor-path)
                                   (exn->string exn))
                        (transition w '())))]
     ['quit
@@ -390,7 +391,7 @@
     [(and m (message body))
      (when (observe? body)
        (log-warning "Stream ~a sent message containing query ~v"
-                    (cons label (trace-pid-stack))
+                    (append (current-actor-path) (list label))
                     body))
      (if (and (not (meta-label? label)) ;; it's from a local process, not envt
               (at-meta? body)) ;; it relates to envt, not local
