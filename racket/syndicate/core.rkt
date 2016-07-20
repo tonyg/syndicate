@@ -218,10 +218,10 @@
 (define (update-state w pid s)
   (struct-copy dataspace w [states (hash-set (dataspace-states w) pid s)]))
 
-(define (send-event/guard delta pid w)
-  (if (patch-empty? delta)
+(define (send-event/guard e pid w)
+  (if (patch-empty? e)
       w
-      (send-event delta pid w)))
+      (send-event e pid w)))
 
 (define (disable-process pid exn w)
   (when exn
@@ -343,6 +343,7 @@
 (define ((inject-event e) w)
   (transition (match e
                 [#f w]
+                [(? targeted-event?) (enqueue-actions w 'meta (list e))]
                 [(? patch? delta) (enqueue-actions w 'meta (list (lift-patch delta)))]
                 [(message body) (enqueue-actions w 'meta (list (message (at-meta body))))])
               '()))
@@ -399,7 +400,9 @@
          (transition (for/fold [(w w)]
                                [(pid (in-list (mux-route-message (dataspace-mux w) body)))]
                        (send-event m pid w))
-                     '()))]))
+                     '()))]
+    [(targeted-event (cons pid remaining-path) e)
+     (transition (send-event/guard (target-event remaining-path e) pid w) '())]))
 
 (define (create-process w behavior initial-transition name)
   (if (not initial-transition)

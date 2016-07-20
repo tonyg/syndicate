@@ -6,6 +6,7 @@
 (require racket/match)
 (require racket/list)
 (require "core.rkt")
+(require "hierarchy.rkt")
 (require "trace.rkt")
 (require "trace/stderr.rkt")
 (require "tset.rkt")
@@ -25,15 +26,15 @@
 
 ;; Any -> Void
 ;; Sends a message at the ground-VM metalevel.
-(define (send-ground-message body)
-  (async-channel-put (current-ground-event-async-channel) (message body)))
+(define (send-ground-message body #:path [path '()])
+  (async-channel-put (current-ground-event-async-channel) (target-event path (message body))))
 
 ;; Patch -> Void
 ;; Injects a patch into the ground-VM metalevel. It will appear to be
 ;; asserted by the environment in general. The obligation is on the caller
 ;; to ensure that patches do not interfere between drivers.
-(define (send-ground-patch p)
-  (async-channel-put (current-ground-event-async-channel) p))
+(define (send-ground-patch p #:path [path '()])
+  (async-channel-put (current-ground-event-async-channel) (target-event path p)))
 
 ;;---------------------------------------------------------------------------
 ;; Communication via RacketEvents

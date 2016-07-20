@@ -3,13 +3,22 @@
 ;;  - naming specific actors in traces, or
 ;;  - injecting events from the outside world to specific locations in the tree
 
-(provide current-actor-path-rev
+(provide (struct-out targeted-event)
+         target-event
+         current-actor-path-rev
          current-actor-path
-         call/extended-actor-path
-         gen:actor-hierarchy-node
-         actor-hierarchy-node-deliver)
+         call/extended-actor-path)
 
-(require racket/generic)
+;; An event destined for a particular node in the actor hierarchy.
+;; Used to inject events from the outside world.
+(struct targeted-event (relative-path event) #:prefab)
+
+;; If a non-null path is provided, wraps event in a targeted-event
+;; struct.
+(define (target-event relative-path event)
+  (if (pair? relative-path)
+      (targeted-event relative-path event)
+      event))
 
 ;; Parameterof (Listof Any)
 ;; Path to the active leaf in the process tree. The car end is the
@@ -17,7 +26,7 @@
 (define current-actor-path-rev (make-parameter '()))
 
 ;; Retrieves current-actor-path-rev, but reversed, for use with
-;; actor-hierarchy-node-deliver.
+;; target-event.
 (define (current-actor-path) (reverse (current-actor-path-rev)))
 
 ;; Any (-> Any) -> Any
@@ -25,10 +34,3 @@
 (define (call/extended-actor-path pid thunk)
   (parameterize ((current-actor-path-rev (cons pid (current-actor-path-rev))))
     (thunk)))
-
-;; Generic interface for non-leaf nodes in the hierarchy.
-(define-generics actor-hierarchy-node
-  ;; Deliver an event to a specific node in the hierarchy.
-  (actor-hierarchy-node-deliver actor-hierarchy-node
-                                relative-path
-                                event))

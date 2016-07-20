@@ -8,6 +8,7 @@
 (require racket/exn)
 (require (only-in racket/string string-join))
 (require "../core.rkt")
+(require "../hierarchy.rkt")
 (require "../trace.rkt")
 (require "../mux.rkt")
 (require "../pretty.rkt")
@@ -104,6 +105,10 @@
 	   [#f
 	    (when show-events?
 	      (with-color YELLOW (output "~a is being polled for changes.\n" pidstr)))]
+           [(targeted-event relative-path e)
+            (when show-events?
+              (with-color YELLOW
+                (output "~a is routing an event toward ~a\n" pidstr relative-path)))]
 	   [(? patch? p)
 	    (when (or show-events? show-patch-events?)
 	      (with-color YELLOW
@@ -130,6 +135,10 @@
 	   ['boot
 	    (when (or show-events? show-boot-events?)
 	      (with-color YELLOW (output "~a was booted.\n" pidstr)))]
+           [(targeted-event relative-path e)
+            (when show-events?
+              (with-color YELLOW
+                (output "~a routed an event toward ~a\n" pidstr relative-path)))]
 	   [(? patch? p)
 	    (when (exn-and-not (or show-events? show-patch-events?))
 	      (with-color YELLOW
@@ -177,6 +186,8 @@
               (unless (trie-empty? interests)
                 (output "~a's final interests:\n" pidstr)
                 (pretty-print-trie interests (current-error-port))))]
+           [(? targeted-event?)
+            (void)]
            [(quit-dataspace)
             (with-color BRIGHT-RED
               (output "Process ~a performed a quit-dataspace.\n" pidstr))]
