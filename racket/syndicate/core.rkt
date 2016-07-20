@@ -359,7 +359,7 @@
 (define ((perform-action label a) w)
   (match a
     [(spawn boot)
-     (invoke-process 'booting
+     (invoke-process (mux-next-pid (dataspace-mux w)) ;; anticipate pid allocation
                      (lambda ()
                        (match (boot)
                          [(and results (list (? procedure?) (? general-transition?) _))
