@@ -991,6 +991,7 @@
       (lambda ()
         (define suspended-fid (current-facet-id))
         (define in? (in-script?))
+        (define stale? #f)
         (define raw-resume-parent
           (capture-facet-context
            (lambda results
@@ -998,6 +999,10 @@
                (apply k results)))))
         (define resume-parent
           (lambda results
+            (when stale? (error 'suspend-script
+                                "Attempt to resume suspension (suspended at ~a) more than once"
+                                where))
+            (set! stale? #t)
             (abort-current-continuation
              prompt-tag
              (lambda ()
