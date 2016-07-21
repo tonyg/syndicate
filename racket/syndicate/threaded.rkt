@@ -12,13 +12,14 @@
 (require syndicate/hierarchy)
 
 (struct proxy-state (thd) #:prefab)
-(struct thread-transition (quit? actions) #:prefab)
+(struct thread-quit (exn actions) #:prefab)
+(struct thread-transition (actions) #:prefab)
 
 (define (proxy-behaviour e s)
   (match-define (proxy-state thd) s)
   (match e
-    [(message (thread-transition #t acs)) (quit acs)]
-    [(message (thread-transition #f acs)) (transition s acs)]
+    [(message (thread-transition acs)) (transition s acs)]
+    [(message (thread-quit exn acs)) (<quit> exn acs)]
     [_
      (when e
        (signal-background-activity! #t)
@@ -31,7 +32,8 @@
              (define thd (thread (lambda () (run-thread path spawn-action-thunk))))
              (thread (lambda ()
                        (sync (thread-dead-evt thd))
-                       (send-ground-message (thread-transition #t '()) #:path path)))
+                       (send-ground-message (thread-quit #f '()) #:path path)
+                       (signal-background-activity! #f)))
              (signal-background-activity! #t)
              (list proxy-behaviour
                    (transition (proxy-state thd) '())
@@ -44,17 +46,13 @@
                       _name)
     ((spawn-boot (spawn-action-thunk))))
 
-  (define (put-actions quit? acs)
-    (when (not (or (null? acs) (eq? acs #f) (void? acs)))
-      (send-ground-message (thread-transition quit? acs) #:path actor-path)))
-
   (define (process-transition state t)
     (match t
-      [(<quit> _exn acs)
-       (put-actions #t acs)
-       (signal-background-activity! #f)]
+      [(<quit> exn acs)
+       (send-ground-message (thread-quit exn acs) #:path actor-path)]
       [(transition new-state acs)
-       (put-actions #f acs)
+       (when (not (or (null? acs) (eq? acs #f) (void? acs)))
+         (send-ground-message (thread-transition acs) #:path actor-path))
        (deliver-event #f new-state)]
       [_
        (await-event state)]))
@@ -62,7 +60,8 @@
   (define (deliver-event e state)
     (process-transition state
                         (parameterize ((current-actor-path-rev actor-path-rev))
-                          (behaviour e state))))
+                          (with-handlers [((lambda (exn) #t) (lambda (exn) (<quit> exn '())))]
+                            (behaviour e state)))))
 
   (define (await-event state)
     (signal-background-activity! #f)
