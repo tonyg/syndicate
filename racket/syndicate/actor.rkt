@@ -259,15 +259,21 @@
   (define-splicing-syntax-class field-contract
     (pattern (~seq #:contract in (~optional out #:defaults ([out #f]))))))
 
+(define-syntax (actor-action stx)
+  (syntax-parse stx
+    [(_ name:name script ...)
+     (quasisyntax/loc stx
+       (core:<spawn>
+        (lambda ()
+          (list actor-behavior
+                (boot-actor (lambda () (begin/void-default script ...)))
+                name.N))))]))
+
 (define-syntax (actor stx)
   (syntax-parse stx
     [(_ name:name script ...)
      (quasisyntax/loc stx
-       (let* ((spawn-action (core:<spawn>
-                             (lambda ()
-                               (list actor-behavior
-                                     (boot-actor (lambda () (begin/void-default script ...)))
-                                     name.N)))))
+       (let ((spawn-action (actor-action #:name name.N script ...)))
          (if (syndicate-effects-available?)
              (schedule-action! spawn-action)
              spawn-action)))]))
@@ -276,9 +282,13 @@
   (syntax-parse stx
     [(_ name:name script ...)
      (quasisyntax/loc stx
-       (core:spawn-dataspace #:name name.N
-                             (actor script ...
-                                    (schedule-action! (core:quit-dataspace)))))]))
+       (let ((spawn-action (core:spawn-dataspace
+                            #:name name.N
+                            (actor-action script ...
+                                          (schedule-action! (core:quit-dataspace))))))
+         (if (syndicate-effects-available?)
+             (schedule-action! spawn-action)
+             spawn-action)))]))
 
 (define-syntax (react stx)
   (syntax-parse stx
