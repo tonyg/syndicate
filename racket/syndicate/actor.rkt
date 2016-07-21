@@ -249,7 +249,7 @@
     (pattern (~seq) #:attr Pred #'#t))
 
   (define-splicing-syntax-class meta-level
-    (pattern (~seq #:meta-level level:integer))
+    (pattern (~seq #:meta-level level:expr))
     (pattern (~seq) #:attr level #'0))
 
   (define-splicing-syntax-class priority
@@ -637,11 +637,6 @@
                                 #`(for [(entry (in-set entry-set))]
                                     #,entry-handler-stx)))])))))
 
-(define-for-syntax (prepend-at-meta-stx stx level)
-  (if (zero? level)
-      stx
-      #`(at-meta #,(prepend-at-meta-stx stx (- level 1)))))
-
 (define-for-syntax (analyze-event outer-expr-stx event-stx terminal? script-stx priority-stx)
   (syntax-parse event-stx
     #:literals [core:message asserted retracted rising-edge]
@@ -657,7 +652,7 @@
                            (define capture-vals
                              (match-value/captures
                               body
-                              #,(prepend-at-meta-stx proj (syntax-e #'L.level))))
+                              (core:prepend-at-meta #,proj L.level)))
                            (and capture-vals
                                 (schedule-script!
                                  #:priority #,priority-stx

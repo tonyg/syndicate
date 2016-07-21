@@ -56,11 +56,16 @@
        (send! 'dump)
        (forever))
 
-(dataspace (actor #:name 'observer-in-ds
-                  (forever
-                   (assert 'observer-in-ds-ready #:meta-level 1)
-                   (on-start (log-info "observer-in-ds: STARTING"))
-                   (define/query-set items `(item ,$a ,$b) #:meta-level 1 (list a b))
-                   (on (message 'dump #:meta-level 1)
-                       (log-info "observer-in-ds: ~v" (items)))))
-           (forever))
+(let ((anchor (level-anchor)))
+  (dataspace (define LEVEL (level-anchor->meta-level anchor))
+             (log-info "Outer level anchor: ~a" anchor)
+             (log-info "Inner level anchor: ~a" (level-anchor))
+             (log-info "Computed meta-level: ~v" LEVEL)
+             (actor #:name 'observer-in-ds
+                    (forever
+                     (assert 'observer-in-ds-ready #:meta-level LEVEL)
+                     (on-start (log-info "observer-in-ds: STARTING"))
+                     (define/query-set items `(item ,$a ,$b) #:meta-level LEVEL (list a b))
+                     (on (message 'dump #:meta-level LEVEL)
+                         (log-info "observer-in-ds: ~v" (items)))))
+             (forever)))

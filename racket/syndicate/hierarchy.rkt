@@ -7,7 +7,9 @@
          target-event
          current-actor-path-rev
          current-actor-path
-         call/extended-actor-path)
+         call/extended-actor-path
+         level-anchor
+         level-anchor->meta-level)
 
 ;; An event destined for a particular node in the actor hierarchy.
 ;; Used to inject events from the outside world.
@@ -34,3 +36,29 @@
 (define (call/extended-actor-path pid thunk)
   (parameterize ((current-actor-path-rev (cons pid (current-actor-path-rev))))
     (thunk)))
+
+;; Retrieves an abstract value to be used with level-anchor->meta-level to compute a
+;; relative meta-level number. Concretely, is the actor path to the current actor's
+;; dataspace.
+;;
+;; TODO: Once dataspaces are split into mux and relay, this will need to change to count
+;; just relay steps.
+(define (level-anchor)
+  (if (null? (current-actor-path-rev)) ;; outside even ground
+      '()
+      (reverse (cdr (current-actor-path-rev)))))
+
+;; Computes the number of nesting levels between the current actor's dataspace and the
+;; dataspace path passed in.
+(define (level-anchor->meta-level anchor)
+  (define ds-path (level-anchor))
+  (let loop ((outer anchor) (inner ds-path))
+    (cond
+      [(null? outer) (length inner)]
+      [(and (pair? inner)
+            (equal? (car outer) (car inner)))
+       (loop (cdr outer) (cdr inner))]
+      [else (error 'level-anchor->meta-level
+                   "Attempt to access dataspace ~a from non-contained dataspace ~a"
+                   anchor
+                   ds-path)])))
