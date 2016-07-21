@@ -54,6 +54,8 @@
          spawn/stateless
          make-spawn-dataspace
 
+         general-transition?
+
          transition-bind
          sequence-transitions
          sequence-transitions*

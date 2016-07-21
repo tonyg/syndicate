@@ -14,6 +14,8 @@
 (provide (struct-out external-event)
          send-ground-message
          send-ground-patch
+         send-ground-event
+         signal-background-activity!
 	 run-ground)
 
 ;;---------------------------------------------------------------------------
@@ -35,6 +37,18 @@
 ;; to ensure that patches do not interfere between drivers.
 (define (send-ground-patch p #:path [path '()])
   (async-channel-put (current-ground-event-async-channel) (target-event path p)))
+
+;; Event -> Void
+(define (send-ground-event e #:path [path '()])
+  (async-channel-put (current-ground-event-async-channel) (target-event path e)))
+
+;;---------------------------------------------------------------------------
+
+(struct background-activity-signal (delta) #:prefab)
+
+(define (signal-background-activity! active?)
+  (async-channel-put (current-ground-event-async-channel)
+                     (background-activity-signal (if active? 1 -1))))
 
 ;;---------------------------------------------------------------------------
 ;; Communication via RacketEvents
@@ -74,37 +88,54 @@
 (define idle-handler
   (handle-evt (system-idle-evt) (lambda _ #f)))
 
+;; RacketEvent
+;; Used only when the system is locally not inert, but background
+;; activity is continuing.
+(define poll-handler
+  (handle-evt always-evt (lambda _ #f)))
+
 ;; Action* -> Void
 ;; Runs a ground VM, booting the outermost Dataspace with the given Actions.
 (define (run-ground . boot-actions)
   (let await-interrupt ((inert? #f)
                         (w (make-dataspace boot-actions))
-                        (interests trie-empty))
-    ;; (log-info "GROUND INTERESTS:\n~a" (trie->pretty-string interests))
-    (if (and inert? (trie-empty? interests))
+                        (interests trie-empty)
+                        (background-activity-count 0))
+    ;; (log-info "~a ~a GROUND INTERESTS:\n~a"
+    ;;           inert?
+    ;;           background-activity-count
+    ;;           (trie->pretty-string interests))
+    (if (and inert? (zero? background-activity-count) (trie-empty? interests))
 	(begin (log-info "run-ground: Terminating because inert")
 	       (void))
-	(let ((e (apply sync
-                        (current-ground-event-async-channel)
-                        (if inert? never-evt idle-handler)
-                        (extract-active-events interests))))
-          (trace-process-step e #f dataspace-handle-event w)
-          (define resulting-transition (clean-transition (dataspace-handle-event e w)))
-          (trace-process-step-result e #f dataspace-handle-event w #f resulting-transition)
-	  (match resulting-transition
-	    [#f ;; inert
-	     (await-interrupt #t w interests)]
-            [(<quit> _ _)
-             (log-info "run-ground: Terminating by request")
-             (void)]
-	    [(transition w actions)
-	     (let process-actions ((actions actions) (interests interests))
-	       (match actions
-		 ['() (await-interrupt #f w interests)]
-		 [(cons a actions)
-		  (match a
-                    [(? patch? p)
-                     (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
-		    [_
-		     (log-warning "run-ground: ignoring useless meta-action ~v" a)
-		     (process-actions actions interests)])]))])))))
+        (match (apply sync
+                      (current-ground-event-async-channel)
+                      (cond
+                        [inert? never-evt]
+                        [(zero? background-activity-count) idle-handler]
+                        [else poll-handler])
+                      (extract-active-events interests))
+          [(background-activity-signal delta)
+           ;; (log-info "background-activity-count ~v" (+ background-activity-count delta))
+           (await-interrupt inert? w interests (+ background-activity-count delta))]
+          [e
+           (trace-process-step e #f dataspace-handle-event w)
+           (define resulting-transition (clean-transition (dataspace-handle-event e w)))
+           (trace-process-step-result e #f dataspace-handle-event w #f resulting-transition)
+           (match resulting-transition
+             [#f ;; inert
+              (await-interrupt #t w interests background-activity-count)]
+             [(<quit> _ _)
+              (log-info "run-ground: Terminating by request")
+              (void)]
+             [(transition w actions)
+              (let process-actions ((actions actions) (interests interests))
+                (match actions
+                  ['() (await-interrupt #f w interests background-activity-count)]
+                  [(cons a actions)
+                   (match a
+                     [(? patch? p)
+                      (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
+                     [_
+                      (log-warning "run-ground: ignoring useless meta-action ~v" a)
+                      (process-actions actions interests)])]))])]))))
