@@ -283,8 +283,7 @@
   (syntax-parse stx
     [(_ O ...)
      (quasisyntax/loc stx
-       (add-facet! #:substate #t
-                   #,(source-location->string stx)
+       (add-facet! #,(source-location->string stx)
                    (lambda () (begin/void-default O ...))))]))
 
 (define-syntax (react/suspend stx)
@@ -293,8 +292,7 @@
      (quasisyntax/loc stx
        (suspend-script* #,(source-location->string stx)
                         (lambda (resume-parent)
-                          (add-facet! #:substate #t
-                                      #,(source-location->string stx)
+                          (add-facet! #,(source-location->string stx)
                                       (lambda () (begin/void-default O ...))))))]))
 
 (define-syntax (until stx)
@@ -812,12 +810,12 @@
 ;; Facet Lifecycle
 
 (define next-fid 0)
-(define (add-facet! #:substate substate? where setup-proc)
+(define (add-facet! where setup-proc)
   (when (not (in-script?))
     (error 'add-facet!
            "~a: Cannot add facet outside script; are you missing an (on ...)?"
            where))
-  (define parent-fid (and substate? (current-facet-id)))
+  (define parent-fid (current-facet-id))
   (define fid next-fid)
   (set! next-fid (+ next-fid 1))
   (update-facet! fid (lambda (_f) (facet 'not-yet-ready
