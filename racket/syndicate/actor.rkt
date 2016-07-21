@@ -86,10 +86,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Definitions and Structures
 
-;; A FieldTable is a (FieldDescriptor |-> Boxof Any)
+;; A FieldTable is a (FieldDescriptor |-> Any)
 
-;; (field-descriptor Symbol UniqueNatural)
-(struct field-descriptor (name id) #:prefab)
+;; (field-descriptor Symbol UniqueNatural (Option FID))
+(struct field-descriptor (name id defining-fid) #:prefab)
 
 ;; (field-handle FieldDescriptor)
 (struct field-handle (desc)
@@ -101,11 +101,11 @@
     [(handle)
      (define desc (field-handle-desc handle))
      (dataflow-record-observation! (actor-state-field-dataflow (current-actor-state)) desc)
-     (unbox (get-field-box desc))]
+     (field-ref desc)]
     [(handle v)
      (define desc (field-handle-desc handle))
      (dataflow-record-damage! (actor-state-field-dataflow (current-actor-state)) desc)
-     (set-box! (get-field-box desc) v)]))
+     (field-set! desc v)]))
 
 (define (make-field-proxy field guard wrap)
   (case-lambda
@@ -166,7 +166,7 @@
                      field-dataflow ;; DataflowGraph
                      ) #:prefab)
 
-(struct facet (field-table ;; FieldTable
+(struct facet (field-descriptors ;; (Setof FieldDescriptor)
                endpoints ;; (Hash EID Endpoint)
                stop-scripts ;; (Listof Script) -- IN REVERSE ORDER
                children ;; (Setof FID)
@@ -200,6 +200,7 @@
     *query-priority*
     *query-handler-priority*
     *normal-priority*
+    *gc-priority*
     #:count priority-count))
 
 (require (submod "." priorities))
@@ -207,8 +208,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Parameters. Many of these are *updated* during facet execution!
 
-;; Parameterof FieldTable
-(define current-field-table (make-parameter 'unset:current-field-table))
+;; Parameterof (Setof FieldDescriptor)
+(define current-field-descriptors (make-parameter 'unset:current-field-descriptors))
 
 ;; Parameterof ActorState
 (define current-actor-state (make-parameter #f))
@@ -693,24 +694,35 @@
 
 (define field-counter 0)
 (define (make-field name initial-value)
-  (define desc (field-descriptor name field-counter))
+  (define fid (current-facet-id))
+  (define desc (field-descriptor name field-counter fid))
   (set! field-counter (+ field-counter 1))
-  (define b (box initial-value))
-  (if (current-facet-id)
-      (current-field-table (hash-set (current-field-table) desc b))
-      (let ((a (current-actor-state)))
-        (current-actor-state
-         (struct-copy actor-state a
-                      [field-table (hash-set (actor-state-field-table a) desc b)]))))
+  (let ((a (current-actor-state)))
+    (current-actor-state
+     (struct-copy actor-state a
+                  [field-table (hash-set (actor-state-field-table a) desc initial-value)])))
+  (when fid (current-field-descriptors (set-add (current-field-descriptors) desc)))
   (field-handle desc))
 
-(define (get-field-box desc)
-  (hash-ref (current-field-table)
-            desc
-            (lambda ()
-              (error 'get-field-box
-                     "Field ~a used out-of-scope"
-                     (field-descriptor-name desc)))))
+(define (field-accessible? desc)
+  (and (or (not (field-descriptor-defining-fid desc))
+           (set-member? (current-field-descriptors) desc))
+       (hash-has-key? (actor-state-field-table (current-actor-state)) desc)))
+
+(define (ensure-field-accessible! who desc)
+  (when (not (field-accessible? desc))
+    (error who "Field ~a used out-of-scope" (field-descriptor-name desc))))
+
+(define (field-ref desc)
+  (ensure-field-accessible! 'field-ref desc)
+  (hash-ref (actor-state-field-table (current-actor-state)) desc))
+
+(define (field-set! desc v)
+  (ensure-field-accessible! 'field-set! desc)
+  (define a (current-actor-state))
+  (define ft (actor-state-field-table a))
+  (current-actor-state
+   (struct-copy actor-state a [field-table (hash-set ft desc v)])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Facet Storage in an Actor
@@ -735,17 +747,17 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Entering and Leaving Facet Context; Queueing of Work Items
 
-(define-syntax-rule (with-current-facet fid field-table in? body ...)
-  (parameterize ((current-field-table field-table)
-                 (current-facet-id fid)
+(define-syntax-rule (with-current-facet fid cfds in? body ...)
+  (parameterize ((current-facet-id fid)
+                 (current-field-descriptors cfds)
                  (in-script? in?))
     body ...))
 
 (define (capture-facet-context proc)
-  (let ((field-table (current-field-table))
-        (fid (current-facet-id)))
+  (let ((fid (current-facet-id))
+        (cfds (current-field-descriptors)))
     (lambda args
-      (with-current-facet fid field-table #t
+      (with-current-facet fid cfds #t
         (call-with-syndicate-effects
          (lambda () (apply proc args)))))))
 
@@ -818,25 +830,25 @@
   (define parent-fid (current-facet-id))
   (define fid next-fid)
   (set! next-fid (+ next-fid 1))
+  (define starting-field-descriptors
+    (if parent-fid
+        (cond [(lookup-facet parent-fid) => facet-field-descriptors]
+              [else (current-field-descriptors)]) ;; TODO: Is this correct???
+        (set)))
   (update-facet! fid (lambda (_f) (facet 'not-yet-ready
                                          (hasheqv)
                                          '()
                                          (seteqv)
                                          parent-fid)))
-  (define starting-field-table
-    (if parent-fid
-        (match (lookup-facet parent-fid)
-          [#f (current-field-table)] ;; TODO: Is this correct???
-          [f
-           (store-facet! parent-fid (struct-copy facet f
-                                                 [children (set-add (facet-children f) fid)]))
-           (facet-field-table f)])
-        (actor-state-field-table (current-actor-state))))
-  (with-current-facet fid starting-field-table #f
+  (update-facet! parent-fid
+                 (lambda (pf)
+                   (and pf (struct-copy facet pf
+                                        [children (set-add (facet-children pf) fid)]))))
+  (with-current-facet fid starting-field-descriptors #f
     (setup-proc)
-    (update-facet! fid (lambda (f) (and f
-                                        (struct-copy facet f
-                                                     [field-table (current-field-table)])))))
+    (update-facet! fid (lambda (f)
+                         (and f (struct-copy facet f
+                                             [field-descriptors (current-field-descriptors)])))))
   (facet-handle-event! fid
                        (lookup-facet fid)
                        (patch (actor-state-knowledge (current-actor-state)) trie-empty))
@@ -872,9 +884,21 @@
 
          ;; Run stop-scripts after terminating children. This means that
          ;; children's stop-scripts run before ours.
-         (with-current-facet fid (facet-field-table f) #t
+         (with-current-facet fid (facet-field-descriptors f) #t
            (for [(script (in-list (reverse (facet-stop-scripts f))))]
              (call-with-syndicate-effects script)))
+
+         (push-script! *gc-priority*
+                       (lambda ()
+                         (let* ((a (current-actor-state))
+                                (new-table
+                                 (for/fold [(t (actor-state-field-table a))]
+                                           [(desc (in-set (facet-field-descriptors f)))
+                                            #:when (equal? (field-descriptor-defining-fid desc)
+                                                           fid)]
+                                   (hash-remove t desc))))
+                           (current-actor-state
+                            (struct-copy actor-state a [field-table new-table])))))
 
          f)))
 
@@ -896,7 +920,7 @@
                  (current-pending-patch patch-empty)
                  (current-pending-actions '())
                  (current-pending-scripts (make-empty-pending-scripts)))
-    (with-current-facet #f (hasheq) #f
+    (with-current-facet #f (set) #f
       (schedule-script! #f script-proc)
       (run-scripts!))))
 
@@ -929,7 +953,7 @@
                              (match-define (list fid eid) subject-id)
                              (define f (lookup-facet fid))
                              (when f
-                               (with-current-facet fid (facet-field-table f) #f
+                               (with-current-facet fid (facet-field-descriptors f) #f
                                  (define ep (hash-ref (facet-endpoints f) eid))
                                  (define new-patch ((endpoint-patch-fn ep)))
                                  (update-stream! eid (compose-patch new-patch
@@ -958,7 +982,7 @@
          (run-scripts!))))
 
 (define (facet-handle-event! fid f e)
-  (with-current-facet fid (facet-field-table f) #f
+  (with-current-facet fid (facet-field-descriptors f) #f
     (for [(ep (in-hash-values (facet-endpoints f)))]
       ((endpoint-handler-fn ep) e))))
 
