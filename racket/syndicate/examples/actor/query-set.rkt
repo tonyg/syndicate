@@ -44,6 +44,7 @@
             (flush-output))))
 
 (actor #:name 'mutator
+       (until (asserted 'observer-in-ds-ready))
        (assert! `(item a 1))
        (assert! `(item b 2))
        (assert! `(item b 3))
@@ -54,3 +55,12 @@
        (assert! `(item c 4))
        (send! 'dump)
        (forever))
+
+(dataspace (actor #:name 'observer-in-ds
+                  (forever
+                   (assert 'observer-in-ds-ready #:meta-level 1)
+                   (on-start (log-info "observer-in-ds: STARTING"))
+                   (define/query-set items `(item ,$a ,$b) #:meta-level 1 (list a b))
+                   (on (message 'dump #:meta-level 1)
+                       (log-info "observer-in-ds: ~v" (items)))))
+           (forever))

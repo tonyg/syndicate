@@ -480,13 +480,13 @@
 
 (define-syntax (query-value* stx)
   (syntax-parse stx
-    [(_ field-name absent-expr P expr on-add:on-add on-remove:on-remove)
+    [(_ field-name absent-expr P L:meta-level expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
        (let ()
-         (on (asserted P) #:priority *query-priority*
+         (on (asserted P #:meta-level L.level) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name expr))
-         (on (retracted P) #:priority *query-priority*
+         (on (retracted P #:meta-level L.level) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name absent-expr))
          field-name))]))
@@ -501,13 +501,13 @@
 
 (define-syntax (query-set* stx)
   (syntax-parse stx
-    [(_ field-name P expr on-add:on-add on-remove:on-remove)
+    [(_ field-name P L:meta-level expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
        (let ()
-         (on (asserted P) #:priority *query-priority*
+         (on (asserted P #:meta-level L.level) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name (set-add (field-name) expr)))
-         (on (retracted P) #:priority *query-priority*
+         (on (retracted P #:meta-level L.level) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (set-remove (field-name) expr)))
          field-name))]))
@@ -522,10 +522,10 @@
 
 (define-syntax (query-hash* stx)
   (syntax-parse stx
-    [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
+    [(_ field-name P L:meta-level key-expr value-expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
        (let ()
-         (on (asserted P) #:priority *query-priority*
+         (on (asserted P #:meta-level L.level) #:priority *query-priority*
              (let ((key key-expr))
                (when (hash-has-key? (field-name) key)
                  (log-warning "query-hash: field ~v with pattern ~v: overwriting existing entry ~v"
@@ -534,7 +534,7 @@
                               key))
                #,@(schedule-query-handler-stxs (attribute on-add.expr))
                (field-name (hash-set (field-name) key value-expr))))
-         (on (retracted P) #:priority *query-priority*
+         (on (retracted P #:meta-level L.level) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (hash-remove (field-name) key-expr)))
          field-name))]))
@@ -549,13 +549,13 @@
 
 (define-syntax (query-hash-set* stx)
   (syntax-parse stx
-    [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
+    [(_ field-name P L:meta-level key-expr value-expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
        (let ()
-         (on (asserted P) #:priority *query-priority*
+         (on (asserted P #:meta-level L.level) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name (hashset-add (field-name) key-expr value-expr)))
-         (on (retracted P) #:priority *query-priority*
+         (on (retracted P #:meta-level L.level) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (hashset-remove (field-name) key-expr value-expr)))
          field-name))]))
