@@ -235,6 +235,10 @@
 ;; Syntax; main entry points
 
 (begin-for-syntax
+  (define-splicing-syntax-class actor-wrapper
+    (pattern (~seq #:actor wrapper))
+    (pattern (~seq) #:attr wrapper #'actor))
+
   (define-splicing-syntax-class name
     (pattern (~seq #:name N))
     (pattern (~seq) #:attr N #'#f))
@@ -395,14 +399,14 @@
 
 (define-syntax (during/actor stx)
   (syntax-parse stx
-    [(_ P L:meta-level name:name O ...)
+    [(_ P L:meta-level w:actor-wrapper name:name O ...)
      (define E-stx (syntax/loc #'P (asserted P #:meta-level L.level)))
      (define-values (_proj _pat _bindings instantiated)
        (analyze-pattern E-stx #'P))
      (quasisyntax/loc stx
        (on #,E-stx
            (let ((p #,instantiated))
-             (actor #:name name.N
+             (w.wrapper #:name name.N
               (react (stop-when (retracted p #:meta-level L.level))
                      O ...)))))]))
 
