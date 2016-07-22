@@ -246,17 +246,24 @@
      (spawn (lambda ()
               (list (let ((name name-exp)
                           (beh behavior-exp))
-                      (if name (procedure-rename beh name) beh))
+                      (if name (procedure-rename beh (string->symbol (format "~a" name))) beh))
                     (transition initial-state-exp initial-action-tree-exp))))]
     [(_ behavior-exp initial-state-exp initial-action-tree-exp)
      (spawn (lambda ()
               (list behavior-exp
                     (transition initial-state-exp initial-action-tree-exp))))]))
 
-(define-syntax-rule (spawn/stateless behavior-exp initial-action-tree-exp)
-  (spawn-process (stateless-behavior-wrap behavior-exp)
-                 (void)
-                 initial-action-tree-exp))
+(define-syntax spawn/stateless
+  (syntax-rules ()
+    [(_ #:name name-exp behavior-exp initial-action-tree-exp)
+     (spawn-process #:name name-exp
+                    (stateless-behavior-wrap behavior-exp)
+                    (void)
+                    initial-action-tree-exp)]
+    [(_ behavior-exp initial-action-tree-exp)
+     (spawn-process (stateless-behavior-wrap behavior-exp)
+                    (void)
+                    initial-action-tree-exp)]))
 
 (define ((stateless-behavior-wrap b) e state)
   (match (b e)
