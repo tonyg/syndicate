@@ -8,10 +8,10 @@
          (struct-out web-request)
          (struct-out web-request-header)
 
-         (struct-out web-response-header)
+         (rename-out [web-response-header <web-response-header>])
+         (struct-out/defaults [make-web-response-header web-response-header])
          (struct-out web-response-complete)
          (struct-out web-response-chunked)
-
          (rename-out [web-response-websocket <web-response-websocket>])
          (struct-out/defaults [make-web-response-websocket web-response-websocket])
 
@@ -61,6 +61,12 @@
 (struct websocket-message (id direction body) #:prefab)
 
 (begin-for-declarations
+  (define-struct-defaults make-web-response-header web-response-header
+    (#:code [web-response-header-code 200]
+     #:message [web-response-header-message #"OK"]
+     #:last-modified-seconds [web-response-header-last-modified-seconds (current-seconds)]
+     #:mime-type [web-response-header-mime-type #"text/html"]
+     #:headers [web-response-header-headers '()]))
   (define-struct-defaults make-web-response-websocket web-response-websocket
     (#:headers [web-response-websocket-headers '()])))
 

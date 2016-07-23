@@ -52,11 +52,8 @@
             (react (field [done? #f])
                    (stop-when (rising-edge (done?)))
                    (assert (web-response-chunked id
-                                                 (web-response-header 200
-                                                                      #"Slowly"
-                                                                      (current-seconds)
-                                                                      #"text/plain"
-                                                                      '())))
+                                                 (web-response-header #:message #"Slowly"
+                                                                      #:mime-type #"text/plain")))
                    (on (asserted (observe (web-response-chunk id _)))
                        ;;
                        ;; TODO: output-response-body/chunked in web-server's response.rkt
@@ -82,11 +79,7 @@
             (counter (+ (counter) 1))
             (send! (web-response-complete
                     id
-                    (web-response-header 200
-                                         #"OK"
-                                         (current-seconds)
-                                         #"text/plain"
-                                         '())
+                    (web-response-header #:mime-type #"text/plain")
                     (string->bytes/utf-8
                      (format "Hi there. Your path was ~v, and this is request ~a"
                              path
