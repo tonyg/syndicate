@@ -10,6 +10,7 @@
          activate
          require/activate
          current-ground-dataspace
+         begin-for-declarations
 	 (except-out (all-from-out racket/base) #%module-begin sleep)
 	 (all-from-out racket/match)
 	 (all-from-out "main.rkt")
@@ -30,6 +31,9 @@
      #'(begin
          (require module-path ...)
          (activate module-path ...))]))
+
+(define-syntax-rule (begin-for-declarations decl ...)
+  (begin decl ...))
 
 (define current-ground-dataspace (make-parameter #f))
 
@@ -60,7 +64,9 @@
 	       final-stx)
 	     (syntax-case (local-expand (car forms)
 					'module
-                                        (cons #'module+ (kernel-form-identifier-list))) ()
+                                        (append (list #'module+
+                                                      #'begin-for-declarations)
+                                                (kernel-form-identifier-list))) ()
 	       [(head rest ...)
 		(if (free-identifier=? #'head #'begin)
 		    (accumulate-actions action-ids
@@ -70,7 +76,8 @@
 			       (syntax->list #'(define-values define-syntaxes begin-for-syntax
 						 module module* module+
 						 #%module-begin
-						 #%require #%provide)))
+						 #%require #%provide
+                                                 begin-for-declarations)))
 			(accumulate-actions action-ids
 					    (cons (car forms) final-forms)
 					    (cdr forms))

@@ -11,7 +11,9 @@
          (struct-out web-response-header)
          (struct-out web-response-complete)
          (struct-out web-response-chunked)
-         (struct-out web-response-websocket)
+
+         (rename-out [web-response-websocket <web-response-websocket>])
+         (struct-out/defaults [make-web-response-websocket web-response-websocket])
 
          (struct-out web-response-chunk)
          (struct-out websocket-message)
@@ -38,6 +40,7 @@
 (require web-server/private/connection-manager)
 (require (only-in web-server/private/util lowercase-symbol!))
 (require web-server/dispatchers/dispatch)
+(require struct-defaults)
 
 (require/activate "timer.rkt")
 
@@ -56,6 +59,10 @@
 
 (struct web-response-chunk (id bytes) #:prefab)
 (struct websocket-message (id direction body) #:prefab)
+
+(begin-for-declarations
+  (define-struct-defaults make-web-response-websocket web-response-websocket
+    (#:headers [web-response-websocket-headers '()])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground-level communication messages

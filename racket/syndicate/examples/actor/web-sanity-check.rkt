@@ -22,7 +22,7 @@
                                   ($ req (web-request-header _ (web-resource vh `("ws" ())) _ _))
                                   _))
             (actor (react
-                    (assert (web-response-websocket id '()))
+                    (assert (web-response-websocket id))
                     (stop-when (retracted (observe (websocket-message id 'outbound _)))
                                (log-info "Connection dropped"))
                     (stop-when (message (websocket-message id 'inbound "quit"))

@@ -13,6 +13,7 @@
                "gui-lib"
                "pict-lib"
                "sgl"
+               "struct-defaults"
 	       ))
 (define build-deps '("racket-doc"
                      "scribble-lib"))
