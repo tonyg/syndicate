@@ -14,6 +14,7 @@
                "pict-lib"
                "sgl"
                "struct-defaults"
+               "auxiliary-macro-context"
 	       ))
 (define build-deps '("racket-doc"
                      "scribble-lib"))

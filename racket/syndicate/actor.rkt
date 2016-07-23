@@ -566,6 +566,30 @@
 (define-syntax-rule (define/query-hash-set id P x ...) (define id (query-hash-set id P x ...)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(require auxiliary-macro-context)
+
+(define-auxiliary-macro-context
+  #:context-name event-expander
+  #:prop-name prop:event-expander
+  #:prop-predicate-name event-expander?
+  #:prop-accessor-name event-expander-proc
+  #:macro-definer-name define-event-expander
+  #:introducer-parameter-name current-event-expander-introducer
+  #:local-introduce-name syntax-local-event-expander-introduce
+  #:expander-id-predicate-name event-expander-id?
+  #:expander-transform-name event-expander-transform)
+
+(provide (for-syntax
+          prop:event-expander
+          event-expander?
+          event-expander-proc
+          syntax-local-event-expander-introduce
+          event-expander-id?
+          event-expander-transform)
+         define-event-expander)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax-time support
 
 (define (interests-pre-and-post-patch pat)
@@ -637,9 +661,23 @@
                                 #`(for [(entry (in-set entry-set))]
                                     #,entry-handler-stx)))])))))
 
-(define-for-syntax (analyze-event outer-expr-stx event-stx terminal? script-stx priority-stx)
+(define-for-syntax orig-insp
+  (variable-reference->module-declaration-inspector (#%variable-reference)))
+
+(define-for-syntax (analyze-event outer-expr-stx armed-event-stx terminal? script-stx priority-stx)
+  (define event-stx (syntax-disarm armed-event-stx orig-insp))
   (syntax-parse event-stx
     #:literals [core:message asserted retracted rising-edge]
+    [(expander args ...)
+     #:when (event-expander-id? #'expander)
+     (event-expander-transform
+      event-stx
+      (lambda (result)
+        (analyze-event outer-expr-stx
+                       (syntax-rearm result event-stx)
+                       terminal?
+                       script-stx
+                       priority-stx)))]
     [(core:message P L:meta-level)
      (define-values (proj pat bindings _instantiated)
        (analyze-pattern event-stx #'P))

@@ -16,6 +16,30 @@
 (require "treap.rkt")
 (require "core.rkt")
 
+(require auxiliary-macro-context)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-auxiliary-macro-context
+  #:context-name assertion-expander
+  #:prop-name prop:assertion-expander
+  #:prop-predicate-name assertion-expander?
+  #:prop-accessor-name assertion-expander-proc
+  #:macro-definer-name define-assertion-expander
+  #:introducer-parameter-name current-assertion-expander-introducer
+  #:local-introduce-name syntax-local-assertion-expander-introduce
+  #:expander-id-predicate-name assertion-expander-id?
+  #:expander-transform-name assertion-expander-transform)
+
+(provide (for-syntax
+          prop:assertion-expander
+          assertion-expander?
+          assertion-expander-proc
+          syntax-local-assertion-expander-introduce
+          assertion-expander-id?
+          assertion-expander-transform)
+         define-assertion-expander)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (struct predicate-match (predicate sub-pattern) #:transparent)
@@ -29,8 +53,7 @@
       [(_ (capture sub))
        (match (walk v sub '())
          [#f #f]
-         ['() (cons v captures-rev)]
-         [_ (error 'match-value/captures "Bindings in capture sub-patterns not supported")])]
+         [nested-captures-rev (append nested-captures-rev (list v) captures-rev)])]
       [(_ (predicate-match pred? sub)) #:when (pred? v)
        (walk v sub captures-rev)]
       [((== ?) _)
@@ -60,6 +83,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define-for-syntax orig-insp
+  (variable-reference->module-declaration-inspector (#%variable-reference)))
+
 (begin-for-syntax
   (define (dollar-id? stx)
     (and (identifier? stx)
@@ -69,9 +95,16 @@
     (and (dollar-id? stx)
          (datum->syntax stx (string->symbol (substring (symbol->string (syntax-e stx)) 1)))))
 
+  (define (is-message-pattern? outer-expr-stx)
+    (syntax-parse outer-expr-stx
+      #:literals [message]
+      [(message _ ...) '#t]
+      [_ #f]))
+
   ;; Syntax -> (Values Projection AssertionSetPattern (ListOf Identifier) Syntax)
   (define (analyze-pattern outer-expr-stx pat-stx0)
-    (let walk ((pat-stx pat-stx0))
+    (let walk ((armed-pat-stx pat-stx0))
+      (define pat-stx (syntax-disarm armed-pat-stx orig-insp))
       (syntax-case pat-stx ($ ? quasiquote unquote quote)
         ;; Extremely limited support for quasiquoting and quoting
         [(quasiquote (unquote p)) (walk #'p)]
@@ -90,28 +123,33 @@
         [($ v p)
          (let ()
            (define-values (pr g bs _ins) (walk #'p))
-           (when (not (null? bs))
-             (raise-syntax-error #f "nested bindings not supported" outer-expr-stx pat-stx))
+           (when (and (not (null? bs)) (not (is-message-pattern? outer-expr-stx)))
+             (raise-syntax-error #f
+                                 "Nested bindings only supported in message events"
+                                 outer-expr-stx
+                                 pat-stx))
            (values #`(?! #,pr)
                    g
-                   (list #'v)
+                   (cons #'v bs)
                    #'v))]
 
         [(? pred? p)
          ;; TODO: support pred? in asserted/retracted as well as message events
          (let ()
-           (syntax-parse outer-expr-stx
-             #:literals [message]
-             [(message _ ...) 'ok]
-             [_ (raise-syntax-error #f
-                                    "Predicate '?' matching only supported in message events"
-                                    outer-expr-stx
-                                    pat-stx)])
+           (when (not (is-message-pattern? outer-expr-stx))
+             (raise-syntax-error #f
+                                 "Predicate '?' matching only supported in message events"
+                                 outer-expr-stx
+                                 pat-stx))
            (define-values (pr g bs ins) (walk #'p))
            (values #`(predicate-match pred? #,pr)
                    g
                    bs
                    ins))]
+
+        [(expander args ...)
+         (assertion-expander-id? #'expander)
+         (assertion-expander-transform pat-stx (lambda (r) (walk (syntax-rearm r pat-stx))))]
 
         [(ctor p ...)
          (let ()

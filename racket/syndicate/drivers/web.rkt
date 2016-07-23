@@ -18,6 +18,14 @@
          (struct-out web-response-chunk)
          (struct-out websocket-message)
 
+         web-request-incoming
+         web-request-get
+         websocket-connection-closed
+         websocket-message-recv
+         websocket-message-send!
+         web-respond/bytes!
+         web-respond/xexpr!
+
          spawn-web-driver)
 
 (require net/url)
@@ -41,6 +49,7 @@
 (require (only-in web-server/private/util lowercase-symbol!))
 (require web-server/dispatchers/dispatch)
 (require struct-defaults)
+(require xml)
 
 (require/activate "timer.rkt")
 
@@ -76,6 +85,45 @@
 (struct web-raw-request (id port connection req control-ch) #:prefab)
 (struct web-raw-client-conn (id connection) #:prefab)
 (struct web-incoming-message (id message) #:prefab)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-event-expander web-request-incoming
+  (syntax-rules ()
+    [(_ (id req) vh method path)
+     (message (web-request ($ id _)
+                           'inbound
+                           ($ req (web-request-header method (web-resource vh `path) _ _))
+                           _))]))
+
+(define-event-expander web-request-get
+  (syntax-rules ()
+    [(_ (id req) vh path)
+     (web-request-incoming (id req) vh 'get path)]))
+
+(define-event-expander websocket-connection-closed
+  (syntax-rules ()
+    [(_ id)
+     (retracted (observe (websocket-message id 'outbound _)))]))
+
+(define-event-expander websocket-message-recv
+  (syntax-rules ()
+    [(_ id str)
+     (message (websocket-message id 'inbound str))]))
+
+(define (websocket-message-send! id str)
+  (send! (websocket-message id 'outbound str)))
+
+(define (web-respond/bytes! id #:header [header (make-web-response-header)] body-bytes)
+  (send! (web-response-complete id header body-bytes)))
+
+(define (web-respond/xexpr! id
+                            #:header [header (make-web-response-header)]
+                            #:preamble [preamble #"<!DOCTYPE html>"]
+                            body-xexpr)
+  (web-respond/bytes! id #:header header
+                      (bytes-append preamble
+                                    (string->bytes/utf-8 (xexpr->string body-xexpr)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -141,11 +189,9 @@
                     (stop-when (message (timer-expired (list 'web-req id) _))
                                (do-response-complete control-ch
                                                      id
-                                                     (web-response-header 404
-                                                                          #"Not found"
-                                                                          (current-seconds)
-                                                                          #"text/plain"
-                                                                          '())
+                                                     (make-web-response-header
+                                                      #:code 404
+                                                      #:message #"Not found")
                                                      '()))
                     (stop-when (message (web-response-complete id $rh $body))
                                (do-response-complete control-ch id rh body))
