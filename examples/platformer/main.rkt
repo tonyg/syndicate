@@ -8,6 +8,9 @@
 (require racket/promise)
 (require plot/utils) ;; for vector utilities
 
+(require (only-in racket/string string-prefix?))
+(require (only-in racket/gui/base play-sound))
+
 (require syndicate)
 (require syndicate/drivers/timer)
 (require syndicate-gl/2d)
@@ -394,6 +397,7 @@
              [(message (add-to-score delta))
               (define new-score (+ s delta))
               (log-info "Score increased by ~a to ~a" delta new-score)
+              (play-sound-sequence 270304)
               (define message (text (format "Score: ~a" new-score) 24 "white"))
               (transition new-score
                           (patch-seq (retract (current-score ?))
@@ -608,6 +612,7 @@
     (define pos (piece-pos s id))
     (define support (find-support pos (game-piece-configuration-size g) s))
     (and support
+         (play-sound-sequence 270318)
          ((update-piece g pos (v+ pos (vector 0 -1)) jump-vel) s)))
 
   (spawn (lambda (e s)
@@ -827,7 +832,8 @@
             (values (cons who to-damage) squashed?))))
     (define damage-actions (for/list [(who to-damage)] (message (damage who 1))))
     (if squashed?
-        (quit (list damage-actions (message (at-meta (add-to-score 1)))))
+        (begin (play-sound-sequence 270325)
+               (quit (list damage-actions (message (at-meta (add-to-score 1))))))
         (transition s damage-actions)))
 
   (spawn (lambda (e s)
@@ -903,9 +909,11 @@
            (match e
              [(? patch/removed?)
               (log-info "Player died! Terminating level.")
+              (play-sound-sequence 270328)
               (transition s (quit-dataspace))]
              [(message (at-meta (level-completed)))
               (log-info "Level completed! Terminating level.")
+              (play-sound-sequence 270330)
               (transition s (list (message (at-meta (add-to-score 100)))
                                   (quit-dataspace)))]
              [_ #f]))
@@ -1024,6 +1032,24 @@
                (patch-seq (sub (level-running))
                           (sub (level-completed))))
         (spawn-numbered-level starting-level)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Sounds
+
+(define (lookup-sound-file sound-number)
+  (define sought-prefix (format "sounds/~a__" sound-number))
+  (for/or [(filename (in-directory "sounds"))]
+    (and (string-prefix? (path->string filename) sought-prefix)
+         filename)))
+
+;; TODO: make this a sound driver...
+;; TODO: ...and make sound triggering based on assertions of game
+;; state, not hardcoding in game logic
+(define (play-sound-sequence . sound-numbers)
+  (thread (lambda ()
+            (for [(sound-number (in-list sound-numbers))]
+              (define sound-file (lookup-sound-file sound-number))
+              (play-sound sound-file #f)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
