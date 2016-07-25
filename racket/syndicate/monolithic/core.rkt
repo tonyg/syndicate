@@ -16,7 +16,8 @@
          (struct-out monolithic-wrapper)
          wrap-monolithic-state
          wrap-monolithic-behaviour
-         (rename-out [spawn-monolithic spawn]))
+         (rename-out [spawn-monolithic spawn])
+         (rename-out [spawn-monolithic/stateless spawn/stateless]))
 
 (require racket/match)
 (require (only-in racket/list flatten))
@@ -136,3 +137,21 @@
                       (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
                                               (clean-actions initial-action-tree-exp))
                       #f)))]))
+
+(define-syntax spawn-monolithic/stateless
+  (syntax-rules ()
+    [(_ #:name name-exp behavior-exp initial-action-tree-exp)
+     (spawn-monolithic #:name name-exp
+                       (stateless-behavior-wrap behavior-exp)
+                       (void)
+                       initial-action-tree-exp)]
+    [(_ behavior-exp initial-action-tree-exp)
+     (spawn-monolithic (stateless-behavior-wrap behavior-exp)
+                       (void)
+                       initial-action-tree-exp)]))
+
+(define ((stateless-behavior-wrap b) e state)
+  (match (b e)
+    [#f #f]
+    [(? quit? q) q]
+    [actions (transition state actions)]))

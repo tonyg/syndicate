@@ -7,7 +7,8 @@
                     event?
                     action?
                     clean-transition
-                    spawn))
+                    spawn
+                    spawn/stateless))
 (require "monolithic/scn.rkt")
 (require "monolithic/core.rkt")
 (provide (all-from-out "lang.rkt")
