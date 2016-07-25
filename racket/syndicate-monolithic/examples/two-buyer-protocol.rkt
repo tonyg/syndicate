@@ -1,4 +1,4 @@
-#lang syndicate-monolithic
+#lang syndicate/monolithic
 
 (require racket/set)
 (require syndicate/comprehensions)
