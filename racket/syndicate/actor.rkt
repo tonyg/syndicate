@@ -28,6 +28,7 @@
          (rename-out [core:message message])
 
          suspend-script
+         let-event
 
          query-value
          query-set
@@ -452,6 +453,18 @@
     [(_ proc)
      (quasisyntax/loc stx
        (suspend-script* #,(source-location->string stx) proc))]))
+
+(define-syntax (let-event stx)
+  (syntax-parse stx
+    [(_ [e ...] body ...)
+     (syntax/loc stx
+       ((react/suspend (k)
+          (on-start (-let-event [e ...] (k (lambda () body ...)))))))]))
+
+(define-syntax (-let-event stx)
+  (syntax-parse stx
+    [(_ [] expr) #'expr]
+    [(_ [e es ...] expr) (quasisyntax/loc #'e (react (stop-when e (-let-event [es ...] expr))))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Queries
