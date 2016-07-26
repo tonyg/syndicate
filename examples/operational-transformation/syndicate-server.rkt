@@ -25,15 +25,15 @@
               (assert (extract-snapshot (state)))
 
               (define/query-set client-seen-revs (client-seen-up-to $rev) rev)
-              (let ((oldest-needed-rev #f))
-                (begin/dataflow
-                  (define min-rev
-                    (or (for/fold [(min-rev #f)] [(rev (client-seen-revs))]
-                          (min (or min-rev rev) rev))
-                        (server-state-revision (state))))
-                  (when (not (equal? oldest-needed-rev min-rev))
-                    (set! oldest-needed-rev min-rev)
-                    (state (forget-operation-history (state) oldest-needed-rev)))))
+              (field [oldest-needed-rev #f])
+              (begin/dataflow
+                (define min-rev
+                  (or (for/fold [(min-rev #f)] [(rev (client-seen-revs))]
+                        (min (or min-rev rev) rev))
+                      (server-state-revision (state))))
+                (when (not (equal? (oldest-needed-rev) min-rev))
+                  (oldest-needed-rev min-rev)
+                  (state (forget-operation-history (state) min-rev))))
 
               (begin/dataflow
                 (display-to-file (simple-document-text (server-state-document (state)))
