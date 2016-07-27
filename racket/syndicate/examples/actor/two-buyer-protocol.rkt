@@ -9,7 +9,7 @@
 ;; A makes an offer to split the price of "Catch 22", contributing 1.11
 ;; B is being asked to contribute 1.11 toward "Catch 22" at price 2.22
 ;; B accepts the offer, leaving them with 3.8899999999999997 remaining funds
-;; A learns that the split-proposal for "Catch 22" was accepted
+;; A learns that the split-proposal for "Catch 22" was accepted, leaving them with 33.89 remaining
 ;; The order for "Catch 22" has id 10001483, and will be delivered on March 9th
 ;; A learns that "Encyclopaedia Brittannica" is out-of-stock.
 ;; A learns that the price of "Candide" is 34.95
@@ -28,19 +28,15 @@
 ;; A makes an offer to split the price of "Candide", contributing 32.765625
 ;; B is being asked to contribute 2.184375000000003 toward "Candide" at price 34.95
 ;; B accepts the offer, leaving them with 1.7056249999999968 remaining funds
-;; A learns that the split-proposal for "Candide" was accepted
+;; A learns that the split-proposal for "Candide" was accepted, leaving them with 1.1243750000000006 remaining
 ;; The order for "Candide" has id 10001484, and will be delivered on March 9th
 ;; A learns that the price of "The Wind in the Willows" is 3.95
-;; A makes an offer to split the price of "The Wind in the Willows", contributing 1.975
-;; B is being asked to contribute 1.975 toward "The Wind in the Willows" at price 3.95
+;; A makes an offer to split the price of "The Wind in the Willows", contributing 1.1243750000000006
+;; B is being asked to contribute 2.8256249999999996 toward "The Wind in the Willows" at price 3.95
 ;; B hasn't enough funds (1.7056249999999968 remaining)
 ;; A learns that the split-proposal for "The Wind in the Willows" was rejected
-;; A makes an offer to split the price of "The Wind in the Willows", contributing 2.9625000000000004
-;; B is being asked to contribute 0.9874999999999998 toward "The Wind in the Willows" at price 3.95
-;; B accepts the offer, leaving them with 0.718124999999997 remaining funds
-;; A learns that the split-proposal for "The Wind in the Willows" was accepted
+;; A does not have enough money for "The Wind in the Willows".
 ;; A has bought everything they wanted!
-;; The order for "The Wind in the Willows" has id 10001485, and will be delivered on March 9th
 ;;---------------------------------------------------------------------------
 
 ;; Role: SELLER
@@ -131,7 +127,7 @@
 
   ;; Attempt to entice some SPLIT-DISPOSER to purchase each title in titles, one after another.
   ;;
-  (define (try-to-buy titles)
+  (define (try-to-buy titles budget)
     (match titles
       ['()
        (log-info "A has bought everything they wanted!")]
@@ -143,7 +139,7 @@
                 (stop-when (asserted (book-quote title $price)) (yield price)))
          [#f
           (log-info "A learns that ~v is out-of-stock." title)
-          (try-to-buy remaining-titles)]
+          (try-to-buy remaining-titles budget)]
 
          [price
           (log-info "A learns that the price of ~v is ~a" title price)
@@ -151,25 +147,30 @@
           ;; Next, repeatedly make split offers to a SPLIT-DISPOSER until either one is
           ;; accepted, or the contribution from the SPLIT-DISPOSER becomes pointlessly small.
           ;;
-          (let try-to-split ((contribution (/ price 2)))
-            (log-info "A makes an offer to split the price of ~v, contributing ~a"
-                      title
-                      contribution)
+          (let try-to-split ((contribution (min budget (/ price 2))))
             (cond
               [(> contribution (- price 0.10))
                ;; Not worth bothering to split the price. May as well buy it ourselves.
                ;; TODO: could perform BUYER here
                ;;
                (log-info "A gives up on ~v." title)
-               (try-to-buy remaining-titles)]
+               (try-to-buy remaining-titles budget)]
+              [(> contribution budget)
+               ;; Don't have enough money
+               (log-info "A does not have enough money for ~v." title)
+               (try-to-buy remaining-titles budget)]
 
               [else
                ;; Make our proposal, and wait for a response.
                ;;
+               (log-info "A makes an offer to split the price of ~v, contributing ~a"
+                      title
+                      contribution)
                (react
                 (stop-when (asserted (split-proposal title price contribution #t))
-                           (log-info "A learns that the split-proposal for ~v was accepted" title)
-                           (try-to-buy remaining-titles))
+                           (define remaining-budget (- budget contribution))
+                           (log-info "A learns that the split-proposal for ~v was accepted, leaving them with ~v remaining" title remaining-budget)
+                           (try-to-buy remaining-titles remaining-budget))
                 (stop-when (asserted (split-proposal title price contribution #f))
                            (log-info "A learns that the split-proposal for ~v was rejected" title)
                            (try-to-split (+ contribution (/ (- price contribution) 2)))))]))])]))
@@ -177,7 +178,8 @@
   (actor (try-to-buy (list "Catch 22"
                            "Encyclopaedia Brittannica"
                            "Candide"
-                           "The Wind in the Willows"))))
+                           "The Wind in the Willows")
+                     35.00)))
 
 ;; Serial SPLIT-DISPOSER
 ;;
