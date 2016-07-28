@@ -359,7 +359,12 @@
 (define-syntax (stop-when stx)
   (syntax-parse stx
     [(_ E prio:priority script ...)
-     (analyze-event stx #'E #t (syntax/loc stx (begin/void-default script ...)) #'prio.level)]))
+     (analyze-event stx
+                    #'#t
+                    #'E
+                    #t
+                    (syntax/loc stx (begin/void-default script ...))
+                    #'prio.level)]))
 
 (define-syntax (on-start stx)
   (syntax-parse stx
@@ -391,8 +396,13 @@
 
 (define-syntax (on stx)
   (syntax-parse stx
-    [(_ E prio:priority script ...)
-     (analyze-event stx #'E #f (syntax/loc stx (begin/void-default script ...)) #'prio.level)]))
+    [(_ w:when-pred E prio:priority script ...)
+     (analyze-event stx
+                    #'w.Pred
+                    #'E
+                    #f
+                    (syntax/loc stx (begin/void-default script ...))
+                    #'prio.level)]))
 
 (define-syntax (during stx)
   (syntax-parse stx
@@ -620,6 +630,7 @@
   (and old (not new)))
 
 (define-for-syntax (analyze-asserted/retracted outer-expr-stx
+                                               when-pred-stx
                                                event-stx
                                                terminal?
                                                script-stx
@@ -635,7 +646,9 @@
     (if asserted? #'interest-just-appeared-matching? #'interest-just-disappeared-matching?))
   (quasisyntax/loc outer-expr-stx
     (add-endpoint! #,(source-location->string outer-expr-stx)
-                   (lambda () (core:sub #,pat #:meta-level #,meta-level))
+                   (lambda () (if #,when-pred-stx
+                                  (core:sub #,pat #:meta-level #,meta-level)
+                                  patch-empty))
                    (lambda (e)
                      (core:match-event e
                        [(? #,event-predicate-stx p)
@@ -676,7 +689,12 @@
 (define-for-syntax orig-insp
   (variable-reference->module-declaration-inspector (#%variable-reference)))
 
-(define-for-syntax (analyze-event outer-expr-stx armed-event-stx terminal? script-stx priority-stx)
+(define-for-syntax (analyze-event outer-expr-stx
+                                  when-pred-stx
+                                  armed-event-stx
+                                  terminal?
+                                  script-stx
+                                  priority-stx)
   (define event-stx (syntax-disarm armed-event-stx orig-insp))
   (syntax-parse event-stx
     #:literals [core:message asserted retracted rising-edge]
@@ -686,6 +704,7 @@
       event-stx
       (lambda (result)
         (analyze-event outer-expr-stx
+                       when-pred-stx
                        (syntax-rearm result event-stx)
                        terminal?
                        script-stx
@@ -695,7 +714,9 @@
        (analyze-pattern event-stx #'P))
      (quasisyntax/loc outer-expr-stx
        (add-endpoint! #,(source-location->string outer-expr-stx)
-                      (lambda () (core:sub #,pat #:meta-level L.level))
+                      (lambda () (if #,when-pred-stx
+                                     (core:sub #,pat #:meta-level L.level)
+                                     patch-empty))
                       (lambda (e)
                         (core:match-event e
                           [(core:message body)
@@ -711,10 +732,10 @@
                                    (apply (lambda #,bindings #,script-stx)
                                           capture-vals))))]))))]
     [(asserted P L:meta-level)
-     (analyze-asserted/retracted outer-expr-stx event-stx terminal? script-stx
+     (analyze-asserted/retracted outer-expr-stx when-pred-stx event-stx terminal? script-stx
                                  #t #'P #'L.level priority-stx)]
     [(retracted P L:meta-level)
-     (analyze-asserted/retracted outer-expr-stx event-stx terminal? script-stx
+     (analyze-asserted/retracted outer-expr-stx when-pred-stx event-stx terminal? script-stx
                                  #f #'P #'L.level priority-stx)]
     [(rising-edge Pred)
      (define field-name
@@ -726,14 +747,15 @@
          (field [#,field-name #f])
          (add-endpoint! #,(source-location->string outer-expr-stx)
                         (lambda ()
-                          (define old-val (#,field-name))
-                          (define new-val Pred)
-                          (when (not (eq? old-val new-val))
-                            (#,field-name new-val)
-                            (when new-val
-                              (schedule-script! #:priority #,priority-stx
-                                                #,(if terminal? #'#t #'#f)
-                                                (lambda () #,script-stx))))
+                          (when #,when-pred-stx
+                            (define old-val (#,field-name))
+                            (define new-val Pred)
+                            (when (not (eq? old-val new-val))
+                              (#,field-name new-val)
+                              (when new-val
+                                (schedule-script! #:priority #,priority-stx
+                                                  #,(if terminal? #'#t #'#f)
+                                                  (lambda () #,script-stx)))))
                           patch-empty)
                         void)))]))
 
