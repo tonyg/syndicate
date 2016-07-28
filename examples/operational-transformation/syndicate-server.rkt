@@ -8,7 +8,6 @@
 (require/activate syndicate/drivers/tcp)
 (require/activate syndicate/drivers/line-reader)
 
-(struct file-being-edited (name) #:prefab)
 (struct proposed-op (p) #:prefab)
 (struct accepted-op (p) #:prefab)
 (struct client-seen-up-to (revision) #:prefab)
