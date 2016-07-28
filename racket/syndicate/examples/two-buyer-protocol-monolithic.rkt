@@ -90,12 +90,12 @@
          inv
          (scn seller-interests)))
 
-(define (buyer-a titles)
+(define (buyer-a titles budget)
   (define (log-offer title contrib)
     (log-info "A makes an offer to split the price of ~v, contributing ~a"
               title
               contrib))
-  (define (try-to-buy titles)
+  (define (try-to-buy titles budget)
     (match titles
       ['() (log-info "A has bought everything they wanted!") (scn trie-empty)]
       [(cons title remaining-titles)
@@ -108,43 +108,55 @@
              (cond
                [maybe-price
                 (log-info "A learns that the price of ~v is ~a" title maybe-price)
-                (quit (negotiate-split title maybe-price remaining-titles))]
+                (quit (negotiate-split title maybe-price remaining-titles budget))]
                [else
                 (log-info "A learns that ~v is out-of-stock." title)
-                (quit (try-to-buy remaining-titles))])]
+                (quit (try-to-buy remaining-titles budget))])]
             [_ #f]))
         (list (scn (assertion (observe (book-quote title ?))))))]))
-  (define (negotiate-split title price remaining-titles)
-    (log-offer title (/ price 2))
-    (spawn
-     #:name (format "(negotiate-split ~a ~a)" title price)
-     (lambda (e my-contribution)
-       (match e
-         [(scn (and t (? (compose not trie-empty?))))
-          (define accepted?
-            (set-first (trie-project/set/single t (split-proposal title price ? (?!)))))
-          (cond
-            [accepted?
-             (log-info "A learns that the split-proposal for ~v was accepted" title)
-             (quit (try-to-buy remaining-titles))]
-            [else
-             (log-info "A learns that the split-proposal for ~v was rejected" title)
-             (let ([my-contribution (+ my-contribution (/ (- price my-contribution) 2))])
-               (cond
-                 [(> my-contribution (- price 0.10))
-                  ;; Not worth bothering to split the price. May as well buy it ourselves.
-                  ;; TODO: could perform BUYER here
-                  ;;
-                  (log-info "A gives up on ~v." title)
-                  (quit (try-to-buy remaining-titles))]
-                 [else
-                  (log-offer title my-contribution)
-                  (transition my-contribution
-                              (list (scn (assertion (observe (split-proposal title price my-contribution ?))))))]))])]
-         [_ #f]))
-           (/ price 2)
-           (list (scn (assertion (observe (split-proposal title price (/ price 2) ?)))))))
-  (try-to-buy titles))
+  (define (negotiate-split title price remaining-titles budget)
+    (define initial-offer (min budget (/ price 2)))
+    (cond
+      [(> initial-offer budget)
+       ;; Don't have enough money
+       (log-info "A does not have enough money for ~v." title)
+       (try-to-buy remaining-titles budget)]
+      [else
+       (log-offer title initial-offer)
+       (spawn
+        #:name (format "(negotiate-split ~a ~a)" title price)
+        (lambda (e my-contribution)
+          (match e
+            [(scn (and t (? (compose not trie-empty?))))
+             (define accepted?
+               (set-first (trie-project/set/single t (split-proposal title price ? (?!)))))
+             (cond
+               [accepted?
+                (define remaining-budget (- budget my-contribution))
+                (log-info "A learns that the split-proposal for ~v was accepted, leaving them with ~v remaining" title remaining-budget)
+                (quit (try-to-buy remaining-titles remaining-budget))]
+               [else
+                (log-info "A learns that the split-proposal for ~v was rejected" title)
+                (let ([my-contribution (+ my-contribution (/ (- price my-contribution) 2))])
+                  (cond
+                    [(> my-contribution (- price 0.10))
+                     ;; Not worth bothering to split the price. May as well buy it ourselves.
+                     ;; TODO: could perform BUYER here
+                     ;;
+                     (log-info "A gives up on ~v." title)
+                     (quit (try-to-buy remaining-titles budget))]
+                    [(> my-contribution budget)
+                     ;; Don't have enough money
+                     (log-info "A does not have enough money for ~v." title)
+                     (quit (try-to-buy remaining-titles budget))]
+                    [else
+                     (log-offer title my-contribution)
+                     (transition my-contribution
+                                 (list (scn (assertion (observe (split-proposal title price my-contribution ?))))))]))])]
+            [_ #f]))
+        (/ price 2)
+        (list (scn (assertion (observe (split-proposal title price (/ price 2) ?))))))]))
+  (try-to-buy titles budget))
 
 (define (buyer-b funds)
   (define (complete-purchase title price contrib)
@@ -202,6 +214,7 @@
 (buyer-a (list "Catch 22"
                "Encyclopaedia Brittannica"
                "Candide"
-               "The Wind in the Willows"))
+               "The Wind in the Willows")
+         35.00)
 
 (buyer-b 5.00)
