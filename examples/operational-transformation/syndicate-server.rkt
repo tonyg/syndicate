@@ -83,6 +83,6 @@
   (command-line
    #:once-each
    [("-p" "--port") server-port ((format "Server port (default ~v)" (cmdline-port)))
-    (cmdline-port server-port)]
+    (cmdline-port (string->number server-port))]
    #:args (filename)
    (cmdline-filename filename)))
