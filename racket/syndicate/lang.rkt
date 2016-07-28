@@ -5,6 +5,7 @@
 (require racket/match)
 (require "main.rkt")
 (require (submod "actor.rkt" for-module-begin))
+(require "store.rkt")
 
 (provide (rename-out [module-begin #%module-begin])
          activate
@@ -95,8 +96,8 @@
 (define (capture-actor-actions thunk)
   (call-with-syndicate-effects
    (lambda ()
-     (parameterize ((current-pending-actions '())
-                    (current-pending-patch patch-empty))
+     (with-store [(current-pending-actions '())
+                  (current-pending-patch patch-empty)]
        (define result (thunk))
        (flush-pending-patch!)
        (cons result (current-pending-actions))))))

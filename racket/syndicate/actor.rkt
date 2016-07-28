@@ -82,6 +82,7 @@
 (require "trie.rkt")
 (require "pattern.rkt")
 (require "dataflow.rkt")
+(require "store.rkt")
 (require "support/hash.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -207,28 +208,26 @@
 (require (submod "." priorities))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Parameters. Many of these are *updated* during facet execution!
+;; Parameters and Stores. Many of these are *updated* during facet execution!
 
 ;; Parameterof (Setof FieldDescriptor)
 (define current-field-descriptors (make-parameter 'unset:current-field-descriptors))
 
-;; Parameterof ActorState
-(define current-actor-state (make-parameter #f))
+;; Storeof ActorState
+(define current-actor-state (make-store))
 
 ;; Parameterof FID
 (define current-facet-id (make-parameter #f))
 
-;; Parameterof Patch
-(define current-pending-patch (make-parameter patch-empty))
+;; Storeof Patch
+(define current-pending-patch (make-store))
 
-;; Parameterof (Constreeof Action)
-(define current-pending-actions (make-parameter '()))
+;; Storeof (Constreeof Action)
+(define current-pending-actions (make-store))
 
-(define (make-empty-pending-scripts)
-  (make-vector priority-count '()))
-
-;; Parameterof (Vector (List Script) (List Script))
-(define current-pending-scripts (make-parameter (make-empty-pending-scripts)))
+;; Storeof (Vector (List Script) (List Script))
+;; Mutates the vector!
+(define current-pending-scripts (make-store))
 
 ;; Parameterof Boolean
 (define in-script? (make-parameter #f))
@@ -965,17 +964,20 @@
                         (struct-copy facet f
                                      [stop-scripts (cons script-proc (facet-stop-scripts f))])))))
 
+(define (make-empty-pending-scripts)
+  (make-vector priority-count '()))
+
 (define (boot-actor script-proc)
-  (parameterize ((current-actor-state
-                  (actor-state (mux)
-                               (hasheqv)
-                               trie-empty
-                               trie-empty
-                               (hash)
-                               (make-dataflow-graph)))
-                 (current-pending-patch patch-empty)
-                 (current-pending-actions '())
-                 (current-pending-scripts (make-empty-pending-scripts)))
+  (with-store [(current-actor-state
+                (actor-state (mux)
+                             (hasheqv)
+                             trie-empty
+                             trie-empty
+                             (hash)
+                             (make-dataflow-graph)))
+               (current-pending-patch patch-empty)
+               (current-pending-actions '())
+               (current-pending-scripts (make-empty-pending-scripts))]
     (with-current-facet #f (set) #f
       (schedule-script! #f script-proc)
       (run-scripts!))))
@@ -1024,15 +1026,15 @@
 
 (define (actor-behavior e a)
   (and e
-       (parameterize ((current-actor-state
-                       (if (patch? e)
-                           (struct-copy actor-state a
-                                        [previous-knowledge (actor-state-knowledge a)]
-                                        [knowledge (update-interests (actor-state-knowledge a) e)])
-                           a))
-                      (current-pending-patch patch-empty)
-                      (current-pending-actions '())
-                      (current-pending-scripts (make-empty-pending-scripts)))
+       (with-store [(current-actor-state
+                     (if (patch? e)
+                         (struct-copy actor-state a
+                                      [previous-knowledge (actor-state-knowledge a)]
+                                      [knowledge (update-interests (actor-state-knowledge a) e)])
+                         a))
+                    (current-pending-patch patch-empty)
+                    (current-pending-actions '())
+                    (current-pending-scripts (make-empty-pending-scripts))]
          (for [((fid f) (in-hash (actor-state-facets a)))]
            (facet-handle-event! fid f e))
          (run-scripts!))))
