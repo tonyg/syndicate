@@ -387,7 +387,6 @@
               (define new-score (+ s delta))
               (log-info "Score increased by ~a to ~a" delta new-score)
               (play-sound-sequence 270304)
-              (define message (text (format "Score: ~a" new-score) 24 "white"))
               (transition new-score
                           (patch-seq (retract (current-score ?))
                                      (assert (current-score delta))
