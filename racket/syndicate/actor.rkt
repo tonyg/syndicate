@@ -207,6 +207,7 @@
                   #,(loop (+ counter 1) #'(more ...)))])))
 
   (define-priority-levels ;; highest-priority to lowest-priority
+    *query-priority-high*
     *query-priority*
     *query-handler-priority*
     *normal-priority*
@@ -512,7 +513,7 @@
          (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name expr))
-         (on (retracted P) #:priority *query-priority*
+         (on (retracted P) #:priority *query-priority-high*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name absent-expr))
          field-name))]))
@@ -533,7 +534,7 @@
          (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name (set-add (field-name) expr)))
-         (on (retracted P) #:priority *query-priority*
+         (on (retracted P) #:priority *query-priority-high*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (set-remove (field-name) expr)))
          field-name))]))
@@ -560,7 +561,7 @@
                               key))
                #,@(schedule-query-handler-stxs (attribute on-add.expr))
                (field-name (hash-set (field-name) key value-expr))))
-         (on (retracted P) #:priority *query-priority*
+         (on (retracted P) #:priority *query-priority-high*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (hash-remove (field-name) key-expr)))
          field-name))]))
@@ -581,7 +582,7 @@
          (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name (hashset-add (field-name) key-expr value-expr)))
-         (on (retracted P) #:priority *query-priority*
+         (on (retracted P) #:priority *query-priority-high*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (hashset-remove (field-name) key-expr value-expr)))
          field-name))]))
