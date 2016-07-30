@@ -300,18 +300,7 @@
                  (icon-pict i)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Various projections
-
-(define window-projection1 (inbound (?! (window ? ?))))
-(define window-projection3 (inbound* 3 (?! (window ? ?))))
-(define scroll-offset-projection (scroll-offset (?!)))
-(define on-screen-display-projection (?! (on-screen-display ? ? ?)))
-(define key-pressed-projection (inbound* 2 (key-pressed (?!))))
-(define position-projection (?! (position ? ? ?)))
-(define impulse-projection (?! (impulse ? ?)))
-(define game-piece-configuration-projection (?! (game-piece-configuration ? ? ? ?)))
-(define touching-projection (?! (touching ? ? ?)))
-(define level-size-projection (level-size (?!)))
+;; Utilities
 
 (define (update-set-from-patch orig p projection)
   (define-values (added removed) (patch-project/set/single p projection))
@@ -330,13 +319,13 @@
   (define backdrop (rectangle 1 1 "solid" "white"))
 
   (define (update-window-size s p)
-    (define added (trie-project/set/single (patch-added p) window-projection1))
+    (define added (trie-project/set/single (patch-added p) (inbound (?! (window ? ?)))))
     (for/fold [(s s)] [(w added)]
       (match-define (window width height) w)
       (struct-copy scene-manager-state s [size (vector width height)])))
 
   (define (update-scroll-offset s p)
-    (define-values (added removed) (patch-project/set/single p scroll-offset-projection))
+    (define-values (added removed) (patch-project/set/single p (scroll-offset (?!))))
     (for/fold [(s s)] [(vec added)]
       (struct-copy scene-manager-state s [offset vec])))
 
@@ -344,7 +333,7 @@
     (struct-copy scene-manager-state s
                  [osds (update-set-from-patch (scene-manager-state-osds s)
                                               p
-                                              on-screen-display-projection)]))
+                                              (?! (on-screen-display ? ? ?)))]))
 
   (spawn (lambda (e s)
            (match e
@@ -429,7 +418,7 @@
 
   (define ((remove-game-piece-configurations p) s)
     (define removed (trie-project/set/single (patch-removed p)
-					     game-piece-configuration-projection))
+					     (?! (game-piece-configuration ? ? ? ?))))
     (transition
      (for/fold [(s s)] [(g removed)]
        (define id (game-piece-configuration-id g))
@@ -443,7 +432,7 @@
 
   (define ((add-game-piece-configurations p) s)
     (define added (trie-project/set/single (patch-added p)
-					   game-piece-configuration-projection))
+					   (?! (game-piece-configuration ? ? ? ?))))
     (transition
      (for/fold [(s s)] [(g added)]
        (match-define (game-piece-configuration id initial-position _ _) g)
@@ -460,7 +449,7 @@
      (struct-copy physics-state s
                   [impulses (update-hash-from-patch (physics-state-impulses s)
                                                     p
-                                                    impulse-projection
+                                                    (?! (impulse ? ?))
                                                     impulse-id
                                                     impulse-vec)])
      '()))
@@ -661,7 +650,7 @@
 
   (define ((monitor-position-change p) s)
     (define s1
-      (for/fold [(s s)] [(pos (trie-project/set/single (patch-added p) position-projection))]
+      (for/fold [(s s)] [(pos (trie-project/set/single (patch-added p) (?! (position ? ? ?))))]
         (match-define (position _ hitbox-top-left _) pos)
         (struct-copy player-state s [pos hitbox-top-left])))
     (transition s1 (sprite-update s1)))
@@ -671,7 +660,7 @@
      (struct-copy player-state s
                   [keys-down (update-set-from-patch (player-state-keys-down s)
                                                     p
-                                                    key-pressed-projection)])
+                                                    (inbound* 2 (key-pressed (?!))))])
      '()))
 
   (define (any-key-down? s . ks)
@@ -799,12 +788,12 @@
 
   (define ((monitor-level-size-change p) s)
     (transition (for/fold [(s s)] [(vec (trie-project/set/single (patch-added p)
-								 level-size-projection))]
+								 (level-size (?!))))]
                   (struct-copy enemy-state s [level-size vec]))
                 '()))
 
   (define ((monitor-position-change p) s)
-    (define positions (trie-project/set/single (patch-added p) position-projection))
+    (define positions (trie-project/set/single (patch-added p) (?! (position ? ? ?))))
     (and (not (set-empty? positions))
          (match (set-first positions)
            [(position _ (and top-left (vector left top)) (vector width height))
@@ -825,7 +814,7 @@
   (define ((damage-contacts p) s)
     (define-values (to-damage squashed?)
       (for/fold [(to-damage '()) (squashed? #f)]
-                [(t (trie-project/set/single (patch-added p) touching-projection))]
+                [(t (trie-project/set/single (patch-added p) (?! (touching ? ? ?))))]
         (match-define (touching who _ side) t)
         (if (eq? side 'top)
             (values to-damage #t)
@@ -863,7 +852,7 @@
   (match-define (vector level-width level-height) level-size-vec)
 
   (define ((update-window-size p) s)
-    (define added (trie-project/set/single (patch-added p) window-projection3))
+    (define added (trie-project/set/single (patch-added p) (inbound* 3 (?! (window ? ?)))))
     (transition (for/fold [(s s)] [(w added)]
                   (match-define (window width height) w)
                   (vector width height))
@@ -873,7 +862,7 @@
     (min (max 0 (- pos (/ viewport 2))) (- limit viewport)))
 
   (define ((update-scroll-offset-from-player-position p) s)
-    (define player-positions (trie-project/set/single (patch-added p) position-projection))
+    (define player-positions (trie-project/set/single (patch-added p) (?! (position ? ? ?))))
     (and (not (set-empty? player-positions))
          (let ((player-position (set-first player-positions)))
            (match-define (vector ww wh) s)
