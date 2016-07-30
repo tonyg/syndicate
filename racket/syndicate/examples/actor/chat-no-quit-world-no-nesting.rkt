@@ -1,5 +1,6 @@
 #lang syndicate/actor
 
+(require syndicate/protocol/advertise)
 (require/activate syndicate/drivers/tcp)
 (require (only-in racket/string string-trim))
 

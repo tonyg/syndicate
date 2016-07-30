@@ -1,5 +1,6 @@
 #lang syndicate
 
+(require syndicate/protocol/advertise)
 (require/activate "../drivers/websocket.rkt")
 (require "../demand-matcher.rkt")
 

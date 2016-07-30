@@ -13,11 +13,11 @@
 (spawn-dataspace
  (spawn (lambda (e s)
           (match e
-            [(message (at-meta 'die)) (quit)]
+            [(message (inbound 'die)) (quit)]
             [_ #f]))
         (void)
-        (patch-seq (sub 'die #:meta-level 1)
-                   (sub (observe 'die) #:meta-level 1))))
+        (patch-seq (sub (inbound 'die))
+                   (sub (inbound (observe 'die))))))
 
 (spawn (lambda (e s)
          (match e

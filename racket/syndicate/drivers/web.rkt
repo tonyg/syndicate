@@ -171,7 +171,7 @@
 
   (on-stop (channel-put listener-control 'quit))
 
-  (on (message (web-raw-request $id port $conn $lowlevel-req $control-ch) #:meta-level 1)
+  (on (message (inbound (web-raw-request $id port $conn $lowlevel-req $control-ch)))
       (define web-req (web-request id
                                    'inbound
                                    (web-request-header
@@ -245,8 +245,8 @@
   (on-stop (channel-put ws-ch 'quit))
   (on (message (websocket-message id 'outbound $body))
       (channel-put ws-ch (list 'send body)))
-  (stop-when (message (web-incoming-message id (? eof-object? _)) #:meta-level 1))
-  (on (message (web-incoming-message id $body) #:meta-level 1)
+  (stop-when (message (inbound (web-incoming-message id (? eof-object? _)))))
+  (on (message (inbound (web-incoming-message id $body)))
       (unless (eof-object? body) (send! (websocket-message id 'inbound body)))))
 
 (define (req->virtual-host scheme r port)
@@ -401,7 +401,7 @@
            (log-info "Connected to ~a ~a" url (current-inexact-milliseconds))
            ((websocket-connection-main id control-ch) c (void))))))
   (react
-   (stop-when (message (web-raw-client-conn id $c) #:meta-level 1)
+   (stop-when (message (inbound (web-raw-client-conn id $c)))
               (react (stop-when (retracted (observe (web-response-websocket id _))))
                      (if (ws-conn? c)
                          (begin (assert (web-response-websocket id (ws-conn-headers c)))
@@ -447,7 +447,7 @@
             (error 'http-sendrecv "Bad first line: ~v" first-line)])))
      (send-ground-message (web-raw-client-conn id response))))
   (react
-   (stop-when (message (web-raw-client-conn id $r) #:meta-level 1)
+   (stop-when (message (inbound (web-raw-client-conn id $r)))
               (react (stop-when (retracted (observe (web-response-complete id _ _))))
                      (if (exn? r)
                          (assert (web-response-websocket id #f #f))

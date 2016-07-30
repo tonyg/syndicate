@@ -1,7 +1,8 @@
 #lang syndicate
 
 (require (prefix-in udp: racket/udp))
-(require "../demand-matcher.rkt")
+(require syndicate/demand-matcher)
+(require syndicate/protocol/advertise)
 
 (provide (struct-out udp-remote-address)
 	 (struct-out udp-handle)
@@ -82,14 +83,14 @@
               (when (peer-quit? p)
                 (channel-put control-ch 'quit)
                 (quit))]
-	     [(message (at-meta (? udp-packet? p)))
+	     [(message (inbound (? udp-packet? p)))
 	      (transition s (message p))]
 	     [(message (udp-packet _ (udp-remote-address host port) body))
 	      (udp:udp-send-to socket host port body)
 	      #f]
 	     [_ #f]))
 	 (void)
-         (patch-seq (sub (udp-packet ? local-addr ?) #:meta-level 1)
+         (patch-seq (sub (inbound (udp-packet ? local-addr ?)))
                     (sub (udp-packet local-addr (udp-remote-address ? ?) ?))
                     (pub (udp-packet (udp-remote-address ? ?) local-addr ?))
                     (sub (udp-multicast-group-member local-addr ? ?))

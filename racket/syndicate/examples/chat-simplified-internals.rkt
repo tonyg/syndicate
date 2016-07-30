@@ -2,6 +2,7 @@
 ;; The chat server, using a proxy abstracting over details of the TCP
 ;; driver's protocol.
 
+(require syndicate/protocol/advertise)
 (require (only-in racket/string string-trim))
 (require/activate "../drivers/tcp.rkt")
 (require "../demand-matcher.rkt")

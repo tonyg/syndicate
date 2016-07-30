@@ -63,9 +63,9 @@
              (log-info "Computed meta-level: ~v" LEVEL)
              (actor #:name 'observer-in-ds
                     (forever
-                     (assert 'observer-in-ds-ready #:meta-level LEVEL)
+                     (assert (outbound* LEVEL 'observer-in-ds-ready))
                      (on-start (log-info "observer-in-ds: STARTING"))
-                     (define/query-set items `(item ,$a ,$b) #:meta-level LEVEL (list a b))
-                     (on (message 'dump #:meta-level LEVEL)
+                     (define/query-set items (inbound* LEVEL `(item ,$a ,$b)) (list a b))
+                     (on (message (inbound* LEVEL 'dump))
                          (log-info "observer-in-ds: ~v" (items)))))
              (forever)))

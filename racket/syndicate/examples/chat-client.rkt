@@ -1,5 +1,6 @@
 #lang syndicate
 
+(require syndicate/protocol/advertise)
 (require (only-in racket/port read-bytes-line-evt))
 (require/activate "../drivers/tcp.rkt")
 
@@ -9,9 +10,9 @@
 (spawn/stateless (lambda (e)
                    (match e
                      [(? patch/removed?) (quit)]
-                     [(message (at-meta (external-event _ (list (? eof-object?)))))
+                     [(message (inbound (external-event _ (list (? eof-object?)))))
                       (quit)]
-                     [(message (at-meta (external-event _ (list line))))
+                     [(message (inbound (external-event _ (list line))))
                       (message (tcp-channel local-handle remote-handle line))]
                      [(message (tcp-channel _ _ bs))
                       (write-bytes bs)
@@ -19,8 +20,7 @@
                       #f]
                      [_ #f]))
                  (patch-seq
-                  (sub (external-event (read-bytes-line-evt (current-input-port) 'any) ?)
-                       #:meta-level 1)
+                  (sub (inbound (external-event (read-bytes-line-evt (current-input-port) 'any) ?)))
                   (sub (tcp-channel remote-handle local-handle ?))
                   (sub (advertise (tcp-channel remote-handle local-handle ?)))
                   (pub (tcp-channel local-handle remote-handle ?))))

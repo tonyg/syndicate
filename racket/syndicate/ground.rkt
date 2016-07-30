@@ -6,10 +6,12 @@
 (require racket/match)
 (require racket/list)
 (require "core.rkt")
+(require "dataspace.rkt")
 (require "hierarchy.rkt")
 (require "trace.rkt")
 (require "trace/stderr.rkt")
 (require "tset.rkt")
+(require "protocol/standard-relay.rkt")
 
 (provide (struct-out external-event)
          send-ground-message
@@ -94,48 +96,61 @@
 (define poll-handler
   (handle-evt always-evt (lambda _ #f)))
 
+;; Boolean Behavior State AssertionSet Natural -> Void
+(define (await-interrupt inert? beh st interests background-activity-count)
+  ;; (log-info "~a ~a GROUND INTERESTS:\n~a"
+  ;;           inert?
+  ;;           background-activity-count
+  ;;           (trie->pretty-string interests))
+  (if (and inert? (zero? background-activity-count) (trie-empty? interests))
+      (begin (log-info "run-ground: Terminating because inert")
+             (void))
+      (match (apply sync
+                    (current-ground-event-async-channel)
+                    (cond
+                      [inert? never-evt]
+                      [(zero? background-activity-count) idle-handler]
+                      [else poll-handler])
+                    (extract-active-events interests))
+        [(background-activity-signal delta)
+         ;; (log-info "background-activity-count ~v" (+ background-activity-count delta))
+         (await-interrupt inert? beh st interests (+ background-activity-count delta))]
+        [e
+         (inject-event e beh st interests background-activity-count)])))
+
+;; Event Behavior State AssertionSet Natural -> Void
+(define (inject-event e beh st interests background-activity-count)
+  (trace-process-step e #f beh st)
+  (define resulting-transition (clean-transition (beh e st)))
+  (trace-process-step-result e #f beh st #f resulting-transition)
+  (process-transition resulting-transition beh st interests background-activity-count))
+
+;; Transition Behavior State AssertionSet Natural -> Void
+(define (process-transition resulting-transition beh st interests background-activity-count)
+  (match resulting-transition
+    [#f ;; inert
+     (await-interrupt #t beh st interests background-activity-count)]
+    [(<quit> _ _)
+     (log-info "run-ground: Terminating by request")
+     (void)]
+    [(transition st actions)
+     (let process-actions ((actions actions) (interests interests))
+       (match actions
+         ['() (await-interrupt #f beh st interests background-activity-count)]
+         [(cons a actions)
+          (match a
+            [(? patch? p)
+             (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
+            [_
+             (log-warning "run-ground: ignoring useless meta-action ~v" a)
+             (process-actions actions interests)])]))]))
+
 ;; Action* -> Void
 ;; Runs a ground VM, booting the outermost Dataspace with the given Actions.
 (define (run-ground . boot-actions)
-  (let await-interrupt ((inert? #f)
-                        (w (make-dataspace boot-actions))
-                        (interests trie-empty)
-                        (background-activity-count 0))
-    ;; (log-info "~a ~a GROUND INTERESTS:\n~a"
-    ;;           inert?
-    ;;           background-activity-count
-    ;;           (trie->pretty-string interests))
-    (if (and inert? (zero? background-activity-count) (trie-empty? interests))
-	(begin (log-info "run-ground: Terminating because inert")
-	       (void))
-        (match (apply sync
-                      (current-ground-event-async-channel)
-                      (cond
-                        [inert? never-evt]
-                        [(zero? background-activity-count) idle-handler]
-                        [else poll-handler])
-                      (extract-active-events interests))
-          [(background-activity-signal delta)
-           ;; (log-info "background-activity-count ~v" (+ background-activity-count delta))
-           (await-interrupt inert? w interests (+ background-activity-count delta))]
-          [e
-           (trace-process-step e #f dataspace-handle-event w)
-           (define resulting-transition (clean-transition (dataspace-handle-event e w)))
-           (trace-process-step-result e #f dataspace-handle-event w #f resulting-transition)
-           (match resulting-transition
-             [#f ;; inert
-              (await-interrupt #t w interests background-activity-count)]
-             [(<quit> _ _)
-              (log-info "run-ground: Terminating by request")
-              (void)]
-             [(transition w actions)
-              (let process-actions ((actions actions) (interests interests))
-                (match actions
-                  ['() (await-interrupt #f w interests background-activity-count)]
-                  [(cons a actions)
-                   (match a
-                     [(? patch? p)
-                      (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
-                     [_
-                      (log-warning "run-ground: ignoring useless meta-action ~v" a)
-                      (process-actions actions interests)])]))])]))))
+  (run-ground* (spawn-dataspace #:name 'ground boot-actions)))
+
+;; Spawn -> Void
+(define (run-ground* s)
+  (match-define (list beh t _name) ((spawn-boot s)))
+  (process-transition t beh 'undefined-initial-ground-state trie-empty 0))

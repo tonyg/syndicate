@@ -7,7 +7,6 @@
 
          assertion
          subscription
-         advertisement
 
          assertion-set-union
          assertion-set-union*
@@ -46,14 +45,11 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (assertion pattern #:meta-level [level 0])
-  (pattern->trie '<assertion> (prepend-at-meta pattern level)))
+(define (assertion pattern)
+  (pattern->trie '<assertion> pattern))
 
-(define (subscription pattern #:meta-level [level 0])
-  (observe-at-meta pattern level))
-
-(define (advertisement pattern #:meta-level [level 0])
-  (assertion (advertise pattern) #:meta-level level))
+(define (subscription pattern)
+  (pattern->trie '<subscription> (observe pattern)))
 
 (define (assertion-set-union . tries)
   (assertion-set-union* tries))

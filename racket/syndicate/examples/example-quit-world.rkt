@@ -6,23 +6,24 @@
 (define (spawn-command-listener)
   (spawn (lambda (e s)
            (match e
-             [(message (at-meta (at-meta (external-event _ (list #"quit")))))
+             [(message (inbound (inbound (external-event _ (list #"quit")))))
               (printf "Quitting just the leaf actor.\n")
               (quit)]
-             [(message (at-meta (at-meta (external-event _ (list #"quit-dataspace")))))
+             [(message (inbound (inbound (external-event _ (list #"quit-dataspace")))))
               (printf "Terminating the whole dataspace.\n")
               (transition s (quit-dataspace))]
              [_ #f]))
          (void)
-         (sub (external-event (read-bytes-line-evt (current-input-port) 'any) ?)
-              #:meta-level 2)))
+         (sub (inbound (inbound
+                        (external-event (read-bytes-line-evt (current-input-port) 'any) ?))))))
 
 (define (spawn-ticker)
   (define (sub-to-alarm)
-    (sub (external-event (alarm-evt (+ (current-inexact-milliseconds) 1000)) ?) #:meta-level 2))
+    (sub (inbound (inbound
+                   (external-event (alarm-evt (+ (current-inexact-milliseconds) 1000)) ?)))))
   (spawn (lambda (e s)
            (match e
-             [(message (at-meta (at-meta (external-event _ _))))
+             [(message (inbound (inbound (external-event _ _))))
               (printf "Tick!\n")
               (transition s
                           (list (retract ?)

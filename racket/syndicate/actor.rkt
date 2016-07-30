@@ -79,6 +79,7 @@
 (require (for-syntax syntax/srcloc))
 
 (require (prefix-in core: "core.rkt"))
+(require (prefix-in core: "dataspace.rkt"))
 (require "mux.rkt")
 (require "patch.rkt")
 (require "trie.rkt")
@@ -255,10 +256,6 @@
     (pattern (~seq #:when Pred))
     (pattern (~seq) #:attr Pred #'#t))
 
-  (define-splicing-syntax-class meta-level
-    (pattern (~seq #:meta-level level:expr))
-    (pattern (~seq) #:attr level #'0))
-
   (define-splicing-syntax-class priority
     (pattern (~seq #:priority level))
     (pattern (~seq) #:attr level #'*normal-priority*))
@@ -351,13 +348,13 @@
 
 (define-syntax (assert stx)
   (syntax-parse stx
-    [(_ w:when-pred P L:meta-level)
+    [(_ w:when-pred P)
      (define-values (proj pat bindings _instantiated)
        (analyze-pattern stx #'P))
      (quasisyntax/loc stx
        (add-endpoint! #,(source-location->string stx)
                       (lambda ()
-                        #,(let ((patch-stx #`(core:assert #,pat #:meta-level L.level)))
+                        #,(let ((patch-stx #`(core:assert #,pat)))
                             (if #'w.Pred
                                 #`(if w.Pred #,patch-stx patch-empty)
                                 patch-stx)))
@@ -413,27 +410,27 @@
 
 (define-syntax (during stx)
   (syntax-parse stx
-    [(_ P L:meta-level O ...)
-     (define E-stx (syntax/loc #'P (asserted P #:meta-level L.level)))
+    [(_ P O ...)
+     (define E-stx (syntax/loc #'P (asserted P)))
      (define-values (_proj _pat _bindings instantiated)
        (analyze-pattern E-stx #'P))
      (quasisyntax/loc stx
        (on #,E-stx
            (let ((p #,instantiated))
-             (react (stop-when (retracted p #:meta-level L.level))
+             (react (stop-when (retracted p))
                     O ...))))]))
 
 (define-syntax (during/actor stx)
   (syntax-parse stx
-    [(_ P L:meta-level w:actor-wrapper name:name O ...)
-     (define E-stx (syntax/loc #'P (asserted P #:meta-level L.level)))
+    [(_ P w:actor-wrapper name:name O ...)
+     (define E-stx (syntax/loc #'P (asserted P)))
      (define-values (_proj _pat _bindings instantiated)
        (analyze-pattern E-stx #'P))
      (quasisyntax/loc stx
        (on #,E-stx
            (let ((p #,instantiated))
              (w.wrapper #:name name.N
-              (react (stop-when (retracted p #:meta-level L.level))
+              (react (stop-when (retracted p))
                      O ...)))))]))
 
 (define-syntax (begin/dataflow stx)
@@ -509,13 +506,13 @@
 
 (define-syntax (query-value* stx)
   (syntax-parse stx
-    [(_ field-name absent-expr P L:meta-level expr on-add:on-add on-remove:on-remove)
+    [(_ field-name absent-expr P expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
        (let ()
-         (on (asserted P #:meta-level L.level) #:priority *query-priority*
+         (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name expr))
-         (on (retracted P #:meta-level L.level) #:priority *query-priority*
+         (on (retracted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name absent-expr))
          field-name))]))
@@ -530,13 +527,13 @@
 
 (define-syntax (query-set* stx)
   (syntax-parse stx
-    [(_ field-name P L:meta-level expr on-add:on-add on-remove:on-remove)
+    [(_ field-name P expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
        (let ()
-         (on (asserted P #:meta-level L.level) #:priority *query-priority*
+         (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name (set-add (field-name) expr)))
-         (on (retracted P #:meta-level L.level) #:priority *query-priority*
+         (on (retracted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (set-remove (field-name) expr)))
          field-name))]))
@@ -551,10 +548,10 @@
 
 (define-syntax (query-hash* stx)
   (syntax-parse stx
-    [(_ field-name P L:meta-level key-expr value-expr on-add:on-add on-remove:on-remove)
+    [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
        (let ()
-         (on (asserted P #:meta-level L.level) #:priority *query-priority*
+         (on (asserted P) #:priority *query-priority*
              (let ((key key-expr))
                (when (hash-has-key? (field-name) key)
                  (log-warning "query-hash: field ~v with pattern ~v: overwriting existing entry ~v"
@@ -563,7 +560,7 @@
                               key))
                #,@(schedule-query-handler-stxs (attribute on-add.expr))
                (field-name (hash-set (field-name) key value-expr))))
-         (on (retracted P #:meta-level L.level) #:priority *query-priority*
+         (on (retracted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (hash-remove (field-name) key-expr)))
          field-name))]))
@@ -578,13 +575,13 @@
 
 (define-syntax (query-hash-set* stx)
   (syntax-parse stx
-    [(_ field-name P L:meta-level key-expr value-expr on-add:on-add on-remove:on-remove)
+    [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
        (let ()
-         (on (asserted P #:meta-level L.level) #:priority *query-priority*
+         (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
              (field-name (hashset-add (field-name) key-expr value-expr)))
-         (on (retracted P #:meta-level L.level) #:priority *query-priority*
+         (on (retracted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
              (field-name (hashset-remove (field-name) key-expr value-expr)))
          field-name))]))
@@ -643,7 +640,6 @@
                                                script-stx
                                                asserted?
                                                P-stx
-                                               meta-level
                                                priority-stx)
   (define-values (proj-stx pat bindings _instantiated)
     (analyze-pattern event-stx P-stx))
@@ -654,12 +650,12 @@
   (quasisyntax/loc outer-expr-stx
     (add-endpoint! #,(source-location->string outer-expr-stx)
                    (lambda () (if #,when-pred-stx
-                                  (core:sub #,pat #:meta-level #,meta-level)
+                                  (core:sub #,pat)
                                   patch-empty))
                    (lambda (e)
                      (core:match-event e
                        [(? #,event-predicate-stx p)
-                        (define proj (core:prepend-at-meta #,proj-stx #,meta-level))
+                        (define proj #,proj-stx)
                         (define proj-arity (projection-arity proj))
                         (define entry-set (trie-project/set #:take proj-arity
                                                             (#,patch-accessor-stx p)
@@ -716,13 +712,13 @@
                        terminal?
                        script-stx
                        priority-stx)))]
-    [(core:message P L:meta-level)
+    [(core:message P)
      (define-values (proj pat bindings _instantiated)
        (analyze-pattern event-stx #'P))
      (quasisyntax/loc outer-expr-stx
        (add-endpoint! #,(source-location->string outer-expr-stx)
                       (lambda () (if #,when-pred-stx
-                                     (core:sub #,pat #:meta-level L.level)
+                                     (core:sub #,pat)
                                      patch-empty))
                       (lambda (e)
                         (core:match-event e
@@ -730,7 +726,7 @@
                            (define capture-vals
                              (match-value/captures
                               body
-                              (core:prepend-at-meta #,proj L.level)))
+                              #,proj))
                            (and capture-vals
                                 (schedule-script!
                                  #:priority #,priority-stx
@@ -738,12 +734,12 @@
                                  (lambda ()
                                    (apply (lambda #,bindings #,script-stx)
                                           capture-vals))))]))))]
-    [(asserted P L:meta-level)
+    [(asserted P)
      (analyze-asserted/retracted outer-expr-stx when-pred-stx event-stx terminal? script-stx
-                                 #t #'P #'L.level priority-stx)]
-    [(retracted P L:meta-level)
+                                 #t #'P priority-stx)]
+    [(retracted P)
      (analyze-asserted/retracted outer-expr-stx when-pred-stx event-stx terminal? script-stx
-                                 #f #'P #'L.level priority-stx)]
+                                 #f #'P priority-stx)]
     [(rising-edge Pred)
      (define field-name
        (datum->syntax event-stx
@@ -1132,19 +1128,19 @@
   (when (not (in-script?))
     (error who "Attempt to perform action outside script; are you missing an (on ...)?")))
 
-(define (send! M #:meta-level [meta-level 0])
+(define (send! M)
   (ensure-in-script! 'send!)
-  (schedule-action! (core:message (core:prepend-at-meta M meta-level))))
+  (schedule-action! (core:message M)))
 
 (define *adhoc-label* -1)
 
-(define (assert! P #:meta-level [meta-level 0])
+(define (assert! P)
   (ensure-in-script! 'assert!)
-  (update-stream! *adhoc-label* (core:assert P #:meta-level meta-level)))
+  (update-stream! *adhoc-label* (core:assert P)))
 
-(define (retract! P #:meta-level [meta-level 0])
+(define (retract! P)
   (ensure-in-script! 'retract!)
-  (update-stream! *adhoc-label* (core:retract P #:meta-level meta-level)))
+  (update-stream! *adhoc-label* (core:retract P)))
 
 (define (patch! p)
   (ensure-in-script! 'patch!)

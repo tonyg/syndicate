@@ -1,5 +1,6 @@
 #lang syndicate/actor
 
+(require syndicate/protocol/advertise)
 (require/activate syndicate/drivers/tcp)
 (require (only-in racket/string string-trim))
 
@@ -8,8 +9,7 @@
 
 (define (spawn-session them us)
   (actor (define (send-to-remote fmt . vs)
-           (send! (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs)))
-                  #:meta-level 1))
+           (send! (outbound (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs))))))
 
          (define (say who fmt . vs)
            (unless (equal? who user)
@@ -18,18 +18,18 @@
          (define user (gensym 'user))
          (send-to-remote "Welcome, ~a.\n" user)
 
-         (until (retracted (advertise (tcp-channel them us _)) #:meta-level 1)
+         (until (retracted (inbound (advertise (tcp-channel them us _))))
                 (assert (present user))
                 (on (asserted (present $who)) (say who "arrived."))
                 (on (retracted (present $who)) (say who "departed."))
 
                 (on (message (says $who $what)) (say who "says: ~a" what))
 
-                (assert (advertise (tcp-channel us them _)) #:meta-level 1)
-                (on (message (tcp-channel them us $bs) #:meta-level 1)
+                (assert (outbound (advertise (tcp-channel us them _))))
+                (on (message (inbound (tcp-channel them us $bs)))
                     (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
 
 (dataspace (define us (tcp-listener 5999))
-           (forever (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
-                    (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
+           (forever (assert (outbound (advertise (observe (tcp-channel _ us _)))))
+                    (on (asserted (inbound (advertise (tcp-channel $them us _))))
                         (spawn-session them us))))

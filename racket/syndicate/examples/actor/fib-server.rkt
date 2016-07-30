@@ -29,26 +29,26 @@
   (field [tick-count 0])
   (define (arm!)
     (log-info "Tick ~v!" (tick-count))
-    (send! (set-timer 'tick 1000 'relative) #:meta-level 1))
-  (react (on (message (timer-expired 'tick _) #:meta-level 1)
+    (send! (outbound (set-timer 'tick 1000 'relative))))
+  (react (on (message (inbound (timer-expired 'tick _)))
              (tick-count (+ (tick-count) 1))
              (arm!))
          (on-start (arm!))))
 
  (field [counter 0])
  (react
-  (during `(up ,$n) #:meta-level 1
+  (during (inbound `(up ,$n))
           (on-start (log-info "up: ~v" n))
           (on-stop (log-info "down: ~v" n)
                    (counter (+ (counter) 1)))))
 
- (react (stop-when (asserted `(fib 36 ,$v) #:meta-level 1)
+ (react (stop-when (asserted (inbound `(fib 36 ,$v)))
                    (log-info "fib 36 is ~a" v)))
 
- (react (stop-when (asserted `(fib 38 ,$v) #:meta-level 1)
+ (react (stop-when (asserted (inbound `(fib 38 ,$v)))
                    (log-info "fib 38 is ~a" v)))
 
  (until (rising-edge (= (counter) 2)))
  (log-info "Quitting main")
- (until (message (timer-expired 'wait _) #:meta-level 1)
-        (on-start (send! (set-timer 'wait 100 'relative) #:meta-level 1))))
+ (until (message (inbound (timer-expired 'wait _)))
+        (on-start (send! (outbound (set-timer 'wait 100 'relative))))))

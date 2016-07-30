@@ -68,44 +68,27 @@
           delta
           delta-aggregate))
 
-(define at-meta-everything (pattern->trie '<at-meta-everything> (at-meta ?)))
-
-(define (echo-cancelled-trie t)
-  (trie-subtract t
-                 at-meta-everything
-                 #:combiner (lambda (v1 v2)
-                              (if (tset-member? v1 'meta)
-                                  (trie-success only-meta-tset)
-                                  trie-empty))))
-
 (define (compute-patches old-m new-m label delta delta-aggregate)
-  (define delta-aggregate/no-echo
-    (if (meta-label? label)
-        delta
-        (patch-without-at-meta delta-aggregate)))
   (define old-routing-table (mux-routing-table old-m))
   (define new-routing-table (mux-routing-table new-m))
   (define affected-pids
-    (let ((pids (compute-affected-pids old-routing-table delta-aggregate/no-echo)))
-      (tset-remove (tset-add pids label) 'meta))) ;; TODO: removing meta is weird
+    (tset-remove (tset-add (compute-affected-pids old-routing-table delta) label) 'meta))
+  (define (entry-for pid)
+    (cond [(equal? pid label)
+           (define feedback
+             (patch-union
+              (patch (biased-intersection new-routing-table (patch-added delta))
+                     (biased-intersection old-routing-table (patch-removed delta)))
+              (patch (biased-intersection (patch-added delta-aggregate)
+                                          (mux-interests-of new-m label))
+                     (biased-intersection (patch-removed delta-aggregate)
+                                          (mux-interests-of old-m label)))))
+           (cons label feedback)]
+          [else
+           (cons pid (view-patch delta-aggregate (mux-interests-of old-m pid)))]))
   (values (for/list [(pid (tset->list affected-pids))]
-            (cond [(equal? pid label)
-                   (define feedback
-                     (patch-union
-                      (patch (echo-cancelled-trie
-                              (biased-intersection new-routing-table (patch-added delta)))
-                             (echo-cancelled-trie
-                              (biased-intersection old-routing-table (patch-removed delta))))
-                      (patch (biased-intersection (patch-added delta-aggregate/no-echo)
-                                                  (mux-interests-of new-m label))
-                             (biased-intersection (patch-removed delta-aggregate/no-echo)
-                                                  (mux-interests-of old-m label)))))
-                   (cons label feedback)]
-                  [else
-                   (cons pid (view-patch delta-aggregate/no-echo (mux-interests-of old-m pid)))]))
-          (and (not (meta-label? label))
-               (drop-patch
-                (compute-aggregate-patch delta label old-routing-table #:remove-meta? #t)))))
+            (entry-for pid))
+          (cdr (entry-for 'meta))))
 
 (define (compute-affected-pids routing-table delta)
   (define cover (trie-union (patch-added delta) (patch-removed delta)))
@@ -117,11 +100,13 @@
 (define (mux-route-message m body)
   (if (trie-lookup (mux-routing-table m) body #f #:wildcard-union (lambda (a b) (or a b)))
       ;; some other stream has declared body
-      '()
-      (tset->list (trie-lookup (mux-routing-table m)
+      (values '() #f)
+      (let ((pids (trie-lookup (mux-routing-table m)
                                (observe body)
                                datum-tset-empty
-                               #:wildcard-union tset-union))))
+                               #:wildcard-union tset-union)))
+        (values (tset->list (tset-remove pids 'meta))
+                (tset-member? pids 'meta)))))
 
 (define (mux-interests-of m label)
   (hash-ref (mux-interest-table m) label trie-empty))

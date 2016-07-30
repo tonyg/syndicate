@@ -8,14 +8,16 @@
 (require racket/set)
 (require racket/match)
 (require net/rfc6455)
-(require (except-in "../main.rkt" dataspace assert))
-(require "../actor.rkt")
-(require "../trie.rkt")
-(require "../patch.rkt")
-(require "../demand-matcher.rkt")
-(require "../drivers/timer.rkt")
-(require "../drivers/websocket.rkt")
 (require json)
+;; (require (except-in "../main.rkt" dataspace assert))
+;; (require "../actor.rkt")
+(require syndicate/trie)
+(require syndicate/patch)
+(require syndicate/demand-matcher)
+(require syndicate/protocol/advertise)
+
+(require/activate syndicate/drivers/timer)
+(require/activate syndicate/drivers/websocket)
 (require "protocol.rkt")
 
 (define-logger syndicate-broker)
@@ -31,38 +33,39 @@
                              #:ssl-options [ssl-options #f])
   (define any-client any-websocket-remote-client)
   (define server-id (websocket-local-server port ssl-options))
-  (spawn-demand-matcher (advertise (websocket-message (?! any-client) server-id ?))
-                        (observe (websocket-message (?! any-client) server-id ?))
-                        #:meta-level 1
-			(lambda (c) (spawn-connection-handler c server-id))))
+  (spawn-demand-matcher (inbound (advertise (websocket-message (?! any-client) server-id ?)))
+                        (inbound (observe (websocket-message (?! any-client) server-id ?)))
+			(lambda (c) (spawn-connection-handler c server-id))
+                        #:name 'broker:dm))
 
 (define (spawn-connection-handler c server-id)
-  (actor (define scope (broker-scope (websocket-remote-client-request-host c)
+  (actor #:name (list 'broker server-id)
+
+         (define scope (broker-scope (websocket-remote-client-request-host c)
                                      (websocket-remote-client-request-port c)
                                      (websocket-remote-client-request-path c)))
 
          (define (arm-ping-timer!)
-           (send! #:meta-level 1 (set-timer c (ping-interval) 'relative)))
+           (send! (outbound (set-timer c (ping-interval) 'relative))))
 
          (define (send-event e)
-           (send! #:meta-level 1
-                  (websocket-message server-id c (jsexpr->string (lift-json-event e)))))
+           (send! (outbound (websocket-message server-id c (jsexpr->string (lift-json-event e))))))
 
          (arm-ping-timer!)
 
          (log-syndicate-broker-info "Starting broker connection from ~v" c)
-         (until (retracted (advertise (websocket-message c server-id _)) #:meta-level 1)
-           (assert (advertise (websocket-message server-id c _)) #:meta-level 1)
+         (until (retracted (inbound (advertise (websocket-message c server-id _))))
+           (assert (outbound (advertise (websocket-message server-id c _))))
 
-           (on (asserted (websocket-peer-details server-id c _ _ $remote-addr $remote-port)
-                         #:meta-level 1)
+           (on (asserted (inbound
+                          (websocket-peer-details server-id c _ _ $remote-addr $remote-port)))
                (log-syndicate-broker-info "Connection ~v is from ~a:~a" c remote-addr remote-port))
 
-           (on (message (timer-expired c _) #:meta-level 1)
+           (on (message (inbound (timer-expired c _)))
                (arm-ping-timer!)
                (send-event 'ping))
 
-           (on (message (websocket-message c server-id $data) #:meta-level 1)
+           (on (message (inbound (websocket-message c server-id $data)))
                (match (drop-json-action (string->jsexpr data))
                  ['ping (send-event 'pong)]
                  ['pong (void)]
@@ -109,9 +112,6 @@
   (pattern->trie #t (broker-data scope (embedded-trie t))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(require/activate syndicate/drivers/timer)
-(require/activate syndicate/drivers/websocket)
 
 (let ((ssl-options
        (match (current-command-line-arguments)

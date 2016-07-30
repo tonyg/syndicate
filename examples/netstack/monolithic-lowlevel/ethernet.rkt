@@ -55,7 +55,7 @@
                            (quit))
 		    (begin (async-channel-put control-ch 'unblock)
 			   #f))]
-	       [(message (at-meta (? ethernet-packet? p)))
+	       [(message (inbound (? ethernet-packet? p)))
 		;; (log-info "Interface ~a inbound packet ~a -> ~a (type 0x~a)"
 		;; 	  (ethernet-interface-name (ethernet-packet-interface p))
 		;; 	  (pretty-bytes (ethernet-packet-source p))
@@ -77,7 +77,7 @@
            (scn/union (assertion interface)
                       (subscription (ethernet-packet interface #f ? ? ? ?))
                       (subscription (observe (ethernet-packet interface #t ? ? ? ?)))
-                      (subscription (ethernet-packet interface #t ? ? ? ?) #:meta-level 1)))]))
+                      (subscription (inbound (ethernet-packet interface #t ? ? ? ?)))))]))
 
 (define (interface-packet-read-loop interface h control-ch)
   (define (blocked)

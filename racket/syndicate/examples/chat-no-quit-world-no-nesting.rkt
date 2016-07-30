@@ -1,5 +1,6 @@
 #lang syndicate
 
+(require syndicate/protocol/advertise)
 (require (only-in racket/string string-trim))
 (require/activate "../drivers/tcp.rkt")
 (require "../demand-matcher.rkt")

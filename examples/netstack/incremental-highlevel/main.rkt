@@ -1,7 +1,6 @@
 #lang syndicate/actor
 
-
-;;(log-events-and-actions? #t)
+(require syndicate/protocol/advertise)
 
 (require/activate syndicate/drivers/timer)
 (require/activate "ethernet.rkt")
@@ -21,8 +20,7 @@
 
   (define (spawn-session them us)
     (actor (define (send-to-remote fmt . vs)
-             (send! (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs)))
-                    #:meta-level 1))
+             (send! (outbound (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs))))))
 
            (define (say who fmt . vs)
              (unless (equal? who user)
@@ -31,20 +29,20 @@
            (define user (gensym 'user))
            (send-to-remote "Welcome, ~a.\n" user)
 
-           (until (retracted (advertise (tcp-channel them us _)) #:meta-level 1)
+           (until (retracted (inbound (advertise (tcp-channel them us _))))
                   (assert (present user))
                   (on (asserted (present $who)) (say who "arrived."))
                   (on (retracted (present $who)) (say who "departed."))
 
                   (on (message (says $who $what)) (say who "says: ~a" what))
 
-                  (assert (advertise (tcp-channel us them _)) #:meta-level 1)
-                  (on (message (tcp-channel them us $bs) #:meta-level 1)
+                  (assert (outbound (advertise (tcp-channel us them _))))
+                  (on (message (inbound (tcp-channel them us $bs)))
                       (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
 
   (dataspace (define us (tcp-listener 5999))
-             (forever (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
-                      (on (asserted (advertise (tcp-channel $them us _)) #:meta-level 1)
+             (forever (assert (outbound (advertise (observe (tcp-channel _ us _)))))
+                      (on (asserted (inbound (advertise (tcp-channel $them us _))))
                           (spawn-session them us)))))
 
 (let ((dst (udp-listener 6667)))
@@ -61,13 +59,13 @@
                      (counter (+ (counter) 1)))))
 
    (forever (define us (tcp-listener 80))
-            (assert (advertise (observe (tcp-channel _ us _))) #:meta-level 1)
-            (during/actor (advertise (tcp-channel ($ them (tcp-address _ _)) us _)) #:meta-level 1
+            (assert (outbound (advertise (observe (tcp-channel _ us _)))))
+            (during/actor (inbound (advertise (tcp-channel ($ them (tcp-address _ _)) us _)))
                           (log-info "Got connection from ~v" them)
                           (field [done? #f])
                           (stop-when (rising-edge (done?)))
-                          (assert (advertise (tcp-channel us them _)) #:meta-level 1)
-                          (on (message (tcp-channel them us _) #:meta-level 1)) ;; ignore input
+                          (assert (outbound (advertise (tcp-channel us them _))))
+                          (on (message (inbound (tcp-channel them us _)))) ;; ignore input
 
                           (on-start (send! 'bump))
                           (on (message `(counter ,$counter))
@@ -81,5 +79,5 @@
                                           "TCP/IP stack</a>.</p>\n"
                                           "<p>There have been ~a requests prior to this one.</p>\n")
                                          counter)))
-                              (send! (tcp-channel us them response) #:meta-level 1)
+                              (send! (outbound (tcp-channel us them response)))
                               (done? #t))))))

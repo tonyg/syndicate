@@ -50,7 +50,7 @@
                             (react (on (retracted interface)
                                        (async-channel-put control-ch 'quit)))))
 
-           (on (message ($ p (ethernet-packet interface #t _ _ _ _)) #:meta-level 1)
+           (on (message (inbound ($ p (ethernet-packet interface #t _ _ _ _))))
                ;; (log-info "Interface ~a inbound packet ~a -> ~a (type 0x~a)"
                ;;           (ethernet-interface-name (ethernet-packet-interface p))
                ;;           (pretty-bytes (ethernet-packet-source p))

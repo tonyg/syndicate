@@ -3,7 +3,8 @@
 (require racket/exn)
 (require (prefix-in tcp: racket/tcp))
 (require (only-in racket/port read-bytes-avail!-evt))
-(require "../demand-matcher.rkt")
+(require syndicate/demand-matcher)
+(require syndicate/protocol/advertise)
 
 (require racket/unit)
 (require net/tcp-sig)
@@ -36,14 +37,16 @@
 (define (spawn-tcp-driver)
   (list (spawn-demand-matcher (advertise (observe (tcp-channel ? (?! (tcp-listener ?)) ?)))
                               (advertise (advertise (tcp-channel ? (?! (tcp-listener ?)) ?)))
-			      spawn-tcp-listener)
+			      spawn-tcp-listener
+                              #:name 'drivers/tcp:dm:listener)
 	(spawn-demand-matcher (advertise (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
                               (observe (tcp-channel (?! (tcp-handle ?)) (?! (tcp-address ? ?)) ?))
 			      spawn-tcp-connection
                               (lambda (local-addr remote-addr)
                                 (log-debug "Outbound TCP connection closed: ~v -> ~v"
                                            local-addr
-                                           remote-addr)))))
+                                           remote-addr))
+                              #:name 'drivers/tcp:dm:connect)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Listener
@@ -78,7 +81,7 @@
      (cond [(patch/removed? p) (channel-put ch 'quit) (quit)]
            [(patch/added? p) (channel-put ch 'unblock) #f]
            [else #f])]
-    [(message (at-meta (tcp-accepted remote-addr _ cin cout)))
+    [(message (inbound (tcp-accepted remote-addr _ cin cout)))
      (transition state (spawn-connection (listener-state-server-addr state)
 					 remote-addr
 					 cin
@@ -90,12 +93,13 @@
   (define listener (tcp:tcp-listen port 128 #t))
   (define control-ch (make-channel))
   (thread (lambda () (tcp-listener-thread control-ch listener server-addr)))
-  (spawn tcp-listener-behavior
+  (spawn #:name (list 'drivers/tcp:listen port)
+         tcp-listener-behavior
 	 (listener-state control-ch server-addr)
          (patch-seq
           (sub (advertise (observe (tcp-channel ? server-addr ?)))) ;; monitor peer
           (pub (advertise (tcp-channel ? server-addr ?))) ;; declare we might make connections
-          (sub (tcp-accepted ? server-addr ? ?) #:meta-level 1) ;; events from driver thread
+          (sub (inbound (tcp-accepted ? server-addr ? ?))) ;; events from driver thread
           )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -158,10 +162,10 @@
 		     (shutdown-connection! state)
 		     (raise exn)))]
     (match e
-      [(message (at-meta (tcp-channel remote-addr local-addr (? eof-object?))))
+      [(message (inbound (tcp-channel remote-addr local-addr (? eof-object?))))
        (shutdown-connection! state)
        (quit)]
-      [(message (at-meta (tcp-channel remote-addr local-addr (? bytes? bs))))
+      [(message (inbound (tcp-channel remote-addr local-addr (? bytes? bs))))
        (transition state (message (tcp-channel remote-addr local-addr bs)))]
       [(message (tcp-channel _ _ bs))
        (write-bytes bs (connection-state-cout state))
@@ -177,13 +181,14 @@
 (define (spawn-connection local-addr remote-addr cin cout)
   (define control-ch (make-channel))
   (thread (lambda () (tcp-connection-thread remote-addr local-addr control-ch cin)))
-  (spawn tcp-connection
+  (spawn #:name (list 'drivers/tcp:connect local-addr remote-addr)
+         tcp-connection
 	 (connection-state control-ch cout)
          (patch-seq
           (sub (observe (tcp-channel remote-addr local-addr ?))) ;; monitor peer
           (pub (tcp-channel remote-addr local-addr ?)) ;; may send segments to peer
           (sub (tcp-channel local-addr remote-addr ?)) ;; want segments from peer
-          (sub (tcp-channel remote-addr local-addr ?) #:meta-level 1) ;; segments from driver thread
+          (sub (inbound (tcp-channel remote-addr local-addr ?))) ;; segments from driver thread
           )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

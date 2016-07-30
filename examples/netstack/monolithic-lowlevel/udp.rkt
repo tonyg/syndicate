@@ -12,6 +12,7 @@
 (require racket/match)
 (require syndicate/monolithic)
 (require syndicate/demand-matcher)
+(require syndicate/protocol/advertise)
 (require bitsyntax)
 
 (require "dump-bytes.rkt")

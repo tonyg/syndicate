@@ -8,6 +8,7 @@
 (require racket/exn)
 (require (only-in racket/string string-join))
 (require "../core.rkt")
+(require "../dataspace.rkt")
 (require "../hierarchy.rkt")
 (require "../trace.rkt")
 (require "../mux.rkt")

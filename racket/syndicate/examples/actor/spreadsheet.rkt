@@ -53,6 +53,6 @@
                              (let ((new-expr (read)))
                                (send-ground-message (set-cell cell-name new-expr))
                                (loop)))))))
-       (until (message 'quit #:meta-level 1)
-              (on (message (set-cell $name $expr) #:meta-level 1)
+       (until (message (inbound 'quit))
+              (on (message (inbound (set-cell $name $expr)))
                   (send! (set-cell name expr)))))

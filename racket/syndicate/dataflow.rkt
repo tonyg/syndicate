@@ -3,6 +3,7 @@
 
 (provide dataflow-graph?
          make-dataflow-graph
+         dataflow-graph-edges-forward
 
          current-dataflow-subject-id
 

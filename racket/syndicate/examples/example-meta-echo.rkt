@@ -12,6 +12,15 @@
 ;;
 ;; The fix was to adjust the implementation of state change
 ;; notifications to cancel the echo for metaassertions.
+;;
+;; 20160730 I'm in the process of revising the design of dataspace
+;; relaying to avoid this problem in a different way. Instead of just
+;; having `at-meta` for both inbound and outbound assertions, there
+;; are now two constructors, `inbound` and `outbound`, and the relay
+;; function of the dataspace pays attention to each in a different
+;; way. Now there cannot be (accidental) routing loops: asserting
+;; something `outbound`, no matter how briefly, will only ever result
+;; in a pulse of an `inbound` assertion.
 
 (require syndicate/pretty)
 
@@ -22,6 +31,6 @@
                  (printf "Received event ~a:\n~a\n" new-counter (syndicate-pretty-print->string e))
                  (transition (+ counter 1) '()))))
         0
-        (list (patch-seq (assert (at-meta 'x))
-                         (sub 'x #:meta-level 1))
-              (retract (at-meta 'x)))))
+        (list (patch-seq (assert (outbound 'x))
+                         (sub (inbound 'x)))
+              (retract (outbound 'x)))))

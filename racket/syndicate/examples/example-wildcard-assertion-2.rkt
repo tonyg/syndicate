@@ -1,9 +1,9 @@
 #lang syndicate
 ;; Demonstrate almost-wildcard assertions.
-;; One actor subscribes to everything - and so initially sees itself.
-;; The other advertises everything except subscriptions and at-meta assertions.
+;; One actor subscribes to everything except inbound assertions - and so initially sees itself.
+;; The other advertises everything except subscriptions and inbound/outbound assertions.
 ;; The first actor's aggregate view of the dataspace then includes everything
-;; except at-meta assertions.
+;; except inbound assertions.
 
 (require syndicate/pretty)
 
@@ -17,7 +17,8 @@
              (transition (update-interests s e) '())
              #f))
        trie-empty
-       (sub ?))
+       (patch-seq (sub ?)
+                  (unsub (inbound ?))))
 
 (spawn (lambda (e s)
          (printf "Asserter\n")
@@ -27,4 +28,5 @@
        (void)
        (patch-seq (assert ?)
                   (retract (observe ?))
-                  (retract (at-meta ?))))
+                  (retract (outbound ?))
+                  (retract (inbound ?))))

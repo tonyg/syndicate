@@ -5,6 +5,11 @@
 (require "../main.rkt")
 (require "../drivers/timer.rkt")
 
+(define sub-all-except-meta
+  (patch-seq (sub ?)
+             (unsub (inbound ?))
+             (unsub (outbound ?))))
+
 (define (quasi-spy e s)
   (printf "----------------------------------------\n")
   (printf "QUASI-SPY:\n")
@@ -18,7 +23,7 @@
 
 (define (r e s)
   (match e
-    [(message body) (transition s (message (at-meta `(print (got ,body)))))]
+    [(message body) (transition s (message (outbound `(print (got ,body)))))]
     [_ #f]))
 
 (define (b e n)
@@ -30,9 +35,9 @@
 
 (define (echoer e s)
   (match e
-    [(message (at-meta (external-event _ (list (? eof-object?)))))
+    [(message (inbound (external-event _ (list (? eof-object?)))))
      (quit)]
-    [(message (at-meta (external-event _ (list line))))
+    [(message (inbound (external-event _ (list line))))
      (transition s (message `(print (got-line ,line))))]
     [_ #f]))
 
@@ -56,17 +61,16 @@
      #f]
     [_ #f]))
 
-(run-ground (spawn quasi-spy (void) (sub ?))
+(run-ground (spawn quasi-spy (void) sub-all-except-meta)
 	    (spawn-timer-driver)
 	    (message (set-timer 'tick 1000 'relative))
 	    (spawn ticker
                    1
                    (patch-seq (sub (observe (set-timer ? ? ?)))
                               (sub (timer-expired 'tick ?))))
-	    (spawn-dataspace (spawn r (void) (sub ?))
+	    (spawn-dataspace (spawn r (void) sub-all-except-meta)
                              (spawn b 0 '()))
 	    (spawn echoer
                    (void)
-                   (sub (external-event (read-line-evt (current-input-port) 'any) ?)
-                        #:meta-level 1))
+                   (sub (inbound (external-event (read-line-evt (current-input-port) 'any) ?))))
 	    (spawn printer (void) (sub `(print ,?))))

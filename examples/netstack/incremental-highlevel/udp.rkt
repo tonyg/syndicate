@@ -10,6 +10,7 @@
 
 (require racket/set)
 (require bitsyntax)
+(require syndicate/protocol/advertise)
 
 (require "dump-bytes.rkt")
 (require "checksum.rkt")

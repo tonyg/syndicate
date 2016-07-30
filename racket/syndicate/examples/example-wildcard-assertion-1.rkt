@@ -1,6 +1,6 @@
 #lang syndicate
 ;; Demonstrate wildcard assertions.
-;; One actor asserts everything except at-meta assertions (which break
+;; One actor asserts everything except inbound/outbound assertions (which break
 ;; the ground VM). It therefore *subscribes* to everything too.
 
 (require syndicate/pretty)
@@ -16,4 +16,7 @@
              #f))
        trie-empty
        (patch-seq (assert ?)
-                  (retract (at-meta ?))))
+                  (retract (outbound ?))
+                  (retract (observe (inbound ?)))
+                  (retract (inbound ?)) ;; not actually required for the purposes of this demo
+                  ))

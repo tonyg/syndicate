@@ -1,6 +1,7 @@
 #lang syndicate/actor
 ;; Websocket server that echoes all it receives
 
+(require syndicate/protocol/advertise)
 (require/activate syndicate/drivers/websocket)
 
 (define any-client any-websocket-remote-client)

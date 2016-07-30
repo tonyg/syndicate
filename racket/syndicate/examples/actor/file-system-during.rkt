@@ -36,8 +36,8 @@
     (begin0 reader-count
       (set! reader-count (+ reader-count 1))))
   (actor (print-prompt)
-         (until (message (external-event e (list (? eof-object? _))) #:meta-level 1)
-                (on (message (external-event e (list (? bytes? $bs))) #:meta-level 1)
+         (until (message (inbound (external-event e (list (? eof-object? _)))))
+                (on (message (inbound (external-event e (list (? bytes? $bs)))))
                     (match (string-split (string-trim (bytes->string/utf-8 bs)))
                       [(list "open" name)
                        (define reader-id (generate-reader-id))

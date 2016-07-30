@@ -4,6 +4,7 @@
 ;; racket ws-echo-client.rkt wss://localhost:8084/
 
 (require/activate syndicate/drivers/websocket)
+(require syndicate/protocol/advertise)
 (require racket/port)
 
 (define url
@@ -22,12 +23,11 @@
   (actor (react (assert (advertise (websocket-message c s _)))
                 (on (asserted (websocket-peer-details c s $la _ $ra _))
                     (log-info "~a: local ~v :: remote ~v" c la ra))
-                (on (message (external-event e (list (? bytes? $bs))) #:meta-level 1)
+                (on (message (inbound (external-event e (list (? bytes? $bs)))))
                     (send! (websocket-message c s bs)))
                 (on (message (websocket-message s c $bs))
                     (printf "(From server: ~v)\n" bs))
-                (stop-when (message (external-event e (list (? eof-object? _)))
-                                    #:meta-level 1)
+                (stop-when (message (inbound (external-event e (list (? eof-object? _)))))
                            (printf "Local EOF. Terminating.\n"))
                 (stop-when (retracted (advertise (websocket-message s c _)))
                            (printf "Server disconnected.\n")))))

@@ -2,6 +2,7 @@
 
 (require syndicate/demand-matcher)
 (require syndicate/drivers/timer)
+(require syndicate/protocol/advertise)
 (require "demo-config.rkt")
 (require "ethernet.rkt")
 (require "arp.rkt")
@@ -26,17 +27,17 @@
 
   (define (spawn-session them us)
     (define user (gensym 'user))
-    (define remote-detector (at-meta (?!)))
+    (define remote-detector (inbound (?!)))
     (define peer-detector (advertise `(,(?!) says ,?)))
     (define (send-to-remote fmt . vs)
-      (message (at-meta (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs))))))
+      (message (outbound (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs))))))
     (define (say who fmt . vs)
       (unless (equal? who user) (send-to-remote "~a ~a\n" who (apply format fmt vs))))
     (list (send-to-remote "Welcome, ~a.\n" user)
           (spawn
            (lambda (e peers)
              (match e
-               [(message (at-meta (tcp-channel _ _ bs)))
+               [(message (inbound (tcp-channel _ _ bs)))
                 (transition peers (message `(,user says ,(string-trim (bytes->string/utf-8 bs)))))]
                [(message `(,who says ,what))
                 (transition peers (say who "says: ~a" what))]
@@ -55,15 +56,14 @@
             (subscription `(,? says ,?)) ;; read actual chat messages
             (subscription (advertise `(,? says ,?))) ;; observe peer presence
             (advertisement `(,user says ,?)) ;; advertise our presence
-            (subscription (tcp-channel them us ?) #:meta-level 1) ;; read from remote client
-            (subscription (advertise (tcp-channel them us ?)) #:meta-level 1) ;; monitor remote client
-            (advertisement (tcp-channel us them ?) #:meta-level 1) ;; we will write to remote client
+            (subscription (inbound (tcp-channel them us ?))) ;; read from remote client
+            (subscription (inbound (advertise (tcp-channel them us ?)))) ;; monitor remote client
+            (advertisement (inbound (tcp-channel us them ?))) ;; we will write to remote client
             ))))
 
   (spawn-dataspace
-   (spawn-demand-matcher (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
-                         (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
-                         #:meta-level 1
+   (spawn-demand-matcher (inbound (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?)))
+                         (inbound (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?)))
                          spawn-session))
   )
 
@@ -97,13 +97,13 @@
 			     "TCP/IP stack</a>.</p>\n"
 			     "<p>There have been ~a requests prior to this one.</p>")
 			    counter)))
-		 (quit (message (at-meta (tcp-channel us them response))))]
+		 (quit (message (outbound (tcp-channel us them response))))]
 		[_ #f]))
 	    (void)
 	    (scn/union (subscription `(counter ,?))
-                       (subscription (tcp-channel them us ?) #:meta-level 1)
-                       (subscription (advertise (tcp-channel them us ?)) #:meta-level 1)
-                       (advertisement (tcp-channel us them ?) #:meta-level 1)))))
+                       (subscription (inbound (tcp-channel them us ?)))
+                       (subscription (inbound (advertise (tcp-channel them us ?))))
+                       (advertisement (inbound (tcp-channel us them ?)))))))
 
   (spawn-dataspace
    (spawn (lambda (e counter)
@@ -113,9 +113,9 @@
 	      [_ #f]))
 	  0
 	  (scn (subscription 'bump)))
-   (spawn-demand-matcher (advertise (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 80)) ?))
-                         (observe (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 80)) ?))
-			 #:meta-level 1
-			 spawn-session))
+   (spawn-demand-matcher
+    (inbound (advertise (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 80)) ?)))
+    (inbound (observe (tcp-channel (?! (tcp-address ? ?)) (?! (tcp-listener 80)) ?)))
+    spawn-session))
 
   )

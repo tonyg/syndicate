@@ -3,18 +3,12 @@
 
 (provide (struct-out patch)
          (struct-out observe)
-         (struct-out at-meta)
-         (struct-out advertise)
          observe-parenthesis
-         at-meta-parenthesis
          patch-empty
          patch-empty?
          patch-non-empty?
          patch/added?
          patch/removed?
-         lift-patch
-         drop-interests
-         drop-patch
          strip-interests
          label-interests
          strip-patch
@@ -22,10 +16,8 @@
          limit-patch
          limit-patch/routing-table
          patch-pruned-by
-         patch-without-at-meta
          patch-step
          patch-step*
-         only-meta-tset
          compute-aggregate-patch
          apply-patch
          update-interests
@@ -64,19 +56,14 @@
   [(define (syndicate-pretty-print d [p (current-output-port)])
      (pretty-print-patch d p))])
 
-;; Claims, Interests, Locations, and Advertisements
+;; Interests
 (struct observe (claim) #:prefab)
-(struct at-meta (claim) #:prefab)
-(struct advertise (claim) #:prefab)
 
 (define patch-empty (patch trie-empty trie-empty))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define observe-parenthesis (open-parenthesis 1 struct:observe))
-(define at-meta-parenthesis (open-parenthesis 1 struct:at-meta))
-
-(define at-meta-everything (pattern->trie #t (at-meta ?)))
 
 (define (patch-empty? p)
   (and (patch? p)
@@ -90,19 +77,6 @@
 
 (define (patch/added? p) (and (patch? p) (trie-non-empty? (patch-added p))))
 (define (patch/removed? p) (and (patch? p) (trie-non-empty? (patch-removed p))))
-
-(define (lift-patch p)
-  (match-define (patch in out) p)
-  (patch (pattern->trie '<lift-patch> (at-meta (embedded-trie in)))
-         (pattern->trie '<lift-patch> (at-meta (embedded-trie out)))))
-
-(define (drop-interests pi)
-  (trie-step pi at-meta-parenthesis))
-
-(define (drop-patch p)
-  (match-define (patch in out) p)
-  (patch (drop-interests in)
-         (drop-interests out)))
 
 (define (strip-interests g)
   (trie-relabel g (lambda (v) '<strip-interests>)))
@@ -148,10 +122,6 @@
   (patch (trie-subtract #:combiner (lambda (v1 v2) trie-empty) added t)
          (trie-subtract #:combiner (lambda (v1 v2) trie-empty) removed t)))
 
-;; Removes at-meta assertions from the given patch.
-(define (patch-without-at-meta p)
-  (patch-pruned-by p at-meta-everything))
-
 ;; Steps both added and removes sets
 (define (patch-step p key)
   (match-define (patch added removed) p)
@@ -160,8 +130,6 @@
 
 (define (patch-step* p keys)
   (foldl (lambda (key p) (patch-step p key)) p keys))
-
-(define only-meta-tset (datum-tset 'meta))
 
 ;; Entries labelled with `label` may already exist in `base`; the
 ;; patch `p` MUST already have been limited to add only where no
@@ -180,13 +148,9 @@
 ;; from `label`'s own interests, but where interest remains from other
 ;; peers, the overall effect will be nil.
 ;;
-;; If `remove-meta?` is true, then in addition to ignoring existing
-;; `label` interests, we also ignore existing `'meta`-labelled
-;; interests. This is used when computing an outbound/dropped patch.
-;;
 ;; PRECONDITION: `p` is (set label)-labelled
 ;; PRECONDITION: `base` is (set ...)-labelled
-(define (compute-aggregate-patch p label base #:remove-meta? [remove-meta? #f])
+(define (compute-aggregate-patch p label base)
   (define (add-combiner v1 v2)
     ;; Keep only points where `p` would add, where no `label` interest
     ;; is present*, and where no non-`label` interest is present. That
@@ -196,36 +160,17 @@
     ;; furthermore, we know that a previous patch-limiting operation
     ;; has established that no `label` interest is present at these
     ;; points), we can always discard such points by returning a
-    ;; constant #f.
-    ;;
-    ;; ...except when `remove-meta?` is true. In that case, we need to
-    ;; keep the point in the case that the only interest present is
-    ;; `'meta`-labeled interest.
-    (if (and remove-meta? (eq? v2 only-meta-tset)) ;; N.B. relies on canonicity of v2 !
-        (trie-success v1)
-        trie-empty))
+    ;; constant trie-empty.
+    trie-empty)
   (define (rem-combiner v1 v2)
     ;; Keep only points where `p` would remove, where `label` interest
     ;; is present, and where no non-`label` interest is present. We
     ;; know that a previous patch-limiting operation has ensured that
     ;; `label` interest is present, so we only need to check whether
     ;; any other interest exists at each point.
-    ;;
-    ;; ...and again, for `remove-meta?`, the condition is slightly
-    ;; different. We need to keep the point in that case when either
-    ;; only label interest exists (which by precondition is always the
-    ;; case), or when exactly `label` and `'meta` interest exists, and
-    ;; in no other case.
     (if (= (tset-count v2) 1)
         (trie-success v1) ;; only `label` interest (previously established) exists here.
-        (if (and remove-meta?
-                 (= (tset-count v2) 2)
-                 (tset-member? v2 'meta))
-            (trie-success v1)
-            ;; ^ remove-meta? is true, and exactly `label` and `'meta` interest exists here.
-            trie-empty
-            ;; ^ other interest exists here, so we should discard this removed-point.
-            )))
+        trie-empty))
   (patch (trie-subtract (patch-added p) base #:combiner add-combiner)
          (trie-subtract (patch-removed p) base #:combiner rem-combiner)))
 
@@ -338,8 +283,6 @@
     (define mab (trie-union ma mb))
     (define mbc (trie-union mb mc))
     (define m* (pattern->trie SP ?))
-    (define mA (pattern->trie SP (at-meta 'a)))
-    (define mAb (trie-union mA mb))
 
     (printf "\nmab:\n")
     (void (pretty-print-trie mab))
@@ -389,12 +332,6 @@
     (printf "\ncompute-aggregate-patch m0/m* P m*:\n")
     (void (pretty-print-patch (compute-aggregate-patch (patch m0 m*) 'P m*)))
 
-    (printf "\nlift mc/mab:\n")
-    (void (pretty-print-patch (lift-patch (patch mc mab))))
-
-    (printf "\ndrop after lift mc/mab:\n")
-    (void (pretty-print-patch (drop-patch (lift-patch (patch mc mab)))))
-
     (printf "\ncompose mbc/m0 after mc/mab:\n")
     (void (pretty-print-patch (compose-patch (patch mbc m0) (patch mc mab))))
 
@@ -407,20 +344,9 @@
     (printf "\ncompose mbc/m0 after mc/m* (not disjoint):\n")
     (void (pretty-print-patch (compose-patch (patch mbc m0) (patch mc m*))))
 
-    (printf "\ncompose mbc/m0 after lift mc/mab:\n")
-    (void (pretty-print-patch (compose-patch (patch mbc m0)
-                                             (lift-patch (patch mc mab)))))
-
-    (printf "\ndrop (compose mbc/m0 after lift mc/mab):\n")
-    (void (pretty-print-patch (drop-patch (compose-patch (patch mbc m0)
-                                                         (lift-patch (patch mc mab))))))
-
     (printf "\nstripped compose mc/m* (not disjoint) after mbc/m0:\n")
     (void (pretty-print-patch (compose-patch (strip-patch (patch mc m*))
                                              (strip-patch (patch mbc m0)))))
-
-    (printf "\ndrop mAb/m0:\n")
-    (void (pretty-print-patch (drop-patch (patch mAb m0))))
     )
 
   ;; (sanity-check-examples)
@@ -503,22 +429,6 @@
     (check-equal? (compute-aggregate-patch p- 'a R5) p0)
     (check-equal? (compute-aggregate-patch p- 'a R6) p0)
     (check-equal? (compute-aggregate-patch p- 'a R7) p0)
-    (check-equal? (compute-aggregate-patch p0 'a R0 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p0 'a R1 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p0 'a R2 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p0 'a R3 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p0 'a R4 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p0 'a R5 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p0 'a R6 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p0 'a R7 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p+ 'a R0 #:remove-meta? #t) p+)
-    (check-equal? (compute-aggregate-patch p+ 'a R1 #:remove-meta? #t) p+)
-    (check-equal? (compute-aggregate-patch p+ 'a R2 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p+ 'a R3 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p- 'a R4 #:remove-meta? #t) p-)
-    (check-equal? (compute-aggregate-patch p- 'a R5 #:remove-meta? #t) p-)
-    (check-equal? (compute-aggregate-patch p- 'a R6 #:remove-meta? #t) p0)
-    (check-equal? (compute-aggregate-patch p- 'a R7 #:remove-meta? #t) p0)
     )
 
   (let ((m1 (set->trie '<m1> (set 1 2)))

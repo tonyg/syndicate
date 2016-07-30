@@ -17,7 +17,8 @@
                   ws-conn-peer-addresses
                   ws-conn-host+port
                   ws-conn-path))
-(require "../demand-matcher.rkt")
+(require syndicate/demand-matcher)
+(require syndicate/protocol/advertise)
 
 (require racket/unit)
 (require racket/tcp)
@@ -58,14 +59,16 @@
                                                        ?))
   (list (spawn-demand-matcher (advertise (observe inbound-listener-message-pat))
                               (advertise (advertise inbound-listener-message-pat))
-                              spawn-websocket-listener)
+                              spawn-websocket-listener
+                              #:name 'drivers/websocket:dm:listen)
         (spawn-demand-matcher (advertise outbound-conn-message-pat)
                               (observe outbound-conn-message-pat)
                               spawn-websocket-connection
                               (lambda (local-addr remote-addr)
                                 (log-debug "Outbound websocket connection closed: ~v -> ~v"
                                            local-addr
-                                           remote-addr)))))
+                                           remote-addr))
+                              #:name 'drivers/websocket:dm:connect)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Listener
@@ -77,7 +80,7 @@
     [(? patch/removed? p)
      ((listener-state-shutdown-procedure state))
      (quit)]
-    [(message (at-meta (websocket-connection id local-addr remote-addr c control-ch)))
+    [(message (inbound (websocket-connection id local-addr remote-addr c control-ch)))
      (transition state (spawn-connection local-addr remote-addr id c control-ch))]
     [_ #f]))
 
@@ -133,12 +136,13 @@
 						  (ssl-options->ssl-tcp@ ssl-options)
 						  tcp@)
 				       (connection-handler server-addr)))
-  (spawn websocket-listener
+  (spawn #:name (list 'drivers/websocket:listen port)
+         websocket-listener
 	 (listener-state shutdown-procedure server-addr)
          (patch-seq
           (sub (advertise (observe (websocket-message ? server-addr ?)))) ;; monitor peer
           (pub (advertise (websocket-message ? server-addr ?))) ;; declare we might make connections
-          (sub (websocket-connection ? server-addr ? ? ?) #:meta-level 1) ;; events from driver thd
+          (sub (inbound (websocket-connection ? server-addr ? ? ?))) ;; events from driver thd
           )))
 
 (define (spawn-websocket-connection local-addr remote-addr)
@@ -156,9 +160,10 @@
      (when (not (exn? c))
        (log-info "Connected to ~a ~a" url (current-inexact-milliseconds))
        (connection-thread-loop control-ch c id))))
-  (spawn (lambda (e buffered-messages-rev)
+  (spawn #:name (list 'drivers/websocket:connect/initial local-addr remote-addr id)
+         (lambda (e buffered-messages-rev)
            (match e
-             [(message (at-meta (websocket-connection _ _ _ c _)))
+             [(message (inbound (websocket-connection _ _ _ c _)))
               (quit
                (when (not (exn? c))
                  (for [(m (reverse buffered-messages-rev))] (ws-send! c m))
@@ -175,7 +180,7 @@
           ;; has been established. This way, if the connection fails,
           ;; it looks like it came up briefly and went down again.
           (sub (websocket-message local-addr remote-addr ?))
-          (sub (websocket-connection id local-addr remote-addr ? control-ch) #:meta-level 1))))
+          (sub (inbound (websocket-connection id local-addr remote-addr ? control-ch))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Connection
@@ -192,9 +197,9 @@
 		     (shutdown-connection! state)
 		     (raise exn)))]
     (match e
-      [(message (at-meta (websocket-incoming-message _ (? eof-object?))))
+      [(message (inbound (websocket-incoming-message _ (? eof-object?))))
        (shutdown-connection! state)]
-      [(message (at-meta (websocket-incoming-message _ bytes-or-string)))
+      [(message (inbound (websocket-incoming-message _ bytes-or-string)))
        (transition state (message (websocket-message (connection-state-remote-addr state)
                                                      (connection-state-local-addr state)
                                                      bytes-or-string)))]
@@ -209,7 +214,8 @@
       [_ #f])))
 
 (define (spawn-connection local-addr remote-addr id c control-ch)
-  (spawn websocket-connection-behaviour
+  (spawn #:name (list 'drivers/websocket:connect local-addr remote-addr id)
+         websocket-connection-behaviour
 	 (connection-state local-addr remote-addr c control-ch)
          (patch-seq
           (let-values (((la lp ra rp) (ws-conn-peer-addresses c)))
@@ -217,7 +223,7 @@
           (sub (observe (websocket-message remote-addr local-addr ?))) ;; monitor peer
           (pub (websocket-message remote-addr local-addr ?)) ;; may send messages to peer
           (sub (websocket-message local-addr remote-addr ?)) ;; want segments from peer
-          (sub (websocket-incoming-message id ?) #:meta-level 1) ;; segments from driver thd
+          (sub (inbound (websocket-incoming-message id ?))) ;; segments from driver thd
           )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -7,6 +7,7 @@
 
 (require racket/set)
 (require data/heap)
+(require syndicate/protocol/advertise)
 
 (struct pending-timer (deadline label) #:transparent)
 
@@ -17,7 +18,7 @@
 (struct set-timer (label msecs kind) #:prefab)
 (struct timer-expired (label msecs) #:prefab)
 
-(define expiry-projection (at-meta (?! (timer-expired ? ?))))
+(define expiry-projection (inbound (?! (timer-expired ? ?))))
 
 (define (spawn-timer-driver)
   (define control-ch (make-channel))
@@ -63,13 +64,14 @@
        (send-ground-patch interrupt-clearing-patch)
        (transition new-count
                    (cons (reverse actions-rev)
-                         (when (zero? new-count) (unsub (timer-expired ? ?) #:meta-level 1))))]
+                         (when (zero? new-count) (unsub (inbound (timer-expired ? ?))))))]
       [(message (and instruction (set-timer _ _ _)))
        (channel-put control-ch instruction)
        (transition (+ count 1)
-                   (when (= count 0) (sub (timer-expired ? ?) #:meta-level 1)))]
+                   (when (= count 0) (sub (inbound (timer-expired ? ?)))))]
       [_ #f]))
-  (spawn timer-driver
+  (spawn #:name 'drivers/timer
+         timer-driver
          0 ;; initial count
          (patch-seq (sub (set-timer ? ? ?))
                     (pub (timer-expired ? ?)))))

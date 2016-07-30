@@ -7,6 +7,7 @@
 (require "drivers/timer.rkt")
 (require "pretty.rkt")
 (require "support/hash.rkt")
+(require "protocol/advertise.rkt")
 
 (provide (except-out (struct-out demand-matcher) demand-matcher)
 	 (rename-out [make-demand-matcher demand-matcher])
@@ -206,10 +207,9 @@
                               start-task
                               [on-task-exit #f]
                               #:task-supervisor [task-supervisor default-task-supervisor]
-                              #:name [name #f]
-			      #:meta-level [meta-level 0])
-  (define d (make-demand-matcher (prepend-at-meta demand-spec meta-level)
-                                 (prepend-at-meta supply-spec meta-level)
+                              #:name [name #f])
+  (define d (make-demand-matcher demand-spec
+                                 supply-spec
 				 (lambda (acs . rs) (cons (apply start-task rs) acs))
                                  (if on-task-exit
                                      (lambda (acs . rs) (cons (apply on-task-exit rs) acs))
@@ -218,9 +218,9 @@
   (spawn #:name name
          demand-matcher-handle-event
 	 d
-         (patch-seq (sub (projection->pattern demand-spec) #:meta-level meta-level)
-                    (sub (projection->pattern supply-spec) #:meta-level meta-level)
-                    (pub (projection->pattern supply-spec) #:meta-level meta-level))))
+         (patch-seq (sub (projection->pattern demand-spec))
+                    (sub (projection->pattern supply-spec))
+                    (pub (projection->pattern supply-spec)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

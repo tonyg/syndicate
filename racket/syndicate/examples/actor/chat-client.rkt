@@ -1,5 +1,6 @@
 #lang syndicate/actor
 
+(require syndicate/protocol/advertise)
 (require/activate syndicate/drivers/tcp)
 (require (only-in racket/port read-bytes-line-evt))
 
@@ -9,7 +10,7 @@
 
 (actor
  (react/suspend (quit)
-   (on (message (external-event stdin-evt (list $line)) #:meta-level 1)
+   (on (message (inbound (external-event stdin-evt (list $line))))
        (if (eof-object? line)
            (quit)
            (send! (tcp-channel local-handle remote-handle line))))

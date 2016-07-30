@@ -6,8 +6,8 @@
  (spawn (lambda (e u)
           (match u
             [0 (transition 1 '())]
-            [1 (transition 2 (retract 'a #:meta-level 1))]
+            [1 (transition 2 (retract (outbound 'a)))]
             [_ #f]))
         0
-        (patch-seq (assert 'a #:meta-level 1)
-                   (assert (observe 'a) #:meta-level 1))))
+        (patch-seq (assert (outbound 'a))
+                   (assert (observe (inbound 'a))))))

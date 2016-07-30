@@ -12,6 +12,7 @@
 (require racket/set)
 (require (only-in racket/string string-split))
 (require bitsyntax)
+(require syndicate/protocol/advertise)
 
 (require "dump-bytes.rkt")
 (require "configuration.rkt")

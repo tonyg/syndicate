@@ -11,6 +11,7 @@
 (require syndicate/monolithic)
 (require syndicate/drivers/timer)
 (require syndicate/demand-matcher)
+(require syndicate/protocol/advertise)
 (require bitsyntax)
 
 (require "dump-bytes.rkt")

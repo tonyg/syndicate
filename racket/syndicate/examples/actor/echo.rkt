@@ -1,5 +1,6 @@
 #lang syndicate/actor
 
+(require syndicate/protocol/advertise)
 (require/activate syndicate/drivers/tcp)
 
 (define server-id (tcp-listener 5999))
