@@ -43,12 +43,12 @@
 (struct active-window (id) #:transparent)
 
 (define (update-window id x y image #:z [z 0])
-  (patch-seq (retract (window id ? ? ? ?) #:meta-level 1)
-             (assert (window id x y z (seal image)) #:meta-level 1)))
+  (patch-seq (retract (outbound (window id ? ? ? ?)))
+             (assert (outbound (window id x y z (seal image))))))
 
 ;;---------------------------------------------------------------------------
 
-(struct bb (dataspace windows inbound outbound halted? x y) #:transparent)
+(struct bb (proc windows inbound outbound halted? x y) #:transparent)
 
 (define window-projection (?! (window ? ? ? ? ?)))
 
@@ -74,7 +74,7 @@
                             #f)]))
 
 (define (deliver b e)
-  (clean-transition (dataspace-handle-event e (bb-dataspace b))))
+  (clean-transition ((process-behavior (bb-proc b)) e (process-state (bb-proc b)))))
 
 (define (interpret-actions b txn need-poll?)
   (match txn
@@ -92,8 +92,10 @@
           (interpret-actions b (deliver b e) #t))])]
     [(<quit> _ _)
      (struct-copy bb b [halted? #t])]
-    [(transition new-dataspace actions)
-     (let process-actions ((b (struct-copy bb b [dataspace new-dataspace])) (actions actions))
+    [(transition new-state actions)
+     (let process-actions ((b (struct-copy bb b
+                                           [proc (update-process-state (bb-proc b) new-state)]))
+                           (actions actions))
        (match actions
          ['() (interpret-actions b #f #t)]
          [(cons a actions)
@@ -131,31 +133,33 @@
              (assert (active-window active-id))))
 
 (define-syntax-rule (big-bang-dataspace* boot-actions extra-clause ...)
-  (big-bang (interpret-actions (bb (make-dataspace boot-actions)
-                                   '()
-                                   '()
-                                   '()
-                                   #f
-                                   0
-                                   0)
-                               #f
-                               #t)
-            (on-tick (lambda (b)
-                       (inject b (list (message (tick-event))))))
-            (on-key (lambda (b k)
-                      (inject b (list (message (key-event k (find-active-window b)))))))
-            ;; (on-pad (lambda (b p)
-            ;;           (inject b (list (message (pad-event p (find-active-window b)))))))
-            (on-release (lambda (b k)
-                          (inject b (list (message (release-event k (find-active-window b)))))))
-            (on-mouse (lambda (b0 x y e)
-                        (define b (struct-copy bb b0 [x x] [y y]))
-                        (define active-id (find-active-window b))
-                        (inject b (list (patch-seq (retract (mouse-state ? ? ?))
-                                                   (assert (mouse-state x y active-id)))
-                                        (message (mouse-event x y active-id e))))))
-            (stop-when bb-halted?)
-            extra-clause ...))
+  (let-values (((proc initial-transition)
+                (spawn->process+transition (spawn-dataspace boot-actions))))
+    (big-bang (interpret-actions (bb proc
+                                     '()
+                                     '()
+                                     '()
+                                     #f
+                                     0
+                                     0)
+                                 initial-transition
+                                 #t)
+              (on-tick (lambda (b)
+                         (inject b (list (message (tick-event))))))
+              (on-key (lambda (b k)
+                        (inject b (list (message (key-event k (find-active-window b)))))))
+              ;; (on-pad (lambda (b p)
+              ;;           (inject b (list (message (pad-event p (find-active-window b)))))))
+              (on-release (lambda (b k)
+                            (inject b (list (message (release-event k (find-active-window b)))))))
+              (on-mouse (lambda (b0 x y e)
+                          (define b (struct-copy bb b0 [x x] [y y]))
+                          (define active-id (find-active-window b))
+                          (inject b (list (patch-seq (retract (mouse-state ? ? ?))
+                                                     (assert (mouse-state x y active-id)))
+                                          (message (mouse-event x y active-id e))))))
+              (stop-when bb-halted?)
+              extra-clause ...)))
 
 (define-syntax-rule (big-bang-dataspace** width height exit? boot-actions extra-clause ...)
   (begin
