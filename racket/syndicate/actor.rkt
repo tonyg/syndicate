@@ -63,6 +63,8 @@
          (struct-out actor-state)
          (struct-out facet)
          (struct-out endpoint)
+
+         pretty-print-actor-state
          )
 
 (module reader syntax/module-reader
@@ -84,6 +86,7 @@
 (require "dataflow.rkt")
 (require "store.rkt")
 (require "support/hash.rkt")
+(require "pretty.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Definitions and Structures
@@ -166,7 +169,11 @@
                      knowledge ;; AssertionSet
                      field-table ;; FieldTable
                      field-dataflow ;; DataflowGraph
-                     ) #:prefab)
+                     )
+  #:transparent
+  #:methods gen:syndicate-pretty-printable
+  [(define (syndicate-pretty-print a [p (current-output-port)])
+     (pretty-print-actor-state a p))])
 
 (struct facet (field-descriptors ;; (Setof FieldDescriptor)
                endpoints ;; (Hash EID Endpoint)
@@ -1148,3 +1155,41 @@
   (define ack (gensym 'flush!))
   (until (core:message ack)
          (on-start (send! ack))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (format-field-descriptor d)
+  (match-define (field-descriptor name id defining-fid) d)
+  (if defining-fid
+      (format "~a/~a(~a)" name id defining-fid)
+      (format "~a/~a" name id)))
+
+(define (pretty-print-actor-state a p)
+  (match-define (actor-state mux facets _ knowledge field-table dfg) a)
+  (fprintf p "ACTOR:\n")
+  (fprintf p " - ")
+  (display (indented-port-output 3 (lambda (p) (syndicate-pretty-print mux p)) #:first-line? #f) p)
+  (newline p)
+  (fprintf p " - Knowledge:\n   ~a" (trie->pretty-string knowledge #:indent 3))
+  (fprintf p " - Facets:\n")
+  (for ([(fid f) (in-hash facets)])
+    (match-define (facet descs endpoints _ children parent) f)
+    (fprintf p "    ---- facet ~a, parent=~a, children=~a" fid parent (set->list children))
+    (when (not (hash-empty? endpoints))
+      (fprintf p ", endpoints=~a" (hash-keys endpoints)))
+    (newline p)
+    (when (not (set-empty? descs))
+      (fprintf p "         field descriptors: ~a\n"
+               (for/list [(d descs)] (format-field-descriptor d)))))
+  (when (not (hash-empty? field-table))
+    (fprintf p " - Fields:\n")
+    (for ([(d v) (in-hash field-table)])
+      (define subject-ids (hash-ref (dataflow-graph-edges-forward dfg) d set))
+      (if (set-empty? subject-ids)
+          (fprintf p "    - ~a: ~v\n" (format-field-descriptor d) v)
+          (fprintf p "    - ~a: ~v ~a\n"
+                   (format-field-descriptor d)
+                   v
+                   (for/list [(subject-id subject-ids)]
+                     (match-define (list fid eid) subject-id)
+                     (format "~a:~a" fid eid)))))))
