@@ -64,8 +64,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (update-scene prelude postlude #:meta-level [meta-level 1])
-  (patch-seq (retract (scene ? ?) #:meta-level meta-level)
-             (assert (scene (seal prelude) (seal postlude)) #:meta-level meta-level)))
+  (patch-seq (retract (outbound* meta-level (scene ? ?)))
+             (assert (outbound* meta-level (scene (seal prelude) (seal postlude))))))
 
 (define (make-sprite z instructions)
   (sprite z (seal instructions)))
@@ -76,8 +76,8 @@
                    (texture ,i))))
 
 (define (update-sprites #:meta-level [meta-level 1] . ss)
-  (patch-seq* (cons (retract (sprite ? ?) #:meta-level meta-level)
-                    (map (lambda (s) (assert s #:meta-level meta-level)) ss))))
+  (patch-seq* (cons (retract (outbound* meta-level (sprite ? ?)))
+                    (map (lambda (s) (assert (outbound* meta-level s))) ss))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -85,11 +85,11 @@
 (define (spawn-keyboard-integrator #:meta-level [meta-level 1])
   (spawn (lambda (e s)
            (match e
-             [(message (at-meta (key-event code press? _)))
+             [(message (inbound* meta-level (key-event code press? _)))
               (transition (void) ((if press? assert retract) (key-pressed code)))]
              [#f #f]))
          (void)
-         (sub (key-event ? ? ?) #:meta-level meta-level)))
+         (sub (inbound* meta-level (key-event ? ? ?)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -243,7 +243,8 @@
     (define postlude empty-instructions)
     (define fullscreen? #f)
 
-    (define dataspace (make-dataspace boot-actions))
+    (define-values (proc pending-transition)
+      (spawn->process+transition (spawn-dataspace boot-actions)))
     (define event-queue (make-queue))
 
     (define target-frame-rate 60)
@@ -266,19 +267,23 @@
       (enqueue! event-queue e))
 
     (define (deliver-event e)
-      (clean-transition (dataspace-handle-event e dataspace)))
+      (clean-transition ((process-behavior proc) e (process-state proc))))
 
     (define (quiesce!)
-      (let loop ((txn #f) (need-poll? #t))
-        (match txn
-          [#f ;; inert
-           (if (queue-empty? event-queue)
-               (when need-poll? (loop (deliver-event #f) #f))
-               (loop (deliver-event (dequeue! event-queue)) #t))]
-          [(transition new-dataspace actions)
-           (set! dataspace new-dataspace)
-           (for-each process-action! actions)
-           (loop #f #t)])))
+      (define txn pending-transition)
+      (set! pending-transition #f)
+      (process-transition txn #t))
+
+    (define (process-transition txn need-poll?)
+      (match txn
+        [#f ;; inert
+         (if (queue-empty? event-queue)
+             (when need-poll? (process-transition (deliver-event #f) #f))
+             (process-transition (deliver-event (dequeue! event-queue)) #t))]
+        [(transition new-state actions)
+         (set! proc (update-process-state proc new-state))
+         (for-each process-action! actions)
+         (process-transition #f #t)]))
 
     (define (process-action! a)
       (match a
