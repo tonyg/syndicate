@@ -1,11 +1,11 @@
 #lang scribble/manual
 
-@(require (for-label racket
-            racket/gui
-            syndicate
-            syndicate-gl/2d
-            (only-in 2htdp/image image?)
-            (only-in pict pict?)))
+@(require (for-label (except-in racket process)
+                     (except-in racket/gui process)
+                     syndicate
+                     syndicate-gl/2d
+                     (only-in 2htdp/image image?)
+                     (only-in pict pict?)))
 
 @title{2d Graphics with syndicate-gl}
 

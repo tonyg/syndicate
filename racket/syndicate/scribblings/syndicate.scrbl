@@ -1,6 +1,6 @@
 #lang scribble/manual
 
-@(require (for-label racket
+@(require (for-label (except-in racket process field)
             syndicate/actor))
 
 @title{High Level Syntax for Syndicate}
