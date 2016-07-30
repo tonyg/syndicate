@@ -951,10 +951,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Trie [OutputPort] [#:indent Nat] [#:with-parens Boolean] -> Trie
+;; Trie [OutputPort] [#:indent (U Nat String)] [#:with-parens Boolean] -> Trie
 ;; Pretty-prints the given trie on the given port, with
-;; second-and-subsequent lines indented by the given amount.
-;; Returns the trie.
+;; second-and-subsequent lines indented by the given amount (or the
+;; given prefix). Returns the trie.
 (define (pretty-print-trie m [port (current-output-port)]
                            #:indent [initial-indent 0]
                            #:with-parens [with-parens #f])
@@ -996,7 +996,10 @@
   (when with-parens
     (display "{{" port)
     (newline port))
-  (walk (make-string initial-indent #\space) m)
+  (walk (if (string? initial-indent)
+            initial-indent
+            (make-string initial-indent #\space))
+        m)
   (newline port)
   (if with-parens
       (display "}}" port)

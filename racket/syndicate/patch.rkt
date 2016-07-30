@@ -49,6 +49,7 @@
 
 (require racket/set)
 (require racket/match)
+(require (only-in racket/string string-trim))
 (require "trie.rkt")
 (require "tset.rkt")
 (require "pretty.rkt")
@@ -294,9 +295,9 @@
 
 (define (patch->pretty-string p)
   (match-define (patch in out) p)
-  (format "<<<<<<<< Removed:\n~a======== Added:\n~a>>>>>>>>\n"
-          (trie->pretty-string out)
-          (trie->pretty-string in)))
+  (format "-~a\n+~a\n"
+          (string-trim #:left? #f (trie->pretty-string out #:indent "-"))
+          (string-trim #:left? #f (trie->pretty-string in #:indent "+"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
