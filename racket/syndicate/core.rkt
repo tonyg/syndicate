@@ -9,6 +9,8 @@
          (struct-out quit-dataspace)
          (struct-out transition)
 
+         (struct-out process)
+
          (struct-out seal)
          sealof
 
@@ -56,7 +58,9 @@
          sequence-transitions0*
 
          clean-actions
-         clean-transition)
+         clean-transition
+
+         update-process-state)
 
 (require racket/match)
 (require (only-in racket/list flatten))
@@ -89,6 +93,9 @@
 ;;        debugging purposes; #f means normal termination.
 (struct transition (state actions) #:transparent)
 (struct quit (exn actions) #:prefab)
+
+;; A Process is per-process data: (process Any Behavior Any)
+(struct process (name behavior state) #:transparent)
 
 ;; A PID is a Nat.
 ;; A Label is a PID or 'meta.
@@ -143,6 +150,9 @@
 
 (define (clean-actions actions)
   (filter (lambda (x) (and (action? x) (not (patch-empty? x)))) (flatten actions)))
+
+(define (update-process-state i new-state)
+  (struct-copy process i [state new-state]))
 
 (define (make-quit #:exception [exn #f] . actions)
   (quit exn actions))

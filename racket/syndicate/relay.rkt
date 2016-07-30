@@ -19,8 +19,7 @@
                outbound-parenthesis ;; OpenParenthesis/1
                inbound-constructor ;; Assertion -> Assertion
                inbound-parenthesis ;; OpenParenthesis/1
-               inner-behavior ;; Behavior
-               inner-state ;; Any
+               inner ;; Process
                )
   #:transparent
   #:methods gen:syndicate-pretty-printable
@@ -66,12 +65,14 @@
     [(<quit> exn actions)
      (<quit> exn (relay-drop-actions actions r))]
     [(transition st actions)
-     (transition (struct-copy relay r [inner-state st]) (relay-drop-actions actions r))]
+     (transition (struct-copy relay r [inner (update-process-state (relay-inner r) st)])
+                 (relay-drop-actions actions r))]
     [(or #f (? void?))
      t]))
 
 (define (relay-handle-event e r)
-  (relay-transition ((relay-inner-behavior r) (relay-lift-event e r) (relay-inner-state r)) r))
+  (define i (relay-inner r))
+  (relay-transition ((process-behavior i) (relay-lift-event e r) (process-state i)) r))
 
 (define ((inject-relay-subscription r) initial-inner-state)
   (define initial-patch
@@ -80,7 +81,8 @@
                                                   (pattern->trie '<relay> ?)))
                       trie-empty)
                (sub (observe ((relay-inbound-constructor r) ?)))))
-  ((relay-inner-behavior r) initial-patch initial-inner-state))
+  (define i (relay-inner r))
+  ((process-behavior i) initial-patch initial-inner-state))
 
 (define (spawn-relay outbound?
                      outbound-assertion
@@ -95,8 +97,9 @@
                                                 outbound-parenthesis
                                                 inbound-constructor
                                                 inbound-parenthesis
-                                                inner-behavior
-                                                'uninitialized:initial-inner-state))
+                                                (process name
+                                                         inner-behavior
+                                                         'uninitialized:initial-inner-state)))
              (list relay-handle-event
                    (relay-transition (transition-bind (inject-relay-subscription initial-relay-state)
                                                       initial-transition)
@@ -107,4 +110,4 @@
   (fprintf p "RELAY ~a/~a\n"
            (open-parenthesis-type (relay-outbound-parenthesis r))
            (open-parenthesis-type (relay-inbound-parenthesis r)))
-  (syndicate-pretty-print (relay-inner-state r) p))
+  (syndicate-pretty-print (process-state (relay-inner r)) p))

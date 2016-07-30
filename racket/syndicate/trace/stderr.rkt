@@ -212,7 +212,7 @@
                 (define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
                 (define interests (mux-interests-of (dataspace-mux new-w) newpid))
                 (define info (hash-ref (dataspace-process-table new-w) newpid '#:missing-behavior))
-                (define state (hash-ref (dataspace-states new-w) newpid '#:missing-state))
+                (define state (if (process? info) (process-state info) '#:missing-state))
                 (with-color BRIGHT-GREEN
                   (output "~a ~v spawned from ~a (~a total processes now)\n"
                           newpidstr

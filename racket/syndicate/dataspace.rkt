@@ -20,18 +20,14 @@
 (require "core.rkt")
 (require "protocol/standard-relay.rkt")
 
-;; Long-lived process data: (process-info Any Behavior)
-(struct process-info (name behavior) #:transparent)
-
 ;; Sentinel
-(define missing-process-info (process-info #f #f))
+(define missing-process (process #f #f #f))
 
 ;; VM private states
 (struct dataspace (mux ;; Multiplexer
                    pending-action-queue ;; (Queueof (Cons Label (U Action 'quit)))
                    runnable-pids ;; (Setof PID)
-                   process-table ;; (HashTable PID ProcessInfo)
-                   states ;; (HashTable PID Any)
+                   process-table ;; (HashTable PID Process)
                    )
   #:transparent
   #:methods gen:syndicate-pretty-printable
@@ -41,9 +37,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (send-event e pid w)
-  (define behavior (process-info-behavior
-                    (hash-ref (dataspace-process-table w) pid missing-process-info)))
-  (define old-state (hash-ref (dataspace-states w) pid #f))
+  (match-define (process _ behavior old-state)
+    (hash-ref (dataspace-process-table w) pid missing-process))
   (if (not behavior)
       w
       (begin
@@ -66,7 +61,12 @@
                           (enqueue-actions (disable-process pid exn w) pid (list 'quit)))))))
 
 (define (update-state w pid s)
-  (struct-copy dataspace w [states (hash-set (dataspace-states w) pid s)]))
+  (define old-pt (dataspace-process-table w))
+  (define old-p (hash-ref old-pt pid #f))
+  (if old-p
+      (struct-copy dataspace w
+                   [process-table (hash-set old-pt pid (update-process-state old-p s))])
+      w))
 
 (define (send-event/guard e pid w)
   (if (patch-empty? e)
@@ -76,12 +76,11 @@
 (define (disable-process pid exn w)
   (when exn
     (log-error "Process ~v ~a died with exception:\n~a"
-               (process-info-name (hash-ref (dataspace-process-table w) pid missing-process-info))
+               (process-name (hash-ref (dataspace-process-table w) pid missing-process))
                (append (current-actor-path) (list pid))
                (exn->string exn)))
   (struct-copy dataspace w
-               [process-table (hash-remove (dataspace-process-table w) pid)]
-               [states (hash-remove (dataspace-states w) pid)]))
+               [process-table (hash-remove (dataspace-process-table w) pid)]))
 
 (define (invoke-process pid thunk k-ok k-exn)
   (define-values (ok? result)
@@ -116,7 +115,6 @@
   (dataspace (mux)
              (list->queue (for/list ((a (in-list (clean-actions boot-actions)))) (cons 'meta a)))
              (set)
-             (hash)
              (hash)))
 
 (define (make-spawn-dataspace #:name [name #f] boot-actions-thunk)
@@ -196,17 +194,19 @@
   (if (not initial-transition)
       (transition w '()) ;; Uh, ok
       (let ()
-        (define-values (postprocess initial-actions)
+        (define-values (postprocess initial-state initial-actions)
           (match (clean-transition initial-transition)
             [(and q (<quit> exn initial-actions0))
              (values (lambda (w pid)
                        (trace-process-step-result 'boot pid behavior (void) exn q)
                        (disable-process pid exn w))
+                     #f
                      (append initial-actions0 (list 'quit)))]
             [(and t (transition initial-state initial-actions0))
              (values (lambda (w pid)
                        (trace-process-step-result 'boot pid behavior (void) #f t)
-                       (mark-pid-runnable (update-state w pid initial-state) pid))
+                       (mark-pid-runnable w pid))
+                     initial-state
                      initial-actions0)]))
         (define-values (initial-patch remaining-initial-actions)
           (match initial-actions
@@ -217,8 +217,9 @@
         (let* ((w (struct-copy dataspace w
                                [process-table (hash-set (dataspace-process-table w)
                                                         new-pid
-                                                        (process-info name
-                                                                      behavior))]))
+                                                        (process name
+                                                                 behavior
+                                                                 initial-state))]))
                (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions)))
           (deliver-patches w new-mux new-pid delta delta-aggregate)))))
 
@@ -241,27 +242,26 @@
 		  '())))
 
 (define (pretty-print-dataspace w [p (current-output-port)])
-  (match-define (dataspace mux qs runnable process-table states) w)
+  (match-define (dataspace mux qs runnable process-table) w)
   (fprintf p "DATASPACE:\n")
   (fprintf p " - ~a queued actions\n" (queue-length qs))
   (fprintf p " - ~a runnable pids ~a\n" (set-count runnable) (set->list runnable))
-  (fprintf p " - ~a live processes\n" (hash-count states))
+  (fprintf p " - ~a live processes\n" (hash-count process-table))
   (fprintf p " - ")
   (display (indented-port-output 3 (lambda (p) (syndicate-pretty-print mux p)) #:first-line? #f) p)
   (newline p)
-  (for ([pid (set-union (hash-keys (mux-interest-table mux)) (hash-keys states))])
-    (define i (hash-ref process-table pid missing-process-info))
+  (for ([pid (set-union (hash-keys (mux-interest-table mux)) (hash-keys process-table))])
+    (define i (hash-ref process-table pid missing-process))
     (fprintf p " ---- process ~a, name ~v, behavior ~v, STATE:\n"
              pid
-             (process-info-name i)
-             (process-info-behavior i))
-    (define state (hash-ref states pid #f))
-    (display (indented-port-output 6 (lambda (p) (syndicate-pretty-print state p))) p)
+             (process-name i)
+             (process-behavior i))
+    (display (indented-port-output 6 (lambda (p) (syndicate-pretty-print (process-state i) p))) p)
     (newline p)
     (fprintf p "      process ~a, name ~v, behavior ~v, CLAIMS:\n"
              pid
-             (process-info-name i)
-             (process-info-behavior i))
+             (process-name i)
+             (process-behavior i))
     (display (indented-port-output 6 (lambda (p)
                                        (pretty-print-trie (mux-interests-of mux pid) p)))
              p)

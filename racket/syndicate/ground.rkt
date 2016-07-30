@@ -96,8 +96,8 @@
 (define poll-handler
   (handle-evt always-evt (lambda _ #f)))
 
-;; Boolean Behavior State AssertionSet Natural -> Void
-(define (await-interrupt inert? beh st interests background-activity-count)
+;; Boolean Process AssertionSet Natural -> Void
+(define (await-interrupt inert? proc interests background-activity-count)
   ;; (log-info "~a ~a GROUND INTERESTS:\n~a"
   ;;           inert?
   ;;           background-activity-count
@@ -114,36 +114,38 @@
                     (extract-active-events interests))
         [(background-activity-signal delta)
          ;; (log-info "background-activity-count ~v" (+ background-activity-count delta))
-         (await-interrupt inert? beh st interests (+ background-activity-count delta))]
+         (await-interrupt inert? proc interests (+ background-activity-count delta))]
         [e
-         (inject-event e beh st interests background-activity-count)])))
+         (inject-event e proc interests background-activity-count)])))
 
-;; Event Behavior State AssertionSet Natural -> Void
-(define (inject-event e beh st interests background-activity-count)
-  (trace-process-step e #f beh st)
-  (define resulting-transition (clean-transition (beh e st)))
-  (trace-process-step-result e #f beh st #f resulting-transition)
-  (process-transition resulting-transition beh st interests background-activity-count))
+;; Event Process AssertionSet Natural -> Void
+(define (inject-event e proc interests background-activity-count)
+  (trace-process-step e #f (process-behavior proc) (process-state proc))
+  (define resulting-transition (clean-transition ((process-behavior proc) e (process-state proc))))
+  (trace-process-step-result e #f (process-behavior proc) (process-state proc)
+                             #f resulting-transition)
+  (process-transition resulting-transition proc interests background-activity-count))
 
-;; Transition Behavior State AssertionSet Natural -> Void
-(define (process-transition resulting-transition beh st interests background-activity-count)
+;; Transition Process AssertionSet Natural -> Void
+(define (process-transition resulting-transition proc interests background-activity-count)
   (match resulting-transition
     [#f ;; inert
-     (await-interrupt #t beh st interests background-activity-count)]
+     (await-interrupt #t proc interests background-activity-count)]
     [(<quit> _ _)
      (log-info "run-ground: Terminating by request")
      (void)]
-    [(transition st actions)
-     (let process-actions ((actions actions) (interests interests))
-       (match actions
-         ['() (await-interrupt #f beh st interests background-activity-count)]
-         [(cons a actions)
-          (match a
-            [(? patch? p)
-             (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
-            [_
-             (log-warning "run-ground: ignoring useless meta-action ~v" a)
-             (process-actions actions interests)])]))]))
+    [(transition new-state actions)
+     (let ((proc (update-process-state proc new-state)))
+       (let process-actions ((actions actions) (interests interests))
+         (match actions
+           ['() (await-interrupt #f proc interests background-activity-count)]
+           [(cons a actions)
+            (match a
+              [(? patch? p)
+               (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
+              [_
+               (log-warning "run-ground: ignoring useless meta-action ~v" a)
+               (process-actions actions interests)])])))]))
 
 ;; Action* -> Void
 ;; Runs a ground VM, booting the outermost Dataspace with the given Actions.
@@ -152,5 +154,5 @@
 
 ;; Spawn -> Void
 (define (run-ground* s)
-  (match-define (list beh t _name) ((spawn-boot s)))
-  (process-transition t beh 'undefined-initial-ground-state trie-empty 0))
+  (match-define (list beh t name) ((spawn-boot s)))
+  (process-transition t (process name beh 'undefined-initial-ground-state) trie-empty 0))
