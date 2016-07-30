@@ -243,7 +243,7 @@
 ;;
 ;; Physics -> DisplayCtl: (pos 'player ...)
 ;; note right of DisplayCtl: Compares player pos to level size
-;; DisplayCtl -> Subscribers: (at-meta (at-meta (scroll-offset ...)))
+;; DisplayCtl -> Subscribers: (inbound (inbound (scroll-offset ...)))
 ;;
 ;; ================================================================================
 ;;
@@ -302,11 +302,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Various projections
 
-(define window-projection1 (at-meta (?! (window ? ?))))
-(define window-projection3 (at-meta (at-meta (at-meta (?! (window ? ?))))))
+(define window-projection1 (inbound (?! (window ? ?))))
+(define window-projection3 (inbound* 3 (?! (window ? ?))))
 (define scroll-offset-projection (scroll-offset (?!)))
 (define on-screen-display-projection (?! (on-screen-display ? ? ?)))
-(define key-pressed-projection (at-meta (at-meta (key-pressed (?!)))))
+(define key-pressed-projection (inbound* 2 (key-pressed (?!))))
 (define position-projection (?! (position ? ? ?)))
 (define impulse-projection (?! (impulse ? ?)))
 (define game-piece-configuration-projection (?! (game-piece-configuration ? ? ? ?)))
@@ -369,20 +369,20 @@
                                             (translate ,(- ofs-x) ,(- ofs-y)))
                                           `((translate ,ofs-x ,ofs-y)
                                             ,@osd-blocks))))]
-             [(message (at-meta (key-event #\f _ _)))
+             [(message (inbound (key-event #\f _ _)))
               (define fullscreen? (not (scene-manager-state-fullscreen? s)))
               (let* ((s (struct-copy scene-manager-state s [fullscreen? fullscreen?])))
                 (transition s
-                            (patch-seq (retract 'fullscreen #:meta-level 1)
+                            (patch-seq (retract (outbound 'fullscreen))
                                        (if fullscreen?
-                                           (assert 'fullscreen #:meta-level 1)
+                                           (assert (outbound 'fullscreen))
                                            patch-empty))))]
              [_ #f]))
          (scene-manager-state (vector 0 0) (vector 0 0) (set) #f)
-         (patch-seq (sub (key-event #\f #t ?) #:meta-level 1)
+         (patch-seq (sub (inbound (key-event #\f #t ?)))
                     (sub (scroll-offset ?))
                     (sub (on-screen-display ? ? ?))
-                    (sub (window ? ?) #:meta-level 1))))
+                    (sub (inbound (window ? ?))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ScoreKeeper
@@ -390,8 +390,8 @@
 (define (spawn-score-keeper)
   (define (update-display new-score)
     (define i (text (format "Score: ~a" new-score) 24 "white"))
-    (patch-seq (retract (on-screen-display ? ? ?) #:meta-level 1)
-               (assert (on-screen-display -150 10 (seal i)) #:meta-level 1)))
+    (patch-seq (retract (outbound (on-screen-display ? ? ?)))
+               (assert (outbound (on-screen-display -150 10 (seal i))))))
   (spawn (lambda (e s)
            (match e
              [(message (add-to-score delta))
@@ -624,7 +624,7 @@
                                     (update-impulses p))]
              [(message (jump-request id))
               (evaluate-jump-request id s)]
-             [(message (at-meta (at-meta (at-meta (frame-event counter _ elapsed-ms _)))))
+             [(message (inbound* game-level (frame-event counter _ elapsed-ms _)))
               (when (zero? (modulo counter 10))
                 (log-info "Instantaneous frame rate at frame ~a: ~a Hz"
                           counter
@@ -641,7 +641,7 @@
          (patch-seq (sub (impulse ? ?))
                     (sub (game-piece-configuration ? ? ? ?))
                     (sub (jump-request ?))
-                    (sub (frame-event ? ? ? ?) #:meta-level game-level))))
+                    (sub (inbound* game-level (frame-event ? ? ? ?))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Player
@@ -715,12 +715,12 @@
                                             (icon-hitbox-size i)
                                             (set 'player 'mobile 'massive)))
           (sub (position player-id ? ?))
-          (sub (key-pressed 'left) #:meta-level 2)
-          (sub (key-pressed 'right) #:meta-level 2)
-          (sub (key-pressed #\space) #:meta-level 2)
-          (sub (key-pressed 'prior) #:meta-level 2)
-          (sub (key-pressed 'next) #:meta-level 2)
-          (sub (key-pressed #\.) #:meta-level 2)
+          (sub (inbound* 2 (key-pressed 'left)))
+          (sub (inbound* 2 (key-pressed 'right)))
+          (sub (inbound* 2 (key-pressed #\space)))
+          (sub (inbound* 2 (key-pressed 'prior)))
+          (sub (inbound* 2 (key-pressed 'next)))
+          (sub (inbound* 2 (key-pressed #\.)))
           (sprite-update initial-player-state)
           )))
 
@@ -756,7 +756,7 @@
 
   (spawn (lambda (e s)
            (match e
-             [(? patch/added?) (transition s (message (at-meta (level-completed))))]
+             [(? patch/added?) (transition s (message (outbound (level-completed))))]
              [_ #f]))
          (void)
          (patch-seq
@@ -833,7 +833,7 @@
     (define damage-actions (for/list [(who to-damage)] (message (damage who 1))))
     (if squashed?
         (begin (play-sound-sequence 270325)
-               (quit (list damage-actions (message (at-meta (add-to-score 1))))))
+               (quit (list damage-actions (message (outbound (add-to-score 1))))))
         (transition s damage-actions)))
 
   (spawn (lambda (e s)
@@ -883,8 +883,8 @@
                (let ((offset-pos (vector (compute-offset px ww level-width)
                                          (compute-offset py wh level-height))))
                  (transition s
-                             (patch-seq (retract #:meta-level 2 (scroll-offset ?))
-                                        (assert #:meta-level 2 (scroll-offset offset-pos)))))))))
+                             (patch-seq (retract (outbound* 2 (scroll-offset ?)))
+                                        (assert (outbound* 2 (scroll-offset offset-pos))))))))))
 
   (spawn (lambda (e s)
            (match e
@@ -894,7 +894,7 @@
                                     (update-scroll-offset-from-player-position p))]
              [_ #f]))
          (vector 0 0)
-         (patch-seq (sub (window ? ?) #:meta-level game-level)
+         (patch-seq (sub (inbound* game-level (window ? ?)))
                     (sub (position player-id ? ?))
                     (assert (level-size level-size-vec)))))
 
@@ -911,16 +911,16 @@
               (log-info "Player died! Terminating level.")
               (play-sound-sequence 270328)
               (transition s (quit-dataspace))]
-             [(message (at-meta (level-completed)))
+             [(message (inbound (level-completed)))
               (log-info "Level completed! Terminating level.")
               (play-sound-sequence 270330)
-              (transition s (list (message (at-meta (add-to-score 100)))
+              (transition s (list (message (outbound (add-to-score 100)))
                                   (quit-dataspace)))]
              [_ #f]))
          (void)
          (patch-seq (sub (game-piece-configuration player-id ? ? ?))
-                    (sub (level-completed) #:meta-level 1)
-                    (assert (level-running) #:meta-level 1))))
+                    (sub (inbound (level-completed)))
+                    (assert (outbound (level-running))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelSpawner
@@ -1002,7 +1002,7 @@
      )))
 
 (define (spawn-numbered-level level-number)
-  (list (message (at-meta (at-meta (request-gc))))
+  (list (message (outbound* 2 (request-gc)))
         (if (< level-number (length (force levels)))
             (list-ref (force levels) level-number)
             (spawn-standalone-assertions
