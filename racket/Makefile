@@ -1,5 +1,5 @@
 PACKAGENAME=syndicate
-COLLECTS=syndicate syndicate-monolithic syndicate-gl
+COLLECTS=syndicate syndicate-gl
 
 all: setup
 

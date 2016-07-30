@@ -20,9 +20,6 @@ implementation of Syndicate in `syndicate`, which includes
 
  - `syndicate-gl` is a Syndicate interface to 2D OpenGL based graphics
 
- - `syndicate-monolithic` is an implementation of the "monolithic
-   state change notification" dialect of Syndicate
-
 ## Compiling and running the code
 
 You will need Racket version 6.4.0.14 or later.
