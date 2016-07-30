@@ -41,33 +41,30 @@
 
 (define (run-thread actor-path spawn-action-thunk)
   (define actor-path-rev (reverse actor-path))
-  (match-define (list (? procedure? behaviour)
-                      (? general-transition? initial-transition)
-                      _name)
-    ((spawn-boot (spawn-action-thunk))))
 
-  (define (process-transition state t)
+  (define (process-transition proc t)
     (match t
       [(<quit> exn acs)
        (send-ground-message (thread-quit exn acs) #:path actor-path)]
       [(transition new-state acs)
        (when (not (or (null? acs) (eq? acs #f) (void? acs)))
          (send-ground-message (thread-transition acs) #:path actor-path))
-       (deliver-event #f new-state)]
+       (deliver-event #f (update-process-state proc new-state))]
       [_
-       (await-event state)]))
+       (await-event proc)]))
 
-  (define (deliver-event e state)
-    (process-transition state
+  (define (deliver-event e proc)
+    (process-transition proc
                         (parameterize ((current-actor-path-rev actor-path-rev))
                           (with-handlers [((lambda (exn) #t) (lambda (exn) (<quit> exn '())))]
-                            (behaviour e state)))))
+                            ((process-behavior proc) e (process-state proc))))))
 
-  (define (await-event state)
+  (define (await-event proc)
     (signal-background-activity! #f)
-    (deliver-event (thread-receive) state))
+    (deliver-event (thread-receive) proc))
 
-  (process-transition (void) initial-transition))
+  (call-with-values (lambda () (spawn->process+transition (spawn-action-thunk)))
+                    process-transition))
 
 (define-syntax actor/thread
   (syntax-rules ()

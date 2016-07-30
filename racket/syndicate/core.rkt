@@ -60,7 +60,8 @@
          clean-actions
          clean-transition
 
-         update-process-state)
+         update-process-state
+         spawn->process+transition)
 
 (require racket/match)
 (require (only-in racket/list flatten))
@@ -153,6 +154,10 @@
 
 (define (update-process-state i new-state)
   (struct-copy process i [state new-state]))
+
+(define (spawn->process+transition s)
+  (match-define (list beh t name) ((spawn-boot s)))
+  (values (process name beh 'undefined-initial-state) t))
 
 (define (make-quit #:exception [exn #f] . actions)
   (quit exn actions))

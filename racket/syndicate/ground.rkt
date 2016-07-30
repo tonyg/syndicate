@@ -154,5 +154,5 @@
 
 ;; Spawn -> Void
 (define (run-ground* s)
-  (match-define (list beh t name) ((spawn-boot s)))
-  (process-transition t (process name beh 'undefined-initial-ground-state) trie-empty 0))
+  (define-values (proc t) (spawn->process+transition s))
+  (process-transition t proc trie-empty 0))

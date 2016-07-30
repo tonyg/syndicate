@@ -91,20 +91,18 @@
                      inbound-parenthesis
                      inner-spawn)
   (<spawn> (lambda ()
-             (match-define (list inner-behavior initial-transition name) ((spawn-boot inner-spawn)))
+             (define-values (proc initial-transition) (spawn->process+transition inner-spawn))
              (define initial-relay-state (relay outbound?
                                                 outbound-assertion
                                                 outbound-parenthesis
                                                 inbound-constructor
                                                 inbound-parenthesis
-                                                (process name
-                                                         inner-behavior
-                                                         'uninitialized:initial-inner-state)))
+                                                proc))
              (list relay-handle-event
                    (relay-transition (transition-bind (inject-relay-subscription initial-relay-state)
                                                       initial-transition)
                                      initial-relay-state)
-                   name))))
+                   (process-name proc)))))
 
 (define (pretty-print-relay r p)
   (fprintf p "RELAY ~a/~a\n"
