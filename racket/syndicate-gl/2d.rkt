@@ -344,12 +344,12 @@
     (define/override (on-paint)
       (with-gl-context
         (lambda ()
-          (let ((this-frame-time (sim-time)))
-            (inject-event! (message (frame-event counter
-                                                 this-frame-time
-                                                 (- this-frame-time prev-frame-time)
-                                                 target-frame-rate)))
-            (set! counter (+ counter 1))
+          (let* ((this-frame-time (sim-time))
+                 (elapsed-ms (- this-frame-time prev-frame-time)))
+            (when (not (negative? elapsed-ms))
+              (inject-event! (message
+                              (frame-event counter this-frame-time elapsed-ms target-frame-rate)))
+              (set! counter (+ counter 1)))
             (set! prev-frame-time this-frame-time))
           (quiesce!)
           (unless initialised?
