@@ -88,6 +88,7 @@
 (require "store.rkt")
 (require "support/hash.rkt")
 (require "pretty.rkt")
+(require "functional-queue.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Definitions and Structures
@@ -234,7 +235,7 @@
 ;; Storeof (Constreeof Action)
 (define current-pending-actions (make-store))
 
-;; Storeof (Vector (List Script) (List Script))
+;; Storeof (Vector (Queue Script) ...)
 ;; Mutates the vector!
 (define current-pending-scripts (make-store))
 
@@ -853,7 +854,7 @@
 
 (define (push-script! priority thunk-with-context)
   (define v (current-pending-scripts))
-  (vector-set! v priority (cons thunk-with-context (vector-ref v priority))))
+  (vector-set! v priority (enqueue (vector-ref v priority) thunk-with-context)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Action Queue Management
@@ -991,7 +992,7 @@
                                      [stop-scripts (cons script-proc (facet-stop-scripts f))])))))
 
 (define (make-empty-pending-scripts)
-  (make-vector priority-count '()))
+  (make-vector priority-count (make-queue)))
 
 (define (boot-actor script-proc)
   (with-store [(current-actor-state
@@ -1008,17 +1009,21 @@
       (schedule-script! #f script-proc)
       (run-scripts!))))
 
-(define (scripts-pending?)
-  (for/or [(scripts (in-vector (current-pending-scripts)))]
-    (not (null? scripts))))
+(define (pop-next-script!)
+  (define priority-levels (current-pending-scripts))
+  (let loop ((level 0))
+    (and (< level (vector-length priority-levels))
+         (let ((q (vector-ref priority-levels level)))
+           (if (queue-empty? q)
+               (loop (+ level 1))
+               (let-values (((script q) (dequeue q)))
+                 (vector-set! priority-levels level q)
+                 script))))))
 
 (define (run-all-pending-scripts!)
-  (when (scripts-pending?)
-    (define pending-scripts (current-pending-scripts))
-    (current-pending-scripts (make-empty-pending-scripts))
-    (for* [(scripts (in-vector pending-scripts))
-           (script (in-list (reverse scripts)))]
-      (script))
+  (define script (pop-next-script!))
+  (when script
+    (script)
     (refresh-facet-assertions!)
     (run-all-pending-scripts!)))
 
