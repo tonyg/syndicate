@@ -527,23 +527,23 @@
                #:when (game-piece-has-attribute? g 'solid)]
       (clip-movement-by p0 p1 size (piece-pos s id) (game-piece-configuration-size g))))
 
-  (define (touched-during-movement? top-left moved-top-left size touchable-top-left touchable-size)
-    (define r (v- moved-top-left top-left))
+  (define (touched-during-movement? TL moved-TL size touchable-TL touchable-size)
+    (define r (v- moved-TL TL))
     (if (positive? (vmag^2 r)) ;; r is nonzero, in other words
         (let ()
-          (define-values (touchable-top-right touchable-bottom-right touchable-bottom-left)
-            (three-corners touchable-top-left touchable-size))
-          (define-values (top-right bottom-right bottom-left)
-            (three-corners top-left size))
-          (for/or [(p (in-list (list top-left top-right bottom-right bottom-left)))]
+          (define-values (touchable-TR touchable-BR touchable-BL)
+            (three-corners touchable-TL touchable-size))
+          (define-values (TR BR BL)
+            (three-corners TL size))
+          (for/or [(p (in-list (list TL TR BR BL)))]
             (or
-             (and (segment-intersection-time p r touchable-top-right touchable-bottom-right) 'right)
-             (and (segment-intersection-time p r touchable-bottom-right touchable-bottom-left) 'bottom)
-             (and (segment-intersection-time p r touchable-bottom-left touchable-top-left) 'left)
-             (and (segment-intersection-time p r touchable-top-left touchable-top-right) 'top))))
+             (and (segment-intersection-time p r touchable-TR touchable-BR) 'right)
+             (and (segment-intersection-time p r touchable-BR touchable-BL) 'bottom)
+             (and (segment-intersection-time p r touchable-BL touchable-TL) 'left)
+             (and (segment-intersection-time p r touchable-TL touchable-TR) 'top))))
         (let ()
-          (match-define (vector left top) top-left)
-          (match-define (vector touchable-left touchable-top) touchable-top-left)
+          (match-define (vector left top) TL)
+          (match-define (vector touchable-left touchable-top) touchable-TL)
           (match-define (vector width height) size)
           (match-define (vector touchable-width touchable-height) touchable-size)
           (and (<= left (+ touchable-left touchable-width))
