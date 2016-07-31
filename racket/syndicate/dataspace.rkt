@@ -60,13 +60,14 @@
                           (trace-process-step-result e pid behavior old-state exn #f)
                           (enqueue-actions (disable-process pid exn w) pid (list 'quit)))))))
 
-(define (update-state w pid s)
+(define (update-process-entry w pid f)
   (define old-pt (dataspace-process-table w))
-  (define old-p (hash-ref old-pt pid #f))
-  (if old-p
-      (struct-copy dataspace w
-                   [process-table (hash-set old-pt pid (update-process-state old-p s))])
-      w))
+  (match (hash-ref old-pt pid #f)
+    [#f w]
+    [old-p (struct-copy dataspace w [process-table (hash-set old-pt pid (f old-p))])]))
+
+(define (update-state w pid s)
+  (update-process-entry w pid (lambda (p) (update-process-state p s))))
 
 (define (send-event/guard e pid w)
   (if (patch-empty? e)
@@ -79,8 +80,8 @@
                (process-name (hash-ref (dataspace-process-table w) pid missing-process))
                (append (current-actor-path) (list pid))
                (exn->string exn)))
-  (struct-copy dataspace w
-               [process-table (hash-remove (dataspace-process-table w) pid)]))
+  ;; We leave a "tombstone", just the process name, until the 'quit pseudoaction takes effect.
+  (update-process-entry w pid (lambda (p) (process (process-name p) #f #f))))
 
 (define (invoke-process pid thunk k-ok k-exn)
   (define-values (ok? result)
@@ -171,8 +172,10 @@
     ['quit
      (define-values (new-mux _label delta delta-aggregate)
        (mux-remove-stream (dataspace-mux w) label))
-     ;; behavior & state in w already removed by disable-process
-     (deliver-patches w new-mux label delta delta-aggregate)]
+     ;; Clean up the "tombstone" left for us by disable-process
+     (let ((w (struct-copy dataspace w
+                           [process-table (hash-remove (dataspace-process-table w) label)])))
+       (deliver-patches w new-mux label delta delta-aggregate))]
     [(quit-dataspace)
      (quit)]
     [(? patch? delta-orig)
