@@ -269,7 +269,7 @@
   (syntax-parse stx
     [(_ name:name script ...)
      (quasisyntax/loc stx
-       (core:<spawn>
+       (core:make-spawn
         (lambda ()
           (list actor-behavior
                 (boot-actor (lambda () (begin/void-default script ...)))

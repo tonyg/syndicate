@@ -122,17 +122,17 @@
 (define-syntax spawn-monolithic
   (syntax-rules ()
     [(_ #:name name-exp behavior-exp initial-state-exp initial-action-tree-exp)
-     (<spawn> (lambda ()
-                (list (wrap-monolithic-behaviour behavior-exp)
-                      (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
-                                              (clean-actions initial-action-tree-exp))
-                      name-exp)))]
+     (make-spawn (lambda ()
+                   (list (wrap-monolithic-behaviour behavior-exp)
+                         (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
+                                                 (clean-actions initial-action-tree-exp))
+                         name-exp)))]
     [(_ behavior-exp initial-state-exp initial-action-tree-exp)
-     (<spawn> (lambda ()
-                (list (wrap-monolithic-behaviour behavior-exp)
-                      (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
-                                              (clean-actions initial-action-tree-exp))
-                      #f)))]))
+     (make-spawn (lambda ()
+                   (list (wrap-monolithic-behaviour behavior-exp)
+                         (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
+                                                 (clean-actions initial-action-tree-exp))
+                         #f)))]))
 
 (define-syntax spawn-monolithic/stateless
   (syntax-rules ()

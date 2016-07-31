@@ -45,6 +45,7 @@
          unsub
 
          (rename-out [make-quit quit])
+         make-spawn
          (rename-out [spawn-process spawn])
          spawn/stateless
 
@@ -162,18 +163,32 @@
 (define (make-quit #:exception [exn #f] . actions)
   (quit exn actions))
 
+(define (make-spawn spawn-producing-thunk)
+  (spawn (let ((parameterization (current-parameterization)))
+           (lambda ()
+             (call-with-parameterization
+              parameterization
+              (lambda ()
+                (match (spawn-producing-thunk)
+                  [(list (? procedure? raw-beh) (? general-transition? txn) name)
+                   (list (lambda (e s)
+                           (call-with-parameterization parameterization (lambda () (raw-beh e s))))
+                         txn
+                         name)]
+                  [other other]))))))) ;; punt on error checking to dataspace boot code
+
 (define-syntax spawn-process
   (syntax-rules ()
     [(_ #:name name-exp behavior-exp initial-state-exp initial-action-tree-exp)
-     (spawn (lambda ()
-              (list behavior-exp
-                    (transition initial-state-exp initial-action-tree-exp)
-                    name-exp)))]
+     (make-spawn (lambda ()
+                   (list behavior-exp
+                         (transition initial-state-exp initial-action-tree-exp)
+                         name-exp)))]
     [(_ behavior-exp initial-state-exp initial-action-tree-exp)
-     (spawn (lambda ()
-              (list behavior-exp
-                    (transition initial-state-exp initial-action-tree-exp)
-                    #f)))]))
+     (make-spawn (lambda ()
+                   (list behavior-exp
+                         (transition initial-state-exp initial-action-tree-exp)
+                         #f)))]))
 
 (define-syntax spawn/stateless
   (syntax-rules ()

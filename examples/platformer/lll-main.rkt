@@ -914,10 +914,9 @@
 ;; LevelSpawner
 
 (define (spawn-standalone-assertions . patches)
-  (<spawn> (lambda ()
-             (list (lambda (e s) #f)
-                   (transition (void) (patch-seq* patches))
-                   #f))))
+  (spawn (lambda (e s) #f)
+         (void)
+         patches))
 
 (define (spawn-background-image level-size scene)
   (match-define (vector level-width level-height) level-size)

@@ -90,19 +90,20 @@
                      inbound-constructor
                      inbound-parenthesis
                      inner-spawn)
-  (<spawn> (lambda ()
-             (define-values (proc initial-transition) (spawn->process+transition inner-spawn))
-             (define initial-relay-state (relay outbound?
-                                                outbound-assertion
-                                                outbound-parenthesis
-                                                inbound-constructor
-                                                inbound-parenthesis
-                                                proc))
-             (list relay-handle-event
-                   (relay-transition (transition-bind (inject-relay-subscription initial-relay-state)
-                                                      initial-transition)
-                                     initial-relay-state)
-                   (process-name proc)))))
+  (make-spawn (lambda ()
+                (define-values (proc initial-transition) (spawn->process+transition inner-spawn))
+                (define initial-relay-state (relay outbound?
+                                                   outbound-assertion
+                                                   outbound-parenthesis
+                                                   inbound-constructor
+                                                   inbound-parenthesis
+                                                   proc))
+                (list relay-handle-event
+                      (relay-transition
+                       (transition-bind (inject-relay-subscription initial-relay-state)
+                                        initial-transition)
+                       initial-relay-state)
+                      (process-name proc)))))
 
 (define (pretty-print-relay r p)
   (fprintf p "RELAY ~a/~a\n"

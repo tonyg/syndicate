@@ -27,17 +27,17 @@
      #f]))
 
 (define (spawn-threaded-actor spawn-action-thunk)
-  (<spawn> (lambda ()
-             (define path (current-actor-path))
-             (define thd (thread (lambda () (run-thread path spawn-action-thunk))))
-             (thread (lambda ()
-                       (sync (thread-dead-evt thd))
-                       (send-ground-message (thread-quit #f '()) #:path path)
-                       (signal-background-activity! #f)))
-             (signal-background-activity! #t)
-             (list proxy-behaviour
-                   (transition (proxy-state thd) '())
-                   'threaded-proxy))))
+  (make-spawn (lambda ()
+                (define path (current-actor-path))
+                (define thd (thread (lambda () (run-thread path spawn-action-thunk))))
+                (thread (lambda ()
+                          (sync (thread-dead-evt thd))
+                          (send-ground-message (thread-quit #f '()) #:path path)
+                          (signal-background-activity! #f)))
+                (signal-background-activity! #t)
+                (list proxy-behaviour
+                      (transition (proxy-state thd) '())
+                      'threaded-proxy))))
 
 (define (run-thread actor-path spawn-action-thunk)
   (define actor-path-rev (reverse actor-path))
