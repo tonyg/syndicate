@@ -695,7 +695,9 @@
 ;; LevelSpawner
 
 (define (spawn-standalone-assertions . patches)
-  (actor (patch! (patch-seq* patches))))
+  (actor #:name 'standalone-assertions
+         (patch! (patch-seq* patches))
+         (forever)))
 
 (define (spawn-background-image level-size scene)
   (match-define (vector level-width level-height) level-size)
