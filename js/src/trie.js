@@ -875,6 +875,8 @@ function stringToParenType(arity, key) {
     return new Struct.StructureType(key.slice(1), arity);
   } else if (key === 'L') {
     return SOA;
+  } else if (key === 'V') {
+    return new Struct.StructureType('racket-vector', arity);
   }
   throw new Error("Unsupported JSON trie paren type: "+key);
 }
