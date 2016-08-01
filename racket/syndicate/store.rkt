@@ -8,17 +8,18 @@
          store-ref
          store-set!)
 
-(struct store (mark-key)
+(struct store (mark-key default-box)
   #:property prop:procedure
   (case-lambda
     [(s) (store-ref s)]
     [(s v) (store-set! s v)]))
 
-(define (make-store)
-  (store (make-continuation-mark-key (gensym 'store))))
+(define (make-store #:default-box [default-box #f])
+  (store (make-continuation-mark-key (gensym 'store)) default-box))
 
 (define (store-box s)
   (or (continuation-mark-set-first #f (store-mark-key s))
+      (store-default-box s)
       (error 'store-box
              "Attempt to access store that is not currently in scope")))
 

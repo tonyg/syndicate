@@ -11,6 +11,8 @@
          level-anchor
          level-anchor->meta-level)
 
+(require "store.rkt")
+
 ;; An event destined for a particular node in the actor hierarchy.
 ;; Used to inject events from the outside world.
 (struct targeted-event (relative-path event) #:prefab)
@@ -22,10 +24,10 @@
       (targeted-event relative-path event)
       event))
 
-;; Parameterof (Listof Any)
+;; Storeof (Listof Any)
 ;; Path to the active leaf in the process tree. The car end is the
 ;; leaf; the cdr end, the root.
-(define current-actor-path-rev (make-parameter '()))
+(define current-actor-path-rev (make-store #:default-box (box '())))
 
 ;; Retrieves current-actor-path-rev, but reversed, for use with
 ;; target-event.
@@ -34,7 +36,7 @@
 ;; Any (-> Any) -> Any
 ;; Pushes pid on current-actor-path for the duration of the call to thunk.
 (define (call/extended-actor-path pid thunk)
-  (parameterize ((current-actor-path-rev (cons pid (current-actor-path-rev))))
+  (with-store ((current-actor-path-rev (cons pid (current-actor-path-rev))))
     (thunk)))
 
 ;; Retrieves an abstract value to be used with level-anchor->meta-level to compute a

@@ -10,6 +10,7 @@
 (require (except-in syndicate dataspace))
 (require (only-in syndicate/actor actor dataspace schedule-action!))
 (require syndicate/hierarchy)
+(require syndicate/store)
 
 (struct proxy-state (thd) #:prefab)
 (struct thread-quit (exn actions) #:prefab)
@@ -55,7 +56,7 @@
 
   (define (deliver-event e proc)
     (process-transition proc
-                        (parameterize ((current-actor-path-rev actor-path-rev))
+                        (with-store ((current-actor-path-rev actor-path-rev))
                           (with-handlers [((lambda (exn) #t) (lambda (exn) (<quit> exn '())))]
                             ((process-behavior proc) e (process-state proc))))))
 
