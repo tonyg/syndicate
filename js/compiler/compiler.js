@@ -366,7 +366,7 @@ semantics.addOperation('buildSubscription(mode)', {
     return ES5.translateNonterminalCode(children,
                                         function(n) {
                                           return n.buildSubscription(self.args.mode);
-                                        });
+                                        }) || this.interval.contents;
   }
 });
 

@@ -66,7 +66,8 @@ function translateNonterminalCode(children, nodeTranslator) {
 var modifiedSourceActions = {
   _nonterminal: function(children) {
     return translateNonterminalCode(children,
-                                    function(n) { return n.modifiedSource; });
+                                    function(n) { return n.modifiedSource; })
+      || this.interval.contents;
   },
   _iter: function(_) {
     throw new Error('_iter semantic action should never be hit');
