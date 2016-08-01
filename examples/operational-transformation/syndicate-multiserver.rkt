@@ -6,6 +6,7 @@
 (require operational-transformation)
 (require operational-transformation/text/simple-document)
 
+(require syndicate/protocol/advertise)
 (require/activate syndicate/drivers/tcp)
 (require/activate syndicate/drivers/line-reader)
 
@@ -68,13 +69,14 @@
     (send! (tcp-channel s c (get-output-bytes p))))
 
   (field [seen-up-to 0])
+  (field [selected-filename #f])
+
   (assert #:when (selected-filename) (client-seen-up-to (selected-filename) (seen-up-to)))
 
   (define/query-set available-filenames (observe (proposed-op $f _)) f)
   (begin/dataflow
     (output (set->list (available-filenames))))
 
-  (field [selected-filename #f])
   (begin/dataflow
     (when (selected-filename)
       (log-info "~a: attached to file ~a" c (selected-filename))

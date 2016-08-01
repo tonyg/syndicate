@@ -5,6 +5,7 @@
 (require operational-transformation)
 (require operational-transformation/text/simple-document)
 
+(require syndicate/protocol/advertise)
 (require/activate syndicate/drivers/tcp)
 (require/activate syndicate/drivers/line-reader)
 
