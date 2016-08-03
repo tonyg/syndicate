@@ -152,8 +152,8 @@
                                  (list (patch-seq (unsub (split-proposal title price ? ?))
                                                   (sub (split-proposal title price my-contribution ?)))))]))])]
             [_ #f]))
-        (/ price 2)
-        (list (sub (split-proposal title price (/ price 2) ?))))]))
+        initial-offer
+        (list (sub (split-proposal title price initial-offer ?))))]))
   (try-to-buy titles budget))
 
 (define (buyer-b funds)
