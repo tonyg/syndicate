@@ -4,6 +4,7 @@
 	       "base"
 	       "data-lib"
 	       "net-lib"
+               "web-server-lib"
 	       "profile-lib"
 	       "rackunit-lib"
 	       "htdp-lib"
@@ -17,4 +18,5 @@
                "auxiliary-macro-context"
 	       ))
 (define build-deps '("racket-doc"
-                     "scribble-lib"))
+                     "scribble-lib"
+                     "draw-doc" "gui-doc" "htdp-doc" "pict-doc"))
