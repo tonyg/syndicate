@@ -9,6 +9,7 @@ function Graph() {
   this.edgesReverse = Immutable.Map();
   this.damagedNodes = Immutable.Set();
   this.currentSubjectId = null;
+  this.enforceSubjectPresence = true;
   this.observablePropertyCounter = 0;
 }
 
@@ -30,6 +31,8 @@ Graph.prototype.recordObservation = function (objectId) {
   if (this.currentSubjectId) {
     this.edgesForward = MapSet.add(this.edgesForward, objectId, this.currentSubjectId);
     this.edgesReverse = MapSet.add(this.edgesReverse, this.currentSubjectId, objectId);
+  } else if (this.enforceSubjectPresence) {
+    throw new Error('Attempt to observe ' + objectId + ' with no currentSubjectId');
   }
 };
 

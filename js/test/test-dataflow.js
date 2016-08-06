@@ -50,6 +50,7 @@ describe('dataflow edges, damage and subjects', function () {
 describe('DerivedCell', function () {
   describe('simple case', function () {
     var g = new Dataflow.Graph();
+    g.enforceSubjectPresence = false;
     var c = DerivedCell(g, 'c', function () { return 123; });
     var d = DerivedCell(g, 'd', function () { return c.value * 2; });
     it('should be properly initialized', function () {
@@ -78,6 +79,7 @@ describe('DerivedCell', function () {
 
   describe('a more complex case', function () {
     var g = new Dataflow.Graph();
+    g.enforceSubjectPresence = false;
 
     function add(a, b) { return a + b; }
     var xs = new Cell(g, Immutable.List.of(1, 2, 3, 4), 'xs');
