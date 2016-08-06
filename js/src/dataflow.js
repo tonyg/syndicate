@@ -98,6 +98,12 @@ Graph.prototype.defineObservableProperty = function (obj, prop, value, options) 
   return objectId;
 };
 
+Graph.newScope = function (o) {
+  function O() {}
+  O.prototype = o;
+  return new O();
+};
+
 ///////////////////////////////////////////////////////////////////////////
 
 module.exports.Graph = Graph;

@@ -129,3 +129,57 @@ describe('DerivedCell', function () {
     });
   });
 });
+
+describe('scopes', function () {
+  var g = new Dataflow.Graph();
+  g.enforceSubjectPresence = false;
+
+  function buildScopes() {
+    var rootScope = {};
+    var midScope = Dataflow.Graph.newScope(rootScope);
+    var outerScope = Dataflow.Graph.newScope(midScope);
+    return {root: rootScope, mid: midScope, outer: outerScope};
+  }
+
+  it('should make rootward props visible further out', function () {
+    var ss = buildScopes();
+    g.defineObservableProperty(ss.root, 'p', 123);
+    expect(ss.root.p).to.be(123);
+    expect(ss.mid.p).to.be(123);
+    expect(ss.outer.p).to.be(123);
+  });
+
+  it('should make changes at root visible at leaves', function () {
+    var ss = buildScopes();
+    g.defineObservableProperty(ss.root, 'p', 123);
+    expect(ss.outer.p).to.be(123);
+    ss.root.p = 234;
+    expect(ss.root.p).to.be(234);
+    expect(ss.outer.p).to.be(234);
+  });
+
+  it('should make changes at leaves visible at root', function () {
+    var ss = buildScopes();
+    g.defineObservableProperty(ss.root, 'p', 123);
+    expect(ss.outer.p).to.be(123);
+    ss.outer.p = 234;
+    expect(ss.root.p).to.be(234);
+    expect(ss.outer.p).to.be(234);
+  });
+
+  it('should hide definitions at leaves from roots', function () {
+    var ss = buildScopes();
+    g.defineObservableProperty(ss.outer, 'p', 123);
+    expect(ss.outer.p).to.be(123);
+    expect(ss.mid.p).to.be(undefined);
+    expect(ss.root.p).to.be(undefined);
+  });
+
+  it('should hide middle definitions from roots but show to leaves', function () {
+    var ss = buildScopes();
+    g.defineObservableProperty(ss.mid, 'p', 123);
+    expect(ss.outer.p).to.be(123);
+    expect(ss.mid.p).to.be(123);
+    expect(ss.root.p).to.be(undefined);
+  });
+});
