@@ -397,7 +397,7 @@
 (define (on-event* where proc #:priority [priority *normal-priority*])
   (add-endpoint! where
                  (lambda () patch-empty)
-                 (lambda (e)
+                 (lambda (e _synthetic?)
                    (schedule-script! #:priority priority #f (lambda () (proc e))))))
 
 (define-syntax (on stx)
@@ -620,19 +620,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax-time support
 
-(define (interests-pre-and-post-patch pat)
+(define (interests-pre-and-post-patch pat synthetic?)
   (define (or* x y) (or x y))
   (define a (current-actor-state))
-  (define old (trie-lookup (actor-state-previous-knowledge a) pat #f #:wildcard-union or*))
+  (define previous-knowledge (if synthetic? trie-empty (actor-state-previous-knowledge a)))
+  (define old (trie-lookup previous-knowledge pat #f #:wildcard-union or*))
   (define new (trie-lookup (actor-state-knowledge a) pat #f #:wildcard-union or*))
   (values old new))
 
-(define (interest-just-appeared-matching? pat)
-  (define-values (old new) (interests-pre-and-post-patch pat))
+(define (interest-just-appeared-matching? pat synthetic?)
+  (define-values (old new) (interests-pre-and-post-patch pat synthetic?))
   (and (not old) new))
 
-(define (interest-just-disappeared-matching? pat)
-  (define-values (old new) (interests-pre-and-post-patch pat))
+(define (interest-just-disappeared-matching? pat synthetic?)
+  (define-values (old new) (interests-pre-and-post-patch pat synthetic?))
   (and old (not new)))
 
 (define-for-syntax (analyze-asserted/retracted outer-expr-stx
@@ -654,7 +655,7 @@
                    (lambda () (if #,when-pred-stx
                                   (core:sub #,pat)
                                   patch-empty))
-                   (lambda (e)
+                   (lambda (e synthetic?)
                      (core:match-event e
                        [(? #,event-predicate-stx p)
                         (define proj #,proj-stx)
@@ -670,7 +671,7 @@
                         #,(let ((entry-handler-stx
                                  (quasisyntax/loc script-stx
                                    (let ((instantiated (instantiate-projection proj entry)))
-                                     (and (#,change-detector-stx instantiated)
+                                     (and (#,change-detector-stx instantiated synthetic?)
                                           (schedule-script!
                                            #:priority #,priority-stx
                                            #,(if terminal? #'#t #'#f)
@@ -722,7 +723,7 @@
                       (lambda () (if #,when-pred-stx
                                      (core:sub #,pat)
                                      patch-empty))
-                      (lambda (e)
+                      (lambda (e _synthetic?)
                         (core:match-event e
                           [(core:message body)
                            (define capture-vals
@@ -933,7 +934,8 @@
                                              [field-descriptors (current-field-descriptors)])))))
   (facet-handle-event! fid
                        (lookup-facet fid)
-                       (patch (actor-state-knowledge (current-actor-state)) trie-empty))
+                       (patch (actor-state-knowledge (current-actor-state)) trie-empty)
+                       #t)
   (when (and (facet-live? fid) parent-fid (not (facet-live? parent-fid)))
     (terminate-facet! fid)))
 
@@ -1067,13 +1069,13 @@
                     (current-pending-actions '())
                     (current-pending-scripts (make-empty-pending-scripts))]
          (for [((fid f) (in-hash (actor-state-facets a)))]
-           (facet-handle-event! fid f e))
+           (facet-handle-event! fid f e #f))
          (run-scripts!))))
 
-(define (facet-handle-event! fid f e)
+(define (facet-handle-event! fid f e synthetic?)
   (with-current-facet fid (facet-field-descriptors f) #f
     (for [(ep (in-hash-values (facet-endpoints f)))]
-      ((endpoint-handler-fn ep) e))))
+      ((endpoint-handler-fn ep) e synthetic?))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Script suspend-and-resume.

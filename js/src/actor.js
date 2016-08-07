@@ -70,7 +70,7 @@ Actor.prototype.handleEvent = function(e) {
     throw new Error('Syndicate: pendingActions must not be nonempty at start of handleEvent');
   }
   this.facets.forEach(function (f) {
-    withCurrentFacet(actor, f, function () { f.handleEvent(e); });
+    withCurrentFacet(actor, f, function () { f.handleEvent(e, false); });
   });
   this.quiesce();
 };
@@ -160,10 +160,10 @@ function withCurrentFacet(actor, facet, f) {
   return result;
 }
 
-Facet.prototype.handleEvent = function(e) {
+Facet.prototype.handleEvent = function(e, isSynthetic) {
   var facet = this;
   facet.endpoints.forEach(function(endpoint) {
-    endpoint.handlerFn.call(facet.fields, e);
+    endpoint.handlerFn.call(facet.fields, e, isSynthetic);
   });
 };
 
@@ -218,7 +218,7 @@ Facet.prototype.onEvent = function(priority,
 
   case 'asserted': /* fall through */
   case 'retracted':
-    return this.addEndpoint(new Endpoint(subscriptionFn, function(e) {
+    return this.addEndpoint(new Endpoint(subscriptionFn, function(e, isSynthetic) {
       if (e.type === 'stateChange') {
         var proj = projectionFn.call(facet.fields);
         var spec = Patch.prependAtMeta(proj.assertion, proj.metalevel);
@@ -230,7 +230,7 @@ Facet.prototype.onEvent = function(priority,
           var shouldTerminate = isTerminal;
           objects.forEach(function (o) {
             var instantiated = Trie.instantiateProjection(spec, o);
-            if (facet.interestWas(eventType, instantiated)) {
+            if (facet.interestWas(eventType, instantiated, isSynthetic)) {
               if (shouldTerminate) {
                 shouldTerminate = false;
                 facet.terminate();
@@ -264,9 +264,10 @@ Facet.prototype.onEvent = function(priority,
   }
 };
 
-Facet.prototype.interestWas = function(assertedOrRetracted, pat) {
+Facet.prototype.interestWas = function(assertedOrRetracted, pat, isSyntheticEvent) {
   function orStar(a, b) { return (a || b); }
-  var oldExists = Trie.matchValue(this.actor.previousKnowledge, pat, false, orStar);
+  var previousKnowledge = isSyntheticEvent ? Trie.emptyTrie : this.actor.previousKnowledge;
+  var oldExists = Trie.matchValue(previousKnowledge, pat, false, orStar);
   var newExists = Trie.matchValue(this.actor.knowledge, pat, false, orStar);
   switch (assertedOrRetracted) {
     case 'asserted':
@@ -310,7 +311,7 @@ Facet.prototype.completeBuild = function() {
     facet.initBlocks.forEach(function(b) { b.call(facet.fields); });
   });
   var initialEvent = _Dataspace.stateChange(new Patch.Patch(facet.actor.knowledge, Trie.emptyTrie));
-  withCurrentFacet(this.actor, facet, function () { facet.handleEvent(initialEvent); });
+  withCurrentFacet(this.actor, facet, function () { facet.handleEvent(initialEvent, true); });
 };
 
 Facet.prototype.terminate = function() {
