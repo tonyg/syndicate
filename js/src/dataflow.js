@@ -10,7 +10,6 @@ function Graph() {
   this.damagedNodes = Immutable.Set();
   this.currentSubjectId = null;
   this.enforceSubjectPresence = true;
-  this.observablePropertyCounter = 0;
 }
 
 Graph.prototype.withSubject = function (subjectId, f) {
@@ -81,7 +80,7 @@ Graph.prototype.repairDamage = function (repairNode) {
 Graph.prototype.defineObservableProperty = function (obj, prop, value, maybeOptions) {
   var graph = this;
   var options = typeof maybeOptions === 'undefined' ? {} : maybeOptions;
-  var objectId = '__' + (options.baseId || prop) + '_' + (graph.observablePropertyCounter++);
+  var objectId = '__' + (options.baseId || prop);
   Object.defineProperty(obj, prop, {
     configurable: true,
     enumerable: true,
