@@ -42,15 +42,14 @@ var forEachChild = (function () {
   return forEachChild;
 })();
 
-function buildActor(constructorES5, nameExpOpt, block) {
+function buildActor(nameExpOpt, block) {
   var nameExpStr;
   if (nameExpOpt.numChildren === 1) {
     nameExpStr = ', ' + nameExpOpt.asES5;
   } else {
     nameExpStr = '';
   }
-  return 'Syndicate.Actor.spawnActor(new '+constructorES5+', '+
-    'function() ' + block.asES5 + nameExpStr + ');';
+  return 'Syndicate.Actor.spawnActor(function() ' + block.asES5 + nameExpStr + ');';
 }
 
 function buildFacet(facetBlock, transitionBlock) {
@@ -58,11 +57,11 @@ function buildFacet(facetBlock, transitionBlock) {
     '\nSyndicate.Actor.createFacet()' +
     (facetBlock ? facetBlock.asES5 : '') +
     (transitionBlock ? transitionBlock.asES5 : '') +
-    '.completeBuild(); })();';
+    '.completeBuild(); }).call(this);';
 }
 
 function buildOnEvent(isTerminal, eventType, subscription, projection, bindings, body) {
-  return '\n.onEvent(' + isTerminal + ', ' + JSON.stringify(eventType) + ', ' +
+  return '\n.onEvent(Syndicate.Actor.PRIORITY_NORMAL, ' + isTerminal + ', ' + JSON.stringify(eventType) + ', ' +
     subscription + ', ' + projection +
     ', (function(' + bindings.join(', ') + ') ' + body + '))';
 }
@@ -86,11 +85,8 @@ function buildCaseEvent(eventPattern, body) {
 }
 
 var modifiedSourceActions = {
-  ActorStatement_noConstructor: function(_actor, _namedOpt, nameExpOpt, block) {
-    return buildActor('Object()', nameExpOpt, block);
-  },
-  ActorStatement_withConstructor: function(_actor, ctorExp, _namedOpt, nameExpOpt, block) {
-    return buildActor(ctorExp.asES5, nameExpOpt, block);
+  ActorStatement: function(_actor, _namedOpt, nameExpOpt, block) {
+    return buildActor(nameExpOpt, block);
   },
 
   DataspaceStatement_ground: function(_ground, _dataspace, maybeId, block) {
@@ -133,6 +129,22 @@ var modifiedSourceActions = {
       label + ', ' + JSON.stringify(formals) + ');';
   },
 
+  FieldDeclarationStatement: function(_field, memberExpr, _eq, initExpr, sc) {
+    return 'Syndicate.Actor.declareField(' + memberExpr.memberObjectExpr.asES5 + ', ' +
+      memberExpr.memberPropExpr.asES5 + ', ' + initExpr.asES5 + ')' +
+      sc.interval.contents;
+  },
+
+  MemberExpression_fieldRefExp: function (_field, memberExpr) {
+    return 'Syndicate.Actor.referenceField(' + memberExpr.memberObjectExpr.asES5 + ', ' +
+      memberExpr.memberPropExpr.asES5 + ')';
+  },
+
+  UnaryExpression_fieldDelExp: function (_delete, _field, memberExpr) {
+    return 'Syndicate.Actor.deleteField(' + memberExpr.memberObjectExpr.asES5 + ', ' +
+      memberExpr.memberPropExpr.asES5 + ')';
+  },
+
   SendMessageStatement: function(_colons, expr, sc) {
     return 'Syndicate.Dataspace.send(' + expr.asES5 + ')' + sc.interval.contents;
   },
@@ -165,6 +177,9 @@ var modifiedSourceActions = {
   FacetSituation_onEvent: function (_on, _event, id, block) {
     return '\n.addOnEventHandler((function(' + id.asES5 + ') ' + block.asES5 + '))';
   },
+  FacetSituation_dataflow: function (_dataflow, block) {
+    return '\n.addDataflow((function () ' + block.asES5 + '))';
+  },
   FacetSituation_during: function(_during, pattern, facetBlock) {
     var cachedAssertionVar = gensym('cachedAssertion');
     return buildOnEvent(false,
@@ -184,6 +199,28 @@ var modifiedSourceActions = {
                                      '{}') +
                         '.completeBuild(); }');
   },
+  FacetSituation_duringActor: function(_during, pattern, _actor, _named, nameExpOpt, facetBlock) {
+    var cachedAssertionVar = gensym('cachedAssertion');
+    var actorBlock = {
+      asES5: '{ ' + facetBlock.facetVarDecls +
+        '\nSyndicate.Actor.createFacet()' +
+        facetBlock.asES5 +
+        buildOnEvent(true,
+                     'retracted',
+                     pattern.instantiatedSubscription(cachedAssertionVar),
+                     pattern.instantiatedProjection(cachedAssertionVar),
+                     [],
+                     '{}') +
+        '.completeBuild(); }'
+    };
+    return buildOnEvent(false,
+                        'asserted',
+                        pattern.subscription,
+                        pattern.projection,
+                        pattern.bindings,
+                        '{ var '+cachedAssertionVar+' = '+pattern.instantiatedAssertion+';'+
+                        '\n' + buildActor(nameExpOpt, actorBlock) + ' }');
+  },
 
   AssertWhenClause: function(_when, _lparen, expr, _rparen) {
     return expr.asES5;
@@ -198,6 +235,24 @@ var modifiedSourceActions = {
 };
 
 semantics.extendAttribute('modifiedSource', modifiedSourceActions);
+
+semantics.addAttribute('memberObjectExpr', {
+  MemberExpression_propRefExp: function(objExpr, _dot, id) {
+    return objExpr;
+  },
+  MemberExpression_arrayRefExp: function(objExpr, _lbrack, propExpr, _rbrack) {
+    return objExpr;
+  }
+});
+
+semantics.addAttribute('memberPropExpr', {
+  MemberExpression_propRefExp: function(objExpr, _dot, id) {
+    return { asES5: JSON.stringify(id.interval.contents) };
+  },
+  MemberExpression_arrayRefExp: function(objExpr, _lbrack, propExpr, _rbrack) {
+    return propExpr;
+  }
+});
 
 semantics.addAttribute('facetVarDecls', {
   FacetBlock: function (_leftParen, varDecls, _init, _situations, _done, _rightParen) {
@@ -269,7 +324,7 @@ semantics.addAttribute('instantiatedAssertion', {
     var fragments = [];
     fragments.push('(function() { var _ = Syndicate.__; return ');
     children.forEach(function (c) { fragments.push(c.buildSubscription('instantiated')); });
-    fragments.push('; })()');
+    fragments.push('; }).call(this)');
     return fragments.join('');
   }
 });
@@ -343,6 +398,12 @@ semantics.addOperation('buildSubscription(mode)', {
         _assignmentOperator.buildSubscription(this.args.mode) +
         rhsExpr.buildSubscription(this.args.mode);
     }
+  },
+
+  MemberExpression_fieldRefExp: function (_field, memberExpr) {
+    return 'Syndicate.Actor.referenceField(' +
+      memberExpr.memberObjectExpr.buildSubscription(this.args.mode) + ', ' +
+      memberExpr.memberPropExpr.buildSubscription(this.args.mode) + ')';
   },
 
   identifier: function(_name) {

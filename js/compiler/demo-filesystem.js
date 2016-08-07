@@ -1,5 +1,17 @@
 // bin/syndicatec compiler/demo-filesystem.js | node
 
+// Good output:
+//
+// At least one reader exists for: hello.txt
+// hello.txt has content undefined
+// hello.txt has content "a"
+// hello.txt has content undefined
+// hello.txt has content "c"
+// hello.txt has content "quit demo"
+// The hello.txt file contained 'quit demo', so we will quit
+// second observer sees that hello.txt content is "final contents"
+// No remaining readers exist for: hello.txt
+
 var Syndicate = require('./src/main.js');
 
 assertion type file(name, content) = "file";
@@ -17,16 +29,16 @@ ground dataspace {
         do {
           console.log("At least one reader exists for:", name);
         }
-        assert file(name, this.files[name]);
+        assert file(name, field this.files[name]);
         finally {
           console.log("No remaining readers exist for:", name);
         }
       }
       on message saveFile($name, $newcontent) {
-        this.files[name] = newcontent;
+        field this.files[name] = newcontent;
       }
       on message deleteFile($name) {
-        delete this.files[name];
+        delete field this.files[name];
       }
     }
   }

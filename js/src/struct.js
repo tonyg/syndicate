@@ -54,6 +54,19 @@ function Structure(meta, fields) {
   }
 }
 
+Structure.prototype.clone = function () {
+  return new Structure(this.meta, this.fields);
+};
+
+Structure.prototype.get = function (index) {
+  return this[index];
+};
+
+Structure.prototype.set = function (index, value) {
+  var s = this.clone();
+  s[index] = s.fields[index] = value;
+};
+
 function reviveStructs(j) {
   if (Array.isArray(j)) {
     return j.map(reviveStructs);

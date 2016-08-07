@@ -40,7 +40,7 @@ ground dataspace G {
     var geocoder = new google.maps.Geocoder();
 
     var wsurl_base = 'wss://demo-broker.syndicate-lang.org:8443/location/';
-    var wsurl = wsurl_base + group_element.value.trim();
+    field this.wsurl = wsurl_base + group_element.value.trim();
 
     var watchId = ('geolocation' in navigator)
         && navigator.geolocation.watchPosition(Syndicate.Dataspace.wrap(function (pos) {
@@ -62,21 +62,21 @@ ground dataspace G {
         }));
 
     react {
-      var currentLocation = null;
+      field this.currentLocation = null;
       var selectedMarker = null;
 
-      assert brokerConnection(wsurl);
-      assert toBroker(wsurl, currentLocation) when (currentLocation);
+      assert brokerConnection(this.wsurl);
+      assert toBroker(this.wsurl, this.currentLocation) when (this.currentLocation);
 
       on message Syndicate.UI.globalEvent('#my_email', 'change', _) {
         var v = email_element.value.trim();
-        if (currentLocation) currentLocation[1] = v;
+        if (this.currentLocation) this.currentLocation = this.currentLocation.set(1, v);
         localStorage.my_email = v;
       }
 
       on message Syndicate.UI.globalEvent('#group', 'change', _) {
         localStorage.group = group_element.value.trim();
-        wsurl = wsurl_base + group_element.value.trim();
+        this.wsurl = wsurl_base + group_element.value.trim();
       }
 
       on message Syndicate.UI.globalEvent('#findMarker', 'click', $e) {
@@ -87,10 +87,10 @@ ground dataspace G {
       }
 
       on message ($loc = locationRecord(_, _, _, _, _)) {
-        currentLocation = loc;
+        this.currentLocation = loc;
       }
 
-      during fromBroker(wsurl, locationRecord($id, $email, _, _, _)) {
+      during fromBroker(this.wsurl, locationRecord($id, $email, _, _, _)) {
         var ui = new Syndicate.UI.Anchor();
         var marker = new google.maps.Marker({
           map: map,
@@ -131,7 +131,7 @@ ground dataspace G {
           selectMarker();
           if (latestPosition) map.panTo(latestPosition);
         }
-        on asserted fromBroker(wsurl, locationRecord(id, email, $timestamp, $lat, $lng)) {
+        on asserted fromBroker(this.wsurl, locationRecord(id, email, $timestamp, $lat, $lng)) {
           latestTimestamp = new Date(timestamp);
           latestPosition = {lat: lat, lng: lng};
           marker.setPosition(latestPosition);

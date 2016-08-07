@@ -20,19 +20,19 @@ assertion type foo(x, y);
 
 ground dataspace {
   actor {
-    var x = 123;
+    field this.x = 123;
     react {
-      assert foo(x, 999);
+      assert foo(this.x, 999);
 
-      during foo(x, $v) {
+      during foo(this.x, $v) {
         do {
-          console.log('x=', x, 'v=', v);
-          if (x === 123) {
-            x = 124;
+          console.log('x=', this.x, 'v=', v);
+          if (this.x === 123) {
+            this.x = 124;
           }
         }
         finally {
-          console.log('finally for x=', x, 'v=', v);
+          console.log('finally for x=', this.x, 'v=', v);
         }
       }
     }

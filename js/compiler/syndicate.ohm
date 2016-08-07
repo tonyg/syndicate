@@ -11,13 +11,13 @@ Syndicate <: ES5 {
     | DataspaceStatement
     | ActorFacetStatement
     | AssertionTypeDeclarationStatement
+    | FieldDeclarationStatement
     | SendMessageStatement
 
   FunctionBodyBlock = "{" FunctionBody "}"   // odd that this isn't in es5.ohm somewhere
 
   ActorStatement
-    = actor ~named CallExpression (named Expression<withIn>)? FunctionBodyBlock -- withConstructor
-    | actor (named Expression<withIn>)? FunctionBodyBlock                       -- noConstructor
+    = actor (named Expression<withIn>)? FunctionBodyBlock
 
   DataspaceStatement
     = ground dataspace identifier? FunctionBodyBlock -- ground
@@ -31,22 +31,33 @@ Syndicate <: ES5 {
   AssertionTypeDeclarationStatement
     = (assertion | message) type identifier "(" FormalParameterList ")" ("=" stringLiteral)? #(sc)
 
+  FieldDeclarationStatement = field MemberExpression "=" AssignmentExpression<withIn> #(sc)
+  MemberExpression += field MemberExpression -- fieldRefExp
+  UnaryExpression += delete field MemberExpression -- fieldDelExp
+
   SendMessageStatement = "::" Expression<withIn> #(sc)
 
   //---------------------------------------------------------------------------
   // Ongoing event handlers.
 
-  FacetBlock = "{" (VariableStatement | FunctionDeclaration)* FacetInitBlock? FacetSituation* FacetDoneBlock? "}"
+  FacetBlock = "{"
+    (VariableStatement | FieldDeclarationStatement | FunctionDeclaration)*
+    FacetInitBlock?
+    FacetSituation*
+    FacetDoneBlock?
+    "}"
   FacetStateTransitionBlock = "{" FacetStateTransition* "}"
 
   FacetInitBlock = do FunctionBodyBlock
   FacetDoneBlock = finally FunctionBodyBlock
 
   FacetSituation
-    = assert FacetPattern AssertWhenClause? #(sc) -- assert
-    | on FacetEventPattern FunctionBodyBlock      -- event
-    | on event identifier FunctionBodyBlock       -- onEvent
-    | during FacetPattern FacetBlock              -- during
+    = assert FacetPattern AssertWhenClause? #(sc)                      -- assert
+    | on FacetEventPattern FunctionBodyBlock                           -- event
+    | on event identifier FunctionBodyBlock                            -- onEvent
+    | dataflow FunctionBodyBlock                                       -- dataflow
+    | during FacetPattern FacetBlock                                   -- during
+    | during FacetPattern actor (named Expression<withIn>)? FacetBlock -- duringActor
 
   AssertWhenClause = when "(" Expression<withIn> ")"
 
@@ -76,9 +87,11 @@ Syndicate <: ES5 {
   assert = "assert" ~identifierPart
   asserted = "asserted" ~identifierPart
   assertion = "assertion" ~identifierPart
+  dataflow = "dataflow" ~identifierPart
   dataspace = "dataspace" ~identifierPart
   during = "during" ~identifierPart
   event = "event" ~identifierPart
+  field = "field" ~identifierPart
   ground = "ground" ~identifierPart
   message = "message" ~identifierPart
   metalevel = "metalevel" ~identifierPart

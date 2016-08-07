@@ -6,16 +6,16 @@ ground dataspace {
   actor {
     react until {
       case asserted Syndicate.observe(beep(_)) {
-        var counter = 0;
+        field this.counter = 0;
         react {
           do {
-            :: beep(counter++);
+            :: beep(this.counter++);
           }
           on message beep(_) {
-            :: beep(counter++);
+            :: beep(this.counter++);
           }
         } until {
-          case (counter >= 10);
+          case (this.counter > 10);
         }
       }
     }

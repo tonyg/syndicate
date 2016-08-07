@@ -9,7 +9,6 @@ function Graph() {
   this.edgesReverse = Immutable.Map();
   this.damagedNodes = Immutable.Set();
   this.currentSubjectId = null;
-  this.enforceSubjectPresence = true;
 }
 
 Graph.prototype.withSubject = function (subjectId, f) {
@@ -30,8 +29,6 @@ Graph.prototype.recordObservation = function (objectId) {
   if (this.currentSubjectId) {
     this.edgesForward = MapSet.add(this.edgesForward, objectId, this.currentSubjectId);
     this.edgesReverse = MapSet.add(this.edgesReverse, this.currentSubjectId, objectId);
-  } else if (this.enforceSubjectPresence) {
-    throw new Error('Attempt to observe ' + objectId + ' with no currentSubjectId');
   }
 };
 
@@ -80,7 +77,7 @@ Graph.prototype.repairDamage = function (repairNode) {
 Graph.prototype.defineObservableProperty = function (obj, prop, value, maybeOptions) {
   var graph = this;
   var options = typeof maybeOptions === 'undefined' ? {} : maybeOptions;
-  var objectId = '__' + (options.baseId || prop);
+  var objectId = options.objectId || '__' + prop;
   Object.defineProperty(obj, prop, {
     configurable: true,
     enumerable: true,

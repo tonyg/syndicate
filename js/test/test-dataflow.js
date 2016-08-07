@@ -7,7 +7,7 @@ var Dataflow = require('../src/dataflow.js');
 
 function Cell(graph, initialValue, name) {
   this.objectId = graph.defineObservableProperty(this, 'value', initialValue, {
-    baseId: name,
+    objectId: name,
     noopGuard: function (a, b) {
       return a === b;
     }
@@ -50,7 +50,6 @@ describe('dataflow edges, damage and subjects', function () {
 describe('DerivedCell', function () {
   describe('simple case', function () {
     var g = new Dataflow.Graph();
-    g.enforceSubjectPresence = false;
     var c = DerivedCell(g, 'c', function () { return 123; });
     var d = DerivedCell(g, 'd', function () { return c.value * 2; });
     it('should be properly initialized', function () {
@@ -79,7 +78,6 @@ describe('DerivedCell', function () {
 
   describe('a more complex case', function () {
     var g = new Dataflow.Graph();
-    g.enforceSubjectPresence = false;
 
     function add(a, b) { return a + b; }
     var xs = new Cell(g, Immutable.List.of(1, 2, 3, 4), 'xs');
@@ -132,7 +130,6 @@ describe('DerivedCell', function () {
 
 describe('scopes', function () {
   var g = new Dataflow.Graph();
-  g.enforceSubjectPresence = false;
 
   function buildScopes() {
     var rootScope = {};
@@ -147,6 +144,9 @@ describe('scopes', function () {
     expect(ss.root.p).to.be(123);
     expect(ss.mid.p).to.be(123);
     expect(ss.outer.p).to.be(123);
+    expect('p' in ss.root).to.be(true);
+    expect('p' in ss.mid).to.be(true);
+    expect('p' in ss.outer).to.be(true);
   });
 
   it('should make changes at root visible at leaves', function () {
@@ -173,6 +173,9 @@ describe('scopes', function () {
     expect(ss.outer.p).to.be(123);
     expect(ss.mid.p).to.be(undefined);
     expect(ss.root.p).to.be(undefined);
+    expect('p' in ss.root).to.be(false);
+    expect('p' in ss.mid).to.be(false);
+    expect('p' in ss.outer).to.be(true);
   });
 
   it('should hide middle definitions from roots but show to leaves', function () {
@@ -181,5 +184,8 @@ describe('scopes', function () {
     expect(ss.outer.p).to.be(123);
     expect(ss.mid.p).to.be(123);
     expect(ss.root.p).to.be(undefined);
+    expect('p' in ss.root).to.be(false);
+    expect('p' in ss.mid).to.be(true);
+    expect('p' in ss.outer).to.be(true);
   });
 });

@@ -60,7 +60,7 @@ function spawnRemoteListener() {
 
 function spawnStoveSwitch() {
   actor {
-    this.powerOn = false;
+    field this.powerOn = false;
     this.ui = new Syndicate.UI.Anchor();
     react {
       assert componentPresent('stove switch');
@@ -85,7 +85,7 @@ function spawnStoveSwitch() {
 
 function spawnPowerDrawMonitor() {
   actor {
-    this.watts = 0;
+    field this.watts = 0;
     this.ui = new Syndicate.UI.Anchor();
     react {
       assert componentPresent('power draw monitor');

@@ -25,11 +25,11 @@ assertion type show(completed);
 
 function todoListItemModel(initialId, initialTitle, initialCompleted) {
   actor {
-    this.id = initialId;
-    this.title = initialTitle;
-    this.completed = initialCompleted;
-
     react {
+      field this.id = initialId;
+      field this.title = initialTitle;
+      field this.completed = initialCompleted;
+
       assert todo(this.id, this.title, this.completed);
 
       on message setCompleted(this.id, $v) { this.completed = v; }
@@ -58,8 +58,9 @@ function getTemplate(id) {
 function todoListItemView(id) {
   actor {
     this.ui = new Syndicate.UI.Anchor();
-    this.editing = false;
     react {
+      field this.editing = false;
+
       during todo(id, $title, $completed) {
         during show(completed) {
           assert this.ui.html('.todo-list',
@@ -158,15 +159,15 @@ ground dataspace G {
   }
 
   actor {
-    var completedCount = 0;
-    var activeCount = 0;
     react {
-      on asserted  todo($id, _, $completed) { if (completed) completedCount++; else activeCount++; }
-      on retracted todo($id, _, $completed) { if (completed) completedCount--; else activeCount--; }
-      assert activeTodoCount(activeCount);
-      assert completedTodoCount(completedCount);
-      assert totalTodoCount(activeCount + completedCount);
-      assert allCompleted() when (completedCount > 0 && activeCount === 0);
+      field this.completedCount = 0;
+      field this.activeCount = 0;
+      on asserted  todo($id, _, $c) { if (c) this.completedCount++; else this.activeCount++; }
+      on retracted todo($id, _, $c) { if (c) this.completedCount--; else this.activeCount--; }
+      assert activeTodoCount(this.activeCount);
+      assert completedTodoCount(this.completedCount);
+      assert totalTodoCount(this.activeCount + this.completedCount);
+      assert allCompleted() when (this.completedCount > 0 && this.activeCount === 0);
     }
   }
 

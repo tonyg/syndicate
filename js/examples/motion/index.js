@@ -14,8 +14,8 @@ ground dataspace G {
     var color = tinycolor('hsl ' + (Math.random() * 360 | 0) + ' 100% 50%').toHexString();
     var x = 0;
     var y = 0;
-    var publishedX = x;
-    var publishedY = y;
+    field this.publishedX = x;
+    field this.publishedY = y;
 
     function clamp(v) {
       var limit = 9.8;
@@ -28,10 +28,10 @@ ground dataspace G {
 
       assert Syndicate.UI.uiAttribute('rect#my_color', 'fill', color);
 
-      assert toBroker(wsurl, point(color, publishedX, publishedY));
+      assert toBroker(wsurl, point(color, this.publishedX, this.publishedY));
       on message Syndicate.Timer.periodicTick(100) {
-        publishedX = x;
-        publishedY = y;
+        this.publishedX = x;
+        this.publishedY = y;
       }
 
       on message Syndicate.UI.windowEvent('deviceorientation', $e) {

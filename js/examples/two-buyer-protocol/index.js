@@ -91,19 +91,27 @@ function seller() {
 /// We give our actor two state variables: a dictionary recording our
 /// inventory of books (mapping title to price), and a counter
 /// tracking the next order ID to be allocated.
+///
+/// We mark each property (entry) in the `books` table as a *field* so
+/// that dependency-tracking on a per-book basis is enabled. As a result,
+/// when a book is sold, any client still interested in its price will
+/// learn that the book is no longer available.
+///
+/// We do not enable dependency-tracking for either the `books` table
+/// itself or the `nextOrderId` field: nothing depends on tracking
+/// changes in their values.
 
-    this.books = {
-      "The Wind in the Willows": 3.95,
-      "Catch 22": 2.22,
-      "Candide": 34.95
-    };
+    this.books = {};
+    field this.books["The Wind in the Willows"] = 3.95;
+    field this.books["Catch 22"] = 2.22;
+    field this.books["Candide"] = 34.95;
     this.nextOrderId = 10001483;
 
 /// Looking up a price yields `false` if no such book is in our
 /// inventory.
 
     this.priceOf = function (title) {
-      return (title in this.books) && this.books[title];
+      return (title in this.books) && field this.books[title];
     };
 
 /// The seller responds to interest in bookQuotes by asserting a
@@ -134,7 +142,7 @@ function seller() {
 /// replying to the orderer.
 
           var orderId = this.nextOrderId++;
-          delete this.books[title];
+          delete field this.books[title];
 
           actor {
             whileRelevantAssert(

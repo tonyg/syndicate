@@ -33,6 +33,7 @@ module.exports.Reflect = require("./reflect.js");
 module.exports.WakeDetector = require("./wake-detector-driver.js");
 module.exports.Codec = require("./codec.js");
 module.exports.Broker = require("./broker.js");
+module.exports.Dataflow = require("./dataflow.js");
 
 module.exports.Patch = require("./patch.js");
 copyKeys(['emptyPatch',

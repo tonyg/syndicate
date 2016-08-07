@@ -4,6 +4,10 @@ ground dataspace G {
 
   actor {
     var ui = new Syndicate.UI.Anchor();
+    field this.angle;
+    field this.handX;
+    field this.handY;
+
     react {
       assert ui.html('#clock',
                      '<svg width="300px" viewBox="0 0 100 100">'+

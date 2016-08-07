@@ -17,6 +17,8 @@ function spawnChatApp() {
 
   actor {
     var ui = new Syndicate.UI.Anchor();
+    field this.nym;
+    field this.status;
     react {
       on asserted inputValue('#nym',    $v) { this.nym = v; }
       on asserted inputValue('#status', $v) { this.status = v; }
@@ -83,17 +85,11 @@ assertion type inputValue(selector, value);
 function spawnInputChangeMonitor() {
   actor {
     react {
-      on asserted Syndicate.observe(inputValue($selector, _)) {
-        actor {
-          this.value = $(selector).val();
-          react {
-            assert inputValue(selector, this.value);
-            on message Syndicate.UI.globalEvent(selector, 'change', $e) {
-              this.value = e.target.value;
-            }
-          } until {
-            case retracted Syndicate.observe(inputValue(selector, _));
-          }
+      during Syndicate.observe(inputValue($selector, _)) actor {
+        field this.value = $(selector).val();
+        assert inputValue(selector, this.value);
+        on message Syndicate.UI.globalEvent(selector, 'change', $e) {
+          this.value = e.target.value;
         }
       }
     }

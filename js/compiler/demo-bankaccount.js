@@ -7,10 +7,13 @@ message type deposit(amount);
 
 ground dataspace {
   actor {
-    this.balance = 0;
+    field this.balance = 0;
 
     react {
       assert account(this.balance);
+      dataflow {
+        console.log("Balance inside account is", this.balance);
+      }
       on message deposit($amount) {
         this.balance += amount;
       }

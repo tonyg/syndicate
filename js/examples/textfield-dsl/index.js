@@ -26,24 +26,24 @@ function piece(text, pos, lo, hi, cls) {
 
 function spawnGui() {
   actor {
-    this.text = '';
-    this.pos = 0;
-    this.highlightState = false;
-
-    this.updateDisplay = function () {
-      var text = this.text;
-      var pos = this.pos;
-      var highlight = this.highlightState;
-      var hLeft = highlight ? highlight[0] : 0;
-      var hRight = highlight ? highlight[1] : 0;
-      document.getElementById("fieldContents").innerHTML = highlight
-	? piece(text, pos, 0, hLeft, "normal") +
-	piece(text, pos, hLeft, hRight, "highlight") +
-	piece(text, pos, hRight, text.length + 1, "normal")
-	: piece(text, pos, 0, text.length + 1, "normal");
-    };
-
     react {
+      field this.text = '';
+      field this.pos = 0;
+      field this.highlightState = false;
+
+      dataflow {
+        var text = this.text;
+        var pos = this.pos;
+        var highlight = this.highlightState;
+        var hLeft = highlight ? highlight[0] : 0;
+        var hRight = highlight ? highlight[1] : 0;
+        document.getElementById("fieldContents").innerHTML = highlight
+	  ? piece(text, pos, 0, hLeft, "normal") +
+	  piece(text, pos, hLeft, hRight, "highlight") +
+	  piece(text, pos, hRight, text.length + 1, "normal")
+	  : piece(text, pos, 0, text.length + 1, "normal");
+      }
+
       on message globalEvent("#inputRow", "+keydown", $event) {
         switch (event.keyCode) {
           case 37 /* left  */: :: fieldCommand("cursorLeft"); break;
@@ -67,12 +67,10 @@ function spawnGui() {
       on asserted fieldContents($text, $pos) {
         this.text = text;
         this.pos = pos;
-        this.updateDisplay();
       }
 
       on asserted highlight($state) {
         this.highlightState = state;
-        this.updateDisplay();
       }
     }
   }
@@ -83,10 +81,10 @@ function spawnGui() {
 
 function spawnModel() {
   actor {
-    this.fieldValue = "initial";
-    this.cursorPos = this.fieldValue.length; /* positions address gaps between characters */
-
     react {
+      field this.fieldValue = "initial";
+      field this.cursorPos = this.fieldValue.length; /* positions address gaps between characters */
+
       assert fieldContents(this.fieldValue, this.cursorPos);
 
       on message fieldCommand("cursorLeft") {
@@ -126,29 +124,28 @@ function spawnModel() {
 
 function spawnSearch() {
   actor {
-    this.fieldValue = "";
-    this.highlight = false;
-
-    this.search = function () {
-      var searchtext = document.getElementById("searchBox").value;
-      if (searchtext) {
-	var pos = this.fieldValue.indexOf(searchtext);
-	this.highlight = (pos !== -1) && [pos, pos + searchtext.length];
-      } else {
-	this.highlight = false;
-      }
-    };
-
     react {
+      field this.searchtext = document.getElementById("searchBox").value;
+      field this.fieldValue = "";
+      field this.highlight = false;
+
       assert highlight(this.highlight);
 
+      dataflow {
+        if (this.searchtext) {
+	  var pos = this.fieldValue.indexOf(this.searchtext);
+	  this.highlight = (pos !== -1) && [pos, pos + this.searchtext.length];
+        } else {
+	  this.highlight = false;
+        }
+      }
+
       on message globalEvent("#searchBox", "input", $event) {
-        this.search();
+        this.searchtext = document.getElementById("searchBox").value;
       }
 
       on asserted fieldContents($text, _) {
         this.fieldValue = text;
-        this.search();
       }
     }
   }

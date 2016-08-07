@@ -20,7 +20,7 @@ function spawnModel() {
 function spawnView() {
   actor named 'view' {
     var ui = new Syndicate.UI.Anchor();
-    var orderColumn = 2;
+    field this.orderColumn = 2;
 
     function cell(text) {
       // Should escape text in a real application.
@@ -28,13 +28,13 @@ function spawnView() {
     }
 
     react {
-      on message setSortColumn($c) { orderColumn = c; }
+      on message setSortColumn($c) { this.orderColumn = c; }
 
       during person($id, $firstName, $lastName, $address, $age) {
         assert ui.context(id)
           .html('table#the-table tbody',
                 '<tr>' + [id, firstName, lastName, address, age].map(cell).join('') + '</tr>',
-                [id, firstName, lastName, address, age][orderColumn]);
+                [id, firstName, lastName, address, age][this.orderColumn]);
       }
     }
   }
