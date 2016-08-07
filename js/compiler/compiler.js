@@ -129,9 +129,11 @@ var modifiedSourceActions = {
       label + ', ' + JSON.stringify(formals) + ');';
   },
 
-  FieldDeclarationStatement: function(_field, memberExpr, _eq, initExpr, sc) {
+  FieldDeclarationStatement: function(_field, memberExpr, _eq, maybeInitExpr, sc) {
     return 'Syndicate.Actor.declareField(' + memberExpr.memberObjectExpr.asES5 + ', ' +
-      memberExpr.memberPropExpr.asES5 + ', ' + initExpr.asES5 + ')' +
+      memberExpr.memberPropExpr.asES5 + ', ' +
+      (maybeInitExpr.numChildren === 1 ? maybeInitExpr.asES5 : 'undefined') +
+      ')' +
       sc.interval.contents;
   },
 

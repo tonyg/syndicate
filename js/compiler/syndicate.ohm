@@ -31,7 +31,7 @@ Syndicate <: ES5 {
   AssertionTypeDeclarationStatement
     = (assertion | message) type identifier "(" FormalParameterList ")" ("=" stringLiteral)? #(sc)
 
-  FieldDeclarationStatement = field MemberExpression "=" AssignmentExpression<withIn> #(sc)
+  FieldDeclarationStatement = field MemberExpression ("=" AssignmentExpression<withIn>)? #(sc)
   MemberExpression += field MemberExpression -- fieldRefExp
   UnaryExpression += delete field MemberExpression -- fieldDelExp
 
