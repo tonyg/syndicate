@@ -57,7 +57,7 @@ function spawnGui() {
         }
       }
 
-      on message globalEvent("#inputRow", "+keypress", $event) {
+      on message globalEvent("#inputRow", "keypress", $event) {
         var character = String.fromCharCode(event.charCode);
         if (event.charCode && character) {
 	  :: fieldCommand(["insert", character]);
