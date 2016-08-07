@@ -223,9 +223,9 @@ Patch.prototype.projectObjects = function (compiledProjection) {
 };
 
 Patch.prototype.pretty = function () {
-  return ("<<<<<<<< Removed:\n" + Trie.prettyTrie(this.removed) + "\n" +
-	  "======== Added:\n" + Trie.prettyTrie(this.added) + "\n" +
-	  ">>>>>>>>");
+  return ("\n" +
+          "-" + Trie.prettyTrie(this.removed, { lineSep: "\n-" }) + "\n" +
+          "+" + Trie.prettyTrie(this.added, { lineSep: "\n+" }) + "\n");
 };
 
 // Completely ignores success-values in t.

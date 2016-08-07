@@ -837,7 +837,7 @@ function prettyTrie(m, optionsOpt) {
           .sortBy(function (k, key) { return key })
           .forEach(function (k, key) {
 	    if (needSep) {
-	      acc.push("\n");
+	      acc.push(options.lineSep || "\n");
 	      acc.push(indentStr(i));
 	    } else {
 	      needSep = true;
