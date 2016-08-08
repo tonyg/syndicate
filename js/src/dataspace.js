@@ -196,6 +196,11 @@ Dataspace.prototype.handleEvent = function (e) {
     exn.event = e;
     throw exn;
   }
+  this.flushPendingPatch();
+  // ^ Flush in case we put something in pendingPatch in the
+  // stateChange clause above. In way, this point is the end of
+  // `meta`'s "turn", and we flushPendingPatch at the end of other
+  // turns, so we should here too.
   return true;
 };
 
