@@ -219,19 +219,21 @@ Dataspace.prototype.flushPendingPatch = function () {
 };
 
 Dataspace.prototype.enqueueAction = function (pid, action) {
-  if (action.type === 'stateChange') {
-    if (!this.pendingPatch) {
-      this.pendingPatch = [pid, action.patch];
-      return;
-    }
-    if (this.pendingPatch[0] === pid) {
-      this.pendingPatch[1] = this.pendingPatch[1].andThen(action.patch);
-      return;
-    }
-    /* fall through */
+  if (action.type === 'stateChange' && this.pendingPatch && this.pendingPatch[0] === pid) {
+    this.pendingPatch[1] = this.pendingPatch[1].andThen(action.patch);
+    return;
   }
+
+  // If we get here, any pendingPatch that might exist is definitely
+  // not something we can extend, but it has to happen before action,
+  // so flush it now.
   this.flushPendingPatch();
-  this.pendingActions = this.pendingActions.push([pid, action]);
+
+  if (action.type === 'stateChange') {
+    this.pendingPatch = [pid, action.patch];
+  } else {
+    this.pendingActions = this.pendingActions.push([pid, action]);
+  }
 };
 
 Dataspace.prototype.dispatchActions = function () {
