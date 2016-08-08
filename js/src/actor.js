@@ -136,8 +136,10 @@ function Facet(actor) {
   this.parent = Facet.current;
   this.fields = Dataflow.Graph.newScope((this.parent && this.parent.fields) || actor.fields);
   this.terminated = false;
+  this.fid = Facet.nextFid++;
 }
 
+Facet.nextFid = 0;
 Facet.current = null;
 
 function withCurrentFacet(facet, f) {
