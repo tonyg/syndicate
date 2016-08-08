@@ -85,11 +85,13 @@ Actor.prototype.quiesce = function() {
     this.dataflowGraph.repairDamage(function (subjectId) {
       var facet = subjectId[0];
       var endpoint = subjectId[1];
-      withCurrentFacet(facet, function () {
-        var patch = Patch.retract(__).andThen(endpoint.subscriptionFn.call(facet.fields));
-        var r = facet.actor.mux.updateStream(endpoint.eid, patch);
-        Dataspace.stateChange(r.deltaAggregate);
-      });
+      if (!facet.terminated) {
+        withCurrentFacet(facet, function () {
+          var patch = Patch.retract(__).andThen(endpoint.subscriptionFn.call(facet.fields));
+          var r = facet.actor.mux.updateStream(endpoint.eid, patch);
+          Dataspace.stateChange(r.deltaAggregate);
+        });
+      }
     });
   }
 
