@@ -11,9 +11,8 @@ var _$ = Trie._$;
 
 function checkPrettyPatch(p, expectedAdded, expectedRemoved) {
   expect(p.pretty()).to.equal(
-    ('<<<<<<<< Removed:\n' + expectedRemoved.join('\n') + '\n' +
-     '======== Added:\n' + expectedAdded.join('\n') + '\n' +
-     '>>>>>>>>'));
+    ('\n-' + expectedRemoved.join('\n-') +
+     '\n+' + expectedAdded.join('\n+') + '\n'));
 }
 
 describe('basic patch compilation', function () {
