@@ -137,14 +137,14 @@ Dataspace.prototype.debugName = function (pid) {
 
 Dataspace.prototype.asChild = function (pid, f, omitLivenessCheck) {
   var self = this;
-  var p = this.processTable.get(pid, null);
+  var p = self.processTable.get(pid, null);
   if (!omitLivenessCheck && (p === null)) {
-    console.warn("Dataspace.asChild eliding invocation of dead process", this.debugName(pid));
+    console.warn("Dataspace.asChild eliding invocation of dead process", self.debugName(pid));
     return;
   }
 
   var result = Dataspace.withDataspaceStack(
-    Dataspace.stack.push({ dataspace: this, activePid: pid }),
+    Dataspace.stack.push({ dataspace: self, activePid: pid }),
     function () {
       try {
 	return f(p);
