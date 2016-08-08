@@ -31,14 +31,12 @@ function Actor(bootFn, optName) {
 
   this.boot = function() {
     var self = this;
-    withCurrentFacet(self, null, function () {
+    withCurrentFacet(null, function () {
       bootFn.call(self.fields);
     });
     this.quiesce();
   };
 }
-
-Actor.current = null;
 
 (function () {
   var priorities = ['PRIORITY_QUERY_HIGH',
@@ -70,7 +68,7 @@ Actor.prototype.handleEvent = function(e) {
     throw new Error('Syndicate: pendingActions must not be nonempty at start of handleEvent');
   }
   this.facets.forEach(function (f) {
-    withCurrentFacet(actor, f, function () { f.handleEvent(e, false); });
+    withCurrentFacet(f, function () { f.handleEvent(e, false); });
   });
   this.quiesce();
 };
@@ -82,12 +80,12 @@ Actor.prototype.quiesce = function() {
     var entry = this.nextPendingAction(false);
     if (!entry) break;
 
-    withCurrentFacet(actor, entry.facet, entry.action);
+    withCurrentFacet(entry.facet, entry.action);
 
     this.dataflowGraph.repairDamage(function (subjectId) {
       var facet = subjectId[0];
       var endpoint = subjectId[1];
-      withCurrentFacet(actor, facet, function () {
+      withCurrentFacet(facet, function () {
         // TODO: coalesce patches within a single actor
         var aggregate = Patch.emptyPatch;
         var patch = Patch.retract(__).andThen(endpoint.subscriptionFn.call(facet.fields));
@@ -142,20 +140,16 @@ function Facet(actor) {
 
 Facet.current = null;
 
-function withCurrentFacet(actor, facet, f) {
-  var previousActor = Actor.current;
+function withCurrentFacet(facet, f) {
   var previousFacet = Facet.current;
-  Actor.current = actor;
   Facet.current = facet;
   var result;
   try {
     result = f();
   } catch (e) {
-    Actor.current = previousActor;
     Facet.current = previousFacet;
     throw e;
   }
-  Actor.current = previousActor;
   Facet.current = previousFacet;
   return result;
 }
@@ -307,11 +301,11 @@ Facet.prototype.completeBuild = function() {
   if (this.parent) {
     this.parent.children = this.parent.children.add(this);
   }
-  withCurrentFacet(this.actor, facet, function () {
+  withCurrentFacet(facet, function () {
     facet.initBlocks.forEach(function(b) { b.call(facet.fields); });
   });
   var initialEvent = _Dataspace.stateChange(new Patch.Patch(facet.actor.knowledge, Trie.emptyTrie));
-  withCurrentFacet(this.actor, facet, function () { facet.handleEvent(initialEvent, true); });
+  withCurrentFacet(facet, function () { facet.handleEvent(initialEvent, true); });
 };
 
 Facet.prototype.terminate = function() {
@@ -338,7 +332,7 @@ Facet.prototype.terminate = function() {
     child.terminate();
   });
 
-  withCurrentFacet(this.actor, facet, function () {
+  withCurrentFacet(facet, function () {
     facet.doneBlocks.forEach(function(b) { b.call(facet.fields); });
   });
 };
@@ -355,7 +349,7 @@ function Endpoint(subscriptionFn, handlerFn) {
 
 function referenceField(obj, prop) {
   if (!(prop in obj)) {
-    Actor.current.dataflowGraph.recordObservation(Immutable.List.of(obj, prop));
+    Dataspace.activeBehavior().dataflowGraph.recordObservation(Immutable.List.of(obj, prop));
   }
   return obj[prop];
 }
@@ -364,14 +358,14 @@ function declareField(obj, prop, init) {
   if (prop in obj) {
     obj[prop] = init;
   } else {
-    Actor.current.dataflowGraph.defineObservableProperty(obj, prop, init, {
+    Dataspace.activeBehavior().dataflowGraph.defineObservableProperty(obj, prop, init, {
       objectId: Immutable.List.of(obj, prop)
     });
   }
 }
 
 function deleteField(obj, prop) {
-  Actor.current.dataflowGraph.recordDamage(Immutable.List.of(obj, prop));
+  Dataspace.activeBehavior().dataflowGraph.recordDamage(Immutable.List.of(obj, prop));
   return delete obj[prop];
 }
 
