@@ -203,6 +203,15 @@ Dataspace.prototype.step = function () {
 };
 
 Dataspace.prototype.enqueueAction = function (pid, action) {
+  if (action.type === 'stateChange') {
+    var newestEntry = this.pendingActions.last();
+    if (newestEntry && newestEntry[0] === pid && newestEntry[1].type === 'stateChange') {
+      var combinedPatch = newestEntry[1].patch.andThen(action.patch);
+      this.pendingActions = this.pendingActions.pop().push([pid, stateChange(combinedPatch)]);
+      return;
+    }
+    /* fall through */
+  }
   this.pendingActions = this.pendingActions.push([pid, action]);
 };
 

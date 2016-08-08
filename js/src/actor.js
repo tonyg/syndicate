@@ -86,12 +86,9 @@ Actor.prototype.quiesce = function() {
       var facet = subjectId[0];
       var endpoint = subjectId[1];
       withCurrentFacet(facet, function () {
-        // TODO: coalesce patches within a single actor
-        var aggregate = Patch.emptyPatch;
         var patch = Patch.retract(__).andThen(endpoint.subscriptionFn.call(facet.fields));
         var r = facet.actor.mux.updateStream(endpoint.eid, patch);
-        aggregate = aggregate.andThen(r.deltaAggregate);
-        Dataspace.stateChange(aggregate);
+        Dataspace.stateChange(r.deltaAggregate);
       });
     });
   }
