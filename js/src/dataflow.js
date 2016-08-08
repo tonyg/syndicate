@@ -92,6 +92,7 @@ Graph.prototype.defineObservableProperty = function (obj, prop, value, maybeOpti
       }
     }
   });
+  graph.recordDamage(objectId);
   return objectId;
 };
 
