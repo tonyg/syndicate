@@ -31,6 +31,7 @@ function terminateDataspace() {
 /* Dataspace */
 
 function Dataspace(bootFn) {
+  this.pendingPatch = null; // null or [pid, Patch]
   this.pendingActions = Immutable.List(); // of [pid, Action]
   this.processTable = Immutable.Map(); // pid -> Behavior
   this.runnablePids = Immutable.Set(); // of pid
@@ -142,7 +143,7 @@ Dataspace.prototype.asChild = function (pid, f, omitLivenessCheck) {
     return;
   }
 
-  return Dataspace.withDataspaceStack(
+  var result = Dataspace.withDataspaceStack(
     Dataspace.stack.push({ dataspace: this, activePid: pid }),
     function () {
       try {
@@ -151,6 +152,8 @@ Dataspace.prototype.asChild = function (pid, f, omitLivenessCheck) {
 	self.kill(pid, e);
       }
     });
+  self.flushPendingPatch();
+  return result;
 };
 
 Dataspace.prototype.kill = function (pid, exn) {
@@ -202,16 +205,27 @@ Dataspace.prototype.step = function () {
     && ((this.pendingActions.size > 0) || (this.runnablePids.size > 0));
 };
 
+Dataspace.prototype.flushPendingPatch = function () {
+  if (this.pendingPatch) {
+    this.pendingActions = this.pendingActions.push([this.pendingPatch[0],
+                                                    stateChange(this.pendingPatch[1])]);
+    this.pendingPatch = null;
+  }
+};
+
 Dataspace.prototype.enqueueAction = function (pid, action) {
   if (action.type === 'stateChange') {
-    var newestEntry = this.pendingActions.last();
-    if (newestEntry && newestEntry[0] === pid && newestEntry[1].type === 'stateChange') {
-      var combinedPatch = newestEntry[1].patch.andThen(action.patch);
-      this.pendingActions = this.pendingActions.pop().push([pid, stateChange(combinedPatch)]);
+    if (!this.pendingPatch) {
+      this.pendingPatch = [pid, action.patch];
+      return;
+    }
+    if (this.pendingPatch[0] === pid) {
+      this.pendingPatch[1] = this.pendingPatch[1].andThen(action.patch);
       return;
     }
     /* fall through */
   }
+  this.flushPendingPatch();
   this.pendingActions = this.pendingActions.push([pid, action]);
 };
 
