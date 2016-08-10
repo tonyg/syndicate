@@ -212,6 +212,7 @@
     *query-priority*
     *query-handler-priority*
     *normal-priority*
+    *idle-priority*
     *gc-priority*
     #:count priority-count))
 
@@ -437,13 +438,14 @@
 
 (define-syntax (begin/dataflow stx)
   (syntax-parse stx
-    [(_ expr ...)
+    [(_ prio:priority expr ...)
      (quasisyntax/loc stx
        (let ()
          (add-endpoint! #,(source-location->string stx)
                         (lambda ()
                           (define subject-id (current-dataflow-subject-id))
                           (schedule-script!
+                           #:priority prio.level
                            #f
                            (lambda ()
                              (parameterize ((current-dataflow-subject-id subject-id))
