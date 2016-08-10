@@ -44,13 +44,10 @@
 ;; EFFECT: Spawn a queue process named `queue-id`.
 (define (spawn-queue queue-id)
   (actor #:name (list 'queue queue-id)
-   (react (define/query-hash credits (subscription queue-id $who) who 0) ;; Start with no credit
-          (field [waiters (make-queue)])
+   (react (field [waiters (make-queue)])
           (field [messages (make-queue)])
 
-          (during (subscription queue-id $who)
-                  (assert (metric (list 'credit queue-id who) (hash-ref (credits) who 0))))
-          (assert (metric (list 'backlog queue-id) (queue-length (messages))))
+          (define/query-hash credits (subscription queue-id $who) who 0) ;; Start with no credit
 
           (on (message (credit queue-id $who $amount))
               (define old-credit (hash-ref (credits) who #f))
@@ -74,6 +71,10 @@
                 (define msg (deq! messages))
                 (log-info "~a: sending ~a message ~a" queue-id who msg)
                 (send! (delivery queue-id who msg)))))
+
+          (during (subscription queue-id $who)
+                  (assert (metric (list 'credit queue-id who) (hash-ref (credits) who 0))))
+          (assert (metric (list 'backlog queue-id) (queue-length (messages))))
 
           ;;------------------------------------------------------------
 
