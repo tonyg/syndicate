@@ -4,8 +4,6 @@
 (require racket/set)
 (require syndicate/functional-queue)
 
-(require/activate syndicate/drivers/timer)
-
 (struct lease-request (resource-id request-id) #:prefab)
 (struct lease-assignment (resource-id request-id) #:prefab)
 (struct resource-status (resource-id waiter-count) #:prefab)
@@ -44,6 +42,8 @@
                      (waiters remainder)])))))
 
 ;;---------------------------------------------------------------------------
+
+(require/activate syndicate/drivers/timer)
 
 (struct philosopher-status (name status) #:prefab)
 
