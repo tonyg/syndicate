@@ -17,6 +17,13 @@
 
           (begin/dataflow (log-info "~as available: ~a" resource-id (free-lease-count)))
 
+          (begin/dataflow ;; This might be a nice place to put a kind of "class contract"
+            (unless (and (>= (free-lease-count) 0)
+                         (<= (free-lease-count) total-available-leases)
+                         (or (zero? (free-lease-count))
+                             (queue-empty? (waiters))))
+              (error 'resource "~a: Invariant violated" resource-id)))
+
           (on (asserted (lease-request resource-id $w))
               (cond [(positive? (free-lease-count))
                      (assert! (lease-assignment resource-id w))
