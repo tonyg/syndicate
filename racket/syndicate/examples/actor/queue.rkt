@@ -64,7 +64,7 @@
                        (not (queue-empty? (messages))))
               (define who (deq! waiters))
               (define old-credit (hash-ref (credits) who 0))
-              (when (positive? old-credit)
+              (when (positive? old-credit) ;; lazily remove entries from waiters
                 (define new-credit (- old-credit 1))
                 (credits (hash-set (credits) who new-credit))
                 (when (positive? new-credit) (enq! waiters who))

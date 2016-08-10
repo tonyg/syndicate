@@ -47,8 +47,7 @@
           (define/query-set subscribers (subscription queue-id $who) who
             #:on-add (enq! waiters who))
 
-          (on (message (delivery $who queue-id $body))
-              (enq! messages body))
+          (on (message (delivery $who queue-id $body)) (enq! messages body))
 
           (begin/dataflow
             (when (and (not (queue-empty? (waiters)))

@@ -46,9 +46,7 @@
 
           (on (asserted (subscription queue-id $who)) (enq! waiters who))
           (on (retracted (subscription queue-id $who)) (waiters (queue-remove who (waiters))))
-
-          (on (message (delivery $who queue-id $body))
-              (enq! messages body))
+          (on (message (delivery $who queue-id $body)) (enq! messages body))
 
           (begin/dataflow
             (when (and (not (queue-empty? (waiters)))
