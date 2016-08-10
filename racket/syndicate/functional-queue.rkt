@@ -14,6 +14,7 @@
 	 queue-append-list
 	 queue-extract
          queue-filter
+         queue-remove
          queue-partition)
 
 (require (only-in racket/list partition))
@@ -87,6 +88,9 @@
 (define (queue-filter pred q)
   (queue (filter pred (queue-head q))
          (filter pred (queue-tail q))))
+
+(define (queue-remove item q)
+  (list->queue (remove item (queue->list q))))
 
 (define (queue-partition pred q)
   (define-values (head-t head-f) (partition pred (queue-head q)))
