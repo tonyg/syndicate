@@ -26,6 +26,7 @@
 (require (except-in "../core.rkt"
                     event?
                     action?
+                    clean-actions
                     clean-transition))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
