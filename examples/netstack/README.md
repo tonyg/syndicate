@@ -1,5 +1,18 @@
 # TCP/IP Stack
 
+There are two (closely-related) implementations here:
+
+ - [`monolithic-lowlevel`](monolithic-lowlevel/) is the original
+   implementation, originally written for `minimart`, a language that
+   followed our ESOP 2014 paper quite closely. Porting it to a
+   monolithic-assertion-set Syndicate dialect helped substantially
+   simplify the code.
+
+ - [`incremental-highlevel`](incremental-highlevel/) is a port of
+   `monolithic-lowlevel` to the Syndicate high-level DSL
+   ("`syndicate/actor`"). Moving from the low-level Syndicate style to
+   the high-level style also drastically simplified the code.
+
 ## Linux Firewall Configuration
 
 Imagine a setup where the machine you are running this code has IP
