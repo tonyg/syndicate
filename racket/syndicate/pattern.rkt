@@ -120,6 +120,12 @@
                    (list #'v)
                    #'v))]
 
+        [($ v)
+         (values #'(?!)
+                 #'?
+                 (list #'v)
+                 #'v)]
+
         [($ v p)
          (let ()
            (define-values (pr g bs _ins) (walk #'p))
