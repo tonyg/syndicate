@@ -30,14 +30,14 @@
 
 (define (spawn-arp-driver)
   (actor #:name 'arp-driver
-         (react (during/actor (arp-interface $interface-name)
-                              #:name (list 'arp-interface interface-name)
-                              (assert (arp-interface-up interface-name))
-                              (on-start (define hwaddr (lookup-ethernet-hwaddr interface-name))
-                                        (when (not hwaddr)
-                                          (error 'arp "Failed to look up ARP interface ~v"
-                                                 interface-name))
-                                        (react (run-arp-interface interface-name hwaddr)))))))
+         (during/actor (arp-interface $interface-name)
+                       #:name (list 'arp-interface interface-name)
+                       (assert (arp-interface-up interface-name))
+                       (on-start (define hwaddr (lookup-ethernet-hwaddr interface-name))
+                                 (when (not hwaddr)
+                                   (error 'arp "Failed to look up ARP interface ~v"
+                                          interface-name))
+                                 (react (run-arp-interface interface-name hwaddr))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

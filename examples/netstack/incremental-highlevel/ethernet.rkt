@@ -30,43 +30,43 @@
 
 (define (spawn-ethernet-driver)
   (actor #:name 'ethernet-driver
-   (react (during/actor
-           (observe (ethernet-packet (ethernet-interface $interface-name _) #t _ _ _ _))
-           #:name (list 'ethernet-interface interface-name)
+   (during/actor
+    (observe (ethernet-packet (ethernet-interface $interface-name _) #t _ _ _ _))
+    #:name (list 'ethernet-interface interface-name)
 
-           (define h (raw-interface-open interface-name))
-           (when (not h) (error 'ethernet "Couldn't open interface ~v" interface-name))
-           (log-info "Opened interface ~a, yielding handle ~v" interface-name h)
+    (define h (raw-interface-open interface-name))
+    (when (not h) (error 'ethernet "Couldn't open interface ~v" interface-name))
+    (log-info "Opened interface ~a, yielding handle ~v" interface-name h)
 
-           (define interface (ethernet-interface interface-name (raw-interface-hwaddr h)))
-           (assert interface)
+    (define interface (ethernet-interface interface-name (raw-interface-hwaddr h)))
+    (assert interface)
 
-           (define control-ch (make-async-channel))
-           (thread (lambda () (interface-packet-read-loop interface h control-ch)))
+    (define control-ch (make-async-channel))
+    (thread (lambda () (interface-packet-read-loop interface h control-ch)))
 
-           (on-start (flush!) ;; ensure all subscriptions are in place
-                     (async-channel-put control-ch 'unblock)
-                     (actor #:name (list 'ethernet-interface-quit-monitor interface-name)
-                            (react (on (retracted interface)
-                                       (async-channel-put control-ch 'quit)))))
+    (on-start (flush!) ;; ensure all subscriptions are in place
+              (async-channel-put control-ch 'unblock)
+              (actor #:name (list 'ethernet-interface-quit-monitor interface-name)
+                     (on (retracted interface)
+                         (async-channel-put control-ch 'quit))))
 
-           (on (message (inbound ($ p (ethernet-packet interface #t _ _ _ _))))
-               ;; (log-info "Interface ~a inbound packet ~a -> ~a (type 0x~a)"
-               ;;           (ethernet-interface-name (ethernet-packet-interface p))
-               ;;           (pretty-bytes (ethernet-packet-source p))
-               ;;           (pretty-bytes (ethernet-packet-destination p))
-               ;;           (number->string (ethernet-packet-ethertype p) 16))
-               ;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
-               (send! p))
+    (on (message (inbound ($ p (ethernet-packet interface #t _ _ _ _))))
+        ;; (log-info "Interface ~a inbound packet ~a -> ~a (type 0x~a)"
+        ;;           (ethernet-interface-name (ethernet-packet-interface p))
+        ;;           (pretty-bytes (ethernet-packet-source p))
+        ;;           (pretty-bytes (ethernet-packet-destination p))
+        ;;           (number->string (ethernet-packet-ethertype p) 16))
+        ;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
+        (send! p))
 
-           (on (message ($ p (ethernet-packet interface #f _ _ _ _)))
-               ;; (log-info "Interface ~a OUTBOUND packet ~a -> ~a (type 0x~a)"
-               ;;           (ethernet-interface-name (ethernet-packet-interface p))
-               ;;           (pretty-bytes (ethernet-packet-source p))
-               ;;           (pretty-bytes (ethernet-packet-destination p))
-               ;;           (number->string (ethernet-packet-ethertype p) 16))
-               ;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
-               (raw-interface-write h (encode-ethernet-packet p)))))))
+    (on (message ($ p (ethernet-packet interface #f _ _ _ _)))
+        ;; (log-info "Interface ~a OUTBOUND packet ~a -> ~a (type 0x~a)"
+        ;;           (ethernet-interface-name (ethernet-packet-interface p))
+        ;;           (pretty-bytes (ethernet-packet-source p))
+        ;;           (pretty-bytes (ethernet-packet-destination p))
+        ;;           (number->string (ethernet-packet-ethertype p) 16))
+        ;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
+        (raw-interface-write h (encode-ethernet-packet p)))))))
 
 (define (interface-packet-read-loop interface h control-ch)
   (define (blocked)

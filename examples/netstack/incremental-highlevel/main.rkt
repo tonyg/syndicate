@@ -27,18 +27,19 @@
                (send-to-remote "~a ~a\n" who (apply format fmt vs))))
 
            (define user (gensym 'user))
-           (send-to-remote "Welcome, ~a.\n" user)
+           (on-start (send-to-remote "Welcome, ~a.\n" user))
 
-           (until (retracted (inbound (advertise (tcp-channel them us _))))
-                  (assert (present user))
-                  (on (asserted (present $who)) (say who "arrived."))
-                  (on (retracted (present $who)) (say who "departed."))
+           (stop-when (retracted (inbound (advertise (tcp-channel them us _)))))
 
-                  (on (message (says $who $what)) (say who "says: ~a" what))
+           (assert (present user))
+           (on (asserted (present $who)) (say who "arrived."))
+           (on (retracted (present $who)) (say who "departed."))
 
-                  (assert (outbound (advertise (tcp-channel us them _))))
-                  (on (message (inbound (tcp-channel them us $bs)))
-                      (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
+           (on (message (says $who $what)) (say who "says: ~a" what))
+
+           (assert (outbound (advertise (tcp-channel us them _))))
+           (on (message (inbound (tcp-channel them us $bs)))
+               (send! (says user (string-trim (bytes->string/utf-8 bs)))))))
 
   (dataspace (define us (tcp-listener 5999))
              (forever (assert (outbound (advertise (observe (tcp-channel _ us _)))))
@@ -46,17 +47,16 @@
                           (spawn-session them us)))))
 
 (let ((dst (udp-listener 6667)))
-  (actor (react
-          (on (message (udp-packet $src dst $body))
-	      (log-info "Got packet from ~v: ~v" src body)
-              (send! (udp-packet dst src (string->bytes/utf-8 (format "You said: ~a" body))))))))
+  (actor (on (message (udp-packet $src dst $body))
+             (log-info "Got packet from ~v: ~v" src body)
+             (send! (udp-packet dst src (string->bytes/utf-8 (format "You said: ~a" body)))))))
 
 (let ()
   (dataspace
-   (actor (react (field [counter 0])
-                 (on (message 'bump)
-                     (send! `(counter ,(counter)))
-                     (counter (+ (counter) 1)))))
+   (actor (field [counter 0])
+          (on (message 'bump)
+              (send! `(counter ,(counter)))
+              (counter (+ (counter) 1))))
 
    (forever (define us (tcp-listener 80))
             (assert (outbound (advertise (observe (tcp-channel _ us _)))))
