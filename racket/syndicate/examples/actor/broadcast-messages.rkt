@@ -3,13 +3,13 @@
 
 (struct envelope (destination message) #:prefab)
 
-(actor (react (on (message (envelope 'alice $message))
-                  (log-info "Alice received ~v" message))))
+(actor (on (message (envelope 'alice $message))
+           (log-info "Alice received ~v" message)))
 
-(actor (react (on (message (envelope 'bob $message))
-                  (log-info "Bob received ~v" message))))
+(actor (on (message (envelope 'bob $message))
+           (log-info "Bob received ~v" message)))
 
-(actor
+(actor*
  (log-info "Waiting for Alice and Bob.")
  (until (asserted (observe (envelope 'alice _))))
  (until (asserted (observe (envelope 'bob _))))

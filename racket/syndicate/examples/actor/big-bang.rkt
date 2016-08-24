@@ -8,16 +8,15 @@
                 #:font-size [font-size 22]
                 name x y label callback)
   (define label-image (text label font-size foreground))
-  (actor (forever
-          (on (message (inbound (mouse-event _ _ name "button-down"))) (callback))
-          (assert (outbound
-                   (window name x y 0
-                           (seal
-                            (overlay label-image
-                                     (rectangle (+ (image-width label-image) 20)
-                                                (+ (image-height label-image) 20)
-                                                "solid"
-                                                background)))))))))
+  (actor (on (message (inbound (mouse-event _ _ name "button-down"))) (callback))
+         (assert (outbound
+                  (window name x y 0
+                          (seal
+                           (overlay label-image
+                                    (rectangle (+ (image-width label-image) 20)
+                                               (+ (image-height label-image) 20)
+                                               "solid"
+                                               background))))))))
 
 (define (draggable-shape name orig-x orig-y image)
   (define (window-at x y) (window name x y 10 (seal image)))
@@ -38,12 +37,11 @@
                (my nmy))
            (stop-when (message (inbound (mouse-event $mx $my _ (? mouse-left-event-type? $t))))
                       (idle 0 (- mx dx) (- my dy)))))
-  (actor (idle 0 orig-x orig-y)))
+  (actor* (idle 0 orig-x orig-y)))
 
-(actor (forever
-        (during (inbound (active-window $id))
-                (assert (outbound (window 'active-window-label 300 0 0
-                                          (seal (text (format "~v" id) 22 "black"))))))))
+(actor (during (inbound (active-window $id))
+               (assert (outbound (window 'active-window-label 300 0 0
+                                         (seal (text (format "~v" id) 22 "black")))))))
 (button #:background "red" 'stop-button 0 0 "Exit"
         (lambda () (assert! (outbound 'stop))))
 (draggable-shape 'c1 50 50 (circle 30 "solid" "orange"))

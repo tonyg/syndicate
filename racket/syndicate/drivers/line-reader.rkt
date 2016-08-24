@@ -14,15 +14,13 @@
           [(eqv? (bytes-ref bs i) b) i]
           [else (loop (+ i 1))])))
 
-(actor
- (react
-  (during/actor (observe (tcp-channel-line $src $dst _))
-    (field [buffer #""])
-    (on (message (tcp-channel src dst $bs))
-        (buffer (bytes-append (buffer) bs)))
-    (begin/dataflow
-      (define newline-pos (bytes-index (buffer) (char->integer #\newline)))
-      (when newline-pos
-        (define line (subbytes (buffer) 0 newline-pos))
-        (buffer (subbytes (buffer) (+ newline-pos 1)))
-        (send! (tcp-channel-line src dst line)))))))
+(actor (during/actor (observe (tcp-channel-line $src $dst _))
+         (field [buffer #""])
+         (on (message (tcp-channel src dst $bs))
+             (buffer (bytes-append (buffer) bs)))
+         (begin/dataflow
+           (define newline-pos (bytes-index (buffer) (char->integer #\newline)))
+           (when newline-pos
+             (define line (subbytes (buffer) 0 newline-pos))
+             (buffer (subbytes (buffer) (+ newline-pos 1)))
+             (send! (tcp-channel-line src dst line))))))

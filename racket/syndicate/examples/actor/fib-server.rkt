@@ -4,25 +4,24 @@
 (require/activate syndicate/drivers/timer)
 
 (actor
- (react
-  (during/actor (observe `(fib ,$n ,_))
-                #:actor actor/thread
-                (on-start (log-info "Computing fib ~a..." n))
-                (on-stop (log-info "Leaving fib ~a" n))
-                (assert `(up ,n))
-                (on-start
-                 (flush!)
-                 (react
-                  (assert `(fib ,n
-                                ,(let ((answer
-                                        (let f ((n n))
-                                          (if (< n 2)
-                                              n
-                                              (+ (f (- n 1))
-                                                 (f (- n 2)))))))
-                                   (if (= n 36)
-                                       (error 'fib "Deliberate, hardcoded failure for n=36")
-                                       answer)))))))))
+ (during/actor (observe `(fib ,$n ,_))
+               #:actor actor/thread
+               (on-start (log-info "Computing fib ~a..." n))
+               (on-stop (log-info "Leaving fib ~a" n))
+               (assert `(up ,n))
+               (on-start
+                (flush!)
+                (react
+                 (assert `(fib ,n
+                               ,(let ((answer
+                                       (let f ((n n))
+                                         (if (< n 2)
+                                             n
+                                             (+ (f (- n 1))
+                                                (f (- n 2)))))))
+                                  (if (= n 36)
+                                      (error 'fib "Deliberate, hardcoded failure for n=36")
+                                      answer))))))))
 
 (dataspace/thread
  (actor
@@ -30,10 +29,10 @@
   (define (arm!)
     (log-info "Tick ~v!" (tick-count))
     (send! (outbound (set-timer 'tick 1000 'relative))))
-  (react (on (message (inbound (timer-expired 'tick _)))
-             (tick-count (+ (tick-count) 1))
-             (arm!))
-         (on-start (arm!))))
+  (on (message (inbound (timer-expired 'tick _)))
+      (tick-count (+ (tick-count) 1))
+      (arm!))
+  (on-start (arm!)))
 
  (field [counter 0])
  (react

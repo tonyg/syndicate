@@ -16,24 +16,23 @@
 
 (struct x (v) #:prefab)
 
-(actor (forever (on (message (x 'ping))
-                    (send! (x 'pong)))))
+(actor (on (message (x 'ping))
+           (send! (x 'pong))))
 
-(actor (react
-        (field [flag 'clear])
-        (begin/dataflow
-          (printf "flag: ~v\n" (flag)))
+(actor (field [flag 'clear])
+       (begin/dataflow
+         (printf "flag: ~v\n" (flag)))
 
-        (field [spec #f])
-        (begin/dataflow
-          (when (spec)
-            (let-event [(asserted (observe (x (spec))))]
-                       (send! (x (list 'saw (spec))))
-                       (flag 'set))))
+       (field [spec #f])
+       (begin/dataflow
+         (when (spec)
+           (let-event [(asserted (observe (x (spec))))]
+                      (send! (x (list 'saw (spec))))
+                      (flag 'set))))
 
-        (on-start (send! (x 'first)))
-        (on (message (x 'first))
-            (spec 'ping))))
+       (on-start (send! (x 'first)))
+       (on (message (x 'first))
+           (spec 'ping)))
 
-(actor (forever (on (message (x $v))
-                    (printf "- ~v\n" v))))
+(actor (on (message (x $v))
+           (printf "- ~v\n" v)))

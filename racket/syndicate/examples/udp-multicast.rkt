@@ -26,15 +26,14 @@
 
        (define (rearm!) (send! (set-timer h 1000 'relative)))
 
-       (rearm!)
+       (on-start (rearm!))
 
-       (forever
-        (assert (udp-multicast-group-member h group-address #f))
-        (assert (udp-multicast-loopback h #t))
-        (on (message (udp-packet $source h $body))
-            (printf "~a: ~a\n" source body))
-        (on (message (timer-expired h $now))
-            (rearm!)
-            (send! (udp-packet h
-                               (udp-remote-address group-address group-port)
-                               (string->bytes/utf-8 (format "~a ~a" me now)))))))
+       (assert (udp-multicast-group-member h group-address #f))
+       (assert (udp-multicast-loopback h #t))
+       (on (message (udp-packet $source h $body))
+           (printf "~a: ~a\n" source body))
+       (on (message (timer-expired h $now))
+           (rearm!)
+           (send! (udp-packet h
+                              (udp-remote-address group-address group-port)
+                              (string->bytes/utf-8 (format "~a ~a" me now))))))

@@ -17,21 +17,22 @@
              (send-to-remote "~a ~a\n" who (apply format fmt vs))))
 
          (define user (gensym 'user))
-         (send-to-remote "Welcome, ~a.\n" user)
+         (on-start (send-to-remote "Welcome, ~a.\n" user))
 
-         (until (retracted (inbound (advertise (tcp-channel them us _))))
-                (assert (present user))
-                (on (asserted (present $who)) (say who "arrived."))
-                (on (retracted (present $who)) (say who "departed."))
+         (stop-when (retracted (inbound (advertise (tcp-channel them us _)))))
 
-                (on (message (says $who $what)) (say who "says: ~a" what))
+         (assert (present user))
+         (on (asserted (present $who)) (say who "arrived."))
+         (on (retracted (present $who)) (say who "departed."))
 
-                (assert (outbound (advertise (tcp-channel us them _))))
-                (on (message (inbound (tcp-channel them us $bs)))
-                    (define input-string (string-trim (bytes->string/utf-8 bs)))
-                    (if (equal? input-string "quit-dataspace")
-                        (send! (shutdown))
-                        (send! (says user input-string)))))))
+         (on (message (says $who $what)) (say who "says: ~a" what))
+
+         (assert (outbound (advertise (tcp-channel us them _))))
+         (on (message (inbound (tcp-channel them us $bs)))
+             (define input-string (string-trim (bytes->string/utf-8 bs)))
+             (if (equal? input-string "quit-dataspace")
+                 (send! (shutdown))
+                 (send! (says user input-string))))))
 
 (dataspace (define us (tcp-listener 5999))
            (until (message (shutdown))

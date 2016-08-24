@@ -51,32 +51,33 @@
          (define (send-event e)
            (send! (outbound (websocket-message server-id c (jsexpr->string (lift-json-event e))))))
 
-         (arm-ping-timer!)
+         (on-start (arm-ping-timer!)
+                   (log-syndicate-broker-info "Starting broker connection from ~v" c))
 
-         (log-syndicate-broker-info "Starting broker connection from ~v" c)
-         (until (retracted (inbound (advertise (websocket-message c server-id _))))
-           (assert (outbound (advertise (websocket-message server-id c _))))
+         (stop-when (retracted (inbound (advertise (websocket-message c server-id _)))))
+         (assert (outbound (advertise (websocket-message server-id c _))))
 
-           (on (asserted (inbound
-                          (websocket-peer-details server-id c _ _ $remote-addr $remote-port)))
-               (log-syndicate-broker-info "Connection ~v is from ~a:~a" c remote-addr remote-port))
+         (on (asserted (inbound
+                        (websocket-peer-details server-id c _ _ $remote-addr $remote-port)))
+             (log-syndicate-broker-info "Connection ~v is from ~a:~a" c remote-addr remote-port))
 
-           (on (message (inbound (timer-expired c _)))
-               (arm-ping-timer!)
-               (send-event 'ping))
+         (on (message (inbound (timer-expired c _)))
+             (arm-ping-timer!)
+             (send-event 'ping))
 
-           (on (message (inbound (websocket-message c server-id $data)))
-               (match (drop-json-action (string->jsexpr data))
-                 ['ping (send-event 'pong)]
-                 ['pong (void)]
-                 [(? patch? p) (patch! (log-packet c 'inbound 'patch (wrap-patch scope p)))]
-                 [(message body) (send! (log-packet c 'inbound 'message (broker-data scope body)))]))
+         (on (message (inbound (websocket-message c server-id $data)))
+             (match (drop-json-action (string->jsexpr data))
+               ['ping (send-event 'pong)]
+               ['pong (void)]
+               [(? patch? p) (patch! (log-packet c 'inbound 'patch (wrap-patch scope p)))]
+               [(message body) (send! (log-packet c 'inbound 'message (broker-data scope body)))]))
 
-           (on-event
-            [(? patch? p) (send-event (log-packet c 'outbound 'patch (unwrap-patch scope p)))]
-            [(message (broker-data (== scope) body))
-             (send-event (message (log-packet c 'outbound 'message body)))]))
-         (log-syndicate-broker-info "Ending broker connection from ~v" c)))
+         (on-event
+          [(? patch? p) (send-event (log-packet c 'outbound 'patch (unwrap-patch scope p)))]
+          [(message (broker-data (== scope) body))
+           (send-event (message (log-packet c 'outbound 'message body)))])
+
+         (on-stop (log-syndicate-broker-info "Ending broker connection from ~v" c))))
 
 (define (log-packet c direction kind value)
   (log-syndicate-broker-debug "Broker: ~v: ~a ~a\n~v" c direction kind value)

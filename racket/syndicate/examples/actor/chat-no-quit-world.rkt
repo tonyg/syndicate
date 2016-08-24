@@ -16,18 +16,19 @@
              (send-to-remote "~a ~a\n" who (apply format fmt vs))))
 
          (define user (gensym 'user))
-         (send-to-remote "Welcome, ~a.\n" user)
+         (on-start (send-to-remote "Welcome, ~a.\n" user))
 
-         (until (retracted (inbound (advertise (tcp-channel them us _))))
-                (assert (present user))
-                (on (asserted (present $who)) (say who "arrived."))
-                (on (retracted (present $who)) (say who "departed."))
+         (stop-when (retracted (inbound (advertise (tcp-channel them us _)))))
 
-                (on (message (says $who $what)) (say who "says: ~a" what))
+         (assert (present user))
+         (on (asserted (present $who)) (say who "arrived."))
+         (on (retracted (present $who)) (say who "departed."))
 
-                (assert (outbound (advertise (tcp-channel us them _))))
-                (on (message (inbound (tcp-channel them us $bs)))
-                    (send! (says user (string-trim (bytes->string/utf-8 bs))))))))
+         (on (message (says $who $what)) (say who "says: ~a" what))
+
+         (assert (outbound (advertise (tcp-channel us them _))))
+         (on (message (inbound (tcp-channel them us $bs)))
+             (send! (says user (string-trim (bytes->string/utf-8 bs)))))))
 
 (dataspace (define us (tcp-listener 5999))
            (forever (assert (outbound (advertise (observe (tcp-channel _ us _)))))

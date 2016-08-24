@@ -1,6 +1,7 @@
 #lang racket/base
 
 (provide actor
+         actor*
          dataspace
 
          react
@@ -278,6 +279,15 @@
 
 (define-syntax (actor stx)
   (syntax-parse stx
+    [(_ name:name O ...)
+     (quasisyntax/loc stx
+       (let ((spawn-action (actor-action #:name name.N (react O ...))))
+         (if (syndicate-effects-available?)
+             (schedule-action! spawn-action)
+             spawn-action)))]))
+
+(define-syntax (actor* stx)
+  (syntax-parse stx
     [(_ name:name script ...)
      (quasisyntax/loc stx
        (let ((spawn-action (actor-action #:name name.N script ...)))
@@ -433,8 +443,8 @@
        (on #,E-stx
            (let ((p #,instantiated))
              (w.wrapper #:name name.N
-              (react (stop-when (retracted p))
-                     O ...)))))]))
+              (stop-when (retracted p))
+              O ...))))]))
 
 (define-syntax (begin/dataflow stx)
   (syntax-parse stx

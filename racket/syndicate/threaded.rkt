@@ -1,14 +1,15 @@
 #lang racket/base
 
 (provide spawn-threaded-actor
-         actor/thread       ;; \__ once dataspace is split into mux and relay, these two
-         dataspace/thread)  ;; /   will be very thin convenience macros over a common impl.
+         actor/thread       ;; \__ once dataspace is split into mux and relay, these three
+         actor*/thread      ;;  |  will be very thin convenience macros over a common impl.
+         dataspace/thread)  ;; /
 
 (require racket/match)
 (require (for-syntax racket/base))
 
 (require (except-in syndicate dataspace))
-(require (only-in syndicate/actor actor dataspace schedule-action!))
+(require (only-in syndicate/actor actor actor* dataspace schedule-action!))
 (require syndicate/hierarchy)
 (require syndicate/store)
 
@@ -72,6 +73,12 @@
     [(_ body ...)
      (schedule-action!
       (spawn-threaded-actor (lambda () (actor body ...))))]))
+
+(define-syntax actor*/thread
+  (syntax-rules ()
+    [(_ body ...)
+     (schedule-action!
+      (spawn-threaded-actor (lambda () (actor* body ...))))]))
 
 (define-syntax dataspace/thread
   (syntax-rules ()

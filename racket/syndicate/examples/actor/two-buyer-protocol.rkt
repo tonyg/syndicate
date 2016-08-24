@@ -75,7 +75,7 @@
 (define-syntax while-relevant-assert
   (syntax-rules ()
     [(_ P)
-     (until (retracted (observe P))
+     (begin (stop-when (retracted (observe P)))
             (assert P))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -83,43 +83,43 @@
 ;; SELLER
 ;;
 (define (seller)
-  (actor (react (field [books (hash "The Wind in the Willows" 3.95
-                                    "Catch 22" 2.22
-                                    "Candide" 34.95)]
-                       [next-order-id 10001483])
+  (actor (field [books (hash "The Wind in the Willows" 3.95
+                             "Catch 22" 2.22
+                             "Candide" 34.95)]
+                [next-order-id 10001483])
 
-                ;; Give quotes to interested parties.
+         ;; Give quotes to interested parties.
+         ;;
+         (during (observe (book-quote $title _))
+                 (assert (book-quote title (hash-ref (books) title #f))))
+
+         ;; Respond to order requests.
+         ;;
+         (on (asserted (observe (order $title $offer-price _ _)))
+             (define asking-price (hash-ref (books) title #f))
+             (cond
+
+               [(or (not asking-price) (< offer-price asking-price))
+                ;; We cannot sell a book we do not have, and we will not sell for less
+                ;; than our asking price.
                 ;;
-                (during (observe (book-quote $title _))
-                        (assert (book-quote title (hash-ref (books) title #f))))
+                (react (while-relevant-assert (order title offer-price #f #f)))]
 
-                ;; Respond to order requests.
+               [else
+                ;; Allocate an order ID.
                 ;;
-                (on (asserted (observe (order $title $offer-price _ _)))
-                    (define asking-price (hash-ref (books) title #f))
-                    (cond
+                (define order-id (next-order-id))
+                (next-order-id (+ order-id 1))
 
-                      [(or (not asking-price) (< offer-price asking-price))
-                       ;; We cannot sell a book we do not have, and we will not sell for less
-                       ;; than our asking price.
-                       ;;
-                       (while-relevant-assert (order title offer-price #f #f))]
+                ;; Remove the book from our shelves.
+                ;;
+                (books (hash-remove (books) title))
 
-                      [else
-                       ;; Allocate an order ID.
-                       ;;
-                       (define order-id (next-order-id))
-                       (next-order-id (+ order-id 1))
-
-                       ;; Remove the book from our shelves.
-                       ;;
-                       (books (hash-remove (books) title))
-
-                       ;; Tell the ordering party their order ID and delivery date.
-                       ;;
-                       (actor
-                        (while-relevant-assert
-                         (order title offer-price order-id "March 9th")))])))))
+                ;; Tell the ordering party their order ID and delivery date.
+                ;;
+                (actor
+                 (while-relevant-assert
+                  (order title offer-price order-id "March 9th")))]))))
 
 ;; Serial SPLIT-PROPOSER
 ;;
@@ -175,64 +175,62 @@
                            (log-info "A learns that the split-proposal for ~v was rejected" title)
                            (try-to-split (+ contribution (/ (- price contribution) 2)))))]))])]))
 
-  (actor (try-to-buy (list "Catch 22"
-                           "Encyclopaedia Brittannica"
-                           "Candide"
-                           "The Wind in the Willows")
-                     35.00)))
+  (actor* (try-to-buy (list "Catch 22"
+                            "Encyclopaedia Brittannica"
+                            "Candide"
+                            "The Wind in the Willows")
+                      35.00)))
 
 ;; Serial SPLIT-DISPOSER
 ;;
 (define (buyer-b)
-  (actor (react
+  (actor ;; This actor maintains a record of the amount of money it has to spend.
+         ;;
+         (field [funds 5.00])
 
-          ;; This actor maintains a record of the amount of money it has to spend.
-          ;;
-          (field [funds 5.00])
+         (on (asserted (observe (split-proposal $title $price $their-contribution _)))
 
-          (on (asserted (observe (split-proposal $title $price $their-contribution _)))
+             (define my-contribution (- price their-contribution))
+             (log-info "B is being asked to contribute ~a toward ~v at price ~a"
+                       my-contribution
+                       title
+                       price)
 
-              (define my-contribution (- price their-contribution))
-              (log-info "B is being asked to contribute ~a toward ~v at price ~a"
-                        my-contribution
-                        title
-                        price)
+             (cond
+               [(> my-contribution (funds))
+                (log-info "B hasn't enough funds (~a remaining)" (funds))
+                (react (while-relevant-assert (split-proposal title price their-contribution #f)))]
 
-              (cond
-                [(> my-contribution (funds))
-                 (log-info "B hasn't enough funds (~a remaining)" (funds))
-                 (while-relevant-assert (split-proposal title price their-contribution #f))]
+               [else
 
-                [else
-
-                 ;; Spawn a small actor (TODO: when we revise actor.rkt's implementation style,
-                 ;; this could perhaps be a facet rather than a full actor) to handle the
-                 ;; actual purchase now that we have agreed on a split.
-                 ;;
-                 (actor (define-values (order-id delivery-date)
+                ;; Spawn a small actor (TODO: when we revise actor.rkt's implementation style,
+                ;; this could perhaps be a facet rather than a full actor) to handle the
+                ;; actual purchase now that we have agreed on a split.
+                ;;
+                (actor* (define-values (order-id delivery-date)
                           (react/suspend (yield)
-                           ;; While we are in this state, waiting for order confirmation, take
-                           ;; the opportunity to signal to our SPLIT-PROPOSER that we accepted
-                           ;; their proposal.
-                           ;;
-                           (assert (split-proposal title price their-contribution #t))
+                                         ;; While we are in this state, waiting for order confirmation, take
+                                         ;; the opportunity to signal to our SPLIT-PROPOSER that we accepted
+                                         ;; their proposal.
+                                         ;;
+                                         (assert (split-proposal title price their-contribution #t))
 
-                           (stop-when (asserted (order title price $id $date))
-                                      ;; We have received order confirmation from the SELLER.
-                                      ;;
-                                      (yield id date))))
-                        (log-info "The order for ~v has id ~a, and will be delivered on ~a"
-                                  title
-                                  order-id
-                                  delivery-date))
+                                         (stop-when (asserted (order title price $id $date))
+                                                    ;; We have received order confirmation from the SELLER.
+                                                    ;;
+                                                    (yield id date))))
+                       (log-info "The order for ~v has id ~a, and will be delivered on ~a"
+                                 title
+                                 order-id
+                                 delivery-date))
 
-                 ;; Meanwhile, update our records of our available funds, and continue to wait
-                 ;; for more split-proposals to arrive.
-                 ;;
-                 (define remaining-funds (- (funds) my-contribution))
-                 (log-info "B accepts the offer, leaving them with ~a remaining funds"
-                           remaining-funds)
-                 (funds remaining-funds)])))))
+                ;; Meanwhile, update our records of our available funds, and continue to wait
+                ;; for more split-proposals to arrive.
+                ;;
+                (define remaining-funds (- (funds) my-contribution))
+                (log-info "B accepts the offer, leaving them with ~a remaining funds"
+                          remaining-funds)
+                (funds remaining-funds)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

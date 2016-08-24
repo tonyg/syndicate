@@ -17,10 +17,9 @@
 (struct foo (x y) #:prefab)
 
 (actor (field [x 123])
-       (react
-        (assert (foo (x) 999))
-        (during (foo (x) $v)
-                (log-info "x=~a v=~a" (x) v)
-                (when (= (x) 123) (x 124))
-                (on-stop
-                 (log-info "finally for x=~a v=~a" (x) v)))))
+       (assert (foo (x) 999))
+       (during (foo (x) $v)
+               (log-info "x=~a v=~a" (x) v)
+               (when (= (x) 123) (x 124))
+               (on-stop
+                (log-info "finally for x=~a v=~a" (x) v))))

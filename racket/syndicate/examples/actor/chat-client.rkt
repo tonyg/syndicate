@@ -8,15 +8,13 @@
 (define remote-handle (tcp-address "localhost" 5999))
 (define stdin-evt (read-bytes-line-evt (current-input-port) 'any))
 
-(actor
- (react/suspend (quit)
-   (on (message (inbound (external-event stdin-evt (list $line))))
-       (if (eof-object? line)
-           (quit)
-           (send! (tcp-channel local-handle remote-handle line))))
+(actor (stop-when (message (inbound (external-event stdin-evt (list (? eof-object? _))))))
+       (stop-when (retracted (advertise (tcp-channel remote-handle local-handle _))))
+       (assert (advertise (tcp-channel local-handle remote-handle _)))
 
-   (assert (advertise (tcp-channel local-handle remote-handle _)))
-   (on (retracted (advertise (tcp-channel remote-handle local-handle _))) (quit))
-   (on (message (tcp-channel remote-handle local-handle $bs))
-       (write-bytes bs)
-       (flush-output))))
+       (on (message (inbound (external-event stdin-evt (list (? bytes? $line)))))
+           (send! (tcp-channel local-handle remote-handle line)))
+
+       (on (message (tcp-channel remote-handle local-handle $bs))
+           (write-bytes bs)
+           (flush-output)))

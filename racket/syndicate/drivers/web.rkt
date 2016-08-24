@@ -143,18 +143,16 @@
 
 (define (spawn-web-driver)
   (actor #:name 'web-server-manager
-         (react
-          (during/actor (web-virtual-host "http" _ $port)
-                        #:name (list 'web-server port)
-                        (setup-web-server "http"
-                                          (or (web-server-connection-manager)
-                                              (start-connection-manager))
-                                          port))))
+         (during/actor (web-virtual-host "http" _ $port)
+                       #:name (list 'web-server port)
+                       (setup-web-server "http"
+                                         (or (web-server-connection-manager)
+                                             (start-connection-manager))
+                                         port)))
   (actor #:name 'web-client-manager
-         (react
-          (on (message (web-request $id 'outbound $req $body))
-              (actor #:name (list 'web-client id)
-                     (do-client-request id req body))))))
+         (on (message (web-request $id 'outbound $req $body))
+             (actor #:name (list 'web-client id)
+                    (do-client-request id req body)))))
 
 (define (setup-web-server scheme cm port)
   (define listener (tcp-listen port (web-server-max-waiting) #t))
@@ -184,21 +182,21 @@
                                     (url-query (request-uri lowlevel-req)))
                                    (request-post-data/raw lowlevel-req)))
       (actor #:name (list 'web-req id)
-             (react (on-start (send! (set-timer (list 'web-req id) 100 'relative))
-                              (send! web-req))
-                    (stop-when (message (timer-expired (list 'web-req id) _))
-                               (do-response-complete control-ch
-                                                     id
-                                                     (make-web-response-header
-                                                      #:code 404
-                                                      #:message #"Not found")
-                                                     '()))
-                    (stop-when (message (web-response-complete id $rh $body))
-                               (do-response-complete control-ch id rh body))
-                    (stop-when (asserted (web-response-chunked id $rh))
-                               (do-response-chunked control-ch id rh))
-                    (stop-when (asserted (web-response-websocket id $headers))
-                               (do-response-websocket control-ch id headers))))))
+             (on-start (send! (set-timer (list 'web-req id) 100 'relative))
+                       (send! web-req))
+             (stop-when (message (timer-expired (list 'web-req id) _))
+                        (do-response-complete control-ch
+                                              id
+                                              (make-web-response-header
+                                               #:code 404
+                                               #:message #"Not found")
+                                              '()))
+             (stop-when (message (web-response-complete id $rh $body))
+                        (do-response-complete control-ch id rh body))
+             (stop-when (asserted (web-response-chunked id $rh))
+                        (do-response-chunked control-ch id rh))
+             (stop-when (asserted (web-response-websocket id $headers))
+                        (do-response-websocket control-ch id headers)))))
 
 (define (do-response-complete control-ch id rh constree-of-bytes)
   (match-define (web-response-header code resp-message last-modified-seconds mime-type headers) rh)
