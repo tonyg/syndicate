@@ -13,6 +13,8 @@
 (require "../trace.rkt")
 (require "../mux.rkt")
 (require "../pretty.rkt")
+(require "../trie.rkt")
+(require "../tset.rkt")
 
 (define (env-aref varname default alist)
   (define key (or (getenv varname) default))
@@ -22,42 +24,30 @@
 		     (map car alist)
 		     key)]))
 
-(define colored-output? (env-aref "MINIMART_COLOR" "true" '(("true" #t) ("false" #f))))
+(define colored-output? (env-aref "SYNDICATE_COLOR" "true" '(("true" #t) ("false" #f))))
 
 (define flags (set))
 (define show-exceptions? #f)
-(define show-patch-events? #f)
-(define show-message-events? #f)
-(define show-boot-events? #f)
-(define show-events? #f)
-(define show-process-states-pre? #f)
-(define show-process-states-post? #f)
-(define show-process-lifecycle? #f)
-(define show-patch-actions? #f)
-(define show-message-actions? #f)
+(define show-turns? #f)
+(define show-lifecycle? #f)
 (define show-actions? #f)
-(define show-routing-table? #f)
-(define dataspace-is-boring? #t)
+(define show-events? #f)
+(define show-influence? #f)
 
 (define (set-stderr-trace-flags! flags-string)
+  (define A-flags (set 'x 'i 'p))
   (set! flags (for/set [(c flags-string)] (string->symbol (string c))))
   (define-syntax-rule (set-flag! symbol variable)
-    (set! variable (set-member? flags 'symbol)))
+    (set! variable (or (and (set-member? flags 'A) (set-member? A-flags 'symbol))
+                       (set-member? flags 'symbol))))
   (set-flag! x show-exceptions?)
-  (set-flag! r show-patch-events?)
-  (set-flag! m show-message-events?)
-  (set-flag! b show-boot-events?)
-  (set-flag! e show-events?)
-  (set-flag! s show-process-states-pre?)
-  (set-flag! t show-process-states-post?)
-  (set-flag! p show-process-lifecycle?)
-  (set-flag! R show-patch-actions?)
-  (set-flag! M show-message-actions?)
+  (set-flag! t show-turns?)
+  (set-flag! p show-lifecycle?)
   (set-flag! a show-actions?)
-  (set-flag! g show-routing-table?)
-  (set! dataspace-is-boring? (not (set-member? flags 'N))))
+  (set-flag! e show-events?)
+  (set-flag! i show-influence?))
 
-(set-stderr-trace-flags! (or (getenv "MINIMART_TRACE") ""))
+(set-stderr-trace-flags! (or (getenv "SYNDICATE_TRACE") ""))
 
 (define YELLOW-ON-RED ";1;33;41")
 (define WHITE-ON-RED ";1;37;41")
@@ -73,18 +63,18 @@
 (define BRIGHT-BLUE ";1;34")
 (define NORMAL "")
 
-(define (format-pids pids)
-  (match pids
-    ['() "ground"]
-    [(cons 'meta rest) (format "context of ~a" (format-pids rest))]
-    [_ (string-join (map number->string (reverse pids)) ":")]))
+(define (format-pids pids [name #f])
+  (define pidstr
+    (match pids
+      ['() "ground"]
+      [(cons 'meta rest) (format "context of ~a" (format-pids rest))]
+      [_ (string-join (map number->string (reverse pids)) ":")]))
+  (if name
+      (format "~a a.k.a ~v" pidstr name)
+      pidstr))
 
 (define (output fmt . args)
   (apply fprintf (current-error-port) fmt args))
-
-(define (boring-state? state)
-  (or (and (dataspace? state) dataspace-is-boring?)
-      (void? state)))
 
 (define (set-color! c) (when colored-output? (output "\e[0~am" c)))
 (define (reset-color!) (when colored-output? (output "\e[0m")))
@@ -94,148 +84,82 @@
 	 (begin0 (begin expr ...)
 	   (reset-color!))))
 
+(define (tset/set-union t s)
+  (set-union (list->set (tset->list t)) s))
+
+(define (extract-leaf-pids sink p)
+  (match-define (patch added removed) p)
+  (for/list [(pid (in-set (trie-value-fold tset/set-union
+                                           (trie-value-fold tset/set-union (set) added)
+                                           removed)))]
+    (cons pid (cdr sink))))
+
+(define (display-notification the-notification)
+  (match-define (trace-notification source sink type detail) the-notification)
+  (match* (type detail)
+    [('turn-begin (process name _beh state))
+     (when show-turns?
+       (with-color BLUE
+         (output "~a turn begins\n" (format-pids sink name))))]
+    [('turn-end (process name _beh state))
+     (when show-turns?
+       (with-color BLUE
+         (output "~a turn ends\n" (format-pids sink name))
+         (syndicate-pretty-print state (current-error-port))))]
+    [('spawn (cons parent (process name _beh state)))
+     (when show-lifecycle?
+       (with-color BRIGHT-GREEN
+         (output "~a spawned by ~a\n" (format-pids sink name) (format-pids parent))))]
+    [('exit #f)
+     (when show-lifecycle?
+       (with-color BRIGHT-RED
+         (output "~a schedules an exit\n" (format-pids sink))))]
+    [('exit exn)
+     (when (or show-lifecycle? show-exceptions?)
+       (with-color WHITE-ON-RED
+         (output "~a raises an exception:\n~a\n" (format-pids sink) (exn->string exn))))]
+    [('action (? patch? p))
+     (when show-actions?
+       (output "~a performs a patch:\n~a\n" (format-pids source) (patch->pretty-string p)))]
+    [('action (message body))
+     (when show-actions?
+       (output "~a broadcasts a message:\n~a\n" (format-pids source) (pretty-format body)))]
+    [('action 'quit)
+     (when show-lifecycle?
+       (with-color BRIGHT-RED
+         (output "~a exits\n" (format-pids source))))]
+    [('event (? patch? p))
+     (when show-events?
+       (with-color YELLOW
+         (output "~a receives an event:\n~a\n" (format-pids sink) (patch->pretty-string p))))]
+    [('event (message body))
+     (when show-events?
+       (with-color YELLOW
+         (output "~a receives a message:\n~a\n" (format-pids sink) (pretty-format body))))]
+    [('event #f)
+     (when show-events?
+       (with-color YELLOW
+         (output "~a is polled\n" (format-pids sink))))]
+    [('influence (? patch? p))
+     (when show-influence?
+       (output "~a influenced by ~a via a patch:\n~a\n"
+               (format-pids sink)
+               (string-join (map format-pids (extract-leaf-pids sink p)) ", ")
+               (patch->pretty-string p)))]
+    [('influence (message body))
+     (when show-influence?
+       (output "~a influences ~a with a message:\n~a\n"
+               (format-pids source)
+               (format-pids sink)
+               (pretty-format body)))]))
+
 (define (display-trace)
   (define receiver (make-log-receiver trace-logger 'info))
   (parameterize ((pretty-print-columns 100))
     (let loop ()
       (match-define (vector level message-string data event-name) (sync receiver))
-      (match* (event-name data)
-	[('process-step (list pids e beh st))
-	 (define pidstr (format-pids pids))
-	 (match e
-	   [#f
-	    (when show-events?
-	      (with-color YELLOW (output "~a is being polled for changes.\n" pidstr)))]
-           [(targeted-event relative-path e)
-            (when show-events?
-              (with-color YELLOW
-                (output "~a is routing an event toward ~a\n" pidstr relative-path)))]
-	   [(? patch? p)
-	    (when (or show-events? show-patch-events?)
-	      (with-color YELLOW
-                (output "~a is receiving a patch:\n" pidstr)
-                (pretty-print-patch p (current-error-port))))]
-	   [(message body)
-	    (when (or show-events? show-message-events?)
-	      (with-color YELLOW
-                (output "~a is receiving a message:\n" pidstr)
-                (pretty-write body (current-error-port))))])
-	 (when show-process-states-pre?
-	   (when (not (boring-state? st))
-	     (with-color YELLOW
-               (output "~a's state just before the event:\n" pidstr)
-               (syndicate-pretty-print st (current-error-port)))))]
-        [('process-step-result (list pids e beh st exn t))
-	 (define pidstr (format-pids pids))
-	 (define relevant-exn? (and show-exceptions? exn))
-         (define (exn-and-not b) (and relevant-exn? (not b)))
-	 (match e
-	   [#f
-	    (when (exn-and-not show-events?)
-	      (with-color YELLOW (output "~a was polled for changes.\n" pidstr)))]
-	   ['boot
-	    (when (or show-events? show-boot-events?)
-	      (with-color YELLOW (output "~a was booted.\n" pidstr)))]
-           [(targeted-event relative-path e)
-            (when show-events?
-              (with-color YELLOW
-                (output "~a routed an event toward ~a\n" pidstr relative-path)))]
-	   [(? patch? p)
-	    (when (exn-and-not (or show-events? show-patch-events?))
-	      (with-color YELLOW
-                (output "~a received a patch:\n" pidstr)
-                (pretty-print-patch p (current-error-port))))]
-	   [(message body)
-	    (when (exn-and-not (or show-events? show-message-events?))
-	      (with-color YELLOW
-                (output "~a received a message:\n" pidstr)
-                (pretty-write body (current-error-port))))])
-	 (when (exn-and-not (and show-process-states-pre? (not (boring-state? st))))
-           (with-color YELLOW
-             (output "~a's state just before the event:\n" pidstr)
-             (syndicate-pretty-print st (current-error-port))))
-	 (when relevant-exn?
-	   (with-color WHITE-ON-RED
-             (output "Process ~a ~v died with exception:\n~a\n"
-                     pidstr
-                     beh
-                     (exn->string exn))))
-         (when (quit? t)
-           (with-color BRIGHT-RED
-             (output "Process ~a ~v exited normally.\n" pidstr beh)))
-	 (when (or relevant-exn? show-process-states-post?)
-	   (when (transition? t)
-	     (unless (boring-state? (transition-state t))
-	       (when (not (equal? st (transition-state t)))
-		 (with-color YELLOW
-                   (output "~a's state just after the event:\n" pidstr)
-                   (syndicate-pretty-print (transition-state t) (current-error-port)))))))]
-	[('internal-action (list pids a old-w))
-         (define pidstr (format-pids pids))
-         (define oldcount (hash-count (dataspace-process-table old-w)))
-         (match a
-           [(? spawn?)
-            ;; Handle this in internal-action-result
-            (void)]
-           ['quit
-            (when (or show-process-lifecycle? show-actions?)
-              (define interests (mux-interests-of (dataspace-mux old-w) (car pids)))
-              (with-color BRIGHT-RED
-                (output "~a exiting (~a total processes remain)\n"
-                        pidstr
-                        (- oldcount 1)))
-              (unless (trie-empty? interests)
-                (output "~a's final interests:\n" pidstr)
-                (pretty-print-trie interests (current-error-port))))]
-           [(? targeted-event?)
-            (void)]
-           [(quit-dataspace)
-            (with-color BRIGHT-RED
-              (output "Process ~a performed a quit-dataspace.\n" pidstr))]
-           [(? patch? p)
-            (when (or show-actions? show-patch-actions?)
-              (output "~a performing a patch:\n" pidstr)
-              (pretty-print-patch p (current-error-port)))]
-           [(message body)
-            (when (or show-actions? show-message-actions?)
-              (output "~a sending a message:\n" pidstr)
-              (pretty-write body (current-error-port)))])]
-        [('internal-action-result (list pids a old-w t))
-         (when (transition? t)
-           (define new-w (transition-state t))
-           (define pidstr (format-pids pids))
-           (define newcount (hash-count (dataspace-process-table new-w)))
-           (match a
-             [(? spawn?)
-              (when (or show-process-lifecycle? show-actions?)
-                (define newpid (mux-next-pid (dataspace-mux old-w)))
-                (define newpidstr (format-pids (cons newpid (cdr pids)))) ;; replace parent pid
-                (define interests (mux-interests-of (dataspace-mux new-w) newpid))
-                (define info (hash-ref (dataspace-process-table new-w) newpid '#:missing-behavior))
-                (define state (if (process? info) (process-state info) '#:missing-state))
-                (with-color BRIGHT-GREEN
-                  (output "~a ~v spawned from ~a (~a total processes now)\n"
-                          newpidstr
-                          info
-                          pidstr
-                          newcount))
-                (unless (boring-state? state)
-                  (output "~a's initial state:\n" newpidstr)
-                  (syndicate-pretty-print state (current-error-port)))
-                (unless (trie-empty? interests)
-                  (output "~a's initial interests:\n" newpidstr)
-                  (pretty-print-trie interests (current-error-port))))]
-             [_
-              ;; other cases handled in internal-action
-              (void)])
-           (when show-routing-table?
-             (define old-table (mux-routing-table (dataspace-mux old-w)))
-             (define new-table (mux-routing-table (dataspace-mux new-w)))
-             (when (not (equal? old-table new-table))
-               (with-color BRIGHT-BLUE
-                 (output "~a's routing table:\n" (format-pids (cdr pids)))
-                 (pretty-print-trie new-table (current-error-port))))))])
+      (display-notification data)
       (loop))))
 
-(void (when (not (set-empty? flags))
+(void (when (not #f) ;; TODO
 	(thread display-trace)))

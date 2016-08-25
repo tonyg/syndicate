@@ -18,7 +18,6 @@
 (require racket/match)
 (require "trie.rkt")
 (require "patch.rkt")
-(require "trace.rkt")
 (require "tset.rkt")
 (require "pretty.rkt")
 

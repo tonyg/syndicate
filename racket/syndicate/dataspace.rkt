@@ -36,28 +36,34 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (send-event e pid w)
-  (match-define (process _ behavior old-state)
+(define (send-event origin-pid e pid w)
+  (match-define (and the-process (process process-name behavior old-state))
     (hash-ref (dataspace-process-table w) pid missing-process))
   (if (not behavior)
       w
       (begin
-        (trace-process-step e pid behavior old-state)
+        (when origin-pid (trace-causal-influence origin-pid pid e))
+        (trace-event-consumed pid e)
+        (trace-turn-begin pid the-process)
         (invoke-process pid
                         (lambda () (clean-transition (ensure-transition (behavior e old-state))))
                         (match-lambda
-                          [#f w]
+                          [#f
+                           (trace-turn-end pid the-process)
+                           w]
                           [(and q (<quit> exn final-actions))
-                           (trace-process-step-result e pid behavior old-state exn q)
+                           (trace-turn-end pid the-process)
+                           (trace-actor-exit pid exn)
                            (enqueue-actions (disable-process pid exn w) pid (append final-actions
                                                                                     (list 'quit)))]
                           [(and t (transition new-state new-actions))
-                           (trace-process-step-result e pid behavior old-state #f t)
+                           (trace-turn-end pid (process process-name behavior new-state))
                            (enqueue-actions (mark-pid-runnable (update-state w pid new-state) pid)
                                             pid
                                             new-actions)])
                         (lambda (exn)
-                          (trace-process-step-result e pid behavior old-state exn #f)
+                          (trace-turn-end pid the-process)
+                          (trace-actor-exit pid exn)
                           (enqueue-actions (disable-process pid exn w) pid (list 'quit)))))))
 
 (define (update-process-entry w pid f)
@@ -69,10 +75,10 @@
 (define (update-state w pid s)
   (update-process-entry w pid (lambda (p) (update-process-state p s))))
 
-(define (send-event/guard e pid w)
+(define (send-event/guard origin-pid e pid w)
   (if (patch-empty? e)
       w
-      (send-event e pid w)))
+      (send-event origin-pid e pid w)))
 
 (define (disable-process pid exn w)
   (when exn
@@ -144,9 +150,8 @@
       ((entry (in-list (queue->list (dataspace-pending-action-queue w)))))
     #:break (quit? wt) ;; TODO: should a quit action be delayed until the end of the turn?
     (match-define [cons label a] entry)
-    (trace-internal-action label a (transition-state wt))
+    (when (or (event? a) (eq? a 'quit)) (trace-action-produced label a))
     (define wt1 (transition-bind (perform-action label a) wt))
-    (trace-internal-action-result label a (transition-state wt) wt1)
     wt1))
 
 (define ((perform-action label a) w)
@@ -163,7 +168,7 @@
                                  other)]))
                      (lambda (results)
                        (match-define (list behavior initial-transition name) results)
-                       (create-process w behavior initial-transition name))
+                       (create-process label w behavior initial-transition name))
                      (lambda (exn)
                        (log-error "Spawned process in dataspace ~a died with exception:\n~a"
                                   (current-actor-path)
@@ -188,12 +193,12 @@
                     (append (current-actor-path) (list label))
                     body))
      (define-values (affected-pids meta-affected?) (mux-route-message (dataspace-mux w) body))
-     (transition (for/fold [(w w)] [(pid (in-list affected-pids))] (send-event m pid w))
+     (transition (for/fold [(w w)] [(pid (in-list affected-pids))] (send-event label m pid w))
                  (and meta-affected? m))]
     [(targeted-event (cons pid remaining-path) e)
-     (transition (send-event/guard (target-event remaining-path e) pid w) '())]))
+     (transition (send-event/guard label (target-event remaining-path e) pid w) '())]))
 
-(define (create-process w behavior initial-transition name)
+(define (create-process parent-label w behavior initial-transition name)
   (if (not initial-transition)
       (transition w '()) ;; Uh, ok
       (let ()
@@ -201,13 +206,14 @@
           (match (clean-transition initial-transition)
             [(and q (<quit> exn initial-actions0))
              (values (lambda (w pid)
-                       (trace-process-step-result 'boot pid behavior (void) exn q)
+                       (trace-actor-spawn parent-label pid (process name behavior (void)))
+                       (trace-actor-exit pid exn)
                        (disable-process pid exn w))
                      #f
                      (append initial-actions0 (list 'quit)))]
             [(and t (transition initial-state initial-actions0))
              (values (lambda (w pid)
-                       (trace-process-step-result 'boot pid behavior (void) #f t)
+                       (trace-actor-spawn parent-label pid (process name behavior initial-state))
                        (mark-pid-runnable w pid))
                      initial-state
                      initial-actions0)]))
@@ -217,6 +223,7 @@
             [other (values patch-empty other)]))
         (define-values (new-mux new-pid delta delta-aggregate)
           (mux-add-stream (dataspace-mux w) initial-patch))
+        (trace-action-produced new-pid initial-patch)
         (let* ((w (struct-copy dataspace w
                                [process-table (hash-set (dataspace-process-table w)
                                                         new-pid
@@ -232,7 +239,7 @@
   (transition (for/fold [(w (struct-copy dataspace w [mux new-mux]))]
                         [(entry (in-list patches))]
                 (match-define (cons label event) entry)
-                (send-event/guard event label w))
+                (send-event/guard acting-label event label w))
               (and (patch-non-empty? meta-action) meta-action)))
 
 (define (step-children w)
@@ -241,7 +248,7 @@
       #f ;; dataspace is inert.
       (transition (for/fold [(w (struct-copy dataspace w [runnable-pids (set)]))]
                             [(pid (in-set runnable-pids))]
-                    (send-event #f pid w))
+                    (send-event #f #f pid w))
 		  '())))
 
 (define (pretty-print-dataspace w [p (current-output-port)])

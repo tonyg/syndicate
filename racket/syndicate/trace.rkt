@@ -1,37 +1,91 @@
 #lang racket/base
 
 (provide trace-logger
-	 trace-process-step
-	 trace-process-step-result
-         trace-internal-action
-	 trace-internal-action-result)
+         trace-turn-begin
+         trace-turn-end
+         trace-actor-spawn
+         trace-actor-exit
+         trace-action-produced
+         trace-event-consumed
+         trace-causal-influence
+
+         (struct-out trace-notification))
 
 (require "hierarchy.rkt")
 (require "pretty.rkt")
 
-(define trace-logger (make-logger 'minimart-trace))
+;; A NotificationType is one of
+;; -- 'turn-begin
+;; -- 'turn-end
+;; -- 'spawn
+;; -- 'exit
+;; -- 'action
+;; -- 'event
+;; -- 'influence
+;;
+;; The trace-notification-detail field is used differently for each
+;; NotificationType:
+;; -- 'turn-begin and 'turn-end --> Process
+;; -- 'spawn --> (cons PID Process), the parent's PID and the process' initial state
+;; -- 'exit --> Option Exception
+;; -- 'action --> (U Event 'quit) (notably, spawns are handled otherwise)
+;; -- 'event --> Event
+;; -- 'influence --> Event
+;;
+;; The source and sink fields both hold values of type ActorPath. They
+;; are, again, used differently for each NotificationType:
+;; -- 'turn-begin --> source is dataspace; sink the process whose turn it is
+;; -- 'turn-end --> source is dataspace; sink the process whose turn it was
+;; -- 'spawn --> source is dataspace; sink the new process
+;; -- 'exit --> source is dataspace; sink the exiting process
+;; -- 'action --> source is acting process; sink is dataspace (NB: Flipped!)
+;; -- 'event --> source is dataspace; sink is receiving process
+;; -- 'influence --> source is acting process; sink is receiving process
+;;
+;; For 'influence, when the detail event is a patch, the source field
+;; is not always the true influencing party. In the case where a
+;; process adds new observe assertions to a dataspace where matching
+;; assertions already exist, it will appear to "influence itself".
+;; Really, with patches, it's the PIDs at the leaves of each patch's
+;; tries that are the influencers.
 
-(define-syntax-rule (record-trace-event name r)
+(struct trace-notification (source sink type detail) #:prefab)
+
+(define trace-logger (make-logger 'syndicate-trace))
+
+(define-syntax-rule (notify! src snk typ det)
   (when (log-level? trace-logger 'info)
-    (log-message trace-logger 'info name "" r #f)))
+    (log-message trace-logger 'info typ "" (trace-notification src snk typ det) #f)))
 
 (define (cons-pid pid)
   (if pid
       (cons pid (current-actor-path-rev))
       (current-actor-path-rev)))
 
-;; Event (Option PID) Process -> Void
-(define (trace-process-step e pid beh st)
-  (record-trace-event 'process-step (list (cons-pid pid) e beh st)))
+;; PID Process
+(define (trace-turn-begin pid p)
+  (notify! (current-actor-path-rev) (cons-pid pid) 'turn-begin p))
 
-;; Event (Option PID) Process (Option Exception) (Option Transition) -> Void
-(define (trace-process-step-result e pid beh st exn t)
-  (record-trace-event 'process-step-result (list (cons-pid pid) e beh st exn t)))
+;; PID Process
+(define (trace-turn-end pid p)
+  (notify! (current-actor-path-rev) (cons-pid pid) 'turn-end p))
 
-;; (Option PID) Action Dataspace -> Void
-(define (trace-internal-action pid a w)
-  (record-trace-event 'internal-action (list (cons-pid pid) a w)))
+;; PID PID Process
+(define (trace-actor-spawn parent-pid pid p)
+  (notify! (current-actor-path-rev) (cons-pid pid) 'spawn (cons (cons-pid parent-pid) p)))
 
-;; (Option PID) Action Dataspace Transition -> Void
-(define (trace-internal-action-result pid a w t)
-  (record-trace-event 'internal-action-result (list (cons-pid pid) a w t)))
+;; PID (Option Exception)
+(define (trace-actor-exit pid maybe-exn)
+  (notify! (current-actor-path-rev) (cons-pid pid) 'exit maybe-exn))
+
+;; PID Event
+(define (trace-action-produced pid e)
+  (notify! (cons-pid pid) (current-actor-path-rev) 'action e))
+
+;; PID Event
+(define (trace-event-consumed pid e)
+  (notify! (current-actor-path-rev) (cons-pid pid) 'event e))
+
+;; PID PID Event
+(define (trace-causal-influence src-pid snk-pid e)
+  (notify! (cons-pid src-pid) (cons-pid snk-pid) 'influence e))

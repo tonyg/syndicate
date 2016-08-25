@@ -64,6 +64,8 @@
          trie-project/set/single
          project-assertions
 
+         trie-value-fold
+
          pretty-print-trie
          trie->pretty-string
          trie->abstract-graph
@@ -908,6 +910,21 @@
 ;; Ultra-convenience form.
 (define (project-assertions m p)
   (trie-project/set/single m p))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (trie-value-fold kons seed m)
+  (let walk ((seed seed) (m m))
+    (match m
+      [(? trie-empty?) seed]
+      [(success v) (kons v seed)]
+      [(branch os w h)
+       (let* ((seed (walk seed w))
+              (seed (for/fold [(seed seed)] [(entry (in-list (treap-to-alist os)))]
+                      (walk seed (cdr entry))))
+              (seed (for/fold [(seed seed)] [(k (in-list (treap-values h)))]
+                      (walk seed k))))
+         seed)])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

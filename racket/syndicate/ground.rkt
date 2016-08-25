@@ -120,21 +120,24 @@
 
 ;; Event Process AssertionSet Natural -> Void
 (define (inject-event e proc interests background-activity-count)
-  (trace-process-step e #f (process-behavior proc) (process-state proc))
+  (trace-event-consumed #f e)
+  (trace-turn-begin #f proc)
   (define resulting-transition (clean-transition ((process-behavior proc) e (process-state proc))))
-  (trace-process-step-result e #f (process-behavior proc) (process-state proc)
-                             #f resulting-transition)
   (process-transition resulting-transition proc interests background-activity-count))
 
 ;; Transition Process AssertionSet Natural -> Void
 (define (process-transition resulting-transition proc interests background-activity-count)
   (match resulting-transition
     [#f ;; inert
+     (trace-turn-end #f proc)
      (await-interrupt #t proc interests background-activity-count)]
-    [(<quit> _ _)
+    [(<quit> exn _)
+     (trace-turn-end #f proc)
+     (trace-actor-exit #f exn)
      (log-info "run-ground: Terminating by request")
      (void)]
     [(transition new-state actions)
+     (trace-turn-end #f (process (process-name proc) (process-behavior proc) new-state))
      (let ((proc (update-process-state proc new-state)))
        (let process-actions ((actions actions) (interests interests))
          (match actions
