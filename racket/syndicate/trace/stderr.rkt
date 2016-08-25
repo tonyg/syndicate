@@ -6,7 +6,7 @@
 (require racket/match)
 (require racket/pretty)
 (require racket/exn)
-(require (only-in racket/string string-join))
+(require (only-in racket/string string-join string-split))
 (require "../core.rkt")
 (require "../dataspace.rkt")
 (require "../hierarchy.rkt")
@@ -34,7 +34,12 @@
 (define show-events? #f)
 (define show-influence? #f)
 
-(define (set-stderr-trace-flags! flags-string)
+(define (set-stderr-trace-flags! flags+module-string)
+  (define-values (flags-string module-string)
+    (match flags+module-string
+      [(regexp #px"^([^:]*):(.*)$" (list _ fs m)) (values fs m)]
+      [_ (values flags+module-string "")]))
+
   (define A-flags (set 'x 'i 'p))
   (set! flags (for/set [(c flags-string)] (string->symbol (string c))))
   (define-syntax-rule (set-flag! symbol variable)
@@ -45,7 +50,14 @@
   (set-flag! p show-lifecycle?)
   (set-flag! a show-actions?)
   (set-flag! e show-events?)
-  (set-flag! i show-influence?))
+  (set-flag! i show-influence?)
+
+  (let ((port (open-input-string module-string)))
+    (let loop ()
+      (match (read port)
+        [(? eof-object?) (void)]
+        [v (begin (dynamic-require v 0)
+                  (loop))]))))
 
 (set-stderr-trace-flags! (or (getenv "SYNDICATE_TRACE") ""))
 
