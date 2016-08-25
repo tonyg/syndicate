@@ -19,37 +19,36 @@ function spawnChatApp() {
     var ui = new Syndicate.UI.Anchor();
     field this.nym;
     field this.status;
-    react {
-      on asserted inputValue('#nym',    $v) { this.nym = v; }
-      on asserted inputValue('#status', $v) { this.status = v; }
 
-      on asserted brokerConnected($url) { outputState('connected to ' + url); }
-      on retracted brokerConnected($url) { outputState('disconnected from ' + url); }
+    on asserted inputValue('#nym',    $v) { this.nym = v; }
+    on asserted inputValue('#status', $v) { this.status = v; }
 
-      during inputValue('#wsurl', $url) {
-        assert brokerConnection(url);
+    on asserted brokerConnected($url) { outputState('connected to ' + url); }
+    on retracted brokerConnected($url) { outputState('disconnected from ' + url); }
 
-        on message Syndicate.WakeDetector.wakeEvent() {
-          :: forceBrokerDisconnect(url);
-        }
+    during inputValue('#wsurl', $url) {
+      assert brokerConnection(url);
 
-        assert toBroker(url, present(this.nym, this.status));
-        during fromBroker(url, present($who, $status)) {
-          assert ui.context(who, status)
-            .html('#nymlist',
-                  Mustache.render($('#nym_template').html(), { who: who, status: status }));
-        }
+      on message Syndicate.WakeDetector.wakeEvent() {
+        :: forceBrokerDisconnect(url);
+      }
 
-        on message Syndicate.UI.globalEvent('#send_chat', 'click', _) {
-          var inp = $("#chat_input");
-          var utterance = inp.val();
-          inp.val("");
-          if (utterance) :: toBroker(url, says(this.nym, utterance));
-        }
+      assert toBroker(url, present(this.nym, this.status));
+      during fromBroker(url, present($who, $status)) {
+        assert ui.context(who, status)
+          .html('#nymlist',
+                Mustache.render($('#nym_template').html(), { who: who, status: status }));
+      }
 
-        on message fromBroker(url, says($who, $what)) {
-          outputUtterance(who, what);
-        }
+      on message Syndicate.UI.globalEvent('#send_chat', 'click', _) {
+        var inp = $("#chat_input");
+        var utterance = inp.val();
+        inp.val("");
+        if (utterance) :: toBroker(url, says(this.nym, utterance));
+      }
+
+      on message fromBroker(url, says($who, $what)) {
+        outputUtterance(who, what);
       }
     }
   }
@@ -84,13 +83,11 @@ assertion type inputValue(selector, value);
 
 function spawnInputChangeMonitor() {
   actor {
-    react {
-      during Syndicate.observe(inputValue($selector, _)) actor {
-        field this.value = $(selector).val();
-        assert inputValue(selector, this.value);
-        on message Syndicate.UI.globalEvent(selector, 'change', $e) {
-          this.value = e.target.value;
-        }
+    during Syndicate.observe(inputValue($selector, _)) actor {
+      field this.value = $(selector).val();
+      assert inputValue(selector, this.value);
+      on message Syndicate.UI.globalEvent(selector, 'change', $e) {
+        this.value = e.target.value;
       }
     }
   }

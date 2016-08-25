@@ -122,10 +122,6 @@ Actor.prototype.checkForTermination = function() {
 
 //---------------------------------------------------------------------------
 
-function createFacet() {
-  return new Facet(Dataspace.activeBehavior());
-}
-
 function Facet(actor) {
   this.actor = actor;
   this.endpoints = Immutable.Map();
@@ -140,6 +136,12 @@ function Facet(actor) {
 
 Facet.nextFid = 0;
 Facet.current = null;
+
+Facet.build = function(f) {
+  var facet = new Facet(Dataspace.activeBehavior());
+  withCurrentFacet(facet, f);
+  facet.completeBuild();
+};
 
 function withCurrentFacet(facet, f) {
   var previousFacet = Facet.current;
@@ -373,7 +375,7 @@ function deleteField(obj, prop) {
 //---------------------------------------------------------------------------
 
 module.exports.spawnActor = spawnActor;
-module.exports.createFacet = createFacet;
+module.exports.Facet = Facet;
 module.exports.referenceField = referenceField;
 module.exports.declareField = declareField;
 module.exports.deleteField = deleteField;

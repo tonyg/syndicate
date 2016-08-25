@@ -8,39 +8,29 @@ message type deposit(amount);
 ground dataspace {
   actor {
     field this.balance = 0;
-
-    react {
-      assert account(this.balance);
-      dataflow {
-        console.log("Balance inside account is", this.balance);
-      }
-      on message deposit($amount) {
-        this.balance += amount;
-      }
+    assert account(this.balance);
+    dataflow {
+      console.log("Balance inside account is", this.balance);
+    }
+    on message deposit($amount) {
+      this.balance += amount;
     }
   }
 
   actor {
-    react {
-      on asserted account($balance) {
-        console.log("Balance is now", balance);
-      }
+    on asserted account($balance) {
+      console.log("Balance is now", balance);
     }
   }
 
   actor {
-    react {
-      do {
-        console.log("Waiting for account.");
-      }
-      finally {
-        console.log("Account became ready.");
-      }
-    } until {
-      case asserted Syndicate.observe(deposit(_)) {
-        :: deposit(+100);
-        :: deposit(-30);
-      }
+    on start {
+      console.log("Waiting for account.");
+    }
+    stop on asserted Syndicate.observe(deposit(_)) {
+      console.log("Account became ready.");
+      :: deposit(+100);
+      :: deposit(-30);
     }
   }
 }

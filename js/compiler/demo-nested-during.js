@@ -60,69 +60,58 @@ assertion type view(str);
 
 ground dataspace {
   actor {
-    react {
-      field this.title = "first";
-      assert todo(this.title);
-      on message 3 {
-        this.title = "second";
-      }
+    field this.title = "first";
+    assert todo(this.title);
+    on message 3 {
+      this.title = "second";
     }
   }
 
   actor {
-    react {
-      assert show();
+    assert show();
+  }
+
+  actor {
+    field this.editing = false;
+
+    during todo($title) {
+      on start { console.log('OUTER++', title); }
+      during show() {
+        on start { console.log('++', title); }
+        assert view((this.editing ? 'EDIT ' : 'VIEW ') + title);
+        on stop { console.log('--', title); }
+      }
+      on stop { console.log('OUTER--', title); }
+    }
+
+    on message 1 {
+      this.editing = true;
+      :: 2;
+    }
+
+    on message 2 {
+      :: 3;
+      this.editing = false;
     }
   }
 
   actor {
-    react {
-      field this.editing = false;
-
-      during todo($title) {
-        do { console.log('OUTER++', title); }
-        during show() {
-          do { console.log('++', title); }
-          assert view((this.editing ? 'EDIT ' : 'VIEW ') + title);
-          finally { console.log('--', title); }
-        }
-        finally { console.log('OUTER--', title); }
-      }
-
-      on message 1 {
-        this.editing = true;
-        :: 2;
-      }
-
-      on message 2 {
-        :: 3;
-        this.editing = false;
-      }
+    on start { :: 0; }
+    stop on message 0 {
+      :: 1;
     }
   }
 
   actor {
-    react {
-      do { :: 0; }
-    } until {
-      case message 0 {
-        :: 1;
-      }
-    }
-  }
-
-  actor {
-    react {
-      field this.count = 0;
-      on retracted view($x) { console.log('VIEW--', x); }
-      on asserted view($x) {
-        console.log('VIEW++', x);
-        if (x === 'VIEW second') {
-          this.count++;
-          if (this.count === 1) {
-            console.log("Kicking off second edit cycle");
-            :: 1;
-          }
+    field this.count = 0;
+    on retracted view($x) { console.log('VIEW--', x); }
+    on asserted view($x) {
+      console.log('VIEW++', x);
+      if (x === 'VIEW second') {
+        this.count++;
+        if (this.count === 1) {
+          console.log("Kicking off second edit cycle");
+          :: 1;
         }
       }
     }

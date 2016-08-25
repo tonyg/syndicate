@@ -23,32 +23,31 @@ ground dataspace G {
     }
 
     var wsurl = 'wss://demo-broker.syndicate-lang.org:8443/';
-    react {
-      assert brokerConnection(wsurl);
 
-      assert Syndicate.UI.uiAttribute('rect#my_color', 'fill', color);
+    assert brokerConnection(wsurl);
 
-      assert toBroker(wsurl, point(color, this.publishedX, this.publishedY));
-      on message Syndicate.Timer.periodicTick(100) {
-        this.publishedX = x;
-        this.publishedY = y;
-      }
+    assert Syndicate.UI.uiAttribute('rect#my_color', 'fill', color);
 
-      on message Syndicate.UI.windowEvent('deviceorientation', $e) {
-        var scale = 0.5;
-        x = clamp(e.gamma * scale);
-        y = clamp((e.beta - 40) * scale);
-      }
+    assert toBroker(wsurl, point(color, this.publishedX, this.publishedY));
+    on message Syndicate.Timer.periodicTick(100) {
+      this.publishedX = x;
+      this.publishedY = y;
+    }
 
-      during fromBroker(wsurl, point($oc, $ox, $oy)) {
-        assert ui.context(oc)
-          .html('#container',
-                Mustache.render(document.getElementById('circle-template').innerHTML, {
-                  color: oc,
-                  x: ox,
-                  y: oy
-                }));
-      }
+    on message Syndicate.UI.windowEvent('deviceorientation', $e) {
+      var scale = 0.5;
+      x = clamp(e.gamma * scale);
+      y = clamp((e.beta - 40) * scale);
+    }
+
+    during fromBroker(wsurl, point($oc, $ox, $oy)) {
+      assert ui.context(oc)
+        .html('#container',
+              Mustache.render(document.getElementById('circle-template').innerHTML, {
+                color: oc,
+                x: ox,
+                y: oy
+              }));
     }
   }
 }

@@ -3,9 +3,7 @@ message type setSortColumn(number);
 
 function newRow(id, firstName, lastName, address, age) {
   actor named ('model' + id) {
-    react {
-      assert person(id, firstName, lastName, address, age);
-    }
+    assert person(id, firstName, lastName, address, age);
   }
 }
 
@@ -27,25 +25,21 @@ function spawnView() {
       return '<td>' + text + '</td>';
     }
 
-    react {
-      on message setSortColumn($c) { this.orderColumn = c; }
+    on message setSortColumn($c) { this.orderColumn = c; }
 
-      during person($id, $firstName, $lastName, $address, $age) {
-        assert ui.context(id)
-          .html('table#the-table tbody',
-                '<tr>' + [id, firstName, lastName, address, age].map(cell).join('') + '</tr>',
-                [id, firstName, lastName, address, age][this.orderColumn]);
-      }
+    during person($id, $firstName, $lastName, $address, $age) {
+      assert ui.context(id)
+        .html('table#the-table tbody',
+              '<tr>' + [id, firstName, lastName, address, age].map(cell).join('') + '</tr>',
+              [id, firstName, lastName, address, age][this.orderColumn]);
     }
   }
 }
 
 function spawnController() {
   actor named 'controller' {
-    react {
-      on message Syndicate.UI.globalEvent('table#the-table th', 'click', $e) {
-        :: setSortColumn(JSON.parse(e.target.dataset.column));
-      }
+    on message Syndicate.UI.globalEvent('table#the-table th', 'click', $e) {
+      :: setSortColumn(JSON.parse(e.target.dataset.column));
     }
   }
 }

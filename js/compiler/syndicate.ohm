@@ -10,6 +10,7 @@ Syndicate <: ES5 {
     += ActorStatement
     | DataspaceStatement
     | ActorFacetStatement
+    | ActorEndpointStatement
     | AssertionTypeDeclarationStatement
     | FieldDeclarationStatement
     | SendMessageStatement
@@ -17,16 +18,29 @@ Syndicate <: ES5 {
   FunctionBodyBlock = "{" FunctionBody "}"   // odd that this isn't in es5.ohm somewhere
 
   ActorStatement
-    = actor (named Expression<withIn>)? FunctionBodyBlock
+    = actorStar (named Expression<withIn>)? FunctionBodyBlock -- noReact
+    | actor (named Expression<withIn>)? FunctionBodyBlock     -- withReact
 
   DataspaceStatement
     = ground dataspace identifier? FunctionBodyBlock -- ground
     | dataspace FunctionBodyBlock                    -- normal
 
   ActorFacetStatement
-    = react FacetBlock until FacetStateTransitionBlock   -- state
-    | react until FacetStateTransitionBlock              -- until
-    | react FacetBlock                                   -- forever
+    = react FunctionBodyBlock
+
+  ActorEndpointStatement
+    = on start FunctionBodyBlock                                              -- start
+    | on stop FunctionBodyBlock                                               -- stop
+    | assert FacetPattern AssertWhenClause? #(sc)                             -- assert
+    | on FacetEventPattern FunctionBodyBlock                                  -- event
+    | on event identifier FunctionBodyBlock                                   -- onEvent
+    | stop on FacetTransitionEventPattern FunctionBodyBlock                   -- stopOnWithCont
+    | stop on FacetTransitionEventPattern #(sc)                               -- stopOnNoCont
+    | dataflow FunctionBodyBlock                                              -- dataflow
+    | during FacetPattern FunctionBodyBlock                                   -- during
+    | during FacetPattern actor (named Expression<withIn>)? FunctionBodyBlock -- duringActor
+
+  AssertWhenClause = when "(" Expression<withIn> ")"
 
   AssertionTypeDeclarationStatement
     = (assertion | message) type identifier "(" FormalParameterList ")" ("=" stringLiteral)? #(sc)
@@ -37,30 +51,6 @@ Syndicate <: ES5 {
 
   SendMessageStatement = "::" Expression<withIn> #(sc)
 
-  //---------------------------------------------------------------------------
-  // Ongoing event handlers.
-
-  FacetBlock = "{"
-    (VariableStatement | FieldDeclarationStatement | FunctionDeclaration)*
-    FacetInitBlock?
-    FacetSituation*
-    FacetDoneBlock?
-    "}"
-  FacetStateTransitionBlock = "{" FacetStateTransition* "}"
-
-  FacetInitBlock = do FunctionBodyBlock
-  FacetDoneBlock = finally FunctionBodyBlock
-
-  FacetSituation
-    = assert FacetPattern AssertWhenClause? #(sc)                      -- assert
-    | on FacetEventPattern FunctionBodyBlock                           -- event
-    | on event identifier FunctionBodyBlock                            -- onEvent
-    | dataflow FunctionBodyBlock                                       -- dataflow
-    | during FacetPattern FacetBlock                                   -- during
-    | during FacetPattern actor (named Expression<withIn>)? FacetBlock -- duringActor
-
-  AssertWhenClause = when "(" Expression<withIn> ")"
-
   FacetEventPattern
     = message FacetPattern   -- messageEvent
     | asserted FacetPattern  -- assertedEvent
@@ -69,10 +59,6 @@ Syndicate <: ES5 {
   FacetTransitionEventPattern
     = FacetEventPattern          -- facetEvent
     | "(" Expression<withIn> ")" -- risingEdge
-
-  FacetStateTransition
-    = case FacetTransitionEventPattern FunctionBodyBlock -- withContinuation
-    | case FacetTransitionEventPattern #(sc)             -- noContinuation
 
   FacetPattern
     = LeftHandSideExpression metalevel decimalIntegerLiteral -- withMetalevel
@@ -83,7 +69,8 @@ Syndicate <: ES5 {
   // we don't want to make them unavailable to programs as
   // identifiers.
 
-  actor = "actor" ~identifierPart
+  actorStar = "actor*" ~identifierPart
+  actor = "actor" ~("*" | identifierPart)
   assert = "assert" ~identifierPart
   asserted = "asserted" ~identifierPart
   assertion = "assertion" ~identifierPart
@@ -99,7 +86,8 @@ Syndicate <: ES5 {
   on = "on" ~identifierPart
   react = "react" ~identifierPart
   retracted = "retracted" ~identifierPart
+  start = "start" ~identifierPart
+  stop = "stop" ~identifierPart
   type = "type" ~identifierPart
-  until = "until" ~identifierPart
   when = "when" ~identifierPart
 }

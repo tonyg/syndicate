@@ -42,28 +42,29 @@ var forEachChild = (function () {
   return forEachChild;
 })();
 
-function buildActor(nameExpOpt, block) {
+function buildActor(nameExpOpt, block, withReact) {
   var nameExpStr;
   if (nameExpOpt.numChildren === 1) {
     nameExpStr = ', ' + nameExpOpt.asES5;
   } else {
     nameExpStr = '';
   }
-  return 'Syndicate.Actor.spawnActor(function() ' + block.asES5 + nameExpStr + ');';
+  return 'Syndicate.Actor.spawnActor(function() ' +
+    (withReact ? reactWrap(block.asES5) : block.asES5) +
+    nameExpStr + ');';
 }
 
-function buildFacet(facetBlock, transitionBlock) {
-  return '(function () { ' + (facetBlock ? facetBlock.facetVarDecls : '') +
-    '\nSyndicate.Actor.createFacet()' +
-    (facetBlock ? facetBlock.asES5 : '') +
-    (transitionBlock ? transitionBlock.asES5 : '') +
-    '.completeBuild(); }).call(this);';
+function reactWrap(blockCode) {
+  return '{ Syndicate.Actor.Facet.build((function () { ' +
+    blockCode +
+    ' }).bind(this)); }';
 }
 
 function buildOnEvent(isTerminal, eventType, subscription, projection, bindings, body) {
-  return '\n.onEvent(Syndicate.Actor.PRIORITY_NORMAL, ' + isTerminal + ', ' + JSON.stringify(eventType) + ', ' +
+  return 'Syndicate.Actor.Facet.current.onEvent(Syndicate.Actor.PRIORITY_NORMAL, ' + isTerminal + ', ' +
+    JSON.stringify(eventType) + ', ' +
     subscription + ', ' + projection +
-    ', (function(' + bindings.join(', ') + ') ' + body + '))';
+    ', (function(' + bindings.join(', ') + ') ' + body + '));';
 }
 
 function buildCaseEvent(eventPattern, body) {
@@ -85,8 +86,11 @@ function buildCaseEvent(eventPattern, body) {
 }
 
 var modifiedSourceActions = {
-  ActorStatement: function(_actor, _namedOpt, nameExpOpt, block) {
-    return buildActor(nameExpOpt, block);
+  ActorStatement_noReact: function(_actorStar, _namedOpt, nameExpOpt, block) {
+    return buildActor(nameExpOpt, block, false);
+  },
+  ActorStatement_withReact: function(_actor, _namedOpt, nameExpOpt, block) {
+    return buildActor(nameExpOpt, block, true);
   },
 
   DataspaceStatement_ground: function(_ground, _dataspace, maybeId, block) {
@@ -101,14 +105,8 @@ var modifiedSourceActions = {
     return 'Syndicate.Dataspace.spawn(new Dataspace(function () ' + block.asES5 + '));';
   },
 
-  ActorFacetStatement_state: function(_state, facetBlock, _until, transitionBlock) {
-    return buildFacet(facetBlock, transitionBlock);
-  },
-  ActorFacetStatement_until: function(_react, _until, transitionBlock) {
-    return buildFacet(null, transitionBlock);
-  },
-  ActorFacetStatement_forever: function(_forever, facetBlock) {
-    return buildFacet(facetBlock, null);
+  ActorFacetStatement: function(_react, block) {
+    return '(function () ' + reactWrap(block.asES5) + ').call(this);';
   },
 
   AssertionTypeDeclarationStatement: function(_assertion,
@@ -151,24 +149,17 @@ var modifiedSourceActions = {
     return 'Syndicate.Dataspace.send(' + expr.asES5 + ')' + sc.interval.contents;
   },
 
-  FacetBlock: function(_leftParen, _varStmts, init, situations, done, _rightParen) {
-    return (init ? init.asES5 : '') + situations.asES5.join('') + (done ? done.asES5 : '');
+  ActorEndpointStatement_start: function (_on, _start, block) {
+    return 'Syndicate.Actor.Facet.current.addInitBlock((function() ' + block.asES5 + '));';
   },
-  FacetStateTransitionBlock: function(_leftParen, transitions, _rightParen) {
-    return transitions.asES5.join('');
+  ActorEndpointStatement_stop: function (_on, _stop, block) {
+    return 'Syndicate.Actor.Facet.current.addDoneBlock((function() ' + block.asES5 + '));';
   },
-
-  FacetInitBlock: function(_init, block) {
-    return '\n.addInitBlock((function() ' + block.asES5 + '))';
+  ActorEndpointStatement_assert: function(_assert, expr, whenClause, _sc) {
+    return 'Syndicate.Actor.Facet.current.addAssertion(' +
+      buildSubscription([expr], 'assert', 'pattern', whenClause, null) + ');';
   },
-  FacetDoneBlock: function(_done, block) {
-    return '\n.addDoneBlock((function() ' + block.asES5 + '))';
-  },
-
-  FacetSituation_assert: function(_assert, expr, whenClause, _sc) {
-    return '\n.addAssertion(' + buildSubscription([expr], 'assert', 'pattern', whenClause, null) + ')';
-  },
-  FacetSituation_event: function(_on, eventPattern, block) {
+  ActorEndpointStatement_event: function(_on, eventPattern, block) {
     return buildOnEvent(false,
                         eventPattern.eventType,
                         eventPattern.subscription,
@@ -176,63 +167,59 @@ var modifiedSourceActions = {
                         eventPattern.bindings,
                         block.asES5);
   },
-  FacetSituation_onEvent: function (_on, _event, id, block) {
-    return '\n.addOnEventHandler((function(' + id.asES5 + ') ' + block.asES5 + '))';
+  ActorEndpointStatement_onEvent: function (_on, _event, id, block) {
+    return 'Syndicate.Actor.Facet.current.addOnEventHandler((function(' + id.asES5 + ') ' +
+      block.asES5 + '));';
   },
-  FacetSituation_dataflow: function (_dataflow, block) {
-    return '\n.addDataflow((function () ' + block.asES5 + '))';
+  ActorEndpointStatement_stopOnWithCont: function(_stop, _on, eventPattern, block) {
+    return buildCaseEvent(eventPattern, block.asES5);
   },
-  FacetSituation_during: function(_during, pattern, facetBlock) {
+  ActorEndpointStatement_stopOnNoCont: function(_stop, _on, eventPattern, _sc) {
+    return buildCaseEvent(eventPattern, '{}');
+  },
+  ActorEndpointStatement_dataflow: function (_dataflow, block) {
+    return 'Syndicate.Actor.Facet.current.addDataflow((function () ' + block.asES5 + '));';
+  },
+  ActorEndpointStatement_during: function(_during, pattern, block) {
     var cachedAssertionVar = gensym('cachedAssertion');
     return buildOnEvent(false,
                         'asserted',
                         pattern.subscription,
                         pattern.projection,
                         pattern.bindings,
-                        '{ ' + facetBlock.facetVarDecls +
-                        '\nvar '+cachedAssertionVar+' = '+pattern.instantiatedAssertion+';'+
-                        '\nSyndicate.Actor.createFacet()' +
-                        facetBlock.asES5 +
-                        buildOnEvent(true,
-                                     'retracted',
-                                     pattern.instantiatedSubscription(cachedAssertionVar),
-                                     pattern.instantiatedProjection(cachedAssertionVar),
-                                     [],
-                                     '{}') +
-                        '.completeBuild(); }');
+                        '{\n' +
+                        'var '+cachedAssertionVar+' = '+pattern.instantiatedAssertion+';\n'+
+                        reactWrap(block.asES5 + '\n' +
+                                  buildOnEvent(true,
+                                               'retracted',
+                                               pattern.instantiatedSubscription(cachedAssertionVar),
+                                               pattern.instantiatedProjection(cachedAssertionVar),
+                                               [],
+                                               '{}')) + '}');
   },
-  FacetSituation_duringActor: function(_during, pattern, _actor, _named, nameExpOpt, facetBlock) {
+  ActorEndpointStatement_duringActor: function(_during, pattern, _actor, _named, nameExpOpt, block)
+  {
     var cachedAssertionVar = gensym('cachedAssertion');
     var actorBlock = {
-      asES5: '{ ' + facetBlock.facetVarDecls +
-        '\nSyndicate.Actor.createFacet()' +
-        facetBlock.asES5 +
-        buildOnEvent(true,
-                     'retracted',
-                     pattern.instantiatedSubscription(cachedAssertionVar),
-                     pattern.instantiatedProjection(cachedAssertionVar),
-                     [],
-                     '{}') +
-        '.completeBuild(); }'
+      asES5: reactWrap(block.asES5 + '\n' + 
+                       buildOnEvent(true,
+                                    'retracted',
+                                    pattern.instantiatedSubscription(cachedAssertionVar),
+                                    pattern.instantiatedProjection(cachedAssertionVar),
+                                    [],
+                                    '{}'))
     };
     return buildOnEvent(false,
                         'asserted',
                         pattern.subscription,
                         pattern.projection,
                         pattern.bindings,
-                        '{ var '+cachedAssertionVar+' = '+pattern.instantiatedAssertion+';'+
-                        '\n' + buildActor(nameExpOpt, actorBlock) + ' }');
+                        '{ var '+cachedAssertionVar+' = '+pattern.instantiatedAssertion+';\n'+
+                        buildActor(nameExpOpt, actorBlock, true) + ' }');
   },
 
   AssertWhenClause: function(_when, _lparen, expr, _rparen) {
     return expr.asES5;
-  },
-
-  FacetStateTransition_withContinuation: function(_case, eventPattern, block) {
-    return buildCaseEvent(eventPattern, block.asES5);
-  },
-  FacetStateTransition_noContinuation: function(_case, eventPattern, _sc) {
-    return buildCaseEvent(eventPattern, '{}');
   }
 };
 
@@ -256,11 +243,7 @@ semantics.addAttribute('memberPropExpr', {
   }
 });
 
-semantics.addAttribute('facetVarDecls', {
-  FacetBlock: function (_leftParen, varDecls, _init, _situations, _done, _rightParen) {
-    return varDecls.asES5.join(' ');
-  }
-});
+///////////////////////////////////////////////////////////////////////////
 
 semantics.addAttribute('asSyndicateStructureArguments', {
   FormalParameterList: function(formals) {

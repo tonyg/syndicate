@@ -76,10 +76,9 @@ assertion type splitProposal(title, price, contribution, accepted);
 /// core library.
 ///
 function whileRelevantAssert(P) {
-  react {
+  actor {
     assert P;
-  } until {
-    case retracted Syndicate.observe(P);
+    stop on retracted Syndicate.observe(P);
   }
 }
 
@@ -117,38 +116,32 @@ function seller() {
 /// The seller responds to interest in bookQuotes by asserting a
 /// responsive record, if one exists.
 
-    react {
-      during Syndicate.observe(bookQuote($title, _)) {
-        assert bookQuote(title, this.priceOf(title));
-      }
+    during Syndicate.observe(bookQuote($title, _)) {
+      assert bookQuote(title, this.priceOf(title));
     }
 
 /// It also responds to order requests.
 
-    react {
-      on asserted
-        Syndicate.observe(order($title, $offerPrice, _, _)) {
+    on asserted
+      Syndicate.observe(order($title, $offerPrice, _, _)) {
 
 /// We cannot sell a book we do not have, and we will not sell for
 /// less than our asking price.
 
-        var askingPrice = this.priceOf(title);
-        if ((askingPrice === false) || (offerPrice < askingPrice)) {
-          whileRelevantAssert(
-            order(title, offerPrice, false, false));
-        } else {
+      var askingPrice = this.priceOf(title);
+      if ((askingPrice === false) || (offerPrice < askingPrice)) {
+        whileRelevantAssert(
+          order(title, offerPrice, false, false));
+      } else {
 
 /// But if we can sell it, we do so by allocating an order ID and
 /// replying to the orderer.
 
-          var orderId = this.nextOrderId++;
-          delete field this.books[title];
+        var orderId = this.nextOrderId++;
+        delete field this.books[title];
 
-          actor {
-            whileRelevantAssert(
-              order(title, offerPrice, orderId, "March 9th"));
-          }
-        }
+        whileRelevantAssert(
+          order(title, offerPrice, orderId, "March 9th"));
       }
     }
   }
@@ -157,7 +150,7 @@ function seller() {
 /// ### Implementation: SPLIT-PROPOSER and book-quote-requestor
 
 function buyerA() {
-  actor {
+  actor* {
     var self = this;
 
 /// Our actor remembers which books remain on its shopping list, and
@@ -184,8 +177,8 @@ function buyerA() {
 
 /// First, retrieve a quote for the title, and analyze the result.
 
-      react until {
-        case asserted bookQuote(title, $price) {
+      react {
+        stop on asserted bookQuote(title, $price) {
           if (price === false) {
             console.log("A learns that "+title+" is out-of-stock.");
             buyBooks();
@@ -220,15 +213,15 @@ function buyerA() {
 
 /// Make our proposal, and wait for a response.
 
-        react until {
-          case asserted
+        react {
+          stop on asserted
             splitProposal(title, price, contribution, true) {
               console.log("A learns that the split-proposal for "+
                           title+" was accepted");
               buyBooks();
             }
 
-          case asserted
+          stop on asserted
             splitProposal(title, price, contribution, false) {
               console.log("A learns that the split-proposal for "+
                           title+" was rejected");
@@ -255,55 +248,50 @@ function buyerB() {
 /// It spends its time waiting for a SPLIT-PROPOSER to offer a
 /// `splitProposal`.
 
-    react {
-      on asserted
-        Syndicate.observe(splitProposal($title,
-                                        $price,
-                                        $theirContribution,
-                                        _))
-      {
-        var myContribution = price - theirContribution;
-        console.log("B is being asked to contribute "+myContribution+
-                    " toward "+title+" at price "+price);
+    on asserted
+      Syndicate.observe(splitProposal($title,
+                                      $price,
+                                      $theirContribution,
+                                      _))
+    {
+      var myContribution = price - theirContribution;
+      console.log("B is being asked to contribute "+myContribution+
+                  " toward "+title+" at price "+price);
 
 /// We may not be able to afford contributing this much.
 
-        if (myContribution > this.funds) {
-          console.log("B hasn't enough funds ("+this.funds+
-                      " remaining)");
-          whileRelevantAssert(
-            splitProposal(title, price, theirContribution, false));
-        } else {
+      if (myContribution > this.funds) {
+        console.log("B hasn't enough funds ("+this.funds+
+                    " remaining)");
+        whileRelevantAssert(
+          splitProposal(title, price, theirContribution, false));
+      } else {
 
 /// But if we *can* afford it, update our remaining funds and spawn a
 /// small actor to handle the actual purchase now that we have agreed
 /// on a split.
 
-          var remainingFunds = this.funds - myContribution;
-          console.log("B accepts the offer, leaving them with "+
-                      remainingFunds+" remaining funds");
-          this.funds = remainingFunds;
+        var remainingFunds = this.funds - myContribution;
+        console.log("B accepts the offer, leaving them with "+
+                    remainingFunds+" remaining funds");
+        this.funds = remainingFunds;
 
-          actor {
-            react {
+        actor {
 
 /// While waiting for order confirmation, take the opportunity to
 /// signal to our SPLIT-PROPOSER that we accepted their proposal.
 
-              assert splitProposal(title,
-                                   price,
-                                   theirContribution,
-                                   true);
+          assert splitProposal(title,
+                               price,
+                               theirContribution,
+                               true);
 
 /// When order confirmation arrives, this purchase is completed.
 
-            } until {
-              case asserted order(title, price, $id, $date) {
-                console.log("The order for "+title+" has id "+id+
-                            ", and will be delivered on "+date);
-              }
+          stop on asserted order(title, price, $id, $date) {
+              console.log("The order for "+title+" has id "+id+
+                          ", and will be delivered on "+date);
             }
-          }
         }
       }
     }

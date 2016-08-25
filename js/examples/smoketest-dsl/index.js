@@ -4,28 +4,23 @@ ground dataspace {
   console.log('starting ground boot');
 
   actor {
-    react until {
-      case asserted Syndicate.observe(beep(_)) {
-        field this.counter = 0;
-        react {
-          do {
-            :: beep(this.counter++);
-          }
-          on message beep(_) {
-            :: beep(this.counter++);
-          }
-        } until {
-          case (this.counter > 10);
+    stop on asserted Syndicate.observe(beep(_)) {
+      field this.counter = 0;
+      react {
+        on start {
+          :: beep(this.counter++);
         }
+        on message beep(_) {
+          :: beep(this.counter++);
+        }
+        stop on (this.counter > 10);
       }
     }
   }
 
   actor {
-    react {
-      on message beep($counter) {
-        console.log("beep!", counter);
-      }
+    on message beep($counter) {
+      console.log("beep!", counter);
     }
   }
 }
