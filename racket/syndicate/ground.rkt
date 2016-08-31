@@ -14,6 +14,7 @@
 (require "protocol/standard-relay.rkt")
 
 (provide (struct-out external-event)
+         current-ground-event-async-channel
          send-ground-message
          send-ground-patch
          send-ground-event
