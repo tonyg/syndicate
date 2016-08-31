@@ -1,6 +1,6 @@
 #lang racket/base
 
-(provide trace-logger
+(provide current-trace-procedures
          trace-turn-begin
          trace-turn-end
          trace-actor-spawn
@@ -51,11 +51,13 @@
 
 (struct trace-notification (source sink type detail) #:prefab)
 
-(define trace-logger (make-logger 'syndicate-trace))
+(define current-trace-procedures (make-parameter '()))
 
 (define-syntax-rule (notify! src snk typ det)
-  (when (log-level? trace-logger 'info)
-    (log-message trace-logger 'info typ "" (trace-notification src snk typ det) #f)))
+  (let ((trace-procedures (current-trace-procedures)))
+    (when (pair? trace-procedures)
+      (define n (trace-notification src snk typ det))
+      (for-each (lambda (procedure) (procedure n)) trace-procedures))))
 
 (define (cons-pid pid)
   (if pid

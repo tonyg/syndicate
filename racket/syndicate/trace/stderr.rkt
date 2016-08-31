@@ -165,13 +165,20 @@
                (format-pids sink)
                (pretty-format body)))]))
 
-(define (display-trace)
-  (define receiver (make-log-receiver trace-logger 'info))
+(define (install-trace-procedure!)
+  (define logger (make-logger 'syndicate-trace))
+  (define (trace-via-logger n)
+    (log-message logger 'info (trace-notification-type n) "" n #f))
+  (current-trace-procedures (cons trace-via-logger (current-trace-procedures)))
+  logger)
+
+(define ((display-trace logger))
+  (define receiver (make-log-receiver logger 'info))
   (parameterize ((pretty-print-columns 100))
     (let loop ()
       (match-define (vector level message-string data event-name) (sync receiver))
       (display-notification data)
       (loop))))
 
-(void (when (not #f) ;; TODO
-	(thread display-trace)))
+(void (when (not (set-empty? flags))
+        (thread (display-trace (install-trace-procedure!)))))
