@@ -1,5 +1,5 @@
 PACKAGENAME=syndicate
-COLLECTS=syndicate syndicate-gl
+COLLECTS=syndicate syndicate-gl syndicate-ide
 
 all: setup
 
