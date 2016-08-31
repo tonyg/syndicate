@@ -35,6 +35,7 @@
 
          pretty-print-patch
          patch->pretty-string
+         extract-patch-pids
 
          patch->jsexpr
          jsexpr->patch)
@@ -243,6 +244,10 @@
   (format "-~a\n+~a\n"
           (string-trim #:left? #f (trie->pretty-string out #:indent "-"))
           (string-trim #:left? #f (trie->pretty-string in #:indent "+"))))
+
+(define (extract-patch-pids p)
+  (match-define (patch in out) p)
+  (trie-value-fold tset/set-union (trie-value-fold tset/set-union (set) in) out))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

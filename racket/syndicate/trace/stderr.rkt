@@ -96,14 +96,8 @@
 	 (begin0 (begin expr ...)
 	   (reset-color!))))
 
-(define (tset/set-union t s)
-  (set-union (list->set (tset->list t)) s))
-
 (define (extract-leaf-pids sink p)
-  (match-define (patch added removed) p)
-  (for/list [(pid (in-set (trie-value-fold tset/set-union
-                                           (trie-value-fold tset/set-union (set) added)
-                                           removed)))]
+  (for/list [(pid (in-set (extract-patch-pids p)))]
     (cons pid (cdr sink))))
 
 (define (display-notification the-notification)

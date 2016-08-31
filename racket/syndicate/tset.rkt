@@ -16,9 +16,11 @@
          tset-subtract
          tset->list
          tset-member?
+         tset/set-union
          )
 
 (require "hash-order.rkt")
+(require (only-in racket/set set-union list->set))
 
 (define (tset? t)
   (treap? t))
@@ -72,6 +74,9 @@
 
 (define (tset-member? t k)
   (treap-has-key? t k))
+
+(define (tset/set-union t s)
+  (set-union (list->set (tset->list t)) s))
 
 (define datum-tset-empty (datum-tset))
 
