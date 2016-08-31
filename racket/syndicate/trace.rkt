@@ -26,7 +26,7 @@
 ;; The trace-notification-detail field is used differently for each
 ;; NotificationType:
 ;; -- 'turn-begin and 'turn-end --> Process
-;; -- 'spawn --> (cons PID Process), the parent's PID and the process' initial state
+;; -- 'spawn --> (list PID Process), the parent's PID and the process' initial state
 ;; -- 'exit --> Option Exception
 ;; -- 'action --> (U Event 'quit) (notably, spawns are handled otherwise)
 ;; -- 'event --> Event
@@ -74,7 +74,7 @@
 
 ;; PID PID Process
 (define (trace-actor-spawn parent-pid pid p)
-  (notify! (current-actor-path-rev) (cons-pid pid) 'spawn (cons (cons-pid parent-pid) p)))
+  (notify! (current-actor-path-rev) (cons-pid pid) 'spawn (list (cons-pid parent-pid) p)))
 
 ;; PID (Option Exception)
 (define (trace-actor-exit pid maybe-exn)

@@ -112,7 +112,7 @@
        (with-color BLUE
          (output "~a turn ends\n" (format-pids sink name))
          (syndicate-pretty-print state (current-error-port))))]
-    [('spawn (cons parent (process name _beh state)))
+    [('spawn (list parent (process name _beh state)))
      (when show-lifecycle?
        (with-color BRIGHT-GREEN
          (output "~a spawned by ~a\n" (format-pids sink name) (format-pids parent))))]
