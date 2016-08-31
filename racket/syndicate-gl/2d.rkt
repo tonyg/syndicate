@@ -392,7 +392,8 @@
 
     (super-new (style '(gl no-autoclear)))))
 
-(define ((2d-dataspace #:width [width #f]
+(define ((2d-dataspace #:label [frame-label "syndicate-gl"]
+                       #:width [width #f]
                        #:height [height #f]
                        #:exit? [exit? #t])
          . boot-actions)
@@ -400,7 +401,7 @@
   (collect-garbage 'major)
   (define frame (new frame%
                      [style '(fullscreen-button)]
-                     [label "syndicate-gl"]
+                     [label frame-label]
                      [width (or width 640)]
                      [height (or height 480)]))
   (define c (new dataspace-canvas%
