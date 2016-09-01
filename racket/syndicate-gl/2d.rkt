@@ -4,6 +4,9 @@
          (struct-out frame-event)
          (struct-out key-event)
          (struct-out key-pressed)
+         (struct-out mouse-event)
+         (struct-out mouse-state)
+         (struct-out touching)
          (struct-out scene)
          (except-out (struct-out sprite) sprite)
          (rename-out [sprite <sprite>] [make-sprite sprite])
@@ -12,6 +15,7 @@
          update-scene
          update-sprites
          spawn-keyboard-integrator
+         spawn-mouse-integrator
          2d-dataspace)
 
 (require data/order)
@@ -28,6 +32,7 @@
 (require syndicate/ground)
 
 (require "texture.rkt")
+(require "affine.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -45,6 +50,17 @@
 ;; Assertion. Indicates that the named key is held down. See role
 ;; KeyboardIntegrator and spawn-keyboard-integrator.
 (struct key-pressed (code) #:transparent)
+
+;; Message sent by dataspace. Describes a mouse event. Event is a
+;; sealed mouse-event%.
+(struct mouse-event (type state) #:transparent)
+
+;; Assertion. Indicates that the mouse is in a particular state. See
+;; role MouseIntegrator and spawn-mouse-integrator.
+(struct mouse-state (x y left-down? middle-down? right-down?) #:transparent)
+
+;; Assertion. Indicates that the mouse is touching a particular touchable.
+(struct touching (id user-x user-y state) #:transparent)
 
 ;; Shared state maintained by program. Prelude and postlude are to be
 ;; sealed instruction lists. It is an error to have more than exactly
@@ -70,9 +86,16 @@
 (define (make-sprite z instructions)
   (sprite z (seal instructions)))
 
-(define (simple-sprite z x y w h i)
+(define (in-unit-square? x y)
+  (and (<= 0 x 1)
+       (<= 0 y 1)))
+
+(define (simple-sprite z x y w h i #:touchable-id [touchable-id #f])
   (make-sprite z `((translate ,x ,y)
                    (scale ,w ,h)
+                   ,@(if touchable-id
+                         `((touchable ,touchable-id ,in-unit-square?))
+                         `())
                    (texture ,i))))
 
 (define (update-sprites #:meta-level [meta-level 1] . ss)
@@ -91,53 +114,95 @@
          (void)
          (sub (inbound* meta-level (key-event ? ? ?)))))
 
+;; MouseIntegrator. Integrates mouse-events into mouse-state assertions.
+(define (spawn-mouse-integrator #:meta-level [meta-level 1])
+  (define retract-state (retract (mouse-state ? ? ? ? ?)))
+  (spawn (lambda (e s)
+           (match e
+             [(message (inbound* meta-level (mouse-event 'leave _)))
+              (transition (void) retract-state)]
+             [(message (inbound* meta-level (mouse-event type new-state)))
+              (transition (void) (patch-seq retract-state (assert new-state)))]
+             [#f #f]))
+         (void)
+         (sub (inbound* meta-level (mouse-event ? ?)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(struct compiled-instructions (render-thunk resources))
+;; (touchable Any TransformationMatrix (Number Number -> Boolean))
+;; Represents a composed device-to-user transformation, plus a
+;; predicate on user coordinates, and an ID to use when the predicate
+;; answers truthily.
+(struct touchable (id transformation predicate) #:transparent)
+
+;; (compiled-instructions (-> Void) (Listof Touchable) (Listof Resource) TransformationMatrix)
+;; A single compiled sprite. The resources aren't in any particular order,
+;; but the touchables are: the leftmost touchable is the first to check;
+;; that is, it is the *topmost* touchable in this sprite. The overall
+;; transformation matrix is the net effect of all the transformations in
+;; the instruction sequence.
+(struct compiled-instructions (render-thunk touchables resources xform))
 
 (define-namespace-anchor ns-anchor)
 (define ns (namespace-anchor->namespace ns-anchor))
 
 (define (compile-instructions instrs)
-  (define-values (code resources) (instruction->racket-code `(begin ,@instrs)))
+  (define-values (code touchables resources xform)
+    (instruction->racket-code `(begin ,@instrs) identity-transformation))
   (define render-thunk (eval `(lambda () ,code) ns))
-  (compiled-instructions render-thunk resources))
+  (compiled-instructions render-thunk touchables resources xform))
 
 (define (compiled-instructions-dispose! i)
   (when i
     (for [(resource (compiled-instructions-resources i))]
       (send resource dispose))))
 
-(define (instructions->racket-code instrs)
-  (define-values (code-rev resources)
-    (for/fold [(code-rev '()) (resources '())] [(instr (in-list instrs))]
-      (define-values (new-code new-resources) (instruction->racket-code instr))
-      (values (cons new-code code-rev) (append new-resources resources))))
-  (values (reverse code-rev) resources))
+(define (instructions->racket-code instrs xform)
+  (define-values (code-rev touchables resources new-xform)
+    (for/fold [(code-rev '())
+               (touchables '())
+               (resources '())
+               (xform xform)]
+              [(instr (in-list instrs))]
+      (define-values (new-code new-touchables new-resources new-xform)
+        (instruction->racket-code instr xform))
+      (values (cons new-code code-rev)
+              (append new-touchables touchables)
+              (append new-resources resources)
+              new-xform)))
+  (values (reverse code-rev) touchables resources new-xform))
 
 (define (color-number? n)
   (and (number? n)
        (<= 0.0 n 1.0)))
 
-(define (instruction->racket-code instr)
+(define (instruction->racket-code instr xform)
   (match instr
     [`(rotate ,(? number? deg))
-     (values `(glRotated ,deg 0 0 -1) '())]
+     (values `(glRotated ,deg 0 0 -1) '() '()
+             (compose-transformation (invert-transformation (rotation-transformation deg))
+                                     xform))]
     [`(scale ,(? number? x) ,(? number? y))
-     (values `(glScaled ,x ,y 1) '())]
+     (values `(glScaled ,x ,y 1) '() '()
+             (compose-transformation (invert-transformation (stretching-transformation x y))
+                                     xform))]
     [`(translate ,(? number? x) ,(? number? y))
-     (values `(glTranslated ,x ,y 0) '())]
+     (values `(glTranslated ,x ,y 0) '() '()
+             (compose-transformation (invert-transformation (translation-transformation x y))
+                                     xform))]
     [`(color ,(? color-number? r) ,(? color-number? g) ,(? color-number? b) ,(? color-number? a))
-     (values `(glColor4d ,r ,g ,b ,a) '())]
+     (values `(glColor4d ,r ,g ,b ,a) '() '() xform)]
     [`(texture ,i)
      (define entry (image->texture-cache-entry i))
-     (values `(draw-gl-face ,(send entry get-texture)) (list entry))]
+     (values `(draw-gl-face ,(send entry get-texture)) '() (list entry) xform)]
+    [`(touchable ,id ,predicate)
+     (values `(void) (list (touchable id xform predicate)) '() xform)]
     [`(push-matrix ,instr ...)
-     (define-values (code resources) (instructions->racket-code instr))
-     (values `(begin (glPushMatrix) ,@code (glPopMatrix)) resources)]
+     (define-values (code touchables resources _new-xform) (instructions->racket-code instr xform))
+     (values `(begin (glPushMatrix) ,@code (glPopMatrix)) touchables resources xform)]
     [`(begin ,instr ...)
-     (define-values (code resources) (instructions->racket-code instr))
-     (values `(begin ,@code (void)) resources)]
+     (define-values (code touchables resources new-xform) (instructions->racket-code instr xform))
+     (values `(begin ,@code (void)) touchables resources new-xform)]
     [other
      (error 'instruction->racket-code "unknown render instruction: ~v" other)]))
 
@@ -219,6 +284,28 @@
       (loop (splay-tree-iterate-next sprites iter))))
   ((compiled-instructions-render-thunk postlude)))
 
+(define (detect-touch prelude sprites postlude state)
+  (and state
+       (let ()
+         (define x (mouse-state-x state))
+         (define y (mouse-state-y state))
+         (or (detect-touch* postlude x y state)
+             (let loop ((iter (splay-tree-iterate-greatest sprites)))
+               (and iter
+                    (or (detect-touch* (splay-tree-iterate-value sprites iter) x y state)
+                        (loop (splay-tree-iterate-greatest/<?
+                               sprites
+                               (splay-tree-iterate-key sprites iter))))))
+             (detect-touch* prelude x y state)))))
+
+(define (detect-touch* ci x y state)
+  (for/or [(t (in-list (compiled-instructions-touchables ci)))]
+    (match-define (touchable id xform contains?) t)
+    (define user-point (transform-point xform (make-rectangular x y)))
+    (define ux (real-part user-point))
+    (define uy (imag-part user-point))
+    (and (contains? ux uy) (touching id ux uy state))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define dataspace-canvas%
@@ -242,6 +329,9 @@
     (define sprites (make-splay-tree sprite-order))
     (define postlude empty-instructions)
     (define fullscreen? #f)
+
+    (define current-mouse-state #f)
+    (define current-touching #f)
 
     (define-values (proc pending-transition)
       (spawn->process+transition (spawn-dataspace boot-actions)))
@@ -314,6 +404,8 @@
       (for [(s removed)] (remove-sprite! sprites s))
       (for [(s added)] (add-sprite! sprites s))
       ;; (log-info "~a sprites" (splay-tree-count sprites))
+      (when (not (and (set-empty? added) (set-empty? removed)))
+        (update-touching!))
       (flush-texture-cache!))
 
     (define (process-stop-requests! p)
@@ -389,6 +481,30 @@
               ['release (key-event (send key get-key-release-code) #f (seal key))]
               [code     (key-event code                            #t (seal key))])))
           (quiesce!))))
+
+    (define/override (on-event mouse)
+      (with-gl-context
+        (lambda ()
+          (define x (send mouse get-x))
+          (define y (send mouse get-y))
+          (define s (mouse-state x
+                                 y
+                                 (send mouse get-left-down)
+                                 (send mouse get-middle-down)
+                                 (send mouse get-right-down)))
+          (set! current-mouse-state s)
+          (update-touching!)
+          (inject-event! (message (mouse-event (send mouse get-event-type) s)))
+          (quiesce!))))
+
+    (define (update-touching!)
+      (define new-touching (detect-touch prelude sprites postlude current-mouse-state))
+      (when (not (equal? new-touching current-touching))
+        (define retract-old (retract current-touching))
+        (if new-touching
+            (inject-event! (patch-seq retract-old (assert new-touching)))
+            (inject-event! retract-old))
+        (set! current-touching new-touching)))
 
     (super-new (style '(gl no-autoclear)))))
 

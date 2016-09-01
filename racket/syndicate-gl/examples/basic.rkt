@@ -24,7 +24,8 @@
   (define CC character-cat-girl)
 
   (actor (field [x 100] [y 100])
-         (assert (outbound (simple-sprite -0.5 (x) (y) (image-width CC) (image-height CC) CC)))
+         (assert (outbound (simple-sprite #:touchable-id 'player
+                                          -0.5 (x) (y) (image-width CC) (image-height CC) CC)))
 
          (field [keys-down (set)])
          (on (asserted (key-pressed $k)) (keys-down (set-add (keys-down) k)))
@@ -43,19 +44,32 @@
 (define (spawn-frame-counter)
   (actor (field [i empty-image])
          (assert (outbound
-                  (simple-sprite -10 300 10 (image-width (i)) (image-height (i)) (i))))
+                  (simple-sprite #:touchable-id 'frame-counter
+                                 -10 300 10 (image-width (i)) (image-height (i)) (i))))
          (on (message (inbound (frame-event $counter $sim-time-ms _ _)))
              (when (> sim-time-ms 0)
                (define fps (/ counter (/ sim-time-ms 1000.0)))
                (i (text (format "~a fps" fps) 22 "black"))))))
 
 (spawn-keyboard-integrator)
+(spawn-mouse-integrator)
 (spawn-background)
 ;; (spawn-frame-counter)
 (spawn-player-avatar)
-(actor (assert (outbound (simple-sprite 0 50 50 50 50 (circle 50 "solid" "orange"))))
-       (assert (outbound (simple-sprite -1 60 60 50 50 (circle 50 "solid" "green")))))
+
+(actor (define/query-value touching-orange? #f (inbound (touching 'orange _ _ _)) #t)
+       (assert (outbound (simple-sprite #:touchable-id 'orange
+                                        0 50 50 50 50 (circle 50 "solid"
+                                                              (if (touching-orange?)
+                                                                  "red"
+                                                                  "orange")))))
+       (assert (outbound (simple-sprite #:touchable-id 'green
+                                        -1 60 60 50 50 (circle 50 "solid" "green")))))
 (actor* (until (message (inbound (key-event #\q #t _))))
         (assert! (outbound 'stop)))
+
+(actor (during (inbound (touching $id _ _ _))
+               (on-start (log-info "Touching ~v" id))
+               (on-stop (log-info "No longer touching ~v" id))))
 
 (module+ main (current-ground-dataspace (2d-dataspace)))
