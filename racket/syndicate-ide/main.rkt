@@ -1,6 +1,7 @@
 #lang racket/base
 
-(provide ide-dataspace)
+(provide ide-dataspace
+         install-ide-dataspace!)
 
 (require racket/async-channel)
 (require racket/match)
@@ -9,6 +10,7 @@
 
 (require (only-in syndicate seal))
 (require syndicate/actor)
+(require (only-in syndicate/lang current-ground-dataspace))
 (require syndicate/patch)
 (require syndicate/protocol/standard-relay)
 (require syndicate/ground)
@@ -112,3 +114,9 @@
                           (trace-notification-type n)
                           (trace-notification-sink n))))
      )))
+
+(define install-ide-dataspace!
+  (make-keyword-procedure
+   (lambda (ks vs . positionals)
+     (define installed-dataspace (current-ground-dataspace))
+     (current-ground-dataspace (keyword-apply ide-dataspace ks vs positionals)))))
