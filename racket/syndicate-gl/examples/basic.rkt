@@ -45,6 +45,23 @@
                                               plain-image))))
          (on-start (draggable-mixin touching? x y))))
 
+(define (tooltip touching? x y w h label-string)
+  (define label-text (text label-string 22 "black"))
+  (define label (overlay label-text (empty-scene (+ (image-width label-text) 10)
+                                                 (+ (image-height label-text) 10))))
+  (define (pos)
+    (define v (- (x) (image-width label) 10))
+    (if (negative? v)
+        (+ (x) w 10)
+        v))
+  (react (assert #:when (touching?)
+                 (outbound (simple-sprite -10
+                                          (pos)
+                                          (+ (y) (* 1/2 h))
+                                          (image-width label)
+                                          (image-height label)
+                                          label)))))
+
 (define (spawn-player-avatar)
   (local-require 2htdp/planetcute)
   (define CC character-cat-girl)
@@ -60,6 +77,8 @@
 
          (define/query-value touching? #f (inbound (touching 'player)) #t)
          (on-start (draggable-mixin touching? x y))
+
+         (on-start (tooltip touching? x y (image-width CC) (image-height CC) "The Player"))
 
          (on (message (inbound (frame-event _ _ $elapsed-ms _)))
              (define-values (old-x old-y) (values (x) (y)))
