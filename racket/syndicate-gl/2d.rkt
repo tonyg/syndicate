@@ -96,9 +96,11 @@
        (<= 0 y 1)))
 
 (define (simple-sprite z x y w h i
+                       #:rotation [rotation 0]
                        #:touchable-id [touchable-id #f]
                        #:touchable-predicate [touchable-predicate in-unit-square?])
   (make-sprite z `((translate ,x ,y)
+                   ,@(if (zero? rotation) `() `((rotate ,rotation)))
                    (scale ,w ,h)
                    ,@(if touchable-id
                          `((touchable ,touchable-id ,touchable-predicate))
