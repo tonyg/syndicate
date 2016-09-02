@@ -62,7 +62,7 @@
 (struct mouse-state (x y left-down? middle-down? right-down?) #:transparent)
 
 ;; Assertion. Indicates that the mouse is touching a particular touchable.
-(struct touching (id user-x user-y state) #:transparent)
+(struct touching (id) #:transparent)
 
 ;; Shared state maintained by program. Prelude and postlude are to be
 ;; sealed instruction lists. It is an error to have more than exactly
@@ -308,7 +308,7 @@
     (define user-point (untransform-point xform (make-rectangular x y)))
     (define ux (real-part user-point))
     (define uy (imag-part user-point))
-    (and (contains? ux uy) (touching id ux uy state))))
+    (and (contains? ux uy) (touching id))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

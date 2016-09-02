@@ -36,7 +36,7 @@
 
 (define (draggable-shape name orig-x orig-y z plain-image hover-image)
   (actor (field [x orig-x] [y orig-y])
-         (define/query-value touching? #f (inbound (touching name _ _ _)) #t)
+         (define/query-value touching? #f (inbound (touching name)) #t)
          (assert (outbound (simple-sprite #:touchable-id name
                                           #:touchable-predicate in-unit-circle?
                                           z (x) (y) 50 50
@@ -58,7 +58,7 @@
          (on (retracted (key-pressed $k)) (keys-down (set-remove (keys-down) k)))
          (define (key->delta k distance) (if (set-member? (keys-down) k) distance 0))
 
-         (define/query-value touching? #f (inbound (touching 'player _ _ _)) #t)
+         (define/query-value touching? #f (inbound (touching 'player)) #t)
          (on-start (draggable-mixin touching? x y))
 
          (on (message (inbound (frame-event _ _ $elapsed-ms _)))
@@ -97,7 +97,7 @@
 (actor* (until (message (inbound (key-event #\q #t _))))
         (assert! (outbound 'stop)))
 
-(actor (during (inbound (touching $id _ _ _))
+(actor (during (inbound (touching $id))
                (on-start (log-info "Touching ~v" id))
                (on-stop (log-info "No longer touching ~v" id))))
 
