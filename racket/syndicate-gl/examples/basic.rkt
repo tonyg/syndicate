@@ -57,7 +57,7 @@
   (react (assert #:when (touching?)
                  (outbound (simple-sprite -10
                                           (pos)
-                                          (+ (y) (* 1/2 h))
+                                          (+ (y) (* 1/2 h) (- (* 1/2 (image-height label))))
                                           (image-width label)
                                           (image-height label)
                                           label)))))
