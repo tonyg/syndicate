@@ -19,6 +19,32 @@
                                    ))
                            (seal `())))))))
 
+(define (draggable-mixin touching? x y)
+  (define (idle)
+    (react (stop-when #:when (touching?)
+                      (message (inbound (mouse-event 'left-down (mouse-state $mx $my _ _ _))))
+                      (dragging (- mx (x)) (- my (y))))))
+
+  (define (dragging dx dy)
+    (react (on (message (inbound (mouse-event 'motion (mouse-state $mx $my _ _ _))))
+               (x (- mx dx))
+               (y (- my dy)))
+           (stop-when (message (inbound (mouse-event 'left-up _))) (idle))
+           (stop-when (message (inbound (mouse-event 'leave _))) (idle))))
+
+  (idle))
+
+(define (draggable-shape name orig-x orig-y z plain-image hover-image)
+  (actor (field [x orig-x] [y orig-y])
+         (define/query-value touching? #f (inbound (touching name _ _ _)) #t)
+         (assert (outbound (simple-sprite #:touchable-id name
+                                          #:touchable-predicate in-unit-circle?
+                                          z (x) (y) 50 50
+                                          (if (touching?)
+                                              hover-image
+                                              plain-image))))
+         (on-start (draggable-mixin touching? x y))))
+
 (define (spawn-player-avatar)
   (local-require 2htdp/planetcute)
   (define CC character-cat-girl)
@@ -31,6 +57,9 @@
          (on (asserted (key-pressed $k)) (keys-down (set-add (keys-down) k)))
          (on (retracted (key-pressed $k)) (keys-down (set-remove (keys-down) k)))
          (define (key->delta k distance) (if (set-member? (keys-down) k) distance 0))
+
+         (define/query-value touching? #f (inbound (touching 'player _ _ _)) #t)
+         (on-start (draggable-mixin touching? x y))
 
          (on (message (inbound (frame-event _ _ $elapsed-ms _)))
              (define-values (old-x old-y) (values (x) (y)))
@@ -57,16 +86,14 @@
 ;; (spawn-frame-counter)
 (spawn-player-avatar)
 
-(actor (define/query-value touching-orange? #f (inbound (touching 'orange _ _ _)) #t)
-       (assert (outbound (simple-sprite #:touchable-id 'orange
-                                        #:touchable-predicate in-unit-circle?
-                                        0 50 50 50 50 (circle 50 "solid"
-                                                              (if (touching-orange?)
-                                                                  "red"
-                                                                  "orange")))))
-       (assert (outbound (simple-sprite #:touchable-id 'green
-                                        #:touchable-predicate in-unit-circle?
-                                        -1 60 60 50 50 (circle 50 "solid" "green")))))
+(draggable-shape 'orange 50 50 0
+                 (circle 50 "solid" "orange")
+                 (circle 50 "solid" "red"))
+
+(draggable-shape 'green 60 60 -1
+                 (circle 50 "solid" "green")
+                 (circle 50 "solid" "cyan"))
+
 (actor* (until (message (inbound (key-event #\q #t _))))
         (assert! (outbound 'stop)))
 
