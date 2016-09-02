@@ -73,8 +73,7 @@
 (define (spawn-frame-counter)
   (actor (field [i empty-image])
          (assert (outbound
-                  (simple-sprite #:touchable-id 'frame-counter
-                                 -10 300 10 (image-width (i)) (image-height (i)) (i))))
+                  (simple-sprite -10 300 10 (image-width (i)) (image-height (i)) (i))))
          (on (message (inbound (frame-event $counter $sim-time-ms _ _)))
              (when (> sim-time-ms 0)
                (define fps (/ counter (/ sim-time-ms 1000.0)))
