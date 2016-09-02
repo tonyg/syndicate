@@ -94,6 +94,9 @@
             (on (message (inbound (? frame-event? _)))
                 (when (thread-dead? user-thread) (user-thread-running? #f))))
 
+     ;; Ground dataspace
+     (actor-view #f '() #t)
+
      (actor #:name 'notification-relay
             (on (message (inbound (? frame-event? _)))
                 (let loop ()
