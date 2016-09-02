@@ -31,6 +31,23 @@
   (define half-scale (* 1/2 scale))
   (+ half-scale (- (* half-scale pos) (* 1/2 extent))))
 
+(define (tooltip touching? x y w h label-string)
+  (define label-text (text label-string 22 "black"))
+  (define label (overlay label-text (empty-scene (+ (image-width label-text) 10)
+                                                 (+ (image-height label-text) 10))))
+  (define (pos)
+    (define v (- (x) (image-width label) 10))
+    (if (negative? v)
+        (+ (x) w 10)
+        v))
+  (react (assert #:when (touching?)
+                 (outbound (simple-sprite -10
+                                          (pos)
+                                          (+ (y) (* 1/2 h) (- (* 1/2 (image-height label))))
+                                          (image-width label)
+                                          (image-height label)
+                                          label)))))
+
 (define (actor-view parent-pid pid is-dataspace?)
   (actor #:name (list 'actor-view pid)
 
@@ -42,14 +59,18 @@
          (define costume (circle (if is-dataspace? 40 20) "solid" color))
          (define extent (make-rectangular (image-width costume) (image-height costume)))
 
+         (define (x) (coord-top (real-part (pos)) (real-part extent) (window-width (win))))
+         (define (y) (coord-top (imag-part (pos)) (imag-part extent) (window-height (win))))
+
+         (define/query-value touching? #f (inbound (touching pid)) #t)
+         (on-start (tooltip touching? x y (real-part extent) (imag-part extent) (format "~a" pid)))
+
          (assert (view-position pid (pos)))
-         (assert (outbound (simple-sprite 0
-                                          (coord-top (real-part (pos))
-                                                     (real-part extent)
-                                                     (window-width (win)))
-                                          (coord-top (imag-part (pos))
-                                                     (imag-part extent)
-                                                     (window-height (win)))
+         (assert (outbound (simple-sprite #:touchable-id pid
+                                          #:touchable-predicate in-unit-circle?
+                                          0
+                                          (x)
+                                          (y)
                                           (real-part extent)
                                           (imag-part extent)
                                           costume)))
