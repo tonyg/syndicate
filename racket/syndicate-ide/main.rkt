@@ -76,6 +76,7 @@
                                     (current-trace-procedures))))
                 (run-ground boot-actions)))))
 
+  (signal-background-activity! #t)
   (parameterize ((current-trace-procedures '()))
     ((2d-dataspace #:label "Syndicate IDE")
 
