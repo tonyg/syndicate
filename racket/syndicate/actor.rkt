@@ -375,9 +375,9 @@
 
 (define-syntax (stop-when stx)
   (syntax-parse stx
-    [(_ E prio:priority script ...)
+    [(_ w:when-pred E prio:priority script ...)
      (analyze-event stx
-                    #'#t
+                    #'w.Pred
                     #'E
                     #t
                     (syntax/loc stx (begin/void-default script ...))
