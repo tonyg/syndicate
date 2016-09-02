@@ -11,6 +11,8 @@
          (except-out (struct-out sprite) sprite)
          (rename-out [sprite <sprite>] [make-sprite sprite])
          (struct-out request-gc)
+         in-unit-circle?
+         in-unit-square?
          simple-sprite
          update-scene
          update-sprites
@@ -86,15 +88,20 @@
 (define (make-sprite z instructions)
   (sprite z (seal instructions)))
 
+(define (in-unit-circle? x y)
+  (<= (+ (sqr (- x 0.5)) (sqr (- y 0.5))) (sqr 0.5)))
+
 (define (in-unit-square? x y)
   (and (<= 0 x 1)
        (<= 0 y 1)))
 
-(define (simple-sprite z x y w h i #:touchable-id [touchable-id #f])
+(define (simple-sprite z x y w h i
+                       #:touchable-id [touchable-id #f]
+                       #:touchable-predicate [touchable-predicate in-unit-square?])
   (make-sprite z `((translate ,x ,y)
                    (scale ,w ,h)
                    ,@(if touchable-id
-                         `((touchable ,touchable-id ,in-unit-square?))
+                         `((touchable ,touchable-id ,touchable-predicate))
                          `())
                    (texture ,i))))
 

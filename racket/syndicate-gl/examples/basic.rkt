@@ -59,11 +59,13 @@
 
 (actor (define/query-value touching-orange? #f (inbound (touching 'orange _ _ _)) #t)
        (assert (outbound (simple-sprite #:touchable-id 'orange
+                                        #:touchable-predicate in-unit-circle?
                                         0 50 50 50 50 (circle 50 "solid"
                                                               (if (touching-orange?)
                                                                   "red"
                                                                   "orange")))))
        (assert (outbound (simple-sprite #:touchable-id 'green
+                                        #:touchable-predicate in-unit-circle?
                                         -1 60 60 50 50 (circle 50 "solid" "green")))))
 (actor* (until (message (inbound (key-event #\q #t _))))
         (assert! (outbound 'stop)))
