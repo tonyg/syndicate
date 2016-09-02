@@ -180,16 +180,13 @@
   (match instr
     [`(rotate ,(? number? deg))
      (values `(glRotated ,deg 0 0 -1) '() '()
-             (compose-transformation (invert-transformation (rotation-transformation deg))
-                                     xform))]
+             (compose-transformation xform (rotation-transformation deg)))]
     [`(scale ,(? number? x) ,(? number? y))
      (values `(glScaled ,x ,y 1) '() '()
-             (compose-transformation (invert-transformation (stretching-transformation x y))
-                                     xform))]
+             (compose-transformation xform (stretching-transformation x y)))]
     [`(translate ,(? number? x) ,(? number? y))
      (values `(glTranslated ,x ,y 0) '() '()
-             (compose-transformation (invert-transformation (translation-transformation x y))
-                                     xform))]
+             (compose-transformation xform (translation-transformation x y)))]
     [`(color ,(? color-number? r) ,(? color-number? g) ,(? color-number? b) ,(? color-number? a))
      (values `(glColor4d ,r ,g ,b ,a) '() '() xform)]
     [`(texture ,i)
@@ -301,7 +298,7 @@
 (define (detect-touch* ci x y state)
   (for/or [(t (in-list (compiled-instructions-touchables ci)))]
     (match-define (touchable id xform contains?) t)
-    (define user-point (transform-point xform (make-rectangular x y)))
+    (define user-point (untransform-point xform (make-rectangular x y)))
     (define ux (real-part user-point))
     (define uy (imag-part user-point))
     (and (contains? ux uy) (touching id ux uy state))))
