@@ -53,8 +53,8 @@
 ;; KeyboardIntegrator and spawn-keyboard-integrator.
 (struct key-pressed (code) #:transparent)
 
-;; Message sent by dataspace. Describes a mouse event. Event is a
-;; sealed mouse-event%.
+;; Message sent by dataspace. Describes a mouse event. State is a
+;; MouseState.
 (struct mouse-event (type state) #:transparent)
 
 ;; Assertion. Indicates that the mouse is in a particular state. See
