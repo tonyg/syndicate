@@ -13,6 +13,7 @@
 
 (require "hierarchy.rkt")
 (require "pretty.rkt")
+(require "store.rkt")
 
 ;; A NotificationType is one of
 ;; -- 'turn-begin
@@ -51,7 +52,7 @@
 
 (struct trace-notification (source sink type detail) #:prefab)
 
-(define current-trace-procedures (make-parameter '()))
+(define current-trace-procedures (make-store #:default-box (box '())))
 
 (define-syntax-rule (notify! src snk typ det)
   (let ((trace-procedures (current-trace-procedures)))
