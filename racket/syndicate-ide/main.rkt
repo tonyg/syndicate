@@ -8,7 +8,9 @@
 (require racket/set)
 (require 2htdp/image)
 
-(require (only-in syndicate seal process-behavior dataspace-handle-event))
+(require (only-in syndicate seal process-behavior process))
+(require (only-in syndicate/dataspace dataspace?))
+(require (only-in syndicate/relay relay))
 (require syndicate/actor)
 (require (only-in syndicate/lang current-ground-dataspace))
 (require syndicate/patch)
@@ -66,6 +68,12 @@
 
          (stop-when (message (trace-notification _ pid 'exit _)))))
 
+(define (process-is-dataspace? p)
+  (match p
+    [(process _name _beh (? dataspace? _)) #t]
+    [(process _name _beh (relay _ _ _ _ _ (process _inner-name _inner-beh (? dataspace? _)))) #t]
+    [_ #f]))
+
 (define ((ide-dataspace) . boot-actions)
   (define from-user-thread-ch (make-async-channel))
 
@@ -96,7 +104,7 @@
                     [(trace-notification _ new-pid 'spawn (list parent-pid p))
                      (actor-view parent-pid
                                  new-pid
-                                 (eq? (process-behavior p) dataspace-handle-event))]
+                                 (process-is-dataspace? p))]
                     [(trace-notification s o 'influence (? patch? p))
                      (for [(source-pid (in-set (extract-patch-pids p)))]
                        (send! (influence (cons source-pid (cdr s)) o)))]
