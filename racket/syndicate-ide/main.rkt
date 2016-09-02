@@ -8,7 +8,7 @@
 (require racket/set)
 (require 2htdp/image)
 
-(require (only-in syndicate seal))
+(require (only-in syndicate seal process-behavior dataspace-handle-event))
 (require syndicate/actor)
 (require (only-in syndicate/lang current-ground-dataspace))
 (require syndicate/patch)
@@ -29,7 +29,7 @@
   (define half-scale (* 1/2 scale))
   (+ half-scale (- (* half-scale pos) (* 1/2 extent))))
 
-(define (actor-view parent-pid pid)
+(define (actor-view parent-pid pid is-dataspace?)
   (actor #:name (list 'actor-view pid)
 
          (field [pos (make-rectangular (random-in-range -1 1) (random-in-range -1 1))])
@@ -37,7 +37,7 @@
          (define/query-value win (window 1 1) (inbound (window $w $h)) (window w h))
 
          (define color (color-by-hash pid))
-         (define costume (circle 20 "solid" color))
+         (define costume (circle (if is-dataspace? 40 20) "solid" color))
          (define extent (make-rectangular (image-width costume) (image-height costume)))
 
          (assert (view-position pid (pos)))
@@ -93,8 +93,10 @@
                   (match n
                     [#f
                      (void)]
-                    [(trace-notification _ new-pid 'spawn (list parent-pid _))
-                     (actor-view parent-pid new-pid)]
+                    [(trace-notification _ new-pid 'spawn (list parent-pid p))
+                     (actor-view parent-pid
+                                 new-pid
+                                 (eq? (process-behavior p) dataspace-handle-event))]
                     [(trace-notification s o 'influence (? patch? p))
                      (for [(source-pid (in-set (extract-patch-pids p)))]
                        (send! (influence (cons source-pid (cdr s)) o)))]
