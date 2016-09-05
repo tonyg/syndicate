@@ -144,6 +144,7 @@
          (match actions
            ['() (await-interrupt #f proc interests background-activity-count)]
            [(cons a actions)
+            (when (attributed-action? a) (set! a (attributed-action-action a)))
             (match a
               [(? patch? p)
                (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]

@@ -90,5 +90,5 @@
   (notify! (current-actor-path-rev) (cons-pid pid) 'event e))
 
 ;; PID PID Event
-(define (trace-causal-influence src-pid snk-pid e)
-  (notify! (cons-pid src-pid) (cons-pid snk-pid) 'influence e))
+(define (trace-causal-influence attribution snk-pid e)
+  (notify! attribution (cons-pid snk-pid) 'influence e))

@@ -52,6 +52,9 @@
     [(patch a d)
      (define p (patch (relay-drop-interests a r) (relay-drop-interests d r)))
      (and (patch-non-empty? p) p)]
+    [(attributed-action inner-ac attribution)
+     (define v (relay-drop-action inner-ac r))
+     (and v (attributed-action v attribution))]
     [_
      ;; TODO: What should be done about spawn? Anything?
      ;; TODO: How about quit-dataspace? Could this be a better place for it than core.rkt?

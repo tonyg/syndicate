@@ -4,7 +4,9 @@
 ;;  - injecting events from the outside world to specific locations in the tree
 
 (provide (struct-out targeted-event)
+         (struct-out attributed-action)
          target-event
+         attribute-action
          current-actor-path-rev
          current-actor-path
          call/extended-actor-path
@@ -17,12 +19,23 @@
 ;; Used to inject events from the outside world.
 (struct targeted-event (relative-path event) #:prefab)
 
+;; A pair of an action and the full (absolute) hierarchical path to
+;; that actor (in reverse order, with the leaf actor ID leftmost).
+(struct attributed-action (action source-path-rev) #:prefab)
+
 ;; If a non-null path is provided, wraps event in a targeted-event
 ;; struct.
 (define (target-event relative-path event)
   (if (pair? relative-path)
       (targeted-event relative-path event)
       event))
+
+;; (U AttributedAction Action 'quit) PID -> AttributedAction
+;; If the action IS NOT ALREADY ATTRIBUTED IT, label it.
+(define (attribute-action action pid)
+  (if (attributed-action? action)
+      action
+      (attributed-action action (cons pid (current-actor-path-rev)))))
 
 ;; Storeof (Listof Any)
 ;; Path to the active leaf in the process tree. The car end is the

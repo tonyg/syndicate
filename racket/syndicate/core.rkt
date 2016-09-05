@@ -69,6 +69,7 @@
 (require "trie.rkt")
 (require "patch.rkt")
 (require "mux.rkt")
+(require "hierarchy.rkt")
 
 ;; Events = Patches ∪ Messages
 (struct message (body) #:prefab)
@@ -150,8 +151,18 @@
     [(transition state actions) (transition state (clean-actions actions))]
     [(? void?) #f]))
 
+(define (action-filter* x)
+  (and (action? x) (not (patch-empty? x))))
+
+(define (action-filter x)
+  (match x
+    [(attributed-action inner attribution)
+     (define r (action-filter* inner))
+     (and r (attributed-action r attribution))]
+    [_ (action-filter* x)]))
+
 (define (clean-actions actions)
-  (filter (lambda (x) (and (action? x) (not (patch-empty? x)))) (flatten actions)))
+  (filter action-filter (flatten actions)))
 
 (define (update-process-state i new-state)
   (struct-copy process i [state new-state]))

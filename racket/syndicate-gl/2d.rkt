@@ -32,6 +32,7 @@
 (require syndicate)
 (require syndicate/trie)
 (require syndicate/ground)
+(require syndicate/hierarchy)
 
 (require "texture.rkt")
 (require "affine.rkt")
@@ -390,7 +391,8 @@
          (process-fullscreen-requests! p)]
         [(message (request-gc))
          (perform-gc-request!)]
-        [(message _) (void)]))
+        [(message _) (void)]
+        [(attributed-action inner-a _) (process-action! inner-a)]))
 
     (define (process-scene-updates! p)
       (define-values (added removed) (patch-project/set/single p scene-projection))
