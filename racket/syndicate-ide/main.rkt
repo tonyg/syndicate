@@ -108,6 +108,7 @@
 
          (stop-when (message (trace-notification _ pid 'exit _)))))
 
+(define 1x1-white-rectangle (rectangle 1 1 "solid" "white"))
 (define (compute-link-line start-pos end-pos width)
   (define delta (- end-pos start-pos))
   (define heading (angle delta))
@@ -119,7 +120,7 @@
                   (imag-part (+ start-pos displacement))
                   (magnitude delta)
                   width
-                  (rectangle 1 1 "solid" "white"))))
+                  1x1-white-rectangle)))
 
 (define (spawn-influence-view-factory)
   (actor #:name 'influence-view-factory
