@@ -199,7 +199,7 @@
     [(process _name _beh (relay _ _ _ _ _ (process _inner-name _inner-beh (? dataspace? _)))) #t]
     [_ #f]))
 
-(define ((ide-dataspace) . boot-actions)
+(define ((ide-dataspace #:exit? [exit? #t]) . boot-actions)
   (define from-user-thread-ch (make-async-channel))
 
   (define user-thread
@@ -211,7 +211,7 @@
 
   (signal-background-activity! #t)
   (with-store ((current-trace-procedures '()))
-    ((2d-dataspace #:label "Syndicate IDE")
+    ((2d-dataspace #:label "Syndicate IDE" #:exit? exit?)
 
      (actor #:name 'user-thread-death-monitor
             (field [user-thread-running? #t])
