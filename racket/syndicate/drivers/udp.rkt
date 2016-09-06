@@ -50,7 +50,8 @@
 ;; -> Action
 ;; Spawns a process acting as a UDP socket factory.
 (define (spawn-udp-driver)
-  (spawn-demand-matcher (observe (udp-packet ? (?! (udp-listener ?)) ?))
+  (spawn-demand-matcher #:name 'udp-driver
+                        (observe (udp-packet ? (?! (udp-listener ?)) ?))
                         (advertise (udp-packet ? (?! (udp-listener ?)) ?))
                         spawn-udp-socket))
 
@@ -76,7 +77,8 @@
     (for-trie ([(udp-multicast-loopback _ $enabled?) (patch-added p)])
       (udp:udp-multicast-set-loopback! socket enabled?)))
 
-  (spawn (lambda (e s)
+  (spawn #:name (list 'udp-socket local-addr)
+         (lambda (e s)
 	   (match e
              [(? patch? p)
               (update-multicast! p)
