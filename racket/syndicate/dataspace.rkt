@@ -223,7 +223,6 @@
             [other (values patch-empty other)]))
         (define-values (new-mux new-pid delta delta-aggregate)
           (mux-add-stream (dataspace-mux w) initial-patch))
-        (trace-action-produced new-pid initial-patch)
         (let* ((w (struct-copy dataspace w
                                [process-table (hash-set (dataspace-process-table w)
                                                         new-pid
@@ -231,6 +230,7 @@
                                                                  behavior
                                                                  initial-state))]))
                (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions)))
+          (trace-action-produced new-pid initial-patch)
           (deliver-patches w new-mux new-pid delta delta-aggregate)))))
 
 (define (deliver-patches w new-mux acting-label delta delta-aggregate)
