@@ -53,10 +53,10 @@
 ;; This min/desired/max split is a bit clunky. Could we have a list of
 ;; preferred TeX-style sizings, ordered most-preferred first? They
 ;; could include information to send back to the box at render time.
-;; For example, the button might offer horizontal sizings
+;; For example, the button might offer sizings
 ;;
-;; (list (sizing 'normal-chrome 10 (fill 1 1) 2)
-;;       (sizing 'no-chrome 6 0 0))
+;; (list (list 'normal-chrome (sizing 10 (fill 1 1) 2) (sizing ...))
+;;       (list 'no-chrome (sizing 6 0 0) (sizing ...)))
 ;;
 ;; ---
 ;;
@@ -105,34 +105,19 @@
       (min a b)
       0))
 
-;; (Nat Nat -> Nat) (Fill Fill -> Fill) -> (Sizing Sizing -> Sizing)
-;;
-;; TODO: for max and min, do we really want fop to be used for both
-;; stretch and shrink?
-;;
-(define ((sizing-binop iop fop) a b)
-  (match-define (sizing ia ta ha) a)
-  (match-define (sizing ib tb hb) b)
-  (sizing (iop ia ib) (fop ta tb) (fop ha hb)))
-
-;; Sizing Sizing -> Sizing
-(define sizing+ (sizing-binop + fill+))
-(define sizing-max (sizing-binop max fill-max))
-(define sizing-min (sizing-binop min fill-min))
-
 ;;---------------------------------------------------------------------------
 
 (define-generics tbox
-  ;; TBox (Option Nat) (Option Nat) -> (Listof (List Sizing Sizing))
+  ;; TBox (Option Nat) (Option Nat) -> (Listof (List Any Sizing Sizing))
   (tbox-sizings tbox maybe-speculative-width maybe-speculative-height)
-  ;; TBox TTY Nat Nat Nat Nat -> Void
-  (tbox-render! tbox tty top left width height))
+  ;; TBox Any TTY Nat Nat Nat Nat -> Void
+  (tbox-render! tbox info tty top left width height))
 
 (struct glue-tbox (horizontal vertical string pen) #:transparent
   #:methods gen:tbox
   [(define (tbox-sizings t w h)
-     (list (list (glue-tbox-horizontal t) (glue-tbox-vertical t))))
-   (define (tbox-render! t tty top left width height)
+     (list (list #f (glue-tbox-horizontal t) (glue-tbox-vertical t))))
+   (define (tbox-render! t _info tty top left width height)
      (define str (fill-tbox-string t))
      (define whole-repeats (quotient width (string-length str)))
      (define fragment (substring str 0 (remainder width (string-length str))))
@@ -148,11 +133,57 @@
         [(null? (cdr xs)) (car xs)]
         [else (drop-n-or-last (- n 1) (cdr xs))]))
 
-(define (layout-horizontal items width height)
+(define (transverse-bound sizings sizing-accessor minus-or-plus max-or-min)
+  (define vals (for/list [(s sizings) #:when (number? (sizing-accessor s))]
+                 (minus-or-plus (sizing-ideal s) (sizing-accessor s))))
+  (values (and (pair? vals) (apply max-or-min vals))
+          (foldl fill-max 0 (filter fill? (map sizing-accessor sizings)))))
+
+(define (transverse-sizing sizings v)
+  (define-values (lb-v lb-f) (transverse-bound sizings sizing-shrink - max))
+  (define-values (ub-v ub-f) (transverse-bound sizings sizing-stretch + min))
+  (define ideal-v (if v
+                      (cond [(and lb-v (> lb-v v)) lb-v]
+                            [(and ub-v (< ub-v v)) ub-v]
+                            [else v])
+                      (or lb-v 0)))
+  (sizing ideal-v
+          (if ub-v (- ub-v ideal-v) ub-f)
+          (if lb-v (- ideal-v lb-v) lb-f)))
+
+(define (parallel-sizing sizings)
+  (sizing (foldl + 0 (map sizing-ideal sizings))
+          (foldl fill+ 0 (map sizing-stretch sizings))
+          (foldl fill+ 0 (map sizing-shrink sizings))))
+
+(define (sizing-contains? s v)
+  (match-define (sizing x x+ x-) s)
+  (cond [(>= v x) (if (number? x+) (<= v (+ x x+)) #t)]
+        [(<= v x) (if (number? x-) (>= v (- x x-)) #t)]))
+
+(define ((acceptable-choice? width height) candidate)
+  (match-define (list _info w h) candidate)
+  (and (sizing-contains? w width)
+       (sizing-contains? h height)))
+
+(define (layout-adjacent vertical? items width height)
   (define item-count (length items))
-  (define size-preferences (map (lambda (i) (tbox-sizings i #f #f)) items))
-  (let try-nth-choices ((nth-choice 0))
-    (define candidates (map (nth-or-last nth-choice) size-preferences))
-    (define aggregate-h (apply sizing+ (map car candidates)))
-    ...
-    
+  (define size-preferences (map (if vertical?
+                                    (lambda (i) (tbox-sizings i width #f))
+                                    (lambda (i) (tbox-sizings i #f height)))
+                                items))
+  (define prefs-depth (apply max (map length size-preferences)))
+  (define choices
+    (for/list [(nth-choice (in-range prefs-depth))]
+      (define candidates (map (nth-or-last nth-choice) size-preferences))
+      (if vertical?
+          (list (map car candidates)
+                (transverse-sizing (map cadr candidates) width)
+                (parallel-sizing (map caddr candidates)))
+          (list (map car candidates)
+                (parallel-sizing (map cadr candidates))
+                (transverse-sizing (map caddr candidates) height)))))
+  (define acceptable-choices (filter (acceptable-choice? width height) choices))
+  (if (null? acceptable-choices)
+      choices
+      acceptable-choices))
