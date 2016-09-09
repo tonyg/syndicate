@@ -41,19 +41,22 @@
            (on (message (inbound (tcp-channel them us $bs)))
                (send! (says user (string-trim (bytes->string/utf-8 bs)))))))
 
-  (dataspace (define us (tcp-listener 5999))
+  (dataspace #:name 'chat-dataspace
+             (define us (tcp-listener 5999))
              (forever (assert (outbound (advertise (observe (tcp-channel _ us _)))))
                       (on (asserted (inbound (advertise (tcp-channel $them us _))))
                           (spawn-session them us)))))
 
 (let ((dst (udp-listener 6667)))
-  (actor (on (message (udp-packet $src dst $body))
+  (actor #:name 'udp-echo-program
+         (on (message (udp-packet $src dst $body))
              (log-info "Got packet from ~v: ~v" src body)
              (send! (udp-packet dst src (string->bytes/utf-8 (format "You said: ~a" body)))))))
 
 (let ()
-  (dataspace
-   (actor (field [counter 0])
+  (dataspace #:name 'webserver-dataspace
+   (actor #:name 'webserver-counter
+          (field [counter 0])
           (on (message 'bump)
               (send! `(counter ,(counter)))
               (counter (+ (counter) 1))))
@@ -61,6 +64,7 @@
    (forever (define us (tcp-listener 80))
             (assert (outbound (advertise (observe (tcp-channel _ us _)))))
             (during/actor (inbound (advertise (tcp-channel ($ them (tcp-address _ _)) us _)))
+                          #:name (list 'webserver-session them)
                           (log-info "Got connection from ~v" them)
                           (field [done? #f])
                           (stop-when (rising-edge (done?)))
