@@ -66,7 +66,7 @@
         ;;           (pretty-bytes (ethernet-packet-destination p))
         ;;           (number->string (ethernet-packet-ethertype p) 16))
         ;; (log-info "~a" (dump-bytes->string (ethernet-packet-body p)))
-        (raw-interface-write h (encode-ethernet-packet p)))))))
+        (raw-interface-write h (encode-ethernet-packet p))))))
 
 (define (interface-packet-read-loop interface h control-ch)
   (define (blocked)
