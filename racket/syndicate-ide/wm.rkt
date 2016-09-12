@@ -284,9 +284,10 @@
   (define-values (_last-pos entries-rev)
     (for/fold [(pos (if vertical? top left)) (entries-rev '())]
               [(entry candidates) (item items) (actual-size actual-sizes)]
+      (define npos (+ pos actual-size))
       (define rpos (round pos))
-      (define size (- (round (+ pos actual-size)) rpos))
-      (values (+ pos actual-size)
+      (define size (- (round npos) rpos))
+      (values npos
               (cons (if vertical?
                         (tbox-layout item (layout-option-info entry) rpos left width size)
                         (tbox-layout item (layout-option-info entry) top rpos size height))
@@ -355,14 +356,16 @@
 (struct pretty-print-tbox (value mode) #:transparent
   #:methods gen:tbox
   [(define (tbox-layout-options t sw sh)
-     (define width-guess (sizing-ideal sw))
-     (define height-guess (length (pretty-print-tbox-lines t (floor width-guess))))
-     (list (layout-option #f sw (sizing-adjust-ideal sh height-guess))))
+     (let loop ((width-guess (sizing-ideal sw)))
+       (define height-guess (length (pretty-print-tbox-lines t (floor width-guess))))
+       (if (> height-guess (sizing-ideal sh))
+           (loop (if (< width-guess 10) 10 (* width-guess 9/8)))
+           (list (layout-option #f (sizing width-guess 0 width-guess) sh)))))
    (define (tbox-render! t tty lo)
-     (tty-goto tty (layout-top lo) (layout-left lo))
-     (for [(line (pretty-print-tbox-lines t (floor (layout-width lo))))]
-       (tty-display tty line)
-       (tty-goto tty (+ (tty-cursor-row tty) 1) (layout-left lo))))])
+     (for [(line (pretty-print-tbox-lines t (floor (layout-width lo))))
+           (row (in-range (layout-top lo) (+ (layout-top lo) (layout-height lo))))]
+       (tty-goto tty row (layout-left lo))
+       (tty-display tty line)))])
 
 (define (pretty-print-tbox-contents t width)
   (pretty-format (pretty-print-tbox-value t)
@@ -458,8 +461,7 @@
                                                            (sizing h 0 h)))
                       (define lo (tbox-layout widget (layout-option-info (car layouts)) 0 0 w h))
                       (tbox-render! widget tty lo))
-                   'write)
-                  (vfil))
+                   'write))
             ))
 
     (display (string-append (ansi:set-mode ansi:x11-focus-event-mode)
@@ -477,9 +479,12 @@
                                    (terminal-output tty))
                           (flush-output (terminal-output tty))))
 
-    (tbox-render-toplevel! toplevel-widget tty)
-    (tty-goto tty 0 0)
+    (define (reset-and-rerender)
+      (tty-reset tty)
+      (tbox-render-toplevel! toplevel-widget tty)
+      (tty-goto tty 0 0))
 
+    (reset-and-rerender)
     (let loop ()
       (tty-flush tty)
       (tbox-render-toplevel! toplevel-widget tty)
@@ -488,6 +493,9 @@
                         (lambda (k)
                           (match k
                             [(key #\q (== (set))) (void)]
+                            [(key #\L (== (set 'control)))
+                             (reset-and-rerender)
+                             (loop)]
                             [_
                              (tty-clear-to-eol tty)
                              (tty-display tty (format "~v" k))
