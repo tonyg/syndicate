@@ -55,8 +55,8 @@
 ;; could include information to send back to the box at render time.
 ;; For example, the button might offer sizings
 ;;
-;; (list (list 'normal-chrome (sizing 10 (fill 1 1) 2) (sizing ...))
-;;       (list 'no-chrome (sizing 6 0 0) (sizing ...)))
+;; (list (layout-option 'normal-chrome (sizing 10 (fill 1 1) 2) (sizing ...))
+;;       (layout-option 'no-chrome (sizing 6 0 0) (sizing ...)))
 ;;
 ;; ---
 ;;
@@ -76,6 +76,7 @@
 
 (require racket/generic)
 (require racket/match)
+(require (only-in racket/list flatten))
 
 (require "display.rkt")
 
@@ -88,6 +89,9 @@
 
 ;; A Sizing is a (sizing Nat Fill Fill)
 (struct sizing (ideal stretch shrink) #:transparent)
+
+;; A LayoutOption is a (layout-option Any Sizing Sizing)
+(struct layout-option (info horizontal-sizing vertical-sizing) #:transparent)
 
 ;; (Nat Nat -> Nat) -> (Fill Fill -> Fill)
 (define ((fill-binop op) a b)
@@ -111,15 +115,15 @@
 ;;---------------------------------------------------------------------------
 
 (define-generics tbox
-  ;; TBox (Option Nat) (Option Nat) -> (Listof (List Any Sizing Sizing))
-  (tbox-sizings tbox maybe-speculative-width maybe-speculative-height)
+  ;; TBox Sizing Sizing -> (Listof LayoutOption)
+  (tbox-sizings tbox h-sizing v-sizing)
   ;; TBox Any TTY Nat Nat Nat Nat -> Void
   (tbox-render! tbox info tty top left width height))
 
 (struct glue-tbox (horizontal vertical string pen) #:transparent
   #:methods gen:tbox
   [(define (tbox-sizings t w h)
-     (list (list #f (glue-tbox-horizontal t) (glue-tbox-vertical t))))
+     (list (layout-option #f (glue-tbox-horizontal t) (glue-tbox-vertical t))))
    (define (tbox-render! t _info tty top left width height)
      (define str (glue-tbox-string t))
      (define whole-repeats (quotient width (string-length str)))
@@ -143,7 +147,8 @@
   (values (and (pair? vals) (apply max-or-min vals))
           (foldl fill-max 0 (filter fill? (map sizing-accessor sizings)))))
 
-(define (transverse-sizing sizings v)
+(define (transverse-sizing sizings sv)
+  (match-define (sizing v _ _) sv)
   (define-values (lb-v lb-f) (transverse-bound sizings sizing-shrink - max))
   (define-values (ub-v ub-f) (transverse-bound sizings sizing-stretch + min))
   (define ideal-v (if v
@@ -165,47 +170,187 @@
   (cond [(>= v x) (if (number? x+) (<= v (+ x x+)) #t)]
         [(<= v x) (if (number? x-) (>= v (- x x-)) #t)]))
 
-(define ((acceptable-choice? width height) candidate)
-  (match-define (list _info w h) candidate)
-  (and (sizing-contains? w width)
-       (sizing-contains? h height)))
+(define (sizing-min s)
+  (match (sizing-shrink s)
+    [(? number? n) (- (sizing-ideal s) n)]
+    [(? fill?) -inf.0]))
 
-(define (layout-adjacent vertical? items width height)
+(define (sizing-max s)
+  (match (sizing-stretch s)
+    [(? number? n) (+ (sizing-ideal s) n)]
+    [(? fill?) +inf.0]))
+
+(define (sizing-overlap? x y)
+  ;; |-----|
+  ;;    |-----|
+  ;;
+  ;; |--------|
+  ;;    |--|
+  ;;
+  ;; |--|
+  ;;       |--|
+  ;;
+  (define largest-min (max (sizing-min x) (sizing-min y)))
+  (define smallest-max (min (sizing-max x) (sizing-max y)))
+  (< largest-min smallest-max))
+
+(define (fill-scale f scale)
+  (if (number? f)
+      (* f scale)
+      f))
+
+(define (sizing-scale s scale)
+  (match-define (sizing x x+ x-) s)
+  (sizing (* x scale) (fill-scale x+ scale) (fill-scale x- scale)))
+
+(define ((acceptable-choice? width height) candidate)
+  (match-define (layout-option _info w h) candidate)
+  (and (sizing-overlap? w width)
+       (sizing-overlap? h height)))
+
+(define (select-adjacent-layout vertical? items sw sh)
   (define item-count (length items))
+  (define fair-width (if (zero? item-count) sw (sizing-scale sw (/ item-count))))
+  (define fair-height (if (zero? item-count) sh (sizing-scale sh (/ item-count))))
   (define size-preferences (map (if vertical?
-                                    (lambda (i) (tbox-sizings i width #f))
-                                    (lambda (i) (tbox-sizings i #f height)))
+                                    (lambda (i) (tbox-sizings i sw fair-height))
+                                    (lambda (i) (tbox-sizings i fair-width sh)))
                                 items))
   (define prefs-depth (apply max (map length size-preferences)))
   (define choices
     (for/list [(nth-choice (in-range prefs-depth))]
       (define candidates (map (nth-or-last nth-choice) size-preferences))
       (if vertical?
-          (list (map car candidates)
-                (transverse-sizing (map cadr candidates) width)
-                (parallel-sizing (map caddr candidates)))
-          (list (map car candidates)
-                (parallel-sizing (map cadr candidates))
-                (transverse-sizing (map caddr candidates) height)))))
-  (define acceptable-choices (filter (acceptable-choice? width height) choices))
+          (layout-option candidates
+                         (transverse-sizing (map layout-option-horizontal-sizing candidates) sw)
+                         (parallel-sizing (map layout-option-vertical-sizing candidates)))
+          (layout-option candidates
+                         (parallel-sizing (map layout-option-horizontal-sizing candidates))
+                         (transverse-sizing (map layout-option-vertical-sizing candidates) sh)))))
+  (define acceptable-choices (filter (acceptable-choice? sw sh) choices))
   (if (null? acceptable-choices)
       choices
       acceptable-choices))
 
+(define (compute-concrete-adjacent-sizes sizings actual-bound)
+  (define ideal-total (foldl + 0 (map sizing-ideal sizings)))
+  (define-values (available-slop sizing-give apply-give)
+    (if (<= ideal-total actual-bound)
+        (values (- actual-bound ideal-total) sizing-stretch +)
+        (values (- ideal-total actual-bound) sizing-shrink -)))
+  (define total-give (foldl fill+ 0 (map sizing-give sizings)))
+  (if (number? total-give)
+      (let ((scale (if (zero? total-give) 0 (/ available-slop total-give))))
+        (map (lambda (s)
+               ;; numeric total-give ⇒ no fills for any give in the list
+               (apply-give (sizing-ideal s) (* (sizing-give s) scale)))
+             sizings))
+      (let* ((weight (fill-weight total-give))
+             (rank (fill-rank total-give))
+             (scale (if (zero? weight) 0 (/ available-slop weight))))
+        (map (lambda (s)
+               (match (sizing-give s)
+                 [(fill w (== rank)) (apply-give (sizing-ideal s) (* w scale))]
+                 [_ (sizing-ideal s)]))
+             sizings))))
+
+(define (compute-concrete-adjacent-layout vertical? candidates top left width height)
+  (define actual-sizes
+    (if vertical?
+        (compute-concrete-adjacent-sizes (map layout-option-vertical-sizing candidates) height)
+        (compute-concrete-adjacent-sizes (map layout-option-horizontal-sizing candidates) width)))
+  (define-values (_last-pos entries-rev)
+    (for/fold [(pos (if vertical? top left)) (entries-rev '())]
+              [(entry candidates) (actual-size actual-sizes)]
+      (define size (- (round (+ pos actual-size)) pos))
+      (values (+ pos size)
+              (cons (if vertical?
+                        (list (layout-option-info entry) pos left width size)
+                        (list (layout-option-info entry) top pos size height))
+                    entries-rev))))
+  (reverse entries-rev))
+
+(struct adjacent-tbox (vertical? items) #:transparent
+  #:methods gen:tbox
+  [(define/generic render! tbox-render!)
+   (define (tbox-sizings t w h)
+     (select-adjacent-layout (adjacent-tbox-vertical? t)
+                             (adjacent-tbox-items t)
+                             w
+                             h))
+   (define (tbox-render! t candidates tty top left width height)
+     (for [(layout (compute-concrete-adjacent-layout (adjacent-tbox-vertical? t)
+                                                     candidates
+                                                     top
+                                                     left
+                                                     width
+                                                     height))
+           (item (adjacent-tbox-items t))]
+       (match-define (list info t l w h) layout)
+       (render! item info tty t l w h)))])
+
+;;---------------------------------------------------------------------------
+
+(define (fill* w h rank)
+  (glue-tbox (sizing w (fill 1 rank) 0)
+             (sizing h (fill 1 rank) 0)
+             " "
+             'default))
+
+(define (hfil [w 0]) (fill* w 0 0))
+(define (hfill [w 0]) (fill* w 0 1))
+(define (hfilll [w 0]) (fill* w 0 2))
+
+(define (vfil [h 0]) (fill* 0 h 0))
+(define (vfill [h 0]) (fill* 0 h 1))
+(define (vfilll [h 0]) (fill* 0 h 2))
+
+(define (hbox . items) (adjacent-tbox #f (flatten items)))
+(define (vbox . items) (adjacent-tbox #t (flatten items)))
+
+(define (hpad item) (hbox (hfil) item (hfil)))
+(define (vpad item) (vbox (vfil) item (vfil)))
+(define (pad item) (vpad (hpad item)))
+
+;;---------------------------------------------------------------------------
+
 (module+ main
+  (require racket/pretty)
   (require racket/set)
   (require "display-terminal.rkt")
 
-  (let ()
-    (define tty (default-tty))
+  (define tty (default-tty))
 
+  (with-handlers [(values
+                   (lambda (e)
+                     (tty-shutdown!! tty)
+                     (raise e)))]
     (tty-display tty "Ho ho ho\r\n")
 
-    (define R (glue-tbox 10 5 ":" (pen color-white color-red #f #f)))
-    (define G (glue-tbox 10 5 ":" (pen color-white color-green #f #f)))
-    (define B (glue-tbox 10 5 ":" (pen color-white color-blue #f #f)))
+    (define R (glue-tbox (sizing 10 0 0) (sizing 5 0 0) ":" (pen color-white color-red #f #f)))
+    (define G (glue-tbox (sizing 10 0 0) (sizing 5 0 0) ":" (pen color-white color-green #f #f)))
+    (define B (glue-tbox (sizing 10 0 0) (sizing 5 0 0) ":" (pen color-white color-blue #f #f)))
 
-    (tbox-render! B 'uhhh tty 0 0 (tty-columns tty) (tty-rows tty))
+    (define xpad values)
+    (let ((widget (hbox (vbox (xpad R)
+                              (pad G)
+                              (xpad B))
+                        (hfill)
+                        (vbox R (vfil))
+                        (hfill)
+                        (vbox (vfil) G)
+                        (hfill)
+                        (pad B))))
+      (define (s v) (sizing v (fill 1 0) v))
+      (define layouts (tbox-sizings widget (s (tty-columns tty)) (s (tty-rows tty))))
+      (tbox-render! widget
+                    (layout-option-info (car layouts))
+                    tty
+                    0
+                    0
+                    (tty-columns tty)
+                    (tty-rows tty)))
+
     (tty-goto tty 0 0)
 
     (let loop ()

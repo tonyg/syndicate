@@ -2,6 +2,7 @@
 
 (provide gen:tty
          tty?
+         tty-shutdown!!
          tty-pending-screen
          set-tty-pending-screen!
          tty-rows
@@ -68,6 +69,7 @@
 ;; A Color is a Nat. TODO: better color abstraction.
 
 (define-generics tty
+  (tty-shutdown!! tty)
   (tty-pending-screen tty)
   (set-tty-pending-screen! tty s)
   (tty-reset tty)

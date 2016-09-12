@@ -17,7 +17,8 @@
                   [pending-title #:mutable] ;; (Option String)
                   )
   #:methods gen:tty
-  [(define (tty-pending-screen t) (terminal-pending-screen t))
+  [(define (tty-shutdown!! t) (terminal-shutdown t))
+   (define (tty-pending-screen t) (terminal-pending-screen t))
    (define (set-tty-pending-screen! t s) (set-terminal-pending-screen! t s))
    (define (tty-reset t) (reset t))
    (define (tty-flush t) (terminal-flush t))
@@ -48,11 +49,15 @@
     (reset *stdin-tty*)
     (plumber-add-flush! (current-plumber)
                         (lambda (h)
-                          (output *stdin-tty*
-                                  (ansi:select-graphic-rendition ansi:style-normal)
-                                  (ansi:goto (tty-rows *stdin-tty*) 1))
-                          (flush *stdin-tty*))))
+                          (terminal-shutdown *stdin-tty*))))
   *stdin-tty*)
+
+(define (terminal-shutdown t)
+  (output t
+          (ansi:select-graphic-rendition ansi:style-normal)
+          (ansi:goto (tty-rows t) 1))
+  (flush t)
+  (ansi:tty-restore!))
 
 (define (collect-position-report tty)
   (let loop ()
