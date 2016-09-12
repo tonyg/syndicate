@@ -14,6 +14,9 @@
 ;;   http://icie.cs.byu.edu/cs456/UIBook/05-Layout.pdf
 ;;   http://doc.qt.io/qt-5/qtwidgets-tutorials-widgets-nestedlayouts-example.html
 ;;   http://www.math.utah.edu/~beebe/reports/2009/boxes.pdf
+;;
+;; This is very useful:
+;;   http://tex.stackexchange.com/questions/64756/what-is-glue-stretching
 
 ;; EXAMPLES for developing intuition:
 ;;  1. a button
@@ -76,7 +79,9 @@
 
 (require racket/generic)
 (require racket/match)
+(require racket/pretty)
 (require (only-in racket/list flatten))
+(require (only-in racket/string string-split))
 (require (prefix-in ansi: ansi))
 
 (require "display.rkt")
@@ -88,11 +93,17 @@
 ;; - a (fill Nat Nat), a potentially infinite amount of space
 (struct fill (weight rank) #:transparent)
 
+;; A very weak fill.
+(define weak-fill (fill 1 -1))
+
 ;; A Sizing is a (sizing Nat Fill Fill)
 (struct sizing (ideal stretch shrink) #:transparent)
 
 ;; A LayoutOption is a (layout-option Any Sizing Sizing)
 (struct layout-option (info horizontal-sizing vertical-sizing) #:transparent)
+
+;; A Layout is a (layout Any Nat Nat Nat Nat)
+(struct layout (info top left width height) #:transparent)
 
 ;; (Nat Nat -> Nat) -> (Fill Fill -> Fill)
 (define ((fill-binop op) a b)
@@ -117,15 +128,24 @@
 
 (define-generics tbox
   ;; TBox Sizing Sizing -> (Listof LayoutOption)
-  (tbox-sizings tbox h-sizing v-sizing)
-  ;; TBox Any TTY Nat Nat Nat Nat -> Void
-  (tbox-render! tbox info tty top left width height))
+  (tbox-layout-options tbox h-sizing v-sizing)
+  ;; TBox Any Nat Nat Nat Nat -> Layout
+  (tbox-layout tbox info top left width height)
+  ;; TBox TTY Layout -> Void
+  (tbox-render! tbox tty layout)
+  #:fallbacks [(define (tbox-layout-options t sw sh)
+                 (list (layout-option #f
+                                      (sizing (sizing-ideal sw) 0 0)
+                                      (sizing (sizing-ideal sh) 0 0))))
+               (define (tbox-layout tbox info top left width height)
+                 (layout info top left width height))])
 
 (struct glue-tbox (horizontal vertical string pen) #:transparent
   #:methods gen:tbox
-  [(define (tbox-sizings t w h)
+  [(define (tbox-layout-options t w h)
      (list (layout-option #f (glue-tbox-horizontal t) (glue-tbox-vertical t))))
-   (define (tbox-render! t _info tty top left width height)
+   (define (tbox-render! t tty lo)
+     (match-define (layout _ top left width height) lo)
      (define str (glue-tbox-string t))
      (define whole-repeats (quotient width (string-length str)))
      (define fragment (substring str 0 (remainder width (string-length str))))
@@ -210,13 +230,13 @@
   (and (sizing-overlap? w width)
        (sizing-overlap? h height)))
 
-(define (select-adjacent-layout vertical? items sw sh)
+(define (adjacent-layout-options vertical? items sw sh)
   (define item-count (length items))
   (define fair-width (if (zero? item-count) sw (sizing-scale sw (/ item-count))))
   (define fair-height (if (zero? item-count) sh (sizing-scale sh (/ item-count))))
   (define size-preferences (map (if vertical?
-                                    (lambda (i) (tbox-sizings i sw fair-height))
-                                    (lambda (i) (tbox-sizings i fair-width sh)))
+                                    (lambda (i) (tbox-layout-options i sw fair-height))
+                                    (lambda (i) (tbox-layout-options i fair-width sh)))
                                 items))
   (define prefs-depth (apply max (map length size-preferences)))
   (define choices
@@ -256,40 +276,43 @@
                  [_ (sizing-ideal s)]))
              sizings))))
 
-(define (compute-concrete-adjacent-layout vertical? candidates top left width height)
+(define (compute-concrete-adjacent-layout vertical? items candidates top left width height)
   (define actual-sizes
     (if vertical?
         (compute-concrete-adjacent-sizes (map layout-option-vertical-sizing candidates) height)
         (compute-concrete-adjacent-sizes (map layout-option-horizontal-sizing candidates) width)))
   (define-values (_last-pos entries-rev)
     (for/fold [(pos (if vertical? top left)) (entries-rev '())]
-              [(entry candidates) (actual-size actual-sizes)]
-      (define size (- (round (+ pos actual-size)) pos))
-      (values (+ pos size)
+              [(entry candidates) (item items) (actual-size actual-sizes)]
+      (define rpos (round pos))
+      (define size (- (round (+ pos actual-size)) rpos))
+      (values (+ pos actual-size)
               (cons (if vertical?
-                        (list (layout-option-info entry) pos left width size)
-                        (list (layout-option-info entry) top pos size height))
+                        (tbox-layout item (layout-option-info entry) rpos left width size)
+                        (tbox-layout item (layout-option-info entry) top rpos size height))
                     entries-rev))))
   (reverse entries-rev))
 
 (struct adjacent-tbox (vertical? items) #:transparent
   #:methods gen:tbox
   [(define/generic render! tbox-render!)
-   (define (tbox-sizings t w h)
-     (select-adjacent-layout (adjacent-tbox-vertical? t)
-                             (adjacent-tbox-items t)
-                             w
-                             h))
-   (define (tbox-render! t candidates tty top left width height)
-     (for [(layout (compute-concrete-adjacent-layout (adjacent-tbox-vertical? t)
-                                                     candidates
-                                                     top
-                                                     left
-                                                     width
-                                                     height))
-           (item (adjacent-tbox-items t))]
-       (match-define (list info t l w h) layout)
-       (render! item info tty t l w h)))])
+   (define (tbox-layout-options t w h)
+     (adjacent-layout-options (adjacent-tbox-vertical? t)
+                              (adjacent-tbox-items t)
+                              w
+                              h))
+   (define (tbox-layout t candidates top left width height)
+     (layout (compute-concrete-adjacent-layout (adjacent-tbox-vertical? t)
+                                               (adjacent-tbox-items t)
+                                               candidates
+                                               top
+                                               left
+                                               width
+                                               height)
+             top left width height))
+   (define (tbox-render! t tty lo)
+     (for [(item-lo (layout-info lo)) (item (adjacent-tbox-items t))]
+       (render! item tty item-lo)))])
 
 (define (fill-weaken f w r)
   (if (fill? f)
@@ -308,17 +331,51 @@
 
 (struct weaken-fills (item weight rank) #:transparent
   #:methods gen:tbox
-  [(define/generic sizings tbox-sizings)
+  [(define/generic layout-options tbox-layout-options)
+   (define/generic inner-layout tbox-layout)
    (define/generic render! tbox-render!)
-   (define (tbox-sizings t sw sh)
+   (define (tbox-layout-options t sw sh)
      (map (match-lambda
             [(layout-option info w h)
              (layout-option info
                             (sizing-weaken-fills w (weaken-fills-weight t) (weaken-fills-rank t))
                             (sizing-weaken-fills h (weaken-fills-weight t) (weaken-fills-rank t)))])
-          (sizings (weaken-fills-item t) sw sh)))
-   (define (tbox-render! t info tty top left width height)
-     (render! (weaken-fills-item t) info tty top left width height))])
+          (layout-options (weaken-fills-item t) sw sh)))
+   (define (tbox-layout t info top left width height)
+     (inner-layout (weaken-fills-item t) info top left width height))
+   (define (tbox-render! t tty lo)
+     (render! (weaken-fills-item t) tty lo))])
+
+(define (sizing-adjust-ideal s i)
+  (match-define (sizing x x+ x-) s)
+  (sizing i
+          (if (fill? x+) x+ (+ x+ (- x i)))
+          (if (fill? x-) x- (- x- (- x i)))))
+
+(struct pretty-print-tbox (value mode) #:transparent
+  #:methods gen:tbox
+  [(define (tbox-layout-options t sw sh)
+     (define width-guess (sizing-ideal sw))
+     (define height-guess (length (pretty-print-tbox-lines t (floor width-guess))))
+     (list (layout-option #f sw (sizing-adjust-ideal sh height-guess))))
+   (define (tbox-render! t tty lo)
+     (tty-goto tty (layout-top lo) (layout-left lo))
+     (for [(line (pretty-print-tbox-lines t (floor (layout-width lo))))]
+       (tty-display tty line)
+       (tty-goto tty (+ (tty-cursor-row tty) 1) (layout-left lo))))])
+
+(define (pretty-print-tbox-contents t width)
+  (pretty-format (pretty-print-tbox-value t)
+                 width
+                 #:mode (pretty-print-tbox-mode t)))
+
+(define (pretty-print-tbox-lines t width)
+  (reverse
+   (for/fold [(lines '())] [(line (string-split (pretty-print-tbox-contents t width) "\n"))]
+     (let loop ((lines lines) (line line))
+       (if (> (string-length line) width)
+           (loop (cons (substring line 0 width) lines) (substring line width))
+           (cons line lines))))))
 
 ;;---------------------------------------------------------------------------
 
@@ -361,15 +418,24 @@
                      (raise e)))]
     (tty-display tty "Ho ho ho\r\n")
 
-    (define R (glue-tbox (sizing 10 (fill 1 0) 0) (sizing 5 0 0) ":" (pen color-white color-red #f #f)))
-    (define G (glue-tbox (sizing 10 (fill 1 0) 0) (sizing 5 0 0) ":" (pen color-white color-green #f #f)))
-    (define B (glue-tbox (sizing 10 (fill 1 0) 0) (sizing 5 0 0) ":" (pen color-white color-blue #f #f)))
+    (define (colored-box bgcolor)
+      (glue-tbox (sizing 10 (fill 1 0) 0)
+                 (sizing 5 0 0)
+                 ":"
+                 (pen color-white bgcolor #f #f)))
+
+    (define R (colored-box color-red))
+    (define G (colored-box color-green))
+    (define B (colored-box color-blue))
 
     (define (tbox-render-toplevel! widget tty)
       (define w (tty-columns tty))
       (define h (tty-rows tty))
-      (define layouts (tbox-sizings widget (sizing w (fill 1 0) w) (sizing h (fill 1 0) h)))
-      (tbox-render! widget (layout-option-info (car layouts)) tty 0 0 w h))
+      (define layouts (tbox-layout-options widget
+                                           (sizing w 0 w)
+                                           (sizing h 0 h)))
+      (define lo (tbox-layout widget (layout-option-info (car layouts)) 0 0 w h))
+      (tbox-render! widget tty lo))
 
     (define xpad values)
 
@@ -382,11 +448,19 @@
             ;; (hfill)
             (vbox (vfil) G)
             ;; (hfill)
-            (weaken (pad B))
+            (vbox (weaken (pad B))
+                  (pretty-print-tbox
+                   `(define (tbox-render-toplevel! widget tty)
+                      (define w (tty-columns tty))
+                      (define h (tty-rows tty))
+                      (define layouts (tbox-layout-options widget
+                                                           (sizing w 0 w)
+                                                           (sizing h 0 h)))
+                      (define lo (tbox-layout widget (layout-option-info (car layouts)) 0 0 w h))
+                      (tbox-render! widget tty lo))
+                   'write)
+                  (vfil))
             ))
-
-    (tbox-render-toplevel! toplevel-widget tty)
-    (tty-goto tty 0 0)
 
     (display (string-append (ansi:set-mode ansi:x11-focus-event-mode)
                             (ansi:set-mode ansi:x11-any-event-mouse-tracking-mode)
@@ -403,8 +477,13 @@
                                    (terminal-output tty))
                           (flush-output (terminal-output tty))))
 
+    (tbox-render-toplevel! toplevel-widget tty)
+    (tty-goto tty 0 0)
+
     (let loop ()
       (tty-flush tty)
+      (tbox-render-toplevel! toplevel-widget tty)
+      (tty-goto tty 0 0)
       (sync (handle-evt (tty-next-key-evt tty)
                         (lambda (k)
                           (match k
@@ -417,7 +496,7 @@
 
     ;; (tty-shutdown!! tty)
     ;; (pretty-print toplevel-widget)
-    ;; (pretty-print (tbox-sizings toplevel-widget
-    ;;                             (sizing 80 (fill 1 0) 80)
-    ;;                             (sizing 24 (fill 1 0) 24)))
+    ;; (pretty-print (tbox-layout-options toplevel-widget
+    ;;                                    (sizing 80 (fill 1 0) 80)
+    ;;                                    (sizing 24 (fill 1 0) 24)))
     ))
