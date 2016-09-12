@@ -1,6 +1,8 @@
 #lang racket/base
 ;; Implicitly provides a factory via display.rkt's `register-tty-backend!`.
 
+(provide (struct-out terminal))
+
 (require racket/set)
 (require racket/match)
 (require (only-in racket/vector vector-copy))

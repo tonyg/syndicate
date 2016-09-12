@@ -77,6 +77,7 @@
 (require racket/generic)
 (require racket/match)
 (require (only-in racket/list flatten))
+(require (prefix-in ansi: ansi))
 
 (require "display.rkt")
 
@@ -386,6 +387,21 @@
 
     (tbox-render-toplevel! toplevel-widget tty)
     (tty-goto tty 0 0)
+
+    (display (string-append (ansi:set-mode ansi:x11-focus-event-mode)
+                            (ansi:set-mode ansi:x11-any-event-mouse-tracking-mode)
+                            (ansi:set-mode ansi:x11-extended-mouse-tracking-mode))
+             (terminal-output tty))
+    (flush-output (terminal-output tty))
+
+    (plumber-add-flush! (current-plumber)
+                        (lambda (_handle)
+                          (display (string-append
+                                    (ansi:reset-mode ansi:x11-focus-event-mode)
+                                    (ansi:reset-mode ansi:x11-any-event-mouse-tracking-mode)
+                                    (ansi:reset-mode ansi:x11-extended-mouse-tracking-mode))
+                                   (terminal-output tty))
+                          (flush-output (terminal-output tty))))
 
     (let loop ()
       (tty-flush tty)
