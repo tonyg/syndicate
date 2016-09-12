@@ -55,7 +55,8 @@
 (define (terminal-shutdown t)
   (output t
           (ansi:select-graphic-rendition ansi:style-normal)
-          (ansi:goto (tty-rows t) 1))
+          (ansi:goto (tty-rows t) 1)
+          "\n")
   (flush t)
   (ansi:tty-restore!))
 
