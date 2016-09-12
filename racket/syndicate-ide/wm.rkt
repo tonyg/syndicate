@@ -151,11 +151,12 @@
   (match-define (sizing v _ _) sv)
   (define-values (lb-v lb-f) (transverse-bound sizings sizing-shrink - max))
   (define-values (ub-v ub-f) (transverse-bound sizings sizing-stretch + min))
-  (define ideal-v (if v
-                      (cond [(and lb-v (> lb-v v)) lb-v]
-                            [(and ub-v (< ub-v v)) ub-v]
-                            [else v])
-                      (or lb-v 0)))
+  (define ideal-v (foldl max 0 (map sizing-ideal sizings)))
+  ;; (define ideal-v (if v
+  ;;                     (cond [(and lb-v (> lb-v v)) lb-v]
+  ;;                           [(and ub-v (< ub-v v)) ub-v]
+  ;;                           [else v])
+  ;;                     (or lb-v 0)))
   (sizing ideal-v
           (if ub-v (- ub-v ideal-v) ub-f)
           (if lb-v (- ideal-v lb-v) lb-f)))
@@ -289,6 +290,35 @@
        (match-define (list info t l w h) layout)
        (render! item info tty t l w h)))])
 
+(define (fill-weaken f w r)
+  (if (fill? f)
+      (fill w r)
+      f))
+
+(define (sizing-weaken-fills s
+                             [stretch-weight 1]
+                             [stretch-rank 0]
+                             [shrink-weight stretch-weight]
+                             [shrink-rank stretch-rank])
+  (match-define (sizing x x+ x-) s)
+  (sizing x
+          (fill-weaken x+ stretch-weight stretch-rank)
+          (fill-weaken x- shrink-weight shrink-rank)))
+
+(struct weaken-fills (item weight rank) #:transparent
+  #:methods gen:tbox
+  [(define/generic sizings tbox-sizings)
+   (define/generic render! tbox-render!)
+   (define (tbox-sizings t sw sh)
+     (map (match-lambda
+            [(layout-option info w h)
+             (layout-option info
+                            (sizing-weaken-fills w (weaken-fills-weight t) (weaken-fills-rank t))
+                            (sizing-weaken-fills h (weaken-fills-weight t) (weaken-fills-rank t)))])
+          (sizings (weaken-fills-item t) sw sh)))
+   (define (tbox-render! t info tty top left width height)
+     (render! (weaken-fills-item t) info tty top left width height))])
+
 ;;---------------------------------------------------------------------------
 
 (define (fill* w h rank)
@@ -308,9 +338,12 @@
 (define (hbox . items) (adjacent-tbox #f (flatten items)))
 (define (vbox . items) (adjacent-tbox #t (flatten items)))
 
-(define (hpad item) (hbox (hfil) item (hfil)))
-(define (vpad item) (vbox (vfil) item (vfil)))
+(define (hpad item) (hbox (hfill) item (hfill)))
+(define (vpad item) (vbox (vfill) item (vfill)))
 (define (pad item) (vpad (hpad item)))
+
+(define (weaken item [weight 1] [rank 0])
+  (weaken-fills item weight rank))
 
 ;;---------------------------------------------------------------------------
 
@@ -327,30 +360,31 @@
                      (raise e)))]
     (tty-display tty "Ho ho ho\r\n")
 
-    (define R (glue-tbox (sizing 10 0 0) (sizing 5 0 0) ":" (pen color-white color-red #f #f)))
-    (define G (glue-tbox (sizing 10 0 0) (sizing 5 0 0) ":" (pen color-white color-green #f #f)))
-    (define B (glue-tbox (sizing 10 0 0) (sizing 5 0 0) ":" (pen color-white color-blue #f #f)))
+    (define R (glue-tbox (sizing 10 (fill 1 0) 0) (sizing 5 0 0) ":" (pen color-white color-red #f #f)))
+    (define G (glue-tbox (sizing 10 (fill 1 0) 0) (sizing 5 0 0) ":" (pen color-white color-green #f #f)))
+    (define B (glue-tbox (sizing 10 (fill 1 0) 0) (sizing 5 0 0) ":" (pen color-white color-blue #f #f)))
+
+    (define (tbox-render-toplevel! widget tty)
+      (define w (tty-columns tty))
+      (define h (tty-rows tty))
+      (define layouts (tbox-sizings widget (sizing w (fill 1 0) w) (sizing h (fill 1 0) h)))
+      (tbox-render! widget (layout-option-info (car layouts)) tty 0 0 w h))
 
     (define xpad values)
-    (let ((widget (hbox (vbox (xpad R)
-                              (pad G)
-                              (xpad B))
-                        (hfill)
-                        (vbox R (vfil))
-                        (hfill)
-                        (vbox (vfil) G)
-                        (hfill)
-                        (pad B))))
-      (define (s v) (sizing v (fill 1 0) v))
-      (define layouts (tbox-sizings widget (s (tty-columns tty)) (s (tty-rows tty))))
-      (tbox-render! widget
-                    (layout-option-info (car layouts))
-                    tty
-                    0
-                    0
-                    (tty-columns tty)
-                    (tty-rows tty)))
 
+    (define toplevel-widget
+      (hbox (weaken (vbox (xpad R)
+                          (pad G)
+                          (xpad B)))
+            ;; (hfill)
+            (vbox (weaken (hpad R)) (vfil))
+            ;; (hfill)
+            (vbox (vfil) G)
+            ;; (hfill)
+            (weaken (pad B))
+            ))
+
+    (tbox-render-toplevel! toplevel-widget tty)
     (tty-goto tty 0 0)
 
     (let loop ()
@@ -363,4 +397,11 @@
                              (tty-clear-to-eol tty)
                              (tty-display tty (format "~v" k))
                              (tty-goto tty (tty-cursor-row tty) 0)
-                             (loop)])))))))
+                             (loop)])))))
+
+    ;; (tty-shutdown!! tty)
+    ;; (pretty-print toplevel-widget)
+    ;; (pretty-print (tbox-sizings toplevel-widget
+    ;;                             (sizing 80 (fill 1 0) 80)
+    ;;                             (sizing 24 (fill 1 0) 24)))
+    ))
