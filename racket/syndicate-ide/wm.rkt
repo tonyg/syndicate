@@ -406,6 +406,11 @@
 (define (vpad item) (vbox (vfill) item (vfill)))
 (define (pad item) (vpad (hpad item)))
 
+(define (hrule [rank -1] [pen 'default])
+  (glue-tbox (sizing 0 (fill 1 rank) 0) (sizing 1 0 0) "-" pen))
+(define (vrule [rank -1] [pen 'default])
+  (glue-tbox (sizing 1 0 0) (sizing 0 (fill 1 rank) 0) "|" pen))
+
 (define (weaken item [weight 1] [rank 0])
   (weaken-fills item weight rank))
 
@@ -454,7 +459,11 @@
             ;; (hfill)
             (vbox (vfil) G)
             ;; (hfill)
+            (vrule)
             (vbox (weaken (pad B))
+                  (hbox (hrule)
+                        (glue-tbox (sizing 5 0 0) (sizing 1 0 0) "Hello" 'default)
+                        (hrule))
                   (pretty-print-tbox
                    `(define (tbox-render-toplevel! widget tty)
                       (define w (tty-columns tty))
