@@ -196,18 +196,26 @@
   (require racket/set)
   (require "display-terminal.rkt")
 
-  (define tty (default-tty))
+  (let ()
+    (define tty (default-tty))
 
-  (tty-display tty "Ho ho ho\r\n")
+    (tty-display tty "Ho ho ho\r\n")
 
-  (let loop ()
-    (tty-flush tty)
-    (sync (handle-evt (tty-next-key-evt tty)
-                      (lambda (k)
-                        (match k
-                          [(key #\q (== (set))) (void)]
-                          [_
-                           (tty-clear-to-eol tty)
-                           (tty-display tty (format "~v" k))
-                           (tty-goto tty (tty-cursor-row tty) 0)
-                           (loop)]))))))
+    (define R (glue-tbox 10 5 ":" (pen color-white color-red #f #f)))
+    (define G (glue-tbox 10 5 ":" (pen color-white color-green #f #f)))
+    (define B (glue-tbox 10 5 ":" (pen color-white color-blue #f #f)))
+
+    (tbox-render! B 'uhhh tty 0 0 (tty-columns tty) (tty-rows tty))
+    (tty-goto tty 0 0)
+
+    (let loop ()
+      (tty-flush tty)
+      (sync (handle-evt (tty-next-key-evt tty)
+                        (lambda (k)
+                          (match k
+                            [(key #\q (== (set))) (void)]
+                            [_
+                             (tty-clear-to-eol tty)
+                             (tty-display tty (format "~v" k))
+                             (tty-goto tty (tty-cursor-row tty) 0)
+                             (loop)])))))))
