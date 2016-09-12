@@ -276,6 +276,9 @@
                  [_ (sizing-ideal s)]))
              sizings))))
 
+(define (swedish-round x)
+  (floor (+ x 1/2)))
+
 (define (compute-concrete-adjacent-layout vertical? items candidates top left width height)
   (define actual-sizes
     (if vertical?
@@ -285,8 +288,8 @@
     (for/fold [(pos (if vertical? top left)) (entries-rev '())]
               [(entry candidates) (item items) (actual-size actual-sizes)]
       (define npos (+ pos actual-size))
-      (define rpos (round pos))
-      (define size (- (round npos) rpos))
+      (define rpos (swedish-round pos))
+      (define size (- (swedish-round npos) rpos))
       (values npos
               (cons (if vertical?
                         (tbox-layout item (layout-option-info entry) rpos left width size)
