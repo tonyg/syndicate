@@ -75,6 +75,9 @@
 ;; behaves as a zero for the purposes of `min`.
 
 (require racket/generic)
+(require racket/match)
+
+(require "display.rkt")
 
 ;;---------------------------------------------------------------------------
 
@@ -118,10 +121,10 @@
   [(define (tbox-sizings t w h)
      (list (list #f (glue-tbox-horizontal t) (glue-tbox-vertical t))))
    (define (tbox-render! t _info tty top left width height)
-     (define str (fill-tbox-string t))
+     (define str (glue-tbox-string t))
      (define whole-repeats (quotient width (string-length str)))
      (define fragment (substring str 0 (remainder width (string-length str))))
-     (tty-set-pen! tty (fill-tbox-pen t))
+     (tty-set-pen! tty (glue-tbox-pen t))
      (for [(y (in-range height))]
        (tty-goto tty (+ top y) left)
        (for [(i (in-range whole-repeats))] (tty-display tty str))
@@ -129,9 +132,10 @@
 
 ;; Nat -> (Cons X (Listof X)) -> X
 (define ((nth-or-last n) xs)
-  (cond [(zero? n) (car xs)]
-        [(null? (cdr xs)) (car xs)]
-        [else (drop-n-or-last (- n 1) (cdr xs))]))
+  (let loop ((n n) (xs xs))
+    (cond [(zero? n) (car xs)]
+          [(null? (cdr xs)) (car xs)]
+          [else (loop (- n 1) (cdr xs))])))
 
 (define (transverse-bound sizings sizing-accessor minus-or-plus max-or-min)
   (define vals (for/list [(s sizings) #:when (number? (sizing-accessor s))]
@@ -187,3 +191,23 @@
   (if (null? acceptable-choices)
       choices
       acceptable-choices))
+
+(module+ main
+  (require racket/set)
+  (require "display-terminal.rkt")
+
+  (define tty (default-tty))
+
+  (tty-display tty "Ho ho ho\r\n")
+
+  (let loop ()
+    (tty-flush tty)
+    (sync (handle-evt (tty-next-key-evt tty)
+                      (lambda (k)
+                        (match k
+                          [(key #\q (== (set))) (void)]
+                          [_
+                           (tty-clear-to-eol tty)
+                           (tty-display tty (format "~v" k))
+                           (tty-goto tty (tty-cursor-row tty) 0)
+                           (loop)]))))))
