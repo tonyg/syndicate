@@ -50,10 +50,15 @@
 ;; -> Action
 ;; Spawns a process acting as a UDP socket factory.
 (define (spawn-udp-driver)
-  (spawn-demand-matcher #:name 'udp-driver
-                        (observe (udp-packet ? (?! (udp-listener ?)) ?))
-                        (advertise (udp-packet ? (?! (udp-listener ?)) ?))
-                        spawn-udp-socket))
+  (list
+   (spawn-demand-matcher #:name 'udp-listen-driver
+                         (observe (udp-packet ? (?! (udp-listener ?)) ?))
+                         (advertise (udp-packet ? (?! (udp-listener ?)) ?))
+                         spawn-udp-socket)
+   (spawn-demand-matcher #:name 'udp-handle-driver
+                         (observe (udp-packet ? (?! (udp-handle ?)) ?))
+                         (advertise (udp-packet ? (?! (udp-handle ?)) ?))
+                         spawn-udp-socket)))
 
 ;; UdpLocalAddress -> Action
 (define (spawn-udp-socket local-addr)
