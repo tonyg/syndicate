@@ -75,15 +75,15 @@
 (define BRIGHT-BLUE ";1;34")
 (define NORMAL "")
 
-(define (format-pids pids [name #f])
+(define (format-pids process-names pids)
   (define pidstr
     (match pids
       ['() "ground"]
-      [(cons 'meta rest) (format "context of ~a" (format-pids rest))]
+      [(cons 'meta rest) (format "context of ~a" (format-pids process-names rest))]
       [_ (string-join (map number->string (reverse pids)) ":")]))
-  (if name
-      (format "~a a.k.a ~v" pidstr name)
-      pidstr))
+  (match (hash-ref process-names pids #f)
+    [#f pidstr]
+    [name (format "~a a.k.a ~v" pidstr name)]))
 
 (define (output fmt . args)
   (apply fprintf (current-error-port) fmt args))
@@ -100,63 +100,96 @@
   (for/list [(pid (in-set (extract-patch-pids p)))]
     (cons pid (cdr sink))))
 
-(define (display-notification the-notification)
+(define (ensure-process-named! process-names pids expected-name)
+  (define current-name (hash-ref process-names pids #f))
+  (when (not (equal? current-name expected-name))
+    (with-color WHITE-ON-RED
+      (output "Weird: ~a should be named ~v, but is named ~v\n"
+              pids
+              expected-name
+              current-name))))
+
+(define (name-process! process-names pids name)
+  (hash-set! process-names pids name))
+
+(define (forget-process! process-names pids)
+  (hash-remove! process-names pids))
+
+(define (display-notification the-notification process-names)
   (match-define (trace-notification source sink type detail) the-notification)
   (match* (type detail)
     [('turn-begin (process name _beh state))
+     (ensure-process-named! process-names sink name)
      (when show-turns?
        (with-color BLUE
-         (output "~a turn begins\n" (format-pids sink name))))]
+         (output "~a turn begins\n" (format-pids process-names sink))))]
     [('turn-end (process name _beh state))
+     (ensure-process-named! process-names sink name)
      (when show-turns?
        (with-color BLUE
-         (output "~a turn ends\n" (format-pids sink name))
+         (output "~a turn ends\n" (format-pids process-names sink))
          (syndicate-pretty-print state (current-error-port))))]
     [('spawn (list parent (process name _beh state)))
+     (name-process! process-names sink name)
      (when show-lifecycle?
        (with-color BRIGHT-GREEN
-         (output "~a spawned by ~a\n" (format-pids sink name) (format-pids parent))))]
+         (output "~a spawned by ~a\n"
+                 (format-pids process-names sink)
+                 (format-pids process-names parent))))]
     [('exit #f)
      (when show-lifecycle?
        (with-color BRIGHT-RED
-         (output "~a schedules an exit\n" (format-pids sink))))]
+         (output "~a schedules an exit\n" (format-pids process-names sink))))]
     [('exit exn)
      (when (or show-lifecycle? show-exceptions?)
        (with-color WHITE-ON-RED
-         (output "~a raises an exception:\n~a\n" (format-pids sink) (exn->string exn))))]
+         (output "~a raises an exception:\n~a\n"
+                 (format-pids process-names sink)
+                 (exn->string exn))))]
     [('action (? patch? p))
      (when show-actions?
-       (output "~a performs a patch:\n~a\n" (format-pids source) (patch->pretty-string p)))]
+       (output "~a performs a patch:\n~a\n"
+               (format-pids process-names source)
+               (patch->pretty-string p)))]
     [('action (message body))
      (when show-actions?
-       (output "~a broadcasts a message:\n~a\n" (format-pids source) (pretty-format body)))]
+       (output "~a broadcasts a message:\n~a\n"
+               (format-pids process-names source)
+               (pretty-format body)))]
     [('action 'quit)
      (when show-lifecycle?
        (with-color BRIGHT-RED
-         (output "~a exits\n" (format-pids source))))]
+         (output "~a exits\n" (format-pids process-names source))))
+     (forget-process! process-names source)]
     [('event (? patch? p))
      (when show-events?
        (with-color YELLOW
-         (output "~a receives an event:\n~a\n" (format-pids sink) (patch->pretty-string p))))]
+         (output "~a receives an event:\n~a\n"
+                 (format-pids process-names sink)
+                 (patch->pretty-string p))))]
     [('event (message body))
      (when show-events?
        (with-color YELLOW
-         (output "~a receives a message:\n~a\n" (format-pids sink) (pretty-format body))))]
+         (output "~a receives a message:\n~a\n"
+                 (format-pids process-names sink)
+                 (pretty-format body))))]
     [('event #f)
      (when show-events?
        (with-color YELLOW
-         (output "~a is polled\n" (format-pids sink))))]
+         (output "~a is polled\n" (format-pids process-names sink))))]
     [('influence (? patch? p))
      (when show-influence?
        (output "~a influenced by ~a via a patch:\n~a\n"
-               (format-pids sink)
-               (string-join (map format-pids (extract-leaf-pids sink p)) ", ")
+               (format-pids process-names sink)
+               (string-join (map (lambda (p) (format-pids process-names p))
+                                 (extract-leaf-pids sink p))
+                            ", ")
                (patch->pretty-string p)))]
     [('influence (message body))
      (when show-influence?
        (output "~a influences ~a with a message:\n~a\n"
-               (format-pids source)
-               (format-pids sink)
+               (format-pids process-names source)
+               (format-pids process-names sink)
                (pretty-format body)))]))
 
 (define (install-trace-procedure!)
@@ -168,10 +201,12 @@
 
 (define ((display-trace logger))
   (define receiver (make-log-receiver logger 'info))
+  (define process-names (make-hash))
+  (name-process! process-names '() 'ground) ;; by convention
   (parameterize ((pretty-print-columns 100))
     (let loop ()
       (match-define (vector level message-string data event-name) (sync receiver))
-      (display-notification data)
+      (display-notification data process-names)
       (loop))))
 
 (void (when (not (set-empty? flags))
