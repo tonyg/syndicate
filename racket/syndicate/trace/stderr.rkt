@@ -199,15 +199,34 @@
   (current-trace-procedures (cons trace-via-logger (current-trace-procedures)))
   logger)
 
+(define (check-for-unix-signals-support!)
+  (define capture-signal! (with-handlers [(void (lambda _ #f))]
+                            (dynamic-require 'unix-signals 'capture-signal!)))
+  (and capture-signal!
+       (begin (capture-signal! 'SIGUSR1)
+              (dynamic-require 'unix-signals 'next-signal-evt))))
+
 (define ((display-trace logger))
   (define receiver (make-log-receiver logger 'info))
   (define process-names (make-hash))
   (name-process! process-names '() 'ground) ;; by convention
   (parameterize ((pretty-print-columns 100))
     (let loop ()
-      (match-define (vector level message-string data event-name) (sync receiver))
-      (display-notification data process-names)
-      (loop))))
+      (sync (handle-evt receiver
+                        (lambda (v)
+                          (match-define (vector level message-string data event-name) v)
+                          (display-notification data process-names)
+                          (loop)))
+            (let ((next-signal-evt (check-for-unix-signals-support!)))
+              (if next-signal-evt
+                  (handle-evt next-signal-evt
+                              (lambda (_signum)
+                                (with-color WHITE-ON-GREEN
+                                  (output "\e[2J\e[HProcess name table:\n")
+                                  (for [((pid name) (in-hash process-names))]
+                                    (output "\t~v\t--> ~v\n" pid name)))
+                                (loop)))
+                  never-evt))))))
 
 (void (when (not (set-empty? flags))
         (thread (display-trace (install-trace-procedure!)))))
