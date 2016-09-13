@@ -211,3 +211,6 @@
 
 (void (when (not (set-empty? flags))
         (thread (display-trace (install-trace-procedure!)))))
+
+(when (getenv "SYNDICATE_STDOUT_TO_STDERR")
+  (current-output-port (current-error-port)))
