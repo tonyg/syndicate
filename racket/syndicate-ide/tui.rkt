@@ -17,8 +17,8 @@
 (require syndicate/trace)
 (require syndicate/store)
 
-(require "display.rkt")
-(require "display-terminal.rkt")
+(require rmacs/display)
+(require rmacs/display-terminal)
 
 (define (process-is-dataspace? p)
   (match p

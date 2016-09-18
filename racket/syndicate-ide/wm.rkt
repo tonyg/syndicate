@@ -84,7 +84,7 @@
 (require (only-in racket/string string-split))
 (require (prefix-in ansi: ansi))
 
-(require "display.rkt")
+(require rmacs/display)
 
 ;;---------------------------------------------------------------------------
 
@@ -419,7 +419,7 @@
 (module+ main
   (require racket/pretty)
   (require racket/set)
-  (require "display-terminal.rkt")
+  (require rmacs/display-terminal)
 
   (define tty (default-tty))
 
@@ -505,7 +505,8 @@
                         (lambda (k)
                           (match k
                             [(key #\q (== (set))) (void)]
-                            [(key #\L (== (set 'control)))
+                            [(or (key 'window-resize (== (set)))
+                                 (key #\L (== (set 'control))))
                              (reset-and-rerender)
                              (loop)]
                             [_
