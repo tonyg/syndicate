@@ -68,6 +68,9 @@
 (define (firewall-actions acs limit)
   (filter-map (lambda (ac) (firewall-action ac limit)) (clean-actions acs)))
 
+(define (limit-trie limit trie)
+  (trie-intersect trie limit #:combiner (lambda (v1 v2) (trie-success v1))))
+
 (define (firewall-action ac limit)
   (match ac
     [#f #f]
@@ -75,8 +78,7 @@
      (and (trie-lookup limit c #f) ;; todo: handle wildcard as a value
           (message c))]
     [(patch a d)
-     (patch (trie-intersect a limit #:combiner (lambda (v1 v2) (trie-success v1)))
-            (trie-intersect d limit #:combiner (lambda (v1 v2) (trie-success v1))))]
+     (patch (limit-trie limit a) (limit-trie limit d))]
     [(? spawn? s)
      (spawn-firewall limit s)]
     [_
