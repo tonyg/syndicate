@@ -48,3 +48,12 @@
           (on-start (firewall [(allow ?)
                                (forbid (a 'ok-parent2))]
                               (assert (a _)))))
+
+(firewall [(allow (observe (m 'ok1)))
+           (allow (observe (a 'ok1)))]
+          (on (asserted $x)
+              (printf "Observed assertion ~v\n" x))
+          (on (retracted $x)
+              (printf "Observed retraction ~v\n" x))
+          (on (message $x)
+              (printf "Observed message ~v\n" x)))
