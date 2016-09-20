@@ -40,3 +40,11 @@
 (firewall [(allow (a 'ok-kid))]
           (assert (a 'forbidden-parent))
           (on-start (actor (assert (a _)))))
+
+(firewall [(allow (a 'ok-kid2))
+           (allow (a 'ok-parent2))]
+          (assert (a 'ok-parent2))
+          (assert (a 'forbidden-parent2))
+          (on-start (firewall [(allow ?)
+                               (forbid (a 'ok-parent2))]
+                              (assert (a _)))))
