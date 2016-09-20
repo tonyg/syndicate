@@ -58,6 +58,8 @@
          ;;
 
          schedule-action!
+         actor-action
+         (for-syntax (rename-out [name actor-name]))
 
          (struct-out field-descriptor)
          (struct-out field-handle)
