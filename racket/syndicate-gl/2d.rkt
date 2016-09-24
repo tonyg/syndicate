@@ -69,9 +69,13 @@
 ;; one active such record at a given time.
 (struct scene (prelude postlude) #:transparent)
 
-;; Shared state maintained by program. Z is to be a number, negative
+;; A SpriteID is an equal?-comparable dataspace-unique value.
+
+;; Shared state maintained by program. `id` is a SpriteID, and
+;; `parent-id` is an (Option SpriteID); #f in `parent-id` means that
+;; this sprite is a child of the root. Z is to be a number, negative
 ;; toward camera. Instructions to be a sealed instruction list.
-(struct sprite (z instructions) #:transparent)
+(struct sprite (id parent-id z instructions) #:transparent)
 
 ;; Message. Requests that the OpenGL loop perform a major
 ;; garbage-collection while *pausing the simulation's real-time
@@ -85,8 +89,8 @@
   (patch-seq (retract (outbound* meta-level (scene ? ?)))
              (assert (outbound* meta-level (scene (seal prelude) (seal postlude))))))
 
-(define (make-sprite z instructions)
-  (sprite z (seal instructions)))
+(define (make-sprite z instructions #:id [id #f] #:parent [parent-id #f])
+  (sprite (or id (gensym 'sprite)) parent-id z (seal instructions)))
 
 (define (in-unit-circle? x y)
   (<= (+ (sqr (- x 0.5)) (sqr (- y 0.5))) (sqr 0.5)))
@@ -96,19 +100,25 @@
        (<= 0 y 1)))
 
 (define (simple-sprite z x y w h i
+                       #:parent [parent-id #f]
                        #:rotation [rotation 0]
                        #:touchable-id [touchable-id #f]
                        #:touchable-predicate [touchable-predicate in-unit-square?])
-  (make-sprite z `((translate ,x ,y)
-                   ,@(if (zero? rotation) `() `((rotate ,rotation)))
-                   (scale ,w ,h)
-                   ,@(if touchable-id
-                         `((touchable ,touchable-id ,touchable-predicate))
-                         `())
-                   (texture ,i))))
+  (make-sprite #:id touchable-id
+               #:parent parent-id
+               z
+               `((translate ,x ,y)
+                 ,@(if (zero? rotation) `() `((rotate ,rotation)))
+                 (push-matrix
+                  (scale ,w ,h)
+                  ,@(if touchable-id
+                        `((touchable ,touchable-id ,touchable-predicate))
+                        `())
+                  (texture ,i))
+                 (render-children))))
 
 (define (update-sprites #:meta-level [meta-level 1] . ss)
-  (patch-seq* (cons (retract (outbound* meta-level (sprite ? ?)))
+  (patch-seq* (cons (retract (outbound* meta-level (sprite ? ? ? ?)))
                     (map (lambda (s) (assert (outbound* meta-level s))) ss))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -138,19 +148,39 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (touchable Any TransformationMatrix (Number Number -> Boolean))
-;; Represents a composed device-to-user transformation, plus a
-;; predicate on user coordinates, and an ID to use when the predicate
-;; answers truthily.
+;; A Touchable is one of
+;;
+;; - (touchable Any TransformationMatrix (Number Number -> Boolean))
+;;   Represents a composed device-to-user transformation, plus a
+;;   predicate on user coordinates, and an ID to use when the
+;;   predicate answers truthily.
+;;
+;; - (touchable-map TransformationMatrix)
+;;   Represents a partial device-to-user transformation used when
+;;   mapping along parent-child relationship edges in the sprite tree.
+;;
 (struct touchable (id transformation predicate) #:transparent)
+(struct touchable-map (matrix) #:transparent)
 
-;; (compiled-instructions (-> Void) (Listof Touchable) (Listof Resource) TransformationMatrix)
-;; A single compiled sprite. The resources aren't in any particular order,
-;; but the touchables are: the leftmost touchable is the first to check;
-;; that is, it is the *topmost* touchable in this sprite. The overall
-;; transformation matrix is the net effect of all the transformations in
-;; the instruction sequence.
-(struct compiled-instructions (render-thunk touchables resources xform))
+;; A Children is a (SplayTree Sprite CompiledInstructions), ordered
+;; first by sprite-z, then sprite-id hash code, then
+;; sprite-instructions hash-code.
+;;
+;; A ChildMap is a (Hash SpriteID Children), mapping sprite-id to the
+;; children of that sprite.
+
+;; (compiled-instructions (ChildMap SpriteID -> Void)
+;;                        (Listof Touchable)
+;;                        (Listof Resource)
+;;                        (Option TransformationMatrix))
+;; A single compiled sprite. The resources aren't in any particular
+;; order, but the touchables are: the leftmost touchable is the first
+;; to check; that is, it is the *topmost* touchable in this sprite.
+;; The child-xform, if present, is the transformation needed to map
+;; between mouse coordinates and child sprite space; if absent, no
+;; (render-children) instruction was found in this sprite's render
+;; code.
+(struct compiled-instructions (render-proc touchables resources))
 
 (define-namespace-anchor ns-anchor)
 (define ns (namespace-anchor->namespace ns-anchor))
@@ -158,8 +188,10 @@
 (define (compile-instructions instrs)
   (define-values (code touchables resources xform)
     (instruction->racket-code `(begin ,@instrs) identity-transformation))
-  (define render-thunk (eval `(lambda () ,code) ns))
-  (compiled-instructions render-thunk touchables resources xform))
+  (define render-proc (eval `(lambda (CHILDMAP SELF-ID) ,code) ns))
+  (compiled-instructions render-proc
+                         touchables
+                         resources))
 
 (define (compiled-instructions-dispose! i)
   (when i
@@ -209,6 +241,8 @@
     [`(begin ,instr ...)
      (define-values (code touchables resources new-xform) (instructions->racket-code instr xform))
      (values `(begin ,@code (void)) touchables resources new-xform)]
+    [`(render-children)
+     (values `(render-sprites! CHILDMAP SELF-ID) (list (touchable-map xform)) '() xform)]
     [other
      (error 'instruction->racket-code "unknown render instruction: ~v" other)]))
 
@@ -259,58 +293,87 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define scene-projection (?! (scene ? ?)))
-(define sprite-projection (?! (sprite ? ?)))
+(define sprite-projection (?! (sprite ? ? ? ?)))
 
 (define sprite-order
   (order 'sprite-order
          sprite?
-         (lambda (a b) (and (= (sprite-z a) (sprite-z b))
+         (lambda (a b) (and (equal? (sprite-id a) (sprite-id b))
+                            (= (sprite-z a) (sprite-z b))
                             (eq? (sprite-instructions a)
                                  (sprite-instructions b))))
          (lambda (a b) (or (> (sprite-z a) (sprite-z b))
                            (and (= (sprite-z a) (sprite-z b))
-                                (< (eq-hash-code (sprite-instructions a))
-                                   (eq-hash-code (sprite-instructions b))))))))
+                                (let ((a-id-code (equal-hash-code (sprite-id a)))
+                                      (b-id-code (equal-hash-code (sprite-id b))))
+                                  (or (< a-id-code b-id-code)
+                                      (and (= a-id-code b-id-code)
+                                           (< (eq-hash-code (sprite-instructions a))
+                                              (eq-hash-code (sprite-instructions b)))))))))))
 
-(define (remove-sprite! sprites s)
-  (compiled-instructions-dispose! (splay-tree-ref sprites s #f))
-  (splay-tree-remove! sprites s))
+(define (remove-sprite! childmap s)
+  (define sprites (hash-ref childmap (sprite-parent-id s) #f))
+  (when sprites
+    (compiled-instructions-dispose! (splay-tree-ref sprites s #f))
+    (splay-tree-remove! sprites s)
+    (when (dict-empty? sprites) (hash-remove! childmap (sprite-parent-id s)))))
 
-(define (add-sprite! sprites s)
+(define (add-sprite! childmap s)
+  (define sprites (hash-ref childmap (sprite-parent-id s)
+                            (lambda ()
+                              (define ss (make-splay-tree sprite-order))
+                              (hash-set! childmap (sprite-parent-id s) ss)
+                              ss)))
   (define instrs `((color 1 1 1 1)
                    (push-matrix ,@(seal-contents (sprite-instructions s)))))
   (define i (compile-instructions instrs))
   (splay-tree-set! sprites s i))
 
-(define (render-scene! prelude sprites postlude)
-  ((compiled-instructions-render-thunk prelude))
-  (let loop ((iter (splay-tree-iterate-first sprites)))
+(define (render-sprites! childmap self-id)
+  (define sprites (hash-ref childmap self-id #f))
+  (let loop ((iter (and sprites (splay-tree-iterate-first sprites))))
     (when iter
-      ((compiled-instructions-render-thunk (splay-tree-iterate-value sprites iter)))
-      (loop (splay-tree-iterate-next sprites iter))))
-  ((compiled-instructions-render-thunk postlude)))
+      (define s (splay-tree-iterate-key sprites iter))
+      (define proc (compiled-instructions-render-proc (splay-tree-iterate-value sprites iter)))
+      (proc childmap (sprite-id s))
+      (loop (splay-tree-iterate-next sprites iter)))))
 
-(define (detect-touch prelude sprites postlude state)
+(define (render-scene! prelude childmap postlude)
+  ((compiled-instructions-render-proc prelude) childmap #f)
+  (render-sprites! childmap #f)
+  ((compiled-instructions-render-proc postlude) childmap #f))
+
+(define (detect-touch prelude childmap postlude state)
   (and state
        (let ()
          (define x (mouse-state-x state))
          (define y (mouse-state-y state))
-         (or (detect-touch* postlude x y state)
-             (let loop ((iter (splay-tree-iterate-greatest sprites)))
-               (and iter
-                    (or (detect-touch* (splay-tree-iterate-value sprites iter) x y state)
-                        (loop (splay-tree-iterate-greatest/<?
-                               sprites
-                               (splay-tree-iterate-key sprites iter))))))
-             (detect-touch* prelude x y state)))))
+         (or (detect-touch* childmap #f postlude x y)
+             (detect-sprites-touch childmap #f x y)
+             (detect-touch* childmap #f prelude x y)))))
 
-(define (detect-touch* ci x y state)
+(define (detect-sprites-touch childmap self-id x y)
+  (define sprites (hash-ref childmap self-id #f))
+  (let loop ((iter (and sprites (splay-tree-iterate-greatest sprites))))
+    (and iter
+         (let ((s (splay-tree-iterate-key sprites iter)))
+           (define ci (splay-tree-iterate-value sprites iter))
+           (or (detect-touch* childmap (sprite-id s) ci x y)
+               (loop (splay-tree-iterate-greatest/<? sprites s)))))))
+
+(define (detect-touch* childmap self-id ci x y)
   (for/or [(t (in-list (compiled-instructions-touchables ci)))]
-    (match-define (touchable id xform contains?) t)
-    (define user-point (untransform-point xform (make-rectangular x y)))
-    (define ux (real-part user-point))
-    (define uy (imag-part user-point))
-    (and (contains? ux uy) (touching id))))
+    (match t
+      [(touchable id xform contains?)
+       (define-values (ux uy) (untransform-point* xform x y))
+       (and (contains? ux uy) (touching id))]
+      [(touchable-map xform)
+       (define-values (ux uy) (untransform-point* xform x y))
+       (detect-sprites-touch childmap self-id ux uy)])))
+
+(define (untransform-point* xform x y)
+  (define p (untransform-point xform (make-rectangular x y)))
+  (values (real-part p) (imag-part p)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -332,7 +395,7 @@
     (define far-depth 15) ;; 2.5D
 
     (define prelude empty-instructions)
-    (define sprites (make-splay-tree sprite-order))
+    (define childmap (make-hash))
     (define postlude empty-instructions)
     (define fullscreen? #f)
 
@@ -407,9 +470,8 @@
     (define (process-sprite-updates! p)
       (define-values (added removed) (patch-project/set/single p sprite-projection))
       ;; Remove old sprites first, to recycle their texture identifiers (if any)
-      (for [(s removed)] (remove-sprite! sprites s))
-      (for [(s added)] (add-sprite! sprites s))
-      ;; (log-info "~a sprites" (splay-tree-count sprites))
+      (for [(s removed)] (remove-sprite! childmap s))
+      (for [(s added)] (add-sprite! childmap s))
       (when (not (and (set-empty? added) (set-empty? removed)))
         (update-touching!))
       (flush-texture-cache!))
@@ -459,7 +521,7 @@
           (glClear GL_COLOR_BUFFER_BIT)
           (glLoadIdentity)
           (glTranslated 0 0 (- near-depth))
-          (render-scene! prelude sprites postlude)
+          (render-scene! prelude childmap postlude)
           (glFlush)
           (swap-gl-buffers)))
       (queue-callback (lambda () (sleep-and-refresh)) #f))
@@ -504,7 +566,7 @@
           (quiesce!))))
 
     (define (update-touching!)
-      (define new-touching (detect-touch prelude sprites postlude current-mouse-state))
+      (define new-touching (detect-touch prelude childmap postlude current-mouse-state))
       (when (not (equal? new-touching current-touching))
         (define retract-old (retract current-touching))
         (if new-touching

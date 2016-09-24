@@ -34,10 +34,11 @@
 
   (idle))
 
-(define (draggable-shape name orig-x orig-y z plain-image hover-image)
+(define (draggable-shape name orig-x orig-y z plain-image hover-image #:parent [parent-id #f])
   (actor (field [x orig-x] [y orig-y])
          (define/query-value touching? #f (inbound (touching name)) #t)
-         (assert (outbound (simple-sprite #:touchable-id name
+         (assert (outbound (simple-sprite #:parent parent-id
+                                          #:touchable-id name
                                           #:touchable-predicate in-unit-circle?
                                           z (x) (y) 50 50
                                           (if (touching?)
@@ -107,6 +108,10 @@
 (draggable-shape 'orange 50 50 0
                  (circle 50 "solid" "orange")
                  (circle 50 "solid" "red"))
+
+(draggable-shape 'yellow 10 -10 0 #:parent 'orange
+                 (circle 50 "solid" "yellow")
+                 (circle 50 "solid" "purple"))
 
 (draggable-shape 'green 60 60 -1
                  (circle 50 "solid" "green")
