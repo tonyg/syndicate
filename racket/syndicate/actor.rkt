@@ -410,7 +410,7 @@
 (define (on-event* where proc #:priority [priority *normal-priority*])
   (add-endpoint! where
                  (lambda () patch-empty)
-                 (lambda (e _synthetic?)
+                 (lambda (e _current-interests _synthetic?)
                    (schedule-script! #:priority priority #f (lambda () (proc e))))))
 
 (define-syntax (on stx)
@@ -468,9 +468,11 @@
 (define-syntax (define/dataflow stx)
   (syntax-parse stx
     [(_ fieldname expr)
+     (quasisyntax/loc stx (define/dataflow fieldname expr #:default #f))]
+    [(_ fieldname expr #:default default-expr)
      (quasisyntax/loc stx
        (begin
-         (field [fieldname #f])
+         (field [fieldname default-expr])
          (begin/dataflow (fieldname expr))))]))
 
 (define-syntax (asserted stx) (raise-syntax-error #f "asserted: Used outside event spec" stx))
@@ -669,42 +671,43 @@
                    (lambda () (if #,when-pred-stx
                                   (core:sub #,pat)
                                   patch-empty))
-                   (lambda (e synthetic?)
-                     (core:match-event e
-                       [(? #,event-predicate-stx p)
-                        (define proj #,proj-stx)
-                        (define proj-arity (projection-arity proj))
-                        (define entry-set (trie-project/set #:take proj-arity
-                                                            (#,patch-accessor-stx p)
-                                                            proj))
-                        (when (not entry-set)
-                          (error 'asserted
-                                 "Wildcard interest discovered while projecting by ~v at ~a"
-                                 proj
-                                 #,(source-location->string P-stx)))
-                        #,(let ((entry-handler-stx
-                                 (quasisyntax/loc script-stx
-                                   (let ((instantiated (instantiate-projection proj entry)))
-                                     (and (#,change-detector-stx instantiated synthetic?)
-                                          (schedule-script!
-                                           #:priority #,priority-stx
-                                           #,(if terminal? #'#t #'#f)
-                                           (lambda ()
-                                             (match-define (list #,@bindings) entry)
-                                             #,script-stx)))))))
-                            (if terminal?
-                                #`(let ((entry-count (set-count entry-set)))
-                                    (cond
-                                      [(zero? entry-count)]
-                                      [(= entry-count 1)
-                                       (let ((entry (set-first entry-set)))
-                                         #,entry-handler-stx)]
-                                      [else
-                                       (error 'asserted
-                                              "Multiple assertions triggered stop-when at ~a"
-                                              #,(source-location->string P-stx))]))
-                                #`(for [(entry (in-set entry-set))]
-                                    #,entry-handler-stx)))])))))
+                   (lambda (e current-interests synthetic?)
+                     (when (not (trie-empty? current-interests))
+                       (core:match-event e
+                         [(? #,event-predicate-stx p)
+                          (define proj #,proj-stx)
+                          (define proj-arity (projection-arity proj))
+                          (define entry-set (trie-project/set #:take proj-arity
+                                                              (#,patch-accessor-stx p)
+                                                              proj))
+                          (when (not entry-set)
+                            (error 'asserted
+                                   "Wildcard interest discovered while projecting by ~v at ~a"
+                                   proj
+                                   #,(source-location->string P-stx)))
+                          #,(let ((entry-handler-stx
+                                   (quasisyntax/loc script-stx
+                                     (let ((instantiated (instantiate-projection proj entry)))
+                                       (and (#,change-detector-stx instantiated synthetic?)
+                                            (schedule-script!
+                                             #:priority #,priority-stx
+                                             #,(if terminal? #'#t #'#f)
+                                             (lambda ()
+                                               (match-define (list #,@bindings) entry)
+                                               #,script-stx)))))))
+                              (if terminal?
+                                  #`(let ((entry-count (set-count entry-set)))
+                                      (cond
+                                        [(zero? entry-count)]
+                                        [(= entry-count 1)
+                                         (let ((entry (set-first entry-set)))
+                                           #,entry-handler-stx)]
+                                        [else
+                                         (error 'asserted
+                                                "Multiple assertions triggered stop-when at ~a"
+                                                #,(source-location->string P-stx))]))
+                                  #`(for [(entry (in-set entry-set))]
+                                      #,entry-handler-stx)))]))))))
 
 (define-for-syntax orig-insp
   (variable-reference->module-declaration-inspector (#%variable-reference)))
@@ -737,20 +740,21 @@
                       (lambda () (if #,when-pred-stx
                                      (core:sub #,pat)
                                      patch-empty))
-                      (lambda (e _synthetic?)
-                        (core:match-event e
-                          [(core:message body)
-                           (define capture-vals
-                             (match-value/captures
-                              body
-                              #,proj))
-                           (and capture-vals
-                                (schedule-script!
-                                 #:priority #,priority-stx
-                                 #,(if terminal? #'#t #'#f)
-                                 (lambda ()
-                                   (apply (lambda #,bindings #,script-stx)
-                                          capture-vals))))]))))]
+                      (lambda (e current-interests _synthetic?)
+                        (when (not (trie-empty? current-interests))
+                          (core:match-event e
+                            [(core:message body)
+                             (define capture-vals
+                               (match-value/captures
+                                body
+                                #,proj))
+                             (and capture-vals
+                                  (schedule-script!
+                                   #:priority #,priority-stx
+                                   #,(if terminal? #'#t #'#f)
+                                   (lambda ()
+                                     (apply (lambda #,bindings #,script-stx)
+                                            capture-vals))))])))))]
     [(asserted P)
      (analyze-asserted/retracted outer-expr-stx when-pred-stx event-stx terminal? script-stx
                                  #t #'P priority-stx)]
@@ -1087,9 +1091,10 @@
          (run-scripts!))))
 
 (define (facet-handle-event! fid f e synthetic?)
+  (define mux (actor-state-mux (current-actor-state)))
   (with-current-facet fid (facet-field-descriptors f) #f
     (for [(ep (in-hash-values (facet-endpoints f)))]
-      ((endpoint-handler-fn ep) e synthetic?))))
+      ((endpoint-handler-fn ep) e (mux-interests-of mux (endpoint-id ep)) synthetic?))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Script suspend-and-resume.
