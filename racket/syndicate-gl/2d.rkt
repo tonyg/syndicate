@@ -233,6 +233,9 @@
     [`(texture ,i)
      (define entry (image->texture-cache-entry i))
      (values `(draw-gl-face ,(send entry get-texture)) '() (list entry) xform)]
+    [`(texture ,i ,l ,t ,w ,h) #:when (andmap number? (list l t w h))
+     (define entry (image->texture-cache-entry i))
+     (values `(draw-gl-face ,(send entry get-texture) ,l ,t ,w ,h) '() (list entry) xform)]
     [`(touchable ,id ,predicate)
      (values `(void) (list (touchable id xform predicate)) '() xform)]
     [`(push-matrix ,instr ...)
@@ -272,17 +275,19 @@
 
 ;; (define (lerp a b v) (+ (* v a) (* (- 1 v) b)))
 
-(define (draw-gl-face texture)
+(define (draw-gl-face texture [left 0] [top 0] [width 1] [height 1])
+  (define bot (+ top height))
+  (define right (+ left width))
   (send texture bind-texture)
   (glBegin GL_QUADS)
   (glNormal3d 0 0 -1)
-  (glTexCoord2i 0 0)
+  (glTexCoord2d left top)
   (glVertex3d 0 0 0)
-  (glTexCoord2i 1 0)
+  (glTexCoord2d right top)
   (glVertex3d 1 0 0)
-  (glTexCoord2i 1 1)
+  (glTexCoord2d right bot)
   (glVertex3d 1 1 0)
-  (glTexCoord2i 0 1)
+  (glTexCoord2d left bot)
   (glVertex3d 0 1 0)
   (glEnd))
 
