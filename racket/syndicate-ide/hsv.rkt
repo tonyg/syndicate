@@ -21,7 +21,8 @@
      [(< h* 4) (values 0 x chroma)]
      [(< h* 5) (values x 0 chroma)]
      [else     (values chroma 0 x)]))
-  (define (scale x) (inexact->exact (truncate (* 255 x))))
+  (define m (- v chroma))
+  (define (scale x) (inexact->exact (truncate (* 255 (+ x m)))))
   (make-color (scale r) (scale g) (scale b)))
 
 (define (color-by-hash v)
