@@ -144,21 +144,21 @@
   (check-= (transform-point (stretching-transformation 2) 1+i) 2+2i eps)
 
   (check-= (transform-point (compose-transformation (translation-transformation 0 2)
-                                                         (rotation-transformation 45))
-                                 1)
+                                                    (rotation-transformation 45))
+                            1)
            (make-rectangular invrt2 (+ invrt2 2))
            eps)
 
   (check-= (transform-point (compose-transformation (rotation-transformation 45)
-                                                         (translation-transformation 0 2))
-                                 1)
+                                                    (translation-transformation 0 2))
+                            1)
            -0.7071067811865474+2.121320343559643i
            eps)
 
   (check-= (transform-point (invert-transformation
-                                  (compose-transformation (rotation-transformation 45)
-                                                          (translation-transformation 0 2)))
-                                 -0.7071067811865474+2.121320343559643i)
+                             (compose-transformation (rotation-transformation 45)
+                                                     (translation-transformation 0 2)))
+                            -0.7071067811865474+2.121320343559643i)
            1
            eps)
 

@@ -7,6 +7,7 @@
          (struct-out mouse-event)
          (struct-out mouse-state)
          (struct-out touching)
+         (struct-out coordinate-map)
          (struct-out scene)
          (except-out (struct-out sprite) sprite)
          (rename-out [sprite <sprite>] [make-sprite sprite])
@@ -64,6 +65,10 @@
 ;; Assertion. Indicates that the mouse is touching a particular touchable.
 (struct touching (id) #:transparent)
 
+;; Assertion. Communicates aggregate device-to-user transformation
+;; requested as part of sprite instruction sequences.
+(struct coordinate-map (id matrix) #:transparent)
+
 ;; Shared state maintained by program. Prelude and postlude are to be
 ;; sealed instruction lists. It is an error to have more than exactly
 ;; one active such record at a given time.
@@ -102,6 +107,7 @@
 (define (simple-sprite z x y w h i
                        #:parent [parent-id #f]
                        #:rotation [rotation 0]
+                       #:coordinate-map-id [coordinate-map-id #f]
                        #:touchable-id [touchable-id #f]
                        #:touchable-predicate [touchable-predicate in-unit-square?])
   (make-sprite #:id touchable-id
@@ -115,6 +121,9 @@
                         `((touchable ,touchable-id ,touchable-predicate))
                         `())
                   (texture ,i))
+                 ,@(if coordinate-map-id
+                       `((coordinate-map ,coordinate-map-id))
+                       `())
                  (render-children))))
 
 (define (update-sprites #:meta-level [meta-level 1] . ss)
@@ -155,12 +164,14 @@
 ;;   predicate on user coordinates, and an ID to use when the
 ;;   predicate answers truthily.
 ;;
-;; - (touchable-map TransformationMatrix)
-;;   Represents a partial device-to-user transformation used when
-;;   mapping along parent-child relationship edges in the sprite tree.
+;; - (touchable-map)
+;;   Represents the location in a sequence of touchables where the
+;;   aggregate partial device-to-user transformation used when mapping
+;;   along parent-child relationship edges in the sprite tree should
+;;   be applied to child sprites.
 ;;
 (struct touchable (id transformation predicate) #:transparent)
-(struct touchable-map (matrix) #:transparent)
+(struct touchable-map () #:transparent)
 
 ;; A Children is a (SplayTree Sprite CompiledInstructions), ordered
 ;; first by sprite-z, then sprite-id hash code, then
@@ -171,83 +182,91 @@
 
 ;; (compiled-instructions (ChildMap SpriteID -> Void)
 ;;                        (Listof Touchable)
+;;                        (Listof CoordinateMap)
 ;;                        (Listof Resource)
 ;;                        (Option TransformationMatrix))
-;; A single compiled sprite. The resources aren't in any particular
-;; order, but the touchables are: the leftmost touchable is the first
-;; to check; that is, it is the *topmost* touchable in this sprite.
-;; The child-xform, if present, is the transformation needed to map
-;; between mouse coordinates and child sprite space; if absent, no
-;; (render-children) instruction was found in this sprite's render
-;; code.
-(struct compiled-instructions (render-proc touchables resources))
+;; A single compiled sprite. The resources and coordinate-maps aren't
+;; in any particular order, but the touchables are: the leftmost
+;; touchable is the first to check; that is, it is the *topmost*
+;; touchable in this sprite. The child-xform, if present, is the
+;; transformation needed to map between mouse coordinates and child
+;; sprite space; if absent, no (render-children) instruction was found
+;; in this sprite's render code.
+(struct compiled-instructions (render-proc touchables coordinate-maps resources child-xform))
 
 (define-namespace-anchor ns-anchor)
 (define ns (namespace-anchor->namespace ns-anchor))
 
 (define (compile-instructions instrs)
-  (define-values (code touchables resources xform)
+  (define touchables '())
+  (define coordinate-maps '())
+  (define resources '())
+  (define child-xform #f)
+
+  (define (instructions->racket-code instrs xform)
+    (define-values (code-rev new-xform)
+      (for/fold [(code-rev '()) (xform xform)] [(instr (in-list instrs))]
+        (define-values (new-code new-xform) (instruction->racket-code instr xform))
+        (values (cons new-code code-rev) new-xform)))
+    (values (reverse code-rev) new-xform))
+
+  (define (instruction->racket-code instr xform)
+    (match instr
+      [`(rotate ,(? number? deg))
+       (values `(glRotated ,deg 0 0 -1)
+               (compose-transformation xform (rotation-transformation deg)))]
+      [`(scale ,(? number? x) ,(? number? y))
+       (values `(glScaled ,x ,y 1)
+               (compose-transformation xform (stretching-transformation x y)))]
+      [`(translate ,(? number? x) ,(? number? y))
+       (values `(glTranslated ,x ,y 0)
+               (compose-transformation xform (translation-transformation x y)))]
+      [`(color ,(? color-number? r) ,(? color-number? g) ,(? color-number? b) ,(? color-number? a))
+       (values `(glColor4d ,r ,g ,b ,a) xform)]
+      [`(texture ,i)
+       (define entry (image->texture-cache-entry i))
+       (set! resources (cons entry resources))
+       (values `(draw-gl-face ,(send entry get-texture)) xform)]
+      [`(texture ,i ,l ,t ,w ,h) #:when (andmap number? (list l t w h))
+       (define entry (image->texture-cache-entry i))
+       (set! resources (cons entry resources))
+       (values `(draw-gl-face ,(send entry get-texture) ,l ,t ,w ,h) xform)]
+      [`(touchable ,id ,predicate)
+       (set! touchables (cons (touchable id xform predicate) touchables))
+       (values `(void) xform)]
+      [`(coordinate-map ,id)
+       (set! coordinate-maps (cons (coordinate-map id xform) coordinate-maps))
+       (values `(void) xform)]
+      [`(push-matrix ,instr ...)
+       (define-values (code _new-xform) (instructions->racket-code instr xform))
+       (values `(begin (glPushMatrix) ,@code (glPopMatrix)) xform)]
+      [`(begin ,instr ...)
+       (define-values (code new-xform) (instructions->racket-code instr xform))
+       (values `(begin ,@code (void)) new-xform)]
+      [`(render-children) ;; we assume that there will only be one of these
+       (set! child-xform xform)
+       (set! touchables (cons (touchable-map) touchables))
+       (values `(render-sprites! CHILDMAP SELF-ID) xform)]
+      [other
+       (error 'instruction->racket-code "unknown render instruction: ~v" other)]))
+
+  (define-values (code final-transformation)
     (instruction->racket-code `(begin ,@instrs) identity-transformation))
   (define render-proc (eval `(lambda (CHILDMAP SELF-ID) ,code) ns))
   (compiled-instructions render-proc
                          touchables
-                         resources))
+                         coordinate-maps
+                         resources
+                         child-xform))
 
 (define (compiled-instructions-dispose! i)
   (when i
     (for [(resource (compiled-instructions-resources i))]
       (send resource dispose))))
 
-(define (instructions->racket-code instrs xform)
-  (define-values (code-rev touchables resources new-xform)
-    (for/fold [(code-rev '())
-               (touchables '())
-               (resources '())
-               (xform xform)]
-              [(instr (in-list instrs))]
-      (define-values (new-code new-touchables new-resources new-xform)
-        (instruction->racket-code instr xform))
-      (values (cons new-code code-rev)
-              (append new-touchables touchables)
-              (append new-resources resources)
-              new-xform)))
-  (values (reverse code-rev) touchables resources new-xform))
-
 (define (color-number? n)
   (and (number? n)
        (<= 0.0 n 1.0)))
-
-(define (instruction->racket-code instr xform)
-  (match instr
-    [`(rotate ,(? number? deg))
-     (values `(glRotated ,deg 0 0 -1) '() '()
-             (compose-transformation xform (rotation-transformation deg)))]
-    [`(scale ,(? number? x) ,(? number? y))
-     (values `(glScaled ,x ,y 1) '() '()
-             (compose-transformation xform (stretching-transformation x y)))]
-    [`(translate ,(? number? x) ,(? number? y))
-     (values `(glTranslated ,x ,y 0) '() '()
-             (compose-transformation xform (translation-transformation x y)))]
-    [`(color ,(? color-number? r) ,(? color-number? g) ,(? color-number? b) ,(? color-number? a))
-     (values `(glColor4d ,r ,g ,b ,a) '() '() xform)]
-    [`(texture ,i)
-     (define entry (image->texture-cache-entry i))
-     (values `(draw-gl-face ,(send entry get-texture)) '() (list entry) xform)]
-    [`(texture ,i ,l ,t ,w ,h) #:when (andmap number? (list l t w h))
-     (define entry (image->texture-cache-entry i))
-     (values `(draw-gl-face ,(send entry get-texture) ,l ,t ,w ,h) '() (list entry) xform)]
-    [`(touchable ,id ,predicate)
-     (values `(void) (list (touchable id xform predicate)) '() xform)]
-    [`(push-matrix ,instr ...)
-     (define-values (code touchables resources _new-xform) (instructions->racket-code instr xform))
-     (values `(begin (glPushMatrix) ,@code (glPopMatrix)) touchables resources xform)]
-    [`(begin ,instr ...)
-     (define-values (code touchables resources new-xform) (instructions->racket-code instr xform))
-     (values `(begin ,@code (void)) touchables resources new-xform)]
-    [`(render-children)
-     (values `(render-sprites! CHILDMAP SELF-ID) (list (touchable-map xform)) '() xform)]
-    [other
-     (error 'instruction->racket-code "unknown render instruction: ~v" other)]))
 
 (define (image->bitmap i)
   (cond
@@ -334,14 +353,19 @@
   (define i (compile-instructions instrs))
   (splay-tree-set! sprites s i))
 
-(define (render-sprites! childmap self-id)
-  (define sprites (hash-ref childmap self-id #f))
-  (let loop ((iter (and sprites (splay-tree-iterate-first sprites))))
+(define (for-each-child-sprite childmap id f)
+  (define children (hash-ref childmap id #f))
+  (let loop ((iter (and children (splay-tree-iterate-first children))))
     (when iter
-      (define s (splay-tree-iterate-key sprites iter))
-      (define proc (compiled-instructions-render-proc (splay-tree-iterate-value sprites iter)))
-      (proc childmap (sprite-id s))
-      (loop (splay-tree-iterate-next sprites iter)))))
+      (define s (splay-tree-iterate-key children iter))
+      (define ci (splay-tree-iterate-value children iter))
+      (f s ci)
+      (loop (splay-tree-iterate-next children iter)))))
+
+(define (render-sprites! childmap self-id)
+  (for-each-child-sprite childmap self-id
+                         (lambda (s ci)
+                           ((compiled-instructions-render-proc ci) childmap (sprite-id s)))))
 
 (define (render-scene! prelude childmap postlude)
   ((compiled-instructions-render-proc prelude) childmap #f)
@@ -372,7 +396,8 @@
       [(touchable id xform contains?)
        (define-values (ux uy) (untransform-point* xform x y))
        (and (contains? ux uy) (touching id))]
-      [(touchable-map xform)
+      [(touchable-map)
+       (define xform (compiled-instructions-child-xform ci))
        (define-values (ux uy) (untransform-point* xform x y))
        (detect-sprites-touch childmap self-id ux uy)])))
 
@@ -406,6 +431,7 @@
 
     (define current-mouse-state #f)
     (define current-touching #f)
+    (define current-coordinate-maps (hash))
 
     (define-values (proc pending-transition)
       (spawn->process+transition (spawn-dataspace boot-actions)))
@@ -478,7 +504,8 @@
       (for [(s removed)] (remove-sprite! childmap s))
       (for [(s added)] (add-sprite! childmap s))
       (when (not (and (set-empty? added) (set-empty? removed)))
-        (update-touching!))
+        (update-touching!)
+        (update-coordinate-maps!))
       (flush-texture-cache!))
 
     (define (process-stop-requests! p)
@@ -578,6 +605,36 @@
             (inject-event! (patch-seq retract-old (assert new-touching)))
             (inject-event! retract-old))
         (set! current-touching new-touching)))
+
+    (define (update-coordinate-maps!)
+      (define aggregate-patch patch-empty)
+
+      (define (update-single-map! cmid cmx)
+        (define existing (hash-ref current-coordinate-maps cmid #f))
+        (define proposed (coordinate-map cmid cmx))
+        (when (not (equal? existing proposed))
+          (set! current-coordinate-maps (hash-set current-coordinate-maps cmid proposed))
+          (set! aggregate-patch (patch-seq aggregate-patch
+                                           (retract (coordinate-map cmid ?))
+                                           (assert proposed)))))
+
+      (let process-children-of ((id #f) (xform identity-transformation))
+        (for-each-child-sprite childmap id
+                               (lambda (s ci)
+                                 (for-each (lambda (cm)
+                                             (match-define (coordinate-map cmid cmx) cm)
+                                             (update-single-map!
+                                              cmid
+                                              (compose-transformation xform cmx)))
+                                           (compiled-instructions-coordinate-maps ci))
+                                 (define child-xform (compiled-instructions-child-xform ci))
+                                 (when child-xform
+                                   (process-children-of (sprite-id s)
+                                                        (compose-transformation xform
+                                                                                child-xform))))))
+
+      (when (not (patch-empty? aggregate-patch))
+        (inject-event! aggregate-patch)))
 
     (super-new (style '(gl no-autoclear)))))
 

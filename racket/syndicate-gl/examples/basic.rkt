@@ -34,10 +34,13 @@
 
   (idle))
 
-(define (draggable-shape name orig-x orig-y z plain-image hover-image #:parent [parent-id #f])
+(define (draggable-shape name orig-x orig-y z plain-image hover-image
+                         #:coordinate-map-id [coordinate-map-id #f]
+                         #:parent [parent-id #f])
   (actor (field [x orig-x] [y orig-y])
          (define/query-value touching? #f (inbound (touching name)) #t)
          (assert (outbound (simple-sprite #:parent parent-id
+                                          #:coordinate-map-id coordinate-map-id
                                           #:touchable-id name
                                           #:touchable-predicate in-unit-circle?
                                           z (x) (y) 50 50
@@ -69,6 +72,7 @@
 
   (actor (field [x 100] [y 100])
          (assert (outbound (simple-sprite #:touchable-id 'player
+                                          #:coordinate-map-id 'player
                                           -0.5 (x) (y) (image-width CC) (image-height CC) CC)))
 
          (field [keys-down (set)])
@@ -78,6 +82,10 @@
 
          (define/query-value touching? #f (inbound (touching 'player)) #t)
          (on-start (draggable-mixin touching? x y))
+
+         (on (asserted (inbound (coordinate-map 'player $xform)))
+             ;; TODO: figure out why this causes lag in frame updates
+             (log-info "Player coordinate map: ~v" xform))
 
          (on-start (tooltip touching? x y (image-width CC) (image-height CC) "The Player"))
 
