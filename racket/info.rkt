@@ -16,6 +16,7 @@
                "sgl"
                "struct-defaults"
                "auxiliary-macro-context"
+               "sandbox-lib"
 	       ))
 (define build-deps '("racket-doc"
                      "scribble-lib"
