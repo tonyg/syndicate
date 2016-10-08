@@ -214,7 +214,7 @@
     (match instr
       [`(rotate ,(? number? deg))
        (values `(glRotated ,deg 0 0 -1)
-               (compose-transformation xform (rotation-transformation deg)))]
+               (compose-transformation xform (rotation-transformation (- deg))))]
       [`(scale ,(? number? x) ,(? number? y))
        (values `(glScaled ,x ,y 1)
                (compose-transformation xform (stretching-transformation x y)))]
