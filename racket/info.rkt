@@ -20,4 +20,5 @@
 	       ))
 (define build-deps '("racket-doc"
                      "scribble-lib"
+                     "sha"
                      "draw-doc" "gui-doc" "htdp-doc" "pict-doc"))
