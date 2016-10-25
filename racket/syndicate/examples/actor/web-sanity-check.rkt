@@ -20,29 +20,28 @@
                                  'inbound
                                  ($ req (web-request-header _ (web-resource vh `("ws" ())) _ _))
                                  _))
-           (actor (react
-                   (assert (web-response-websocket id))
-                   (stop-when (retracted (observe (websocket-message id 'outbound _)))
-                              (log-info "Connection dropped"))
-                   (stop-when (message (websocket-message id 'inbound "quit"))
-                              (log-info "Received quit command"))
-                   (on (message (websocket-message id 'inbound $str))
-                       (log-info "Got ~v" str)
-                       (define u (string->url str))
-                       (when (url-scheme u)
-                         (let ((r (gensym 'client)))
-                           (react (on-start
-                                   (send! (web-request r
-                                                       'outbound
-                                                       (web-request-header 'get
-                                                                           (url->resource u)
-                                                                           '()
-                                                                           '())
-                                                       #"")))
-                                  (stop-when (asserted (web-response-complete r $h $body))
-                                             (log-info "Got headers back: ~v" h)
-                                             (log-info "Got body back: ~v" body)))))
-                       (send! (websocket-message id 'outbound str))))))
+           (actor (assert (web-response-websocket id))
+                  (stop-when (retracted (observe (websocket-message id 'outbound _)))
+                             (log-info "Connection dropped"))
+                  (stop-when (message (websocket-message id 'inbound "quit"))
+                             (log-info "Received quit command"))
+                  (on (message (websocket-message id 'inbound $str))
+                      (log-info "Got ~v" str)
+                      (define u (string->url str))
+                      (when (url-scheme u)
+                        (let ((r (gensym 'client)))
+                          (react (on-start
+                                  (send! (web-request r
+                                                      'outbound
+                                                      (web-request-header 'get
+                                                                          (url->resource u)
+                                                                          '()
+                                                                          '())
+                                                      #"")))
+                                 (stop-when (message (web-response-complete r $h $body))
+                                            (log-info "Got headers back: ~v" h)
+                                            (log-info "Got body back: ~v" body)))))
+                      (send! (websocket-message id 'outbound str)))))
 
        (on (message (web-request $id
                                  'inbound

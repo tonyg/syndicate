@@ -4,6 +4,7 @@
 (provide (struct-out web-virtual-host)
          (struct-out web-resource)
          url->resource
+         resource->url
 
          (struct-out web-request)
          (struct-out web-request-header)
@@ -52,6 +53,7 @@
 (require xml)
 
 (require/activate "timer.rkt")
+(require "../protocol/advertise.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -91,10 +93,12 @@
 (define-event-expander web-request-incoming
   (syntax-rules ()
     [(_ (id req) vh method path)
+     (web-request-incoming (id req) vh method path _)]
+    [(_ (id req) vh method path body)
      (message (web-request ($ id _)
                            'inbound
                            ($ req (web-request-header method (web-resource vh `path) _ _))
-                           _))]))
+                           body))]))
 
 (define-event-expander web-request-get
   (syntax-rules ()
@@ -138,6 +142,21 @@
                                   (url-host u)
                                   (url-port u))
                 (format-url-path u)))
+
+(define (resource->url r #:query [query '()])
+  (match-define (web-resource (web-virtual-host scheme host port) path) r)
+  (url scheme
+       #f
+       host
+       port
+       #t
+       (let loop ((p path))
+         (match p
+           ['() '()]
+           [(list d par ... rest)
+            (cons (path/param d par) (loop rest))]))
+       query
+       #f))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -184,19 +203,17 @@
       (actor #:name (list 'web-req id)
              (on-start (send! (set-timer (list 'web-req id) 100 'relative))
                        (send! web-req))
+             ;; TODO: protocol for 500 Internal server error
              (stop-when (message (timer-expired (list 'web-req id) _))
-                        (do-response-complete control-ch
-                                              id
-                                              (make-web-response-header
-                                               #:code 404
-                                               #:message #"Not found")
-                                              '()))
+                        (do-response-complete control-ch id header-404 '()))
              (stop-when (message (web-response-complete id $rh $body))
                         (do-response-complete control-ch id rh body))
              (stop-when (asserted (web-response-chunked id $rh))
                         (do-response-chunked control-ch id rh))
              (stop-when (asserted (web-response-websocket id $headers))
                         (do-response-websocket control-ch id headers)))))
+
+(define header-404 (make-web-response-header #:code 404 #:message #"Not found"))
 
 (define (do-response-complete control-ch id rh constree-of-bytes)
   (match-define (web-response-header code resp-message last-modified-seconds mime-type headers) rh)
@@ -348,17 +365,17 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (do-client-request id req body)
-  (react
-   (stop-when (asserted (observe (web-response-websocket id _)))
-              (do-request-websocket id req))
-   (stop-when (asserted (observe (web-response-complete id _ _)))
-              (do-request-complete id req body))
-   (stop-when (asserted (observe (web-response-chunked id _)))
-              (do-request-chunked id req body))))
+  (stop-when (asserted (observe (web-response-websocket id _)))
+             (do-request-websocket id req))
+  (stop-when (asserted (observe (web-response-complete id _ _)))
+             (do-request-complete id req body))
+  (stop-when (asserted (observe (web-response-chunked id _)))
+             (do-request-chunked id req body)))
 
 (define (analyze-outbound-request req)
   (match-define (web-request-header method
-                                    (web-resource (web-virtual-host scheme host port) path)
+                                    (and resource
+                                         (web-resource (web-virtual-host scheme host port) _))
                                     headers
                                     query)
     req)
@@ -368,18 +385,7 @@
                      ["https" 443]
                      [_ #f]))
           method
-          (url->string (url scheme
-                            #f
-                            host
-                            port
-                            #t
-                            (let loop ((p path))
-                              (match p
-                                ['() '()]
-                                [(list d par ... rest)
-                                 (cons (path/param d par) (loop rest))]))
-                            query
-                            #f))
+          (url->string (resource->url resource #:query query))
           headers))
 
 (define (do-request-websocket id req)
@@ -446,10 +452,10 @@
      (send-ground-message (web-raw-client-conn id response))))
   (react
    (stop-when (message (inbound (web-raw-client-conn id $r)))
-              (react (stop-when (retracted (observe (web-response-complete id _ _))))
-                     (if (exn? r)
-                         (assert (web-response-websocket id #f #f))
-                         (begin (assert r)))))))
+              (react (stop-when (asserted (observe (web-response-complete id _ _)))
+                                (if (exn? r)
+                                    (send! (web-response-complete id #f #f))
+                                    (send! r)))))))
 
 (define (do-request-chunked id req body)
   (log-error "do-request-chunked: unimplemented")
