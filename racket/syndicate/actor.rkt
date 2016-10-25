@@ -92,6 +92,7 @@
 (require "support/hash.rkt")
 (require "pretty.rkt")
 (require "functional-queue.rkt")
+(require "protocol/instance.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Definitions and Structures
@@ -443,9 +444,31 @@
        (analyze-pattern E-stx #'P))
      (quasisyntax/loc stx
        (on #,E-stx
-           (let ((p #,instantiated))
+           (let* ((id (gensym 'during/actor))
+                  (p #,instantiated) ;; this is the concrete assertion corresponding to demand
+                  (inst (instance id p))) ;; this is the assertion representing supply
+             (react (stop-when (asserted inst)
+                               ;; Supply (inst) appeared before demand (p) retracted.
+                               ;; Transition to a state where we monitor demand, but also
+                               ;; express interest in supply: this latter acts as a signal
+                               ;; to the supply that it should stick around. We could, if
+                               ;; we liked, react to retraction of supply before
+                               ;; retraction of demand, interpreting it perhaps as a crash
+                               ;; of some kind. Once demand is retracted, this facet
+                               ;; terminates, retracting its interest in supply, thereby
+                               ;; signalling to the supply that it is no longer wanted.
+                               (react (stop-when (retracted inst)) ;; NOT OPTIONAL
+                                      (stop-when (retracted p))))
+                    (stop-when (retracted p)
+                               ;; Demand (p) retracted before supply (inst) appeared. We
+                               ;; MUST wait for the supply to fully appear so that we can
+                               ;; reliably tell it to shut down. We must maintain interest
+                               ;; in supply until we see supply, and then terminate, thus
+                               ;; signalling to supply that it is no longer wanted.
+                               (react (stop-when (asserted inst)))))
              (w.wrapper #:name name.N
-              (stop-when (retracted p))
+              (assert inst)
+              (stop-when (retracted (observe inst)))
               O ...))))]))
 
 (define-syntax (begin/dataflow stx)
