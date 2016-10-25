@@ -53,7 +53,6 @@
 (require xml)
 
 (require/activate "timer.rkt")
-(require "../protocol/advertise.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
