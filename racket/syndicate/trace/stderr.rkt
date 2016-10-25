@@ -210,6 +210,7 @@
   (define receiver (make-log-receiver logger 'info))
   (define process-names (make-hash))
   (name-process! process-names '() 'ground) ;; by convention
+  (define next-signal-evt (check-for-unix-signals-support!))
   (parameterize ((pretty-print-columns 100))
     (let loop ()
       (sync (handle-evt receiver
@@ -217,16 +218,15 @@
                           (match-define (vector level message-string data event-name) v)
                           (display-notification data process-names)
                           (loop)))
-            (let ((next-signal-evt (check-for-unix-signals-support!)))
-              (if next-signal-evt
-                  (handle-evt next-signal-evt
-                              (lambda (_signum)
-                                (with-color WHITE-ON-GREEN
-                                  (output "\e[2J\e[HProcess name table:\n")
-                                  (for [((pid name) (in-hash process-names))]
-                                    (output "\t~v\t--> ~v\n" pid name)))
-                                (loop)))
-                  never-evt))))))
+            (if next-signal-evt
+                (handle-evt next-signal-evt
+                            (lambda (_signum)
+                              (with-color WHITE-ON-GREEN
+                                (output "\e[2J\e[HProcess name table:\n")
+                                (for [((pid name) (in-hash process-names))]
+                                  (output "\t~v\t--> ~v\n" pid name)))
+                              (loop)))
+                never-evt)))))
 
 (void (when (not (set-empty? flags))
         (thread (display-trace (install-trace-procedure!)))))
