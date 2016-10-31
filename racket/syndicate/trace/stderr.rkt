@@ -64,6 +64,7 @@
 (define YELLOW-ON-RED ";1;33;41")
 (define WHITE-ON-RED ";1;37;41")
 (define WHITE-ON-GREEN ";1;37;42")
+(define WHITE-ON-BLUE ";1;37;44")
 (define GREY-ON-RED ";37;41")
 (define GREY-ON-GREEN ";37;42")
 (define RED ";31")
@@ -115,7 +116,7 @@
 (define (forget-process! process-names pids)
   (hash-remove! process-names pids))
 
-(define (display-notification the-notification process-names)
+(define (display-notification the-notification process-names ground-state-box)
   (match-define (trace-notification source sink type detail) the-notification)
   (match* (type detail)
     [('turn-begin (process name _beh state))
@@ -125,6 +126,7 @@
          (output "~a turn begins\n" (format-pids process-names sink))))]
     [('turn-end (process name _beh state))
      (ensure-process-named! process-names sink name)
+     (when (null? sink) (set-box! ground-state-box state))
      (when show-turns?
        (with-color BLUE
          (output "~a turn ends\n" (format-pids process-names sink))
@@ -192,6 +194,9 @@
                (format-pids process-names sink)
                (pretty-format body)))]))
 
+(define (summarise-ground-state state)
+  (syndicate-pretty-print state (current-error-port)))
+
 (define (install-trace-procedure!)
   (define logger (make-logger 'syndicate-trace))
   (define (trace-via-logger n)
@@ -204,11 +209,15 @@
                             (dynamic-require 'unix-signals 'capture-signal!)))
   (and capture-signal!
        (begin (capture-signal! 'SIGUSR1)
-              (dynamic-require 'unix-signals 'next-signal-evt))))
+              (capture-signal! 'SIGUSR2)
+              (let ((lookup-signal-name (dynamic-require 'unix-signals 'lookup-signal-name)))
+                (handle-evt (dynamic-require 'unix-signals 'next-signal-evt)
+                            lookup-signal-name)))))
 
 (define ((display-trace logger))
   (define receiver (make-log-receiver logger 'info))
   (define process-names (make-hash))
+  (define ground-state-box (box #f))
   (name-process! process-names '() 'ground) ;; by convention
   (define next-signal-evt (check-for-unix-signals-support!))
   (parameterize ((pretty-print-columns 100))
@@ -216,15 +225,21 @@
       (sync (handle-evt receiver
                         (lambda (v)
                           (match-define (vector level message-string data event-name) v)
-                          (display-notification data process-names)
+                          (display-notification data process-names ground-state-box)
                           (loop)))
             (if next-signal-evt
                 (handle-evt next-signal-evt
-                            (lambda (_signum)
-                              (with-color WHITE-ON-GREEN
-                                (output "\e[2J\e[HProcess name table:\n")
-                                (for [((pid name) (in-hash process-names))]
-                                  (output "\t~v\t--> ~v\n" pid name)))
+                            (lambda (signame)
+                              (match signame
+                                ['SIGUSR1
+                                 (with-color WHITE-ON-GREEN
+                                   (output "\e[2J\e[HProcess name table:\n")
+                                   (for [((pid name) (in-hash process-names))]
+                                     (output "\t~v\t--> ~v\n" pid name)))]
+                                ['SIGUSR2
+                                 (with-color WHITE-ON-BLUE
+                                   (output "\e[2J\e[HGround routing table:\n")
+                                   (summarise-ground-state (unbox ground-state-box)))])
                               (loop)))
                 never-evt)))))
 
