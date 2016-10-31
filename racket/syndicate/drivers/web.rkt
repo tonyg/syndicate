@@ -466,7 +466,9 @@
    (stop-when (message (inbound (web-raw-client-conn id $r)))
               (react (stop-when (asserted (observe (web-response-complete id _ _)))
                                 (if (exn? r)
-                                    (send! (web-response-complete id #f #f))
+                                    (begin (log-error "Outbound web request failed: ~a"
+                                                      (exn->string r))
+                                           (send! (web-response-complete id #f #f)))
                                     (send! r)))))))
 
 (define (do-request-chunked id req body)
