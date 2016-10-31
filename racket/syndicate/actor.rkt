@@ -255,6 +255,10 @@
     (pattern (~seq #:actor wrapper))
     (pattern (~seq) #:attr wrapper #'actor))
 
+  (define-splicing-syntax-class on-crash-option
+    (pattern (~seq #:on-crash expr))
+    (pattern (~seq) #:attr expr #f))
+
   (define-splicing-syntax-class name
     (pattern (~seq #:name N))
     (pattern (~seq) #:attr N #'#f))
@@ -438,7 +442,7 @@
 
 (define-syntax (during/actor stx)
   (syntax-parse stx
-    [(_ P w:actor-wrapper name:name O ...)
+    [(_ P w:actor-wrapper name:name oncrash:on-crash-option O ...)
      (define E-stx (syntax/loc #'P (asserted P)))
      (define-values (_proj _pat _bindings instantiated)
        (analyze-pattern E-stx #'P))
@@ -451,13 +455,16 @@
                                ;; Supply (inst) appeared before demand (p) retracted.
                                ;; Transition to a state where we monitor demand, but also
                                ;; express interest in supply: this latter acts as a signal
-                               ;; to the supply that it should stick around. We could, if
-                               ;; we liked, react to retraction of supply before
-                               ;; retraction of demand, interpreting it perhaps as a crash
-                               ;; of some kind. Once demand is retracted, this facet
-                               ;; terminates, retracting its interest in supply, thereby
-                               ;; signalling to the supply that it is no longer wanted.
-                               (react (stop-when (retracted inst)) ;; NOT OPTIONAL
+                               ;; to the supply that it should stick around. We react to
+                               ;; retraction of supply before retraction of demand by
+                               ;; invoking the on-crash expression, if supplied. Once
+                               ;; demand is retracted, this facet terminates, retracting
+                               ;; its interest in supply, thereby signalling to the supply
+                               ;; that it is no longer wanted.
+                               (react (stop-when (retracted inst) ;; NOT OPTIONAL
+                                                 #,@(if (attribute oncrash.expr)
+                                                        #'(oncrash.expr)
+                                                        #'()))
                                       (stop-when (retracted p))))
                     (stop-when (retracted p)
                                ;; Demand (p) retracted before supply (inst) appeared. We
