@@ -259,6 +259,10 @@
     (pattern (~seq #:on-crash expr))
     (pattern (~seq) #:attr expr #f))
 
+  (define-splicing-syntax-class let-option
+    (pattern (~seq #:let clauses))
+    (pattern (~seq) #:attr clauses #'()))
+
   (define-splicing-syntax-class name
     (pattern (~seq #:name N))
     (pattern (~seq) #:attr N #'#f))
@@ -442,7 +446,7 @@
 
 (define-syntax (during/actor stx)
   (syntax-parse stx
-    [(_ P w:actor-wrapper name:name oncrash:on-crash-option O ...)
+    [(_ P w:actor-wrapper name:name parent-let:let-option oncrash:on-crash-option O ...)
      (define E-stx (syntax/loc #'P (asserted P)))
      (define-values (_proj _pat _bindings instantiated)
        (analyze-pattern E-stx #'P))
@@ -473,10 +477,11 @@
                                ;; in supply until we see supply, and then terminate, thus
                                ;; signalling to supply that it is no longer wanted.
                                (react (stop-when (asserted inst)))))
-             (w.wrapper #:name name.N
-              (assert inst)
-              (stop-when (retracted (observe inst)))
-              O ...))))]))
+             (let parent-let.clauses
+               (w.wrapper #:name name.N
+                          (assert inst)
+                          (stop-when (retracted (observe inst)))
+                          O ...)))))]))
 
 (define-syntax (begin/dataflow stx)
   (syntax-parse stx
