@@ -11,6 +11,7 @@
 
          (rename-out [web-response-header <web-response-header>])
          (struct-out/defaults [make-web-response-header web-response-header])
+         web-response-header-code-type
          (struct-out web-response-complete)
          (struct-out web-response-chunked)
          (rename-out [web-response-websocket <web-response-websocket>])
@@ -79,6 +80,18 @@
      #:headers [web-response-header-headers '()]))
   (define-struct-defaults make-web-response-websocket web-response-websocket
     (#:headers [web-response-websocket-headers '()])))
+
+(define (web-response-header-code-type rh)
+  (if (not rh) ;; network failure of some kind; respondent did not respond
+      'network-failure
+      (let ((code (web-response-header-code rh)))
+        (cond
+          [(<= 100 code 199) 'informational]
+          [(<= 200 code 299) 'successful]
+          [(<= 300 code 399) 'redirection]
+          [(<= 400 code 499) 'client-error]
+          [(<= 500 code 599) 'server-error]
+          [else 'other]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground-level communication messages
