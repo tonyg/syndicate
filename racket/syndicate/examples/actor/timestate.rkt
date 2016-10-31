@@ -13,3 +13,11 @@
        (field [deadline (+ (current-inexact-milliseconds) 5000)])
        (stop-when (asserted (later-than (deadline)))
                   (printf "Deadline expired\n")))
+
+(actor #:name 'demo-updating-later-than
+       (field [deadline (current-inexact-milliseconds)])
+       (field [counter 0])
+       (on #:when (< (counter) 10) (asserted (later-than (deadline)))
+           (printf "Tick ~v\n" (counter))
+           (counter (+ (counter) 1))
+           (deadline (+ (deadline) 1000))))
