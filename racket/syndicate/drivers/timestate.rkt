@@ -1,7 +1,8 @@
 #lang syndicate/actor
 
 (provide (struct-out later-than)
-         stop-when-timeout)
+         stop-when-timeout
+         sleep)
 
 (require/activate syndicate/drivers/timer)
 
@@ -19,3 +20,8 @@
   (let ((timer-id (gensym 'timeout)))
     (on-start (send! (set-timer timer-id relative-msecs 'relative)))
     (stop-when (message (timer-expired timer-id _)) body ...)))
+
+(define (sleep sec)
+  (define timer-id (gensym 'sleep))
+  (until (message (timer-expired timer-id _))
+    (on-start (send! (set-timer timer-id (* sec 1000.0) 'relative)))))
