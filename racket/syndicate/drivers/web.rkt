@@ -209,7 +209,10 @@
                                 (match-lambda
                                   ['quit (void)]))))))
 
-  (on-stop (channel-put listener-control 'quit))
+  (on-start (log-syndicate/drivers/web-info "Starting HTTP listener on port ~v" port))
+
+  (on-stop (channel-put listener-control 'quit)
+           (log-syndicate/drivers/web-info "Stopping HTTP listener on port ~v" port))
 
   (on (message (inbound (web-raw-request $id port $conn $lowlevel-req $control-ch)))
       (define web-req (web-request id
