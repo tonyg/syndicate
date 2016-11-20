@@ -318,6 +318,7 @@
            (read-request conn listen-port tcp-addresses)))
        (when req
          (define id (gensym 'web))
+         (define start-ms (current-inexact-milliseconds))
          (send-ground-message (web-raw-request id listen-port conn req control-ch))
          (sync (handle-evt control-ch
                            (match-lambda
@@ -329,6 +330,15 @@
                                   (lambda _args (values reply-headers (void))))
                                  conn req))]
                              [(list 'response resp)
+                              (define delay-ms (inexact->exact
+                                                (truncate
+                                                 (- (current-inexact-milliseconds) start-ms))))
+                              (log-info "~s" `((method ,(request-method req))
+                                               (url ,(url->string (request-uri req)))
+                                               (headers ,(request-headers req))
+                                               (port ,(request-host-port req))
+                                               (code ,(response-code resp))
+                                               (delay-ms ,delay-ms)))
                               (output-response/method conn resp (request-method req))])))
          (do-request))))))
 
