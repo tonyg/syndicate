@@ -8,6 +8,7 @@
 
          (struct-out web-request)
          (struct-out web-request-header)
+         web-request-header-content-type
 
          (rename-out [web-response-header <web-response-header>])
          (struct-out/defaults [make-web-response-header web-response-header])
@@ -26,6 +27,7 @@
          websocket-message-recv
          websocket-message-send!
          web-respond/bytes!
+         web-respond/string!
          web-respond/xexpr!
 
          spawn-web-driver)
@@ -37,6 +39,7 @@
 (require net/rfc6455/conn-api)
 (require net/rfc6455/dispatcher)
 (require net/http-client)
+(require racket/dict)
 (require racket/exn)
 (require racket/tcp)
 (require racket/set)
@@ -72,6 +75,9 @@
 
 (struct web-response-chunk (id bytes) #:prefab)
 (struct websocket-message (id direction body) #:prefab)
+
+(define (web-request-header-content-type req)
+  (dict-ref (web-request-header-headers req) 'content-type #f))
 
 (begin-for-declarations
   (define-struct-defaults make-web-response-header web-response-header
@@ -134,6 +140,9 @@
 
 (define (web-respond/bytes! id #:header [header (make-web-response-header)] body-bytes)
   (send! (web-response-complete id header body-bytes)))
+
+(define (web-respond/string! id #:header [header (make-web-response-header)] body-string)
+  (web-respond/bytes! id #:header header (string->bytes/utf-8 body-string)))
 
 (define (web-respond/xexpr! id
                             #:header [header (make-web-response-header)]
