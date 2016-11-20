@@ -30,6 +30,8 @@
 
          spawn-web-driver)
 
+(define-logger syndicate/drivers/web)
+
 (require net/url)
 (require net/rfc6455)
 (require net/rfc6455/conn-api)
@@ -333,12 +335,14 @@
                               (define delay-ms (inexact->exact
                                                 (truncate
                                                  (- (current-inexact-milliseconds) start-ms))))
-                              (log-info "~s" `((method ,(request-method req))
-                                               (url ,(url->string (request-uri req)))
-                                               (headers ,(request-headers req))
-                                               (port ,(request-host-port req))
-                                               (code ,(response-code resp))
-                                               (delay-ms ,delay-ms)))
+                              (log-syndicate/drivers/web-info
+                               "~s"
+                               `((method ,(request-method req))
+                                 (url ,(url->string (request-uri req)))
+                                 (headers ,(request-headers req))
+                                 (port ,(request-host-port req))
+                                 (code ,(response-code resp))
+                                 (delay-ms ,delay-ms)))
                               (output-response/method conn resp (request-method req))])))
          (do-request))))))
 
@@ -356,8 +360,9 @@
                           (with-handlers ([exn:fail:network? (lambda (e) eof)]
                                           [exn:fail:port-is-closed? (lambda (e) eof)]
                                           [exn:fail? (lambda (e)
-                                                       (log-error "Unexpected ws-recv error: ~a"
-                                                                  (exn->string e))
+                                                       (log-syndicate/drivers/web-error
+                                                        "Unexpected ws-recv error: ~a"
+                                                        (exn->string e))
                                                        eof)])
                             (ws-recv wsc #:payload-type 'text)))
                         (send-ground-message (web-incoming-message id msg))
@@ -417,14 +422,16 @@
       (send-ground-message (web-raw-client-conn id #f))
       (thread
        (lambda ()
-         (log-info "Connecting to ~a ~a" urlstr (current-inexact-milliseconds))
+         (log-syndicate/drivers/web-debug "Connecting to ~a ~a"
+                                          urlstr
+                                          (current-inexact-milliseconds))
          (define c (with-handlers [(exn? values)]
                      (ws-connect (string->url urlstr) #:headers headers)))
          (when (exn? c)
-           (log-info "Connection to ~a failed: ~a" urlstr (exn->string c)))
+           (log-syndicate/drivers/web-debug "Connection to ~a failed: ~a" urlstr (exn->string c)))
          (send-ground-message (web-raw-client-conn id c))
          (when (not (exn? c))
-           (log-info "Connected to ~a ~a" url (current-inexact-milliseconds))
+           (log-syndicate/drivers/web-debug "Connected to ~a ~a" url (current-inexact-milliseconds))
            ((websocket-connection-main id control-ch) c (void))))))
   (react
    (stop-when (message (inbound (web-raw-client-conn id $c)))
@@ -476,13 +483,14 @@
    (stop-when (message (inbound (web-raw-client-conn id $r)))
               (react (stop-when (asserted (observe (web-response-complete id _ _)))
                                 (if (exn? r)
-                                    (begin (log-error "Outbound web request failed: ~a"
-                                                      (exn->string r))
+                                    (begin (log-syndicate/drivers/web-error
+                                            "Outbound web request failed: ~a"
+                                            (exn->string r))
                                            (send! (web-response-complete id #f #f)))
                                     (send! r)))))))
 
 (define (do-request-chunked id req body)
-  (log-error "do-request-chunked: unimplemented")
+  (log-error "syndicate/drivers/web: do-request-chunked: unimplemented")
   (react (stop-when (retracted (observe (web-response-chunked id _))))
          (assert (web-response-chunked id #f))))
 
