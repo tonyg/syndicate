@@ -21,6 +21,8 @@
          signal-background-activity!
 	 run-ground)
 
+(define-logger syndicate/ground)
+
 ;;---------------------------------------------------------------------------
 ;; Communication via regular subscription and messages from other threads
 
@@ -104,7 +106,7 @@
   ;;           background-activity-count
   ;;           (trie->pretty-string interests))
   (if (and inert? (zero? background-activity-count) (trie-empty? interests))
-      (begin (log-info "run-ground: Terminating because inert")
+      (begin (log-syndicate/ground-debug "run-ground: Terminating because inert")
              (void))
       (match (apply sync
                     (current-ground-event-async-channel)
@@ -135,7 +137,7 @@
     [(<quit> exn _)
      (trace-turn-end #f proc)
      (trace-actor-exit #f exn)
-     (log-info "run-ground: Terminating by request")
+     (log-syndicate/ground-debug "run-ground: Terminating by request")
      (void)]
     [(transition new-state actions)
      (trace-turn-end #f (process (process-name proc) (process-behavior proc) new-state))
@@ -148,7 +150,7 @@
               [(? patch? p)
                (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
               [_
-               (log-warning "run-ground: ignoring useless meta-action ~v" a)
+               (log-syndicate/ground-warning "run-ground: ignoring useless meta-action ~v" a)
                (process-actions actions interests)])])))]))
 
 ;; Action* -> Void
