@@ -31,6 +31,8 @@
          web-respond/string!
          web-respond/xexpr!
 
+         append-url-path
+
          spawn-web-driver)
 
 (define-logger syndicate/drivers/web)
@@ -58,6 +60,8 @@
 (require web-server/dispatchers/dispatch)
 (require struct-defaults)
 (require xml)
+
+(module+ test (require rackunit))
 
 (require/activate "timer.rkt")
 
@@ -310,6 +314,20 @@
                      (match-define (path/param path-element params) p)
                      (list* path-element params)))
   (foldr (lambda (e acc) (append e (list acc))) '() elements))
+
+(define (append-url-path p1 p2)
+  (match p1
+    ['() p2]
+    [(list "" '()) p2]
+    [(list pieces ... next) (append pieces (list (append-url-path next p2)))]))
+
+(module+ test
+  (check-equal? (append-url-path '() '("c" ("d" ()))) '("c" ("d" ())))
+  (check-equal? (append-url-path '("" ()) '("c" ("d" ()))) '("c" ("d" ())))
+  (check-equal? (append-url-path '("a" "x" ("b" ())) '("c" ("d" ())))
+                '("a" "x" ("b" ("c" ("d" ())))))
+  (check-equal? (append-url-path '("a" "x" ("b" ("" ()))) '("c" ("d" ())))
+                '("a" "x" ("b" ("c" ("d" ()))))))
 
 (define (build-headers hs)
   (for/list ((h (in-list hs)))
