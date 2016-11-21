@@ -1,11 +1,6 @@
 #lang syndicate/actor
 
-(require/activate syndicate/drivers/timer)
-
-(define (sleep sec)
-  (define timer-id (gensym 'sleep))
-  (until (message (timer-expired timer-id _))
-         (on-start (send! (set-timer timer-id (* sec 1000.0) 'relative)))))
+(require/activate syndicate/drivers/timestate)
 
 (define (chain-step n)
   (printf "chain-step ~v\n" n)
