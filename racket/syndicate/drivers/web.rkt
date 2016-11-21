@@ -335,27 +335,36 @@
          (define start-ms (current-inexact-milliseconds))
          (send-ground-message (web-raw-request id listen-port conn req control-ch))
          (sync (handle-evt control-ch
-                           (match-lambda
-                             [(list 'websocket reply-headers ws-ch)
-                              (with-handlers ((exn:dispatcher?
-                                               (lambda (_e) (bad-request conn req))))
-                                ((make-general-websockets-dispatcher
-                                  (websocket-connection-main id ws-ch)
-                                  (lambda _args (values reply-headers (void))))
-                                 conn req))]
-                             [(list 'response resp)
-                              (define delay-ms (inexact->exact
-                                                (truncate
-                                                 (- (current-inexact-milliseconds) start-ms))))
-                              (log-syndicate/drivers/web-info
-                               "~s"
-                               `((method ,(request-method req))
-                                 (url ,(url->string (request-uri req)))
-                                 (headers ,(request-headers req))
-                                 (port ,(request-host-port req))
-                                 (code ,(response-code resp))
-                                 (delay-ms ,delay-ms)))
-                              (output-response/method conn resp (request-method req))])))
+                           (lambda (msg)
+                             (define delay-ms (inexact->exact
+                                               (truncate
+                                                (- (current-inexact-milliseconds) start-ms))))
+                             (match msg
+                               [(list 'websocket reply-headers ws-ch)
+                                (log-syndicate/drivers/web-info
+                                 "~s"
+                                 `((method ,(request-method req))
+                                   (url ,(url->string (request-uri req)))
+                                   (headers ,(request-headers req))
+                                   (port ,(request-host-port req))
+                                   (websocket)
+                                   (delay-ms ,delay-ms)))
+                                (with-handlers ((exn:dispatcher?
+                                                 (lambda (_e) (bad-request conn req))))
+                                  ((make-general-websockets-dispatcher
+                                    (websocket-connection-main id ws-ch)
+                                    (lambda _args (values reply-headers (void))))
+                                   conn req))]
+                               [(list 'response resp)
+                                (log-syndicate/drivers/web-info
+                                 "~s"
+                                 `((method ,(request-method req))
+                                   (url ,(url->string (request-uri req)))
+                                   (headers ,(request-headers req))
+                                   (port ,(request-host-port req))
+                                   (code ,(response-code resp))
+                                   (delay-ms ,delay-ms)))
+                                (output-response/method conn resp (request-method req))]))))
          (do-request))))))
 
 ;; D-:  uck barf
