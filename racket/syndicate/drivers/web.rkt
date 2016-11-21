@@ -215,12 +215,17 @@
                                   (loop)))
                     (handle-evt listener-control
                                 (match-lambda
-                                  ['quit (void)]))))))
+                                  [(list 'quit k-ch)
+                                   (tcp-close listener)
+                                   (channel-put k-ch (void))]))))))
 
   (on-start (log-syndicate/drivers/web-info "Starting HTTP listener on port ~v" port))
 
-  (on-stop (channel-put listener-control 'quit)
-           (log-syndicate/drivers/web-info "Stopping HTTP listener on port ~v" port))
+  (on-stop (define k-ch (make-channel))
+           (log-syndicate/drivers/web-info "Stopping HTTP listener on port ~v" port)
+           (channel-put listener-control (list 'quit k-ch))
+           (channel-get k-ch)
+           (log-syndicate/drivers/web-info "Stopped HTTP listener on port ~v" port))
 
   (on (message (inbound (web-raw-request $id port $conn $lowlevel-req $control-ch)))
       (define web-req (web-request id
