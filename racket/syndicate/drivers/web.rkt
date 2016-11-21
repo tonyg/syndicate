@@ -427,17 +427,20 @@
                                     headers
                                     query)
     req)
-  (values host
+  (values (match scheme
+            [(or "wss" "https") #t]
+            [_ #f])
+          host
           (or port (match scheme
-                     ["http" 80]
-                     ["https" 443]
+                     [(or "ws" "http") 80]
+                     [(or "wss" "https") 443]
                      [_ #f]))
           method
           (url->string (resource->url resource #:query query))
           headers))
 
 (define (do-request-websocket id req)
-  (define-values (_host server-port method urlstr headers) (analyze-outbound-request req))
+  (define-values (_ssl? _host server-port method urlstr headers) (analyze-outbound-request req))
   (define control-ch (make-channel))
   (if (not server-port)
       (send-ground-message (web-raw-client-conn id #f))
@@ -463,7 +466,7 @@
                          (assert (web-response-websocket id #f)))))))
 
 (define (do-request-complete id req body)
-  (define-values (host server-port method urlstr headers) (analyze-outbound-request req))
+  (define-values (ssl? host server-port method urlstr headers) (analyze-outbound-request req))
   (thread
    (lambda ()
      (define response
@@ -473,6 +476,7 @@
          (define-values (first-line header-lines body-port)
            (http-sendrecv host
                           urlstr
+                          #:ssl? ssl?
                           #:headers (build-http-client-headers headers)
                           #:port server-port
                           #:method (string-upcase (symbol->string method))
