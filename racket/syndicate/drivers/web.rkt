@@ -13,6 +13,7 @@
          (rename-out [web-response-header <web-response-header>])
          (struct-out/defaults [make-web-response-header web-response-header])
          web-response-header-code-type
+         web-response-successful?
          (struct-out web-response-complete)
          (struct-out web-response-chunked)
          (rename-out [web-response-websocket <web-response-websocket>])
@@ -100,6 +101,9 @@
           [(<= 400 code 499) 'client-error]
           [(<= 500 code 599) 'server-error]
           [else 'other]))))
+
+(define (web-response-successful? rh)
+  (eq? (web-response-header-code-type rh) 'successful))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground-level communication messages
