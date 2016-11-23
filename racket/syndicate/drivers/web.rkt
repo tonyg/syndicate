@@ -165,14 +165,16 @@
                        #:code [code 303]
                        #:message [message #"Redirect"]
                        #:content-type [content-type "text/html"]
+                       #:headers [headers '()]
                        #:body [body `(html (body (a ((href ,location))
                                                     "Moved to " ,location)))])
   (web-respond/xexpr! id
                       #:header (make-web-response-header
                                 #:code code
                                 #:message message
-                                #:headers (list (cons 'location location)
-                                                (cons 'content-type content-type)))
+                                #:headers (list* (cons 'location location)
+                                                 (cons 'content-type content-type)
+                                                 headers))
                       body))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
