@@ -30,6 +30,7 @@
          web-respond/bytes!
          web-respond/string!
          web-respond/xexpr!
+         web-redirect/temporary!
 
          append-url-path
 
@@ -159,6 +160,18 @@
   (web-respond/bytes! id #:header header
                       (bytes-append preamble
                                     (string->bytes/utf-8 (xexpr->string body-xexpr)))))
+
+(define (web-redirect/temporary! id location
+                                 #:content-type [content-type "text/html"]
+                                 #:body [body `(html (body (a ((href ,location))
+                                                              "Moved to " ,location)))])
+  (web-respond/xexpr! id
+                      #:header (make-web-response-header
+                                #:code 303
+                                #:message #"Moved"
+                                #:headers (list (cons 'location location)
+                                                (cons 'content-type content-type)))
+                      body))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
