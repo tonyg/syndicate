@@ -34,7 +34,4 @@
      (define/query-value id default (config scope (list 'key $val)) val)]))
 
 (define (config-ref #:scope [scope ?] key default)
-  (react/suspend (k)
-                 (define/query-value actual default (config scope (list key $val)) val)
-                 (on-start (flush!)
-                           (k (actual)))))
+  (immediate-query query-value default (config scope (list key $val)) val))

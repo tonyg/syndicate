@@ -43,6 +43,7 @@
          define/query-set
          define/query-hash
          define/query-hash-set
+         immediate-query
 
          send!
          assert!
@@ -643,6 +644,11 @@
 (define-syntax-rule (define/query-set id P x ...) (define id (query-set id P x ...)))
 (define-syntax-rule (define/query-hash id P x ...) (define id (query-hash id P x ...)))
 (define-syntax-rule (define/query-hash-set id P x ...) (define id (query-hash-set id P x ...)))
+
+(define-syntax-rule (immediate-query op args ...)
+  (react/suspend (k)
+                 (define query-result (op query-result args ...))
+                 (on-start (flush!) (k (query-result)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
