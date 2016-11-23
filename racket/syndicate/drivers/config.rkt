@@ -34,4 +34,4 @@
      (define/query-value id default (config scope (list 'key $val)) val)]))
 
 (define (config-ref #:scope [scope ?] key default)
-  (immediate-query query-value default (config scope (list key $val)) val))
+  (immediate-query (query-value default (config scope (list key $val)) val)))

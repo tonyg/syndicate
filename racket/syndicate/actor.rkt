@@ -645,10 +645,14 @@
 (define-syntax-rule (define/query-hash id P x ...) (define id (query-hash id P x ...)))
 (define-syntax-rule (define/query-hash-set id P x ...) (define id (query-hash-set id P x ...)))
 
-(define-syntax-rule (immediate-query op args ...)
-  (react/suspend (k)
-                 (define query-result (op query-result args ...))
-                 (on-start (flush!) (k (query-result)))))
+(define-syntax (immediate-query stx)
+  (syntax-case stx ()
+    [(_ [op args ...] ...)
+     (with-syntax [((query-result ...) (generate-temporaries #'(op ...)))]
+       (syntax/loc stx
+         (react/suspend (k)
+                        (define query-result (op query-result args ...)) ...
+                        (on-start (flush!) (k (query-result) ...)))))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
