@@ -63,6 +63,10 @@
   (actor #:name 'smtp-account-driver
          (during/actor (smtp-account-config $id $host $port $user $password $ssl-mode)
            #:name (list 'smtp-account id)
+           (on-start
+            (log-syndicate/drivers/smtp-info "~v starting: ~s ~s ~s" id host user ssl-mode))
+           (on-stop
+            (log-syndicate/drivers/smtp-info "~v stopping: ~s ~s ~s" id host user ssl-mode))
            (assert (smtp-account id))
            (on (message (smtp-delivery id $delivery-id $from $to $header $lines))
                (with-handlers [(exn:fail?
