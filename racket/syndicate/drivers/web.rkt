@@ -8,6 +8,7 @@
 
          (struct-out web-request)
          (struct-out web-request-header)
+         (struct-out web-request-cookie)
          web-request-header-content-type
 
          (rename-out [web-response-header <web-response-header>])
@@ -52,6 +53,8 @@
 (require (only-in racket/list flatten))
 (require (only-in racket/port port->bytes))
 (require web-server/http/bindings)
+(require web-server/http/cookie)
+(require web-server/http/cookie-parse)
 (require web-server/http/request)
 (require web-server/http/request-structs)
 (require web-server/http/response)
@@ -73,6 +76,7 @@
 
 (struct web-request (id direction header* body) #:prefab)
 (struct web-request-header (method resource headers query) #:prefab)
+(struct web-request-cookie (id name value domain path) #:prefab)
 
 (struct web-response-header (code message last-modified-seconds mime-type headers) #:prefab)
 (struct web-response-complete (id header body) #:prefab)
@@ -257,6 +261,9 @@
                                     (url-query (request-uri lowlevel-req)))
                                    (request-post-data/raw lowlevel-req)))
       (actor #:name (list 'web-req id)
+             (for [(c (request-cookies lowlevel-req))]
+               (match-define (client-cookie n v d p) c)
+               (assert (web-request-cookie id n v d p)))
              (on-start (send! (set-timer (list 'web-req id) 100 'relative))
                        (send! web-req))
              ;; TODO: protocol for 500 Internal server error
