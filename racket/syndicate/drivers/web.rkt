@@ -15,6 +15,7 @@
          (struct-out web-request-header)
          (struct-out web-request-cookie)
          web-request-header-content-type
+         web-request-header-websocket-upgrade?
 
          (rename-out [web-response-header <web-response-header>])
          (struct-out/defaults [make-web-response-header web-response-header])
@@ -92,6 +93,9 @@
 
 (define (web-request-header-content-type req)
   (dict-ref (web-request-header-headers req) 'content-type #f))
+
+(define (web-request-header-websocket-upgrade? req)
+  (equal? (string-downcase (dict-ref (web-request-header-headers req) 'upgrade #f)) "websocket"))
 
 (begin-for-declarations
   (define-struct-defaults make-web-response-header web-response-header
