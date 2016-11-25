@@ -6,6 +6,10 @@
          url->resource
          resource->url
 
+         string->resource-path
+         resource-path->string
+         append-resource-path
+
          (struct-out web-request)
          (struct-out web-request-header)
          (struct-out web-request-cookie)
@@ -32,8 +36,6 @@
          web-respond/string!
          web-respond/xexpr!
          web-redirect!
-
-         append-url-path
 
          spawn-web-driver)
 
@@ -202,13 +204,54 @@
        host
        port
        #t
-       (let loop ((p path))
-         (match p
-           ['() '()]
-           [(list d par ... rest)
-            (cons (path/param d par) (loop rest))]))
+       (resource-path->string path)
        query
        #f))
+
+(define (string->resource-path str)
+  (define-values (_absolute? rp) (string->resource-path* str))
+  rp)
+
+(define (string->resource-path* str)
+  (define u (string->url str))
+  (values (url-path-absolute? u)
+          (url-path->resource-path (url-path u))))
+
+(define (resource-path->string rp #:absolute? [absolute? #t])
+  (url->string
+   (url #f #f #f #f absolute? (resource-path->url-path rp) '() #f)))
+
+(define (url-path->resource-path up)
+  (define elements (for/list [(p (in-list up))]
+                     (match-define (path/param path-element params) p)
+                     (list* path-element params)))
+  (foldr (lambda (e acc) (append e (list acc))) '() elements))
+
+(define (resource-path->url-path p)
+  (match p
+    ['() '()]
+    [(list d par ... rest)
+     (cons (path/param d par) (resource-path->url-path rest))]))
+
+(module+ test
+  (check-equal? (string->resource-path "/foo;p/bar") '("foo" "p" ("bar" ())))
+  (check-equal? (string->resource-path  "foo;p/bar") '("foo" "p" ("bar" ())))
+  (check-equal? (resource-path->string #:absolute? #t '("foo" "p" ("bar" ()))) "/foo;p/bar")
+  (check-equal? (resource-path->string #:absolute? #f '("foo" "p" ("bar" ())))  "foo;p/bar"))
+
+(define (append-resource-path p1 p2)
+  (match p1
+    ['() p2]
+    [(list "" '()) p2]
+    [(list pieces ... next) (append pieces (list (append-resource-path next p2)))]))
+
+(module+ test
+  (check-equal? (append-resource-path '() '("c" ("d" ()))) '("c" ("d" ())))
+  (check-equal? (append-resource-path '("" ()) '("c" ("d" ()))) '("c" ("d" ())))
+  (check-equal? (append-resource-path '("a" "x" ("b" ())) '("c" ("d" ())))
+                '("a" "x" ("b" ("c" ("d" ())))))
+  (check-equal? (append-resource-path '("a" "x" ("b" ("" ()))) '("c" ("d" ())))
+                '("a" "x" ("b" ("c" ("d" ()))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -339,24 +382,7 @@
          (web-virtual-host scheme #f port)]))
 
 (define (format-url-path u)
-  (define elements (for/list [(p (in-list (url-path u)))]
-                     (match-define (path/param path-element params) p)
-                     (list* path-element params)))
-  (foldr (lambda (e acc) (append e (list acc))) '() elements))
-
-(define (append-url-path p1 p2)
-  (match p1
-    ['() p2]
-    [(list "" '()) p2]
-    [(list pieces ... next) (append pieces (list (append-url-path next p2)))]))
-
-(module+ test
-  (check-equal? (append-url-path '() '("c" ("d" ()))) '("c" ("d" ())))
-  (check-equal? (append-url-path '("" ()) '("c" ("d" ()))) '("c" ("d" ())))
-  (check-equal? (append-url-path '("a" "x" ("b" ())) '("c" ("d" ())))
-                '("a" "x" ("b" ("c" ("d" ())))))
-  (check-equal? (append-url-path '("a" "x" ("b" ("" ()))) '("c" ("d" ())))
-                '("a" "x" ("b" ("c" ("d" ()))))))
+  (string->resource-path (url-path u)))
 
 (define (build-headers hs)
   (for/list ((h (in-list hs)))
