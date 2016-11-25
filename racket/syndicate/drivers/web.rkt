@@ -382,7 +382,7 @@
          (web-virtual-host scheme #f port)]))
 
 (define (format-url-path u)
-  (string->resource-path (url-path u)))
+  (url-path->resource-path (url-path u)))
 
 (define (build-headers hs)
   (for/list ((h (in-list hs)))
