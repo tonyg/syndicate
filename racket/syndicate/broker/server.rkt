@@ -39,7 +39,7 @@
          (on (web-request-get (id req)
                               (web-virtual-host "http" hostname port)
                               ,(string->resource-path resource-path-str))
-             (when (equal? (dict-ref (web-request-header-headers req) 'upgrade #f) "websocket")
+             (when (web-request-header-websocket-upgrade? req)
                (spawn-broker-server-connection id req)))))
 
 (define (spawn-broker-server-connection req-id http-req)
