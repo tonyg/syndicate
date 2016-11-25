@@ -204,7 +204,7 @@
        host
        port
        #t
-       (resource-path->string path)
+       (resource-path->url-path path)
        query
        #f))
 
