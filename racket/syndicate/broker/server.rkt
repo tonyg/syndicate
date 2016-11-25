@@ -111,5 +111,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(actor #:name 'broker:vh (assert (web-virtual-host "http" _ 8000)))
-(spawn-broker-server 8000)
+(module+ main
+  (run-ground
+   (activate "..")
+   (actor #:name 'broker:vh (assert (web-virtual-host "http" _ 8000)))
+   (spawn-broker-server 8000)))
