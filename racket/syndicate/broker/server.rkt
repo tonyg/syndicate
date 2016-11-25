@@ -2,6 +2,7 @@
 ;; Generic relay for WebSockets/TCP/etc-based participation in a network.
 
 (provide spawn-broker-server
+         spawn-broker-server-connection
          (struct-out broker-scope)
          (struct-out broker-data))
 
@@ -39,9 +40,9 @@
                               (web-virtual-host "http" hostname port)
                               ,(string->resource-path resource-path-str))
              (when (equal? (dict-ref (web-request-header-headers req) 'upgrade #f) "websocket")
-               (spawn-connection-handler id req)))))
+               (spawn-broker-server-connection id req)))))
 
-(define (spawn-connection-handler req-id http-req)
+(define (spawn-broker-server-connection req-id http-req)
   (actor #:name (list 'broker:connection req-id)
 
          (on-start (log-syndicate-broker-info "Starting broker connection ~v" req-id))
