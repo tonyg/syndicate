@@ -11,6 +11,7 @@
          append-resource-path
 
          (struct-out web-request)
+         (struct-out web-request-peer-details)
          (struct-out web-request-header)
          (struct-out web-request-cookie)
          web-request-header-content-type
@@ -77,6 +78,7 @@
 (struct web-resource (virtual-host path) #:prefab)
 
 (struct web-request (id direction header* body) #:prefab)
+(struct web-request-peer-details (id local-ip local-port remote-ip remote-port) #:prefab)
 (struct web-request-header (method resource headers query) #:prefab)
 (struct web-request-cookie (id name value domain path) #:prefab)
 
@@ -119,7 +121,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground-level communication messages
 
-(struct web-raw-request (id port connection req control-ch) #:prefab)
+(struct web-raw-request (id port connection addresses req control-ch) #:prefab)
 (struct web-raw-client-conn (id connection) #:prefab)
 (struct web-incoming-message (id message) #:prefab)
 
@@ -291,7 +293,7 @@
            (channel-get k-ch)
            (log-syndicate/drivers/web-info "Stopped HTTP listener on port ~v" port))
 
-  (on (message (inbound (web-raw-request $id port $conn $lowlevel-req $control-ch)))
+  (on (message (inbound (web-raw-request $id port $conn $addresses $lowlevel-req $control-ch)))
       (define web-req (web-request id
                                    'inbound
                                    (web-request-header
@@ -307,6 +309,8 @@
              (for [(c (request-cookies lowlevel-req))]
                (match-define (client-cookie n v d p) c)
                (assert (web-request-cookie id n v d p)))
+             (match-let ([(list Lip Lport Rip Rport) addresses])
+               (assert (web-request-peer-details id Lip Lport Rip Rport)))
              (on-start (send! (set-timer (list 'web-req id) 100 'relative))
                        (send! web-req))
              ;; TODO: protocol for 500 Internal server error
@@ -402,6 +406,9 @@
      ;; via synchronous channels.
      (define conn
        (new-connection cm (web-server-initial-connection-timeout) i o (make-custodian) #f))
+     (define addresses
+       (let-values (((Lip Lport Rip Rport) (tcp-addresses i #t)))
+         (list Lip Lport Rip Rport)))
      (define control-ch (make-channel))
      (let do-request ()
        (define-values (req initial-headers) ;; TODO initial-headers?!?!
@@ -410,7 +417,7 @@
        (when req
          (define id (gensym 'web))
          (define start-ms (current-inexact-milliseconds))
-         (send-ground-message (web-raw-request id listen-port conn req control-ch))
+         (send-ground-message (web-raw-request id listen-port conn addresses req control-ch))
          (sync (handle-evt control-ch
                            (lambda (msg)
                              (define delay-ms (inexact->exact
