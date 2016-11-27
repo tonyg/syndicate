@@ -59,6 +59,7 @@
          ;;
 
          schedule-action!
+         schedule-actions!
          actor-action
          (for-syntax (rename-out [name actor-name]))
 
@@ -929,6 +930,9 @@
         (current-pending-patch (compose-patch ac (current-pending-patch))))
       (begin (flush-pending-patch!)
              (current-pending-actions (list (current-pending-actions) ac)))))
+
+(define (schedule-actions! . acs)
+  (for [(ac (core:clean-actions acs))] (schedule-action! ac)))
 
 (define (flush-pending-patch!)
   (define p (current-pending-patch))
