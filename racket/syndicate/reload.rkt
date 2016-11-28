@@ -72,9 +72,10 @@
                                (reloading? #f)))))
 
          (field [previous-version #f])
-         (define/query-value latest-version #f (file-content pathstr counter $p) p)
+         (define/query-value latest-version 'unknown (file-content pathstr counter $p) p)
          (begin/dataflow
-           (when (not (equal? (latest-version) (previous-version)))
+           (when (and (not (eq? (latest-version) 'unknown))
+                      (not (equal? (latest-version) (previous-version))))
              (if (latest-version)
                  (reload!)
                  (log-syndicate/reload-warning "Module ~v does not exist" pathstr))
