@@ -59,6 +59,7 @@
 
          ;;
 
+         current-action-transformer
          schedule-action!
          schedule-actions!
          actor-action
@@ -249,6 +250,9 @@
 
 ;; Parameterof Boolean
 (define in-script? (make-parameter #f))
+
+;; Parameterof (Action -> Action)
+(define current-action-transformer (make-parameter values))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax; main entry points
@@ -930,7 +934,8 @@
       (when (patch-non-empty? ac)
         (current-pending-patch (compose-patch ac (current-pending-patch))))
       (begin (flush-pending-patch!)
-             (current-pending-actions (list (current-pending-actions) ac)))))
+             (current-pending-actions (list (current-pending-actions)
+                                            ((current-action-transformer) ac))))))
 
 (define (schedule-actions! . acs)
   (for [(ac (core:clean-actions acs))] (schedule-action! ac)))
@@ -939,7 +944,8 @@
   (define p (current-pending-patch))
   (when (patch-non-empty? p)
     (current-pending-patch patch-empty)
-    (current-pending-actions (list (current-pending-actions) p))))
+    (current-pending-actions (list (current-pending-actions)
+                                   ((current-action-transformer) p)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Endpoint Creation
