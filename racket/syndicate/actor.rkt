@@ -1257,11 +1257,13 @@
     (fprintf p " - Fields:\n")
     (for ([(d v) (in-hash field-table)])
       (define subject-ids (hash-ref (dataflow-graph-edges-forward dfg) d set))
+      (define v*
+        (indented-port-output 6 (lambda (p) (syndicate-pretty-print v p)) #:first-line? #f))
       (if (set-empty? subject-ids)
-          (fprintf p "    - ~a: ~v\n" (format-field-descriptor d) v)
-          (fprintf p "    - ~a: ~v ~a\n"
+          (fprintf p "    - ~a: ~a\n" (format-field-descriptor d) v*)
+          (fprintf p "    - ~a: ~a ~a\n"
                    (format-field-descriptor d)
-                   v
                    (for/list [(subject-id subject-ids)]
                      (match-define (list fid eid) subject-id)
-                     (format "~a:~a" fid eid)))))))
+                     (format "~a:~a" fid eid))
+                   v*)))))
