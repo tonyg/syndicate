@@ -49,6 +49,7 @@
          assert!
          retract!
          patch!
+         perform-actions!
          flush!
 
          syndicate-effects-available?
@@ -1221,6 +1222,13 @@
 (define (patch! p)
   (ensure-in-script! 'patch!)
   (update-stream! *adhoc-label* p))
+
+(define (perform-actions! acs)
+  (ensure-in-script! 'perform-actions!)
+  (for [(ac (core:clean-actions acs))]
+    (match ac
+      [(? patch? p) (update-stream! *adhoc-label* p)]
+      [_ (schedule-action! ac)])))
 
 (define (flush!)
   (ensure-in-script! 'flush!)
