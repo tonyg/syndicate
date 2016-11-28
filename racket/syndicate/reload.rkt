@@ -19,8 +19,10 @@
 (struct reload-pending (filename) #:prefab) ;; ASSERTION
 
 (define-syntax (make-reload-pending stx)
-  (quasisyntax/loc stx
-    (reload-pending '#,(path->string (syntax-source stx)))))
+  (syntax-case stx ()
+    [(SELF)
+     (quasisyntax/loc stx
+       (reload-pending '#,(path->string (syntax-source #'SELF))))]))
 
 (define-syntax (stop-when-reloaded stx)
   (syntax-case stx ()
