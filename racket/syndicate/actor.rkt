@@ -955,7 +955,7 @@
         (mux-add-stream (actor-state-mux a)
                         (parameterize ((current-dataflow-subject-id (list (current-facet-id) new-eid)))
                           (patch-fn))))
-      (current-actor-state (struct-copy actor-state a [mux new-mux]))
+      (current-actor-state (struct-copy actor-state (current-actor-state) [mux new-mux]))
       (values new-eid delta-aggregate)))
   (update-facet! (current-facet-id)
                  (lambda (f)
