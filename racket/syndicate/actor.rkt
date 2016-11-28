@@ -244,7 +244,7 @@
 (define in-script? (make-parameter #f))
 
 ;; Parameterof (Action -> Action)
-(define current-action-transformer (make-parameter values))
+(define current-action-transformer (make-store))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax; main entry points
@@ -1072,7 +1072,8 @@
                              (make-dataflow-graph)))
                (current-pending-patch patch-empty)
                (current-pending-actions '())
-               (current-pending-scripts (make-empty-pending-scripts))]
+               (current-pending-scripts (make-empty-pending-scripts))
+               (current-action-transformer values)]
     (with-current-facet #f (set) #f
       (schedule-script! #f script-proc)
       (run-scripts!))))
@@ -1133,7 +1134,8 @@
                          a))
                     (current-pending-patch patch-empty)
                     (current-pending-actions '())
-                    (current-pending-scripts (make-empty-pending-scripts))]
+                    (current-pending-scripts (make-empty-pending-scripts))
+                    (current-action-transformer values)]
          (for [((fid f) (in-hash (actor-state-facets a)))]
            (facet-handle-event! fid f e #f))
          (run-scripts!))))
@@ -1171,7 +1173,8 @@
   (call-with-syndicate-effects
    (lambda ()
      (with-store [(current-pending-actions '())
-                  (current-pending-patch patch-empty)]
+                  (current-pending-patch patch-empty)
+                  (current-action-transformer values)]
        (define result (thunk))
        (flush-pending-patch!)
        (cons result (current-pending-actions))))))
