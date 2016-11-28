@@ -28,7 +28,6 @@
          rising-edge
          (rename-out [core:message message])
 
-         suspend-script
          let-event
 
          query-value
@@ -53,7 +52,6 @@
          flush!
 
          syndicate-effects-available?
-         suspend-script*
 
          ? ;; from pattern.rkt
 
@@ -64,12 +62,6 @@
          schedule-actions!
          actor-action
          (for-syntax (rename-out [name actor-name]))
-
-         (struct-out field-descriptor)
-         (struct-out field-handle)
-         (struct-out actor-state)
-         (struct-out facet)
-         (struct-out endpoint)
 
          pretty-print-actor-state
          )
@@ -1152,6 +1144,18 @@
     (for [(ep (in-hash-values (facet-endpoints f)))]
       ((endpoint-handler-fn ep) e (mux-interests-of mux (endpoint-id ep)) synthetic?))))
 
+(module+ implementation-details
+  (provide actor-behavior
+           boot-actor
+           (struct-out field-descriptor)
+           (struct-out field-handle)
+           (struct-out actor-state)
+           (struct-out facet)
+           (struct-out endpoint)
+
+           suspend-script
+           suspend-script*))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Script suspend-and-resume.
 
@@ -1163,11 +1167,17 @@
 (define (call-with-syndicate-effects thunk)
   (call-with-continuation-prompt thunk prompt-tag))
 
+(define (capture-actor-actions thunk)
+  (call-with-syndicate-effects
+   (lambda ()
+     (with-store [(current-pending-actions '())
+                  (current-pending-patch patch-empty)]
+       (define result (thunk))
+       (flush-pending-patch!)
+       (cons result (current-pending-actions))))))
+
 (module+ for-module-begin
-  (provide call-with-syndicate-effects
-           flush-pending-patch!
-           current-pending-actions
-           current-pending-patch))
+  (provide capture-actor-actions))
 
 (define (suspend-script* where proc)
   (when (not (in-script?))

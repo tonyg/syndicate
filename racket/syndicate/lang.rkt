@@ -92,12 +92,3 @@
                                    final-forms)
 			     remaining-forms))
        (accumulate-actions '() '() (syntax->list #'(forms ...))))]))
-
-(define (capture-actor-actions thunk)
-  (call-with-syndicate-effects
-   (lambda ()
-     (with-store [(current-pending-actions '())
-                  (current-pending-patch patch-empty)]
-       (define result (thunk))
-       (flush-pending-patch!)
-       (cons result (current-pending-actions))))))
