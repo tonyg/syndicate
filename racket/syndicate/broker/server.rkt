@@ -28,9 +28,6 @@
 (struct broker-scope (host port path) #:prefab)
 (struct broker-data (scope assertion) #:prefab)
 
-(define broker-data-parenthesis (struct-type->parenthesis struct:broker-data))
-(define broker-scope-parenthesis (struct-type->parenthesis struct:broker-scope))
-
 ;; Depends on timer driver and web driver.
 ;; Does not, itself, assert a web-virtual-host; the context must do this.
 (define (spawn-broker-server port
