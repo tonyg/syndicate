@@ -19,19 +19,18 @@
   (syntax-parse stx
     [(_ name:actor-name expr ...)
      (syntax/loc stx
-       (supervise* #:name name.N (lambda () expr ...)))]))
+       (supervise* (lambda () name.N) (lambda () expr ...)))]))
 
-(define (supervise* #:name [supervisor-name #f] actor-producing-thunk)
+(define (supervise* supervisor-name-thunk actor-producing-thunk)
   ;; Awkward: the name applies to any and all potential supervisors
   ;; produced by actor spawns in actor-producing-thunk.
   (with-store [(current-action-transformer
-                (supervise-spawn (or supervisor-name (gensym 'supervisor))
-                                 (current-action-transformer)))]
+                (supervise-spawn supervisor-name-thunk (current-action-transformer)))]
     (actor-producing-thunk)))
 
-(define ((supervise-spawn supervisor-name previous-action-transformer) ac)
+(define ((supervise-spawn supervisor-name-thunk previous-action-transformer) ac)
   (match (previous-action-transformer ac)
-    [(? spawn? s) (supervise** supervisor-name s)]
+    [(? spawn? s) (supervise** (or (supervisor-name-thunk) (gensym 'supervisor)) s)]
     [other other]))
 
 (define (supervise** supervisor-name supervisee-spawn-action)
