@@ -48,8 +48,11 @@
                               (resource-path->string (web-resource-path http-resource))))
   (lambda (v) (broker-data scope v)))
 
-(define (spawn-broker-server-connection req-id http-req #:scope [scope (http-req->scope http-req)])
+(define (spawn-broker-server-connection req-id http-req
+                                        #:scope [scope (http-req->scope http-req)]
+                                        #:hook [hook void])
   (actor #:name (list 'broker:connection req-id)
+         (hook)
 
          (on-start (log-syndicate-broker-info "Starting broker connection ~v" req-id))
          (on-stop (log-syndicate-broker-info "Ending broker connection ~v" req-id))
