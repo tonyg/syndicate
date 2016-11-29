@@ -41,7 +41,6 @@
                 ;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                 ;;
                 (define-values (proc initial-transition) (spawn->process+transition s))
-                (log-info "spawn->process+transition complete: ~v" proc)
                 (match initial-transition
                   [(transition st0 acs)
                    (list actor-behavior
