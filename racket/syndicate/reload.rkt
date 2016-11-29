@@ -14,6 +14,7 @@
 (require (for-syntax racket/base))
 (require racket/rerequire)
 
+(require/activate syndicate/supervise)
 (require/activate syndicate/drivers/filesystem)
 
 (struct reload-pending (filename) #:prefab) ;; ASSERTION
@@ -50,33 +51,34 @@
         (set! count (+ count 1))))))
 
 (define (spawn-reloader** module-path pathstr)
-  (actor #:name (list 'reloader pathstr)
-         (field [reloading? #f])
-         (define (reload!)
-           (when (not (reloading?))
-             (reloading? #t)
-             (react (field [obstacles-cleared? #f])
-                    (define/query-value obstacles-exist? #f (observe (reload-pending pathstr)) #t
-                      #:on-add (log-syndicate/reload-info "waiting to reload ~v" pathstr)
-                      #:on-remove (obstacles-cleared? #t))
-                    (assert #:when (obstacles-exist?) (reload-pending pathstr))
-                    (on-start (flush!)
-                              (obstacles-cleared? (not (obstacles-exist?))))
-                    (stop-when (rising-edge (obstacles-cleared?))
-                               (flush!) ;; Wait one turn for effects of newly-cleared obstacles
-                               (log-syndicate/reload-info "(re)loading ~v" pathstr)
-                               (dynamic-rerequire module-path)
-                               (schedule-actions!
-                                ((dynamic-require `(submod ,module-path syndicate-main)
-                                                  'activate!)))
-                               (reloading? #f)))))
+  (supervise #:name (list 'reloader-supervisor pathstr)
+   (actor #:name 'reloader
+          (field [reloading? #f])
+          (define (reload!)
+            (when (not (reloading?))
+              (reloading? #t)
+              (react (field [obstacles-cleared? #f])
+                     (define/query-value obstacles-exist? #f (observe (reload-pending pathstr)) #t
+                       #:on-add (log-syndicate/reload-info "waiting to reload ~v" pathstr)
+                       #:on-remove (obstacles-cleared? #t))
+                     (assert #:when (obstacles-exist?) (reload-pending pathstr))
+                     (on-start (flush!)
+                               (obstacles-cleared? (not (obstacles-exist?))))
+                     (stop-when (rising-edge (obstacles-cleared?))
+                                (flush!) ;; Wait one turn for effects of newly-cleared obstacles
+                                (log-syndicate/reload-info "(re)loading ~v" pathstr)
+                                (dynamic-rerequire module-path)
+                                (schedule-actions!
+                                 ((dynamic-require `(submod ,module-path syndicate-main)
+                                                   'activate!)))
+                                (reloading? #f)))))
 
-         (field [previous-version #f])
-         (define/query-value latest-version 'unknown (file-content pathstr counter $p) p)
-         (begin/dataflow
-           (when (and (not (eq? (latest-version) 'unknown))
-                      (not (equal? (latest-version) (previous-version))))
-             (if (latest-version)
-                 (reload!)
-                 (log-syndicate/reload-warning "Module ~v does not exist" pathstr))
-             (previous-version (latest-version))))))
+          (field [previous-version #f])
+          (define/query-value latest-version 'unknown (file-content pathstr counter $p) p)
+          (begin/dataflow
+            (when (and (not (eq? (latest-version) 'unknown))
+                       (not (equal? (latest-version) (previous-version))))
+              (if (latest-version)
+                  (reload!)
+                  (log-syndicate/reload-warning "Module ~v does not exist" pathstr))
+              (previous-version (latest-version)))))))
