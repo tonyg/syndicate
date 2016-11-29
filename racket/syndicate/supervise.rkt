@@ -25,7 +25,8 @@
   ;; Awkward: the name applies to any and all potential supervisors
   ;; produced by actor spawns in actor-producing-thunk.
   (with-store [(current-action-transformer
-                (supervise-spawn supervisor-name (current-action-transformer)))]
+                (supervise-spawn (or supervisor-name (gensym 'supervisor))
+                                 (current-action-transformer)))]
     (actor-producing-thunk)))
 
 (define ((supervise-spawn supervisor-name previous-action-transformer) ac)
