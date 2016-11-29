@@ -1,0 +1,29 @@
+#lang syndicate/actor
+;; Shows the difference between a supervised exit and a supervised crash.
+
+(require/activate syndicate/supervise)
+(require/activate syndicate/drivers/timestate)
+
+(supervise
+ (actor #:name 'ward
+        (on (message 'crash)
+            (log-info "Crashing")
+            (error 'ward "Eep!"))
+        (stop-when (message 'quit)
+                   (log-info "Bye!"))))
+
+(define (monitor-interest-in thing)
+  (actor #:name (list 'monitor-interest-in thing)
+         (during (observe thing)
+           (on-start (log-info "Interest in ~v appeared" thing))
+           (on-stop (log-info "Interest in ~v disappeared" thing)))))
+
+(monitor-interest-in 'crash)
+(monitor-interest-in 'quit)
+
+(actor* #:name 'main
+        (sleep 1)
+        (send! 'crash)
+        (sleep 1)
+        (send! 'quit)
+        (sleep 1))
