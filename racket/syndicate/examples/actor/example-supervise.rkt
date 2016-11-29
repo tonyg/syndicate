@@ -5,7 +5,10 @@
 (require/activate syndicate/drivers/timestate)
 
 (supervise
+ #:name 'ward-supervisor
  (actor #:name 'ward
+        (on-start (log-info "Starting ward"))
+        (on-stop (log-info "Stopping ward"))
         (on (message 'crash)
             (log-info "Crashing")
             (error 'ward "Eep!"))
