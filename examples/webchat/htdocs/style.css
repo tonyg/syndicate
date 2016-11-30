@@ -1,0 +1,17 @@
+template {
+    display: none !important;
+}
+
+span#request-count {
+    background: red;
+    color: white;
+    padding: 0em 0.25em;
+    border-radius: 4px;
+}
+span#request-count.count0 {
+    display: none;
+}
+
+span#request-count-plural.count1 {
+    display: none;
+}

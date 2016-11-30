@@ -1,0 +1,55 @@
+<ul id="main-tabs-tabs" class="nav nav-tabs">
+  <li class="nav-item">
+    <a id="main-tab-tab-contacts" class="nav-link" href="#/contacts">Contacts</a>
+  </li>
+  <li class="nav-item">
+    <a id="main-tab-tab-conversations" class="nav-link" href="#/conversations"><i class="icon ion-home"></i> Conversations</a>
+  </li>
+  <li class="nav-item">
+    <a id="main-tab-tab-permissions" class="nav-link" href="#/permissions">Permissions</a>
+  </li>
+  <li class="nav-item">
+    <a id="main-tab-tab-requests" class="nav-link" href="#/requests">
+      <span id="request-count" class="request-count-sensitive"></span>
+      Request<span id="request-count-plural" class="request-count-sensitive">s</span></a>
+  </li>
+</ul>
+
+<div id="main-tabs-bodies">
+  <div id="main-tab-body-contacts">
+    <h3>My status</h3>
+    <p>
+      <label for="invisible">Invisible?</label>
+      <input type="checkbox" id="invisible">
+    </p>
+
+    <h3>Add a new contact</h3>
+    <span>
+      <label for="add-contact-email">New contact email:</label>
+      <input id="add-contact-email" type="email">
+      <button id="add-contact">Add contact</button>
+    </span>
+
+    <h3>Who is online?</h3>
+    <ul id="present-entries"></ul>
+  </div>
+
+  <div id="main-tab-body-conversations">
+  </div>
+
+  <div id="main-tab-body-permissions">
+    <h3>Permissions I enjoy</h3>
+    <ul id="permissions"></ul>
+
+    <h3>Permissions I have granted to others</h3>
+    <ul id="grants"></ul>
+  </div>
+
+  <div id="main-tab-body-requests">
+    <h3>Requests I have made</h3>
+    <ul id="my-permission-requests"></ul>
+
+    <h3>Requests from others</h3>
+    <ul id="others-permission-requests"></ul>
+  </div>
+</div>
