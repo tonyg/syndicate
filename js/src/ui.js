@@ -52,7 +52,7 @@ var uiFragment = Struct.makeConstructor('ui-fragment',
                                         ['fragmentId', 'selector', 'html', 'orderBy']);
 
 // Assertion. Asserted by respondent to a given uiFragment.
-var uiFragmentExists = Struct.makeConstructor('ui-fragment-exists', ['fragmentId']);
+var uiFragmentVersion = Struct.makeConstructor('ui-fragment-version', ['fragmentId', 'version']);
 
 // Assertion. Causes the setup of DOM attributes on all nodes named by
 // the given selector that exist at the time of assertion.
@@ -114,7 +114,7 @@ function spawnUIDriver(options) {
 
   Dataspace.spawn(
     new DemandMatcher([uiFragment(_$('fragmentId'), __, __, __)],
-                      [uiFragmentExists(_$('fragmentId'))],
+                      [uiFragmentVersion(_$('fragmentId'), __)],
                       function (c) {
                         Dataspace.spawn(new UIFragment(c.fragmentId));
                       }, { name: 'uiFragmentSupervisor' }));
@@ -154,7 +154,7 @@ GlobalEventSupply.prototype.boot = function () {
   this.updateEventListeners(true);
 
   return Patch.sub(this.demandPat) // track demand
-    .andThen(Patch.sub(uiFragmentExists(__))) // track new fragments
+    .andThen(Patch.sub(uiFragmentVersion(__, __))) // track new fragments
     .andThen(Patch.pub(globalEvent(this.selector, this.eventType, __))) // indicate our presence
   ;
 };
@@ -177,7 +177,7 @@ GlobalEventSupply.prototype.handleDomEvent = function (event) {
 GlobalEventSupply.prototype.handleEvent = function (e) {
   this.updateEventListeners(true);
   // TODO: don't be so crude about this ^. On the one hand, this lets
-  // us ignore uiFragmentExists records coming and going; on the other
+  // us ignore uiFragmentVersion records coming and going; on the other
   // hand, we do potentially a lot of redundant work.
   if (e.type === 'stateChange' && e.patch.project(this.demandPat).hasRemoved()) {
     Dataspace.exit(); // trapexit will uninstall event listeners
@@ -245,9 +245,10 @@ function UIFragment(fragmentId) {
   this.name = ['uiFragment', fragmentId];
 }
 
+var nextVersion = 0;
 UIFragment.prototype.boot = function () {
   return Patch.sub(Trie.projectionToPattern(this.demandProj)) // track demand
-    .andThen(Patch.assert(uiFragmentExists(this.fragmentId))) // assert presence
+    .andThen(Patch.assert(uiFragmentVersion(this.fragmentId, nextVersion++))) // assert presence
     .andThen(Patch.sub(Trie.projectionToPattern(this.eventDemandProj)))
     // ^ track demand for fragment-specific events
   ;
@@ -398,7 +399,12 @@ UIFragment.prototype.handleEvent = function (e) {
 
   if (e.type === 'stateChange') {
     var fragmentChanges = e.patch.projectObjects(self.demandProj);
-    fragmentChanges[0].forEach(function (c) { self.updateContent(c.selector, c.html, c.orderBy); });
+    var hasChanged = false;
+
+    fragmentChanges[0].forEach(function (c) {
+      self.updateContent(c.selector, c.html, c.orderBy);
+      hasChanged = true;
+    });
     fragmentChanges[1].forEach(function (c) {
       if (c.selector === self.currentSelector
           && c.html === self.currentHtml
@@ -411,6 +417,12 @@ UIFragment.prototype.handleEvent = function (e) {
     var eventDemand = e.patch.projectObjects(self.eventDemandProj);
     eventDemand[0].forEach(function (c) { self.updateEventListeners(c, true); })
     eventDemand[1].forEach(function (c) { self.updateEventListeners(c, false); })
+
+    if (hasChanged) {
+      Dataspace.stateChange(Patch.retract(uiFragmentVersion(this.fragmentId, __))
+                            .andThen(Patch.assert(uiFragmentVersion(this.fragmentId,
+                                                                    nextVersion++))));
+    }
   }
 };
 
@@ -655,6 +667,10 @@ Anchor.prototype.event = function (selector, eventType, event) {
   return uiEvent(this.fragmentId, selector, eventType, event);
 };
 
+Anchor.prototype.fragmentVersion = function (v) {
+  return uiFragmentVersion(this.fragmentId, v);
+};
+
 ///////////////////////////////////////////////////////////////////////////
 
 function LocationHashTracker(defaultLocationHash) {
@@ -742,7 +758,7 @@ module.exports.globalEvent = globalEvent;
 module.exports.windowEvent = windowEvent;
 module.exports.uiEvent = uiEvent;
 module.exports.uiFragment = uiFragment;
-module.exports.uiFragmentExists = uiFragmentExists;
+module.exports.uiFragmentVersion = uiFragmentVersion;
 module.exports.uiAttribute = uiAttribute;
 module.exports.uiProperty = uiProperty;
 module.exports.setAttribute = setAttribute;
