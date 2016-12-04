@@ -108,8 +108,12 @@
           during inbound(uiTemplate("present-entry.html", $presentEntry)) {
             during inbound(present($who)) {
               var c = this.ui.context(mainpageVersion, 'present', who);
-              assert c.html('#present-entries', Mustache.render(presentEntry,
-                                                                {email: who}));
+              assert c.html('#present-entries', Mustache.render(
+                presentEntry,
+                {
+                  email: who,
+                  avatar: 'https://www.gravatar.com/avatar/' + md5(who.trim().toLowerCase()) + '?s=48&d=retro'
+                }));
             }
           }
 

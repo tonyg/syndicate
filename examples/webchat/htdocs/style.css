@@ -15,3 +15,7 @@ span#request-count.count0 {
 span#request-count-plural.count1 {
     display: none;
 }
+
+img.avatar {
+    border-radius: 24px;
+}
