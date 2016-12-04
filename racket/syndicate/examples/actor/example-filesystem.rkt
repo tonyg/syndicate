@@ -18,4 +18,11 @@
            (actor #:name (list 'monitor name)
                   (stop-when (message (list "close" name)))
                   (on (asserted (file-content name file->bytes $bs))
-                      (log-info "~a: ~v" name bs)))))
+                      (log-info "~a: ~v" name bs))))
+
+       ;; The driver can track directory "contents" just as well as files.
+       (on (message (list "opendir" $name))
+           (actor #:name (list 'monitor name)
+                  (stop-when (message (list "close" name)))
+                  (on (asserted (file-content name directory-list $files))
+                      (log-info "~a: ~v" name files)))))

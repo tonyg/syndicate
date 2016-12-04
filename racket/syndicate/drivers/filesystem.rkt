@@ -21,7 +21,7 @@
            (track-file name reader-proc))))
 
 (define (read-file name reader-proc)
-  (and (file-exists? name)
+  (and (or (file-exists? name) (directory-exists? name))
        (reader-proc name)))
 
 (define (track-file name reader-proc)
@@ -44,7 +44,7 @@
                         ;; (log-info "track-file-changes ~v: ~v" name msg)
                         (match msg
                           ['quit (void)])))
-          (if (file-exists? name) ;; TODO: TOCTTOU :-(
+          (if (or (file-exists? name) (directory-exists? name)) ;; TODO: TOCTTOU :-(
               (handle-evt (filesystem-change-evt name)
                           (lambda (_dummy)
                             ;; (log-info "track-file-changes ~v: changed" name)
