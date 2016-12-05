@@ -55,9 +55,9 @@ function buildActor(nameExpOpt, block, withReact) {
 }
 
 function reactWrap(blockCode) {
-  return '{ Syndicate.Actor.Facet.build((function () { ' +
+  return '{ Syndicate.Actor.Facet.build(function () { ' +
     blockCode +
-    ' }).bind(this)); }';
+    ' }); }';
 }
 
 function buildOnEvent(isTerminal, eventType, subscription, projection, bindings, body) {

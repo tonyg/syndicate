@@ -139,7 +139,9 @@ Facet.current = null;
 
 Facet.build = function(f) {
   var facet = new Facet(Dataspace.activeBehavior());
-  withCurrentFacet(facet, f);
+  withCurrentFacet(facet, function () {
+    f.call(facet.fields);
+  });
   facet.completeBuild();
 };
 
