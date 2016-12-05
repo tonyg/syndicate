@@ -462,31 +462,41 @@
        (regexp-match #px"port is closed" (exn-message e))))
 
 (define ((websocket-connection-main id ws-ch) wsc _ws-connection-state)
-  (let loop ()
-    (sync (handle-evt wsc
-                      (lambda _args
-                        (define msg
-                          (with-handlers ([exn:fail:network? (lambda (e) eof)]
-                                          [exn:fail:port-is-closed? (lambda (e) eof)]
-                                          [exn:fail? (lambda (e)
-                                                       (log-syndicate/drivers/web-error
-                                                        "Unexpected ws-recv error: ~a"
-                                                        (exn->string e))
-                                                       eof)])
-                            (ws-recv wsc #:payload-type 'text)))
-                        (send-ground-message (web-incoming-message id msg))
-                        (loop)))
-          (handle-evt ws-ch
-                      (match-lambda
-                        ['quit
-                         (void)]
-                        [(list 'send m)
-                         (with-handlers [(exn:fail:port-is-closed?
-                                          (lambda (e)
-                                            (ws-close! wsc)))]
-                           (ws-send! wsc m))
-                         (loop)]))))
-  (ws-close! wsc))
+  (define quit-seen? #f)
+  (define (shutdown!)
+    (send-ground-message (web-incoming-message id eof))
+    (with-handlers ([(lambda (e) #t)
+                     (lambda (e)
+                       (log-syndicate/drivers/web-info
+                        "Unexpected ws-close! error: ~a"
+                        (if (exn? e)
+                            (exn->string e)
+                            (format "~v" e))))])
+      (ws-close! wsc)))
+  (with-handlers [(exn:fail:network? (lambda (e) (shutdown!)))
+                  (exn:fail:port-is-closed? (lambda (e) (shutdown!)))
+                  (exn:fail? (lambda (e)
+                               (log-syndicate/drivers/web-error
+                                "Unexpected websocket error: ~a"
+                                (exn->string e))
+                               (shutdown!)))]
+    (let loop ()
+      (sync (handle-evt wsc (lambda _args
+                              (define msg (ws-recv wsc #:payload-type 'text))
+                              (send-ground-message (web-incoming-message id msg))
+                              (loop)))
+            (handle-evt ws-ch (match-lambda
+                                ['quit
+                                 (set! quit-seen? #t)
+                                 (void)]
+                                [(list 'send m)
+                                 (ws-send! wsc m)
+                                 (loop)]))))
+    (ws-close! wsc))
+  (when (not quit-seen?)
+    (let loop ()
+      (when (not (equal? (channel-get ws-ch) 'quit))
+        (loop)))))
 
 (define (bad-request conn req)
   (output-response/method conn
