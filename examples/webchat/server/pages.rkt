@@ -19,7 +19,7 @@
 
 (define (page #:head [extra-head '()]
               #:body-id [body-id #f]
-              #:nav-heading [nav-heading `(a ((href "/#/conversations")) "Syndicate Webchat")]
+              ;; #:nav-heading [nav-heading `(a ((href "/#/conversations")) "Syndicate Webchat")]
               title . body-elements)
   `(html ((lang "en"))
          (head (meta ((charset "utf-8")))
@@ -60,7 +60,7 @@
                (div ((class "container"))
                     (div ((class "header clearfix"))
                          (nav ((class "navbar bg-faded"))
-                              (span ((id "nav-heading") (class "navbar-brand text-muted")) ,nav-heading)
+                              ;; (span ((id "nav-heading") (class "navbar-brand text-muted")) ,nav-heading)
                               (ul ((id "nav-ul") (class "nav navbar-nav nav-pills float-xs-right"))
                                   ;; (li ((class "nav-item")) (a ((class "nav-link active") (href "#")) "Home " (span ((class "sr-only")) "(current)")))
                                   ;; (li ((class "nav-item")) (a ((class "nav-link") (href "#")) "About"))
