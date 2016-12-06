@@ -1,0 +1,5 @@
+#!/bin/sh
+SYNDICATE_TRACE=${SYNDICATE_TRACE:-_}
+SYNDICATE_STDOUT_TO_STDERR=y
+export SYNDICATE_TRACE SYNDICATE_STDOUT_TO_STDERR
+exec racketmake main.rkt -f testing.rktd 2>&1 | tai64n | tai64nlocal
