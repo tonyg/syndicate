@@ -13,6 +13,7 @@
 
 (define-logger syndicate/reload)
 
+(require file/sha1)
 (require (for-syntax racket/base))
 (require racket/rerequire)
 
@@ -65,11 +66,8 @@
       (begin (log-syndicate/reload-error "Could not process module-path ~v" module-path)
              #f)))
 
-(define counter
-  (let ((count 0))
-    (lambda (_pathstr)
-      (begin0 count
-        (set! count (+ count 1))))))
+(define (file->sha1 p)
+  (call-with-input-file p sha1))
 
 (define (reloader-mixin** module-path pathstr)
   (field [reloading? #f])
@@ -92,8 +90,8 @@
                                            'activate!)))
                         (reloading? #f)))))
 
-  (field [previous-version #f])
-  (define/query-value latest-version 'unknown (file-content pathstr counter $p) p)
+  (field [previous-version 'unknown])
+  (define/query-value latest-version 'unknown (file-content pathstr file->sha1 $p) p)
   (begin/dataflow
     (when (and (not (eq? (latest-version) 'unknown))
                (not (equal? (latest-version) (previous-version))))
