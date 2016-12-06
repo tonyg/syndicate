@@ -2,6 +2,7 @@
 
 (provide set-stderr-trace-flags!)
 
+(require data/order)
 (require racket/set)
 (require racket/match)
 (require racket/pretty)
@@ -234,7 +235,9 @@
                                 ['SIGUSR1
                                  (with-color WHITE-ON-GREEN
                                    (output "\e[2J\e[HProcess name table:\n")
-                                   (for [((pid name) (in-hash process-names))]
+                                   (for [(pid (in-list (sort (hash-keys process-names)
+                                                             (order-<? datum-order))))]
+                                     (define name (hash-ref process-names pid))
                                      (output "\t~v\t--> ~v\n" pid name)))]
                                 ['SIGUSR2
                                  (with-color WHITE-ON-BLUE
