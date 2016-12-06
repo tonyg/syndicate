@@ -2,7 +2,8 @@
 ;; Extremely simple single-actor supervision
 ;; Vastly simplified compared to the available options in OTP
 
-(provide supervise)
+(provide supervise
+         supervise/actor)
 
 (require racket/exn)
 (require "core.rkt")
@@ -19,23 +20,39 @@
   (syntax-parse stx
     [(_ name:actor-name expr ...)
      (syntax/loc stx
-       (supervise* (lambda () name.N) (lambda () expr ...)))]))
+       (supervise* (lambda () name.N)
+                   void
+                   (lambda () expr ...)))]))
 
-(define (supervise* supervisor-name-thunk actor-producing-thunk)
+(define-syntax (supervise/actor stx)
+  (syntax-parse stx
+    [(_ (~or (~optional (~seq #:name name-expr) #:defaults ([name-expr #'#f])
+                        #:name "#:name")
+             (~optional (~seq #:linkage [linkage-expr ...]) #:defaults ([(linkage-expr 1) '()])
+                        #:name "#:linkage"))
+        ...
+        O ...)
+     (syntax/loc stx
+       (supervise* (lambda () name-expr)
+                   (lambda () linkage-expr ... (void))
+                   (lambda () (actor O ...))))]))
+
+(define (supervise* supervisor-name-thunk linkage-thunk actor-producing-thunk)
   ;; Awkward: the name applies to any and all potential supervisors
   ;; produced by actor spawns in actor-producing-thunk.
   (with-store [(current-action-transformer
-                (supervise-spawn supervisor-name-thunk (current-action-transformer)))]
+                (supervise-spawn supervisor-name-thunk linkage-thunk (current-action-transformer)))]
     (actor-producing-thunk)))
 
-(define ((supervise-spawn supervisor-name-thunk previous-action-transformer) ac)
+(define ((supervise-spawn supervisor-name-thunk linkage-thunk previous-action-transformer) ac)
   (match (previous-action-transformer ac)
-    [(? spawn? s) (supervise** (or (supervisor-name-thunk) (gensym 'supervisor)) s)]
+    [(? spawn? s) (supervise** (or (supervisor-name-thunk) (gensym 'supervisor)) linkage-thunk s)]
     [other other]))
 
-(define (supervise** supervisor-name supervisee-spawn-action)
+(define (supervise** supervisor-name linkage-thunk supervisee-spawn-action)
   (actor-action #:name supervisor-name
    (react
+    (linkage-thunk) ;; may contain e.g. linkage instructions from during/actor
 
     (field [done? #f])
     (stop-when (rising-edge (done?)))

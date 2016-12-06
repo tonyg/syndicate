@@ -289,9 +289,14 @@
 
 (define-syntax (actor stx)
   (syntax-parse stx
-    [(_ name:name O ...)
+    [(_ (~or (~optional (~seq #:name name-expr) #:defaults ([name-expr #'#f])
+                        #:name "#:name")
+             (~optional (~seq #:linkage [linkage-expr ...]) #:defaults ([(linkage-expr 1) '()])
+                        #:name "#:linkage"))
+        ...
+        O ...)
      (quasisyntax/loc stx
-       (let ((spawn-action (actor-action #:name name.N (react O ...))))
+       (let ((spawn-action (actor-action #:name name-expr (react linkage-expr ... O ...))))
          (if (syndicate-effects-available?)
              (schedule-action! spawn-action)
              spawn-action)))]))
@@ -477,9 +482,9 @@
                                ;; signalling to supply that it is no longer wanted.
                                (react (stop-when (asserted inst)))))
              (let parent-let.clauses
-               (w.wrapper #:name name.N
-                          (assert inst)
-                          (stop-when (retracted (observe inst)))
+               (w.wrapper #:linkage [(assert inst)
+                                     (stop-when (retracted (observe inst)))]
+                          #:name name.N
                           O ...)))))]))
 
 (define-syntax (begin/dataflow stx)
