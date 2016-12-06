@@ -1,0 +1,17 @@
+<h2>Questions</h2>
+<p class="show-only-zero-count count{{questionCount}}">There are no questions waiting for you to answer.</p>
+<div class="container">
+  <div id="question-container" class="row"></div>
+</div>
+<div class="hide-zero-count count{{otherRequestCount}}">
+  <p>
+    <label for="show-all-requests-from-others">Show all pending requests from others? </label>
+    <input type="checkbox" id="show-all-requests-from-others" {{#showRequestsFromOthers}}checked{{/showRequestsFromOthers}}>
+  </p>
+  {{#showRequestsFromOthers}}
+  <div id="all-requests-from-others-div">
+    <h2>All requests from others</h2>
+    <ul id="others-permission-requests"></ul>
+  </div>
+  {{/showRequestsFromOthers}}
+</div>
