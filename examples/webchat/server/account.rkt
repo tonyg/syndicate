@@ -9,6 +9,9 @@
 (actor #:name 'account-manager
        (stop-when-reloaded)
        (define/query-set accounts (account $e) e)
+       (on (message (create-resource (account $e)))
+           (when (not (set-member? (accounts) e))
+             (spawn-account e)))
        (on (asserted (session $email _))
            (when (not (set-member? (accounts) email))
              (spawn-account email))))

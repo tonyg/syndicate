@@ -4,6 +4,7 @@
 (require racket/port)
 
 (require/activate syndicate/reload)
+(require/activate syndicate/supervise)
 (require/activate syndicate/drivers/config)
 (require/activate syndicate/drivers/web)
 (require/activate syndicate/drivers/smtp)
@@ -38,6 +39,11 @@
 
        (during (config _ (list 'baseurl $u)) (assert (server-baseurl u)))
        (during (config _ (list 'listen $p))  (assert (web-virtual-host "http" _ p)))
+
+       (during/actor (config _ (list 'load $module-path))
+         #:actor supervise/actor
+         #:name (list 'load module-path)
+         (reloader-mixin* module-path))
 
        (during (config _ (list 'smtp $h $u $p $m))
          (assert (smtp-account-config 'smtp-service h #:user u #:password p #:ssl-mode m))))
