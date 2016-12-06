@@ -94,6 +94,7 @@
         field this.questionCount = 0; // questions from the system
         field this.globallyVisible = false; // mirrors *other people's experience of us*
         field this.locallyVisible = true;
+        field this.showRequestsFromOthers = false;
 
         assert brokerConnection(brokerUrl);
 
@@ -108,7 +109,8 @@
               questionCount: this.questionCount,
               myRequestCount: this.myRequestCount,
               otherRequestCount: this.otherRequestCount,
-              globallyVisible: this.globallyVisible
+              globallyVisible: this.globallyVisible,
+              showRequestsFromOthers: this.showRequestsFromOthers
             }));
         }
 
@@ -154,45 +156,48 @@
           during inbound(uiTemplate("contact-entry.html", $entry)) {
             during Syndicate.UI.locationHash('/contacts') {
               during inbound(contactListEntry(sessionInfo.email, $contact)) {
+                field this.pendingContactRequest = false;
                 field this.isPresent = false;
-                on asserted inbound(present(contact)) { this.isPresent = true; }
-                on retracted inbound(present(contact)) { this.isPresent = false; }
+                during inbound(present(contact)) {
+                  on start { this.isPresent = true; }
+                  on stop { this.isPresent = false; }
+                }
+                during inbound(permissionRequest(contact, sessionInfo.email, pFollow(contact))) {
+                  on start { this.pendingContactRequest = true; }
+                  on stop { this.pendingContactRequest = false; }
+                }
                 var c = this.ui.context(mainpageVersion, 'all-contacts', contact);
                 assert c.html('#main-tab-body-contacts .contact-list',
                               Mustache.render(entry, {
                                 email: contact,
                                 avatar: avatar(contact),
+                                pendingContactRequest: this.pendingContactRequest,
                                 isPresent: this.isPresent
                               }));
-                on message c.event('.do-hi', 'click', $e) {
-                  alert(contact);
+                on message c.event('.delete-contact', 'click', _) {
+                  if (confirm((this.pendingContactRequest
+                               ? "Cancel contact request to "
+                               : "Delete contact ")
+                              + contact + "?")) {
+                    :: outbound(deleteResource(permitted(sessionInfo.email,
+                                                         contact,
+                                                         pFollow(sessionInfo.email),
+                                                         false))); // TODO: true too?!
+                  }
                 }
               }
             }
           }
 
-          during inputValue('#add-contact-email', $contact) {
-            during inputValue('#reciprocate', $reciprocate) {
+          during inputValue('#add-contact-email', $rawContact) {
+            var contact = rawContact.trim();
+            if (contact) {
               on message mainpage_c.event('#add-contact', 'click', _) {
-                if (reciprocate) {
-                  :: outbound(createResource(grant(sessionInfo.email,
-                                                   sessionInfo.email,
-                                                   contact,
-                                                   pFollow(sessionInfo.email),
-                                                   false)));
-                }
-
-                :: outbound(createResource(contactListEntry(sessionInfo.email, contact)));
-                :: outbound(createResource(permissionRequest(contact,
-                                                             sessionInfo.email,
-                                                             pFollow(contact))));
-
-                // :: outbound(createResource(permissionRequest(contact,
-                //                                              sessionInfo.email,
-                //                                              pInvite(contact))));
-                // :: outbound(createResource(permissionRequest(contact,
-                //                                              sessionInfo.email,
-                //                                              pSeePresence(contact))));
+                :: outbound(createResource(grant(sessionInfo.email,
+                                                 sessionInfo.email,
+                                                 contact,
+                                                 pFollow(sessionInfo.email),
+                                                 false)));
                 $('#add-contact-email').val('');
               }
             }
@@ -253,10 +258,7 @@
           }
 
           during inputValue('#show-all-requests-from-others', $showRequestsFromOthers) {
-            on start {
-              var d = $('#all-requests-from-others-div');
-              if (showRequestsFromOthers) { d.show(); } else { d.hide(); }
-            }
+            on start { this.showRequestsFromOthers = showRequestsFromOthers; }
           }
 
           during inbound(uiTemplate("permission-request-in-GENERIC.html", $genericEntry)) {

@@ -57,22 +57,17 @@
  (actor #:name 'take-trust-instructions
         (stop-when-reloaded)
 
-        (on (message (api (session $owner _) (create-resource (? contact-list-entry? $e))))
-            (when (equal? owner (contact-list-entry-owner e))
-              (send! (create-resource e))))
-        (on (message (api (session $owner _) (delete-resource (? contact-list-entry? $e))))
-            (when (equal? owner (contact-list-entry-owner e))
-              (send! (delete-resource e))))
-
         (on (message (api (session $grantor _) (create-resource (? grant? $g))))
             (when (equal? grantor (grant-grantor g))
               (send! (create-resource g))))
         (on (message (api (session $grantor _) (delete-resource (? grant? $g))))
-            (when (equal? grantor (grant-grantor g))
+            (when (or (equal? grantor (grant-grantor g))
+                      (equal? grantor (grant-issuer g)))
               (send! (delete-resource g))))
 
-        (on (message (api (session $grantee _) (delete-resource (? permitted? $p))))
-            (when (equal? grantee (permitted-email p))
+        (on (message (api (session $principal _) (delete-resource (? permitted? $p))))
+            (when (or (equal? principal (permitted-email p)) ;; relinquish
+                      (equal? principal (permitted-issuer p))) ;; revoke; TODO: deal with delegation
               (send! (delete-resource p))))
 
         (on (message (api (session $grantee _) (create-resource (? permission-request? $r))))

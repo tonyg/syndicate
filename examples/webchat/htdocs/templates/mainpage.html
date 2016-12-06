@@ -4,8 +4,6 @@
     <form class="form-inline">
       <label for="add-contact-email">New contact email: </label>
       <input class="form-control" id="add-contact-email" type="email">
-      <label for="reciprocate">Automatically allow them to follow you? </label>
-      <input class="form-control" id="reciprocate" type="checkbox" checked>
       <button class="btn btn-default" id="add-contact">Add contact</button>
     </form>
 
@@ -59,12 +57,14 @@
     <div class="hide-zero-count count{{otherRequestCount}}">
       <p>
         <label for="show-all-requests-from-others">Show all pending requests from others? </label>
-        <input type="checkbox" id="show-all-requests-from-others">
+        <input type="checkbox" id="show-all-requests-from-others" {{#showRequestsFromOthers}}checked{{/showRequestsFromOthers}}>
       </p>
+      {{#showRequestsFromOthers}}
       <div id="all-requests-from-others-div">
         <h2>All requests from others</h2>
         <ul id="others-permission-requests"></ul>
       </div>
+      {{/showRequestsFromOthers}}
     </div>
   </div>
 

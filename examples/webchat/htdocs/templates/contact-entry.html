@@ -2,10 +2,10 @@
   <div class="cursor-interactive contact-list-present-{{isPresent}} dropdown-toggle" data-toggle="dropdown">
     <img class="avatar" src="{{avatar}}">
     <span class="forcewrap">{{email}}</span>
-    {{#isPresent}}<span>(online)</span>{{/isPresent}}
+    {{#pendingContactRequest}}(pending){{/pendingContactRequest}}
   </div>
   <div class="dropdown-menu pt-0 w-100">
-    <!-- <img src="{{avatar}}&s=512" class="w-100"> -->
+    <img src="{{avatar}}&s=512" class="w-100">
     <div class="my-1 mx-2">
       <h3 class="forcewrap">{{email}}</h3>
       <!-- <p> -->
@@ -15,10 +15,8 @@
       <!-- <hr> -->
       <!-- <p>Rest of text.</p> -->
     </div>
-    <!-- <button class="dropdown-item">Follows you</button> -->
-    <!-- <button class="dropdown-item">Cancel pending follow request</button> -->
-    <!-- <button class="dropdown-item"><i class="dropdown-marginal icon ion-person-add"></i>Follow this person</button> -->
-    <!-- <div class="dropdown-divider"></div> -->
-    <!-- <button class="dropdown-item"><i class="dropdown-marginal icon ion-trash-b"></i>Delete contact</button> -->
+    <div class="dropdown-divider"></div>
+    {{#pendingContactRequest}}<button class="dropdown-item delete-contact"><i class="dropdown-marginal icon ion-help"></i>Cancel pending contact request</button>{{/pendingContactRequest}}
+    {{^pendingContactRequest}}<button class="dropdown-item delete-contact"><i class="dropdown-marginal icon ion-trash-b"></i>Delete contact</button>{{/pendingContactRequest}}
   </div>
 </div>

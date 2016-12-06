@@ -1,6 +1,6 @@
 #lang syndicate/actor
 
-(provide ask-question)
+(provide ask-question!)
 
 (require racket/port)
 (require markdown)
@@ -21,11 +21,11 @@
           (during (api (session target _) (answer qid $value))
             (assert (answer qid value))))))
 
-(define (ask-question #:title title
-                      #:blurb blurb
-                      #:class [q-class "q-generic"]
-                      #:target target
-                      question-type)
+(define (ask-question! #:title title
+                       #:blurb blurb
+                       #:class [q-class "q-generic"]
+                       #:target target
+                       question-type)
   (define qid (random-hex-string 32))
   (define q (question qid
                       (current-seconds)
@@ -36,8 +36,6 @@
                         (lambda ()
                           (display-xexpr blurb)))
                       question-type))
-  (react/suspend (k)
-                 (assert q)
-                 (stop-when (asserted (answer qid $v))
-                            (k v))))
+  (assert q)
+  qid)
 

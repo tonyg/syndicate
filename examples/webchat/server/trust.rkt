@@ -48,4 +48,4 @@
                                        grantee
                                        permission
                                        the-issuer
-                                       (if delegable? ", delegably," ""))))))
+                                       (if delegable? ", delegably" ""))))))
