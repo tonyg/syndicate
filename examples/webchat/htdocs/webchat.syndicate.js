@@ -11,6 +11,11 @@
   assertion type grant(issuer, grantor, grantee, permission, isDelegable);
   assertion type permissionRequest(issuer, grantee, permission) = "permission-request";
 
+  assertion type conversation(id, title, creator, blurb);
+  assertion type invitation(conversationId, inviter, invitee);
+  assertion type inConversation(conversationId, member) = "in-conversation";
+  assertion type post(id, timestamp, conversationId, contentType, content);
+
   message type createResource(description) = "create-resource";
   message type updateResource(description) = "update-resource";
   message type deleteResource(description) = "delete-resource";
@@ -28,6 +33,8 @@
   // ^ options = [[Any, Markdown]]
   assertion type textQuestion(isMultiline) = "text-question";
   assertion type acknowledgeQuestion() = "acknowledge-question";
+
+  //---------------------------------------------------------------------------
 
   var brokerConnected = Syndicate.Broker.brokerConnected;
   var brokerConnection = Syndicate.Broker.brokerConnection;
@@ -108,35 +115,32 @@
           on stop { this.globallyVisible = false; }
         }
 
+        during inbound(question($qid, _, _, sessionInfo.email, _, _, _)) {
+          on start { this.questionCount++; }
+          on stop { this.questionCount--; }
+        }
+
+        during inbound(permissionRequest($issuer, sessionInfo.email, $permission)) {
+          on start { this.myRequestCount++; }
+          on stop { this.myRequestCount--; }
+        }
+
         during inbound(uiTemplate("nav-account.html", $entry)) {
           var c = this.ui.context('nav', 0, 'account');
           assert outbound(online()) when (this.locallyVisible);
-          assert c.html('#nav-ul', Mustache.render(
-            entry,
-            {
-              email: sessionInfo.email,
-              avatar: avatar(sessionInfo.email),
-              questionCount: this.questionCount,
-              myRequestCount: this.myRequestCount,
-              otherRequestCount: this.otherRequestCount,
-              globallyVisible: this.globallyVisible,
-              locallyVisible: this.locallyVisible
-            }));
+          assert c.html('#nav-ul', Mustache.render(entry, {
+            email: sessionInfo.email,
+            avatar: avatar(sessionInfo.email),
+            questionCount: this.questionCount,
+            myRequestCount: this.myRequestCount,
+            otherRequestCount: this.otherRequestCount,
+            globallyVisible: this.globallyVisible,
+            locallyVisible: this.locallyVisible
+          }));
           on message c.event('.toggleInvisible', 'click', _) {
             this.locallyVisible = !this.locallyVisible;
           }
         }
-
-          // assert mainpage_c.html('div#main-div', Mustache.render(
-          //   mainpage,
-          //   {
-          //     questionCount: this.questionCount,
-          //     myRequestCount: this.myRequestCount,
-          //     otherRequestCount: this.otherRequestCount,
-          //     globallyVisible: this.globallyVisible,
-          //     showRequestsFromOthers: this.showRequestsFromOthers
-          //   }));
-
 
         during Syndicate.UI.locationHash('/contacts') {
           during inbound(uiTemplate("page-contacts.html", $mainEntry)) {
@@ -180,7 +184,7 @@
 
           during mainpage_c.fragmentVersion($mainpageVersion) {
             during inputValue('#add-contact-email', $rawContact) {
-              var contact = rawContact.trim();
+              var contact = rawContact && rawContact.trim();
               if (contact) {
                 on message mainpage_c.event('#add-contact', 'click', _) {
                   :: outbound(createResource(grant(sessionInfo.email,
@@ -245,12 +249,9 @@
             }));
           }
 
-          during inbound(uiTemplate("permission-request-out-GENERIC.html", $genericEntry)) {
-            during mainpage_c.fragmentVersion($mainpageVersion) {
-              during inbound(permissionRequest($issuer, sessionInfo.email, $permission)) {
-                on start { this.myRequestCount++; }
-                on stop { this.myRequestCount--; }
-
+          during inbound(permissionRequest($issuer, sessionInfo.email, $permission)) {
+            during inbound(uiTemplate("permission-request-out-GENERIC.html", $genericEntry)) {
+              during mainpage_c.fragmentVersion($mainpageVersion) {
                 var c = this.ui.context(mainpageVersion, 'my-permission-request', issuer, permission);
                 field this.entry = genericEntry;
                 assert c.html('#my-permission-requests', Mustache.render(this.entry, {
@@ -321,13 +322,9 @@
             }
           }
 
-          during mainpage_c.fragmentVersion($mainpageVersion) {
-            during
-              inbound(question($qid, $timestamp, $klass, sessionInfo.email, $title, $blurb, $qt))
-            {
-              on start { this.questionCount++; }
-              on stop { this.questionCount--; }
-
+          during inbound(question($qid, $timestamp, $klass, sessionInfo.email, $title, $blurb, $qt))
+          {
+            during mainpage_c.fragmentVersion($mainpageVersion) {
               var c = this.ui.context(mainpageVersion, 'question', timestamp, qid);
 
               switch (qt.meta.label) {
@@ -354,15 +351,124 @@
           }
         }
 
-        during Syndicate.UI.locationHash('/conversations') {
-          during inbound(uiTemplate("page-conversations.html", $mainEntry)) {
-            assert mainpage_c.html('div#main-div', Mustache.render(mainEntry, {}));
+        var conversations_re = /^\/conversations(\/(.*))?/;
+        during Syndicate.UI.locationHash($locationHash) {
+          var m = locationHash.match(conversations_re);
+          if (m) {
+            var selectedCid = m[2] || null;
+
+            during inbound(uiTemplate("page-conversations.html", $mainEntry)) {
+              assert mainpage_c.html('div#main-div', Mustache.render(mainEntry, {
+                selectedCid: selectedCid
+              }));
+            }
+
+            during inbound(uiTemplate("conversation-index-entry.html", $indexEntry)) {
+              during mainpage_c.fragmentVersion($mainpageVersion) {
+                during inbound(inConversation($cid, sessionInfo.email)) {
+                  field this.members = Immutable.Set();
+                  on asserted inbound(inConversation(cid, $who)) {
+                    this.members = this.members.add(who);
+                  }
+                  on retracted inbound(inConversation(cid, $who)) {
+                    this.members = this.members.remove(who);
+                  }
+                  during inbound(conversation(cid, $title, $creator, $blurb)) {
+                    var c = this.ui.context(mainpageVersion, 'conversationIndex', cid);
+                    assert c.html('#conversation-list', Mustache.render(indexEntry, {
+                      isSelected: selectedCid === cid,
+                      selectedCid: selectedCid,
+                      cid: cid,
+                      title: title,
+                      creator: creator,
+                      members: this.members.toArray()
+                    }));
+                    on message c.event('.card-block', 'click', _) {
+                      if (selectedCid === cid) {
+                        :: Syndicate.UI.setLocationHash('/conversations');
+                      } else {
+                        :: Syndicate.UI.setLocationHash('/conversations/' + cid);
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
 
         during Syndicate.UI.locationHash('/new-chat') {
+          field this.invitees = Immutable.Set();
+          field this.searchString = '';
+          field this.displayedSearchString = ''; // avoid resetting HTML every keystroke. YUCK
+          field this.suggestedTitle = '';
+
+          dataflow {
+            this.suggestedTitle = this.invitees.toArray().join(', ');
+          }
+
           during inbound(uiTemplate("page-new-chat.html", $mainEntry)) {
-            assert mainpage_c.html('div#main-div', Mustache.render(mainEntry, {}));
+            assert mainpage_c.html('div#main-div', Mustache.render(mainEntry, {
+              noInvitees: this.invitees.isEmpty(),
+              searchString: this.displayedSearchString,
+              suggestedTitle: this.suggestedTitle
+            }));
+          }
+
+          during mainpage_c.fragmentVersion($mainpageVersion) {
+            on message Syndicate.UI.globalEvent('#search-contacts', 'keyup', $e) {
+              this.searchString = e.target.value.trim();
+            }
+
+            on message Syndicate.UI.globalEvent('.create-conversation', 'click', _) {
+              // TODO: ^ Would like to use
+              // mainpage_c.event('.create-conversation', 'click', _)
+              // here, but the DOM nodes aren't created in time, it seems
+              if (!this.invitees.isEmpty()) {
+                var title = $('#conversation-title').val() || this.suggestedTitle;
+                var blurb = $('#conversation-blurb').val();
+                var cid = random_hex_string(32);
+                :: outbound(createResource(conversation(cid, title, sessionInfo.email, blurb)));
+                :: outbound(createResource(inConversation(cid, sessionInfo.email)));
+                this.invitees.forEach(function (invitee) {
+                  :: outbound(createResource(invitation(cid, sessionInfo.email, invitee)));
+                });
+                :: Syndicate.UI.setLocationHash('/conversations/' + cid);
+              }
+            }
+          }
+
+          during inbound(uiTemplate("invitee-entry.html", $entry)) {
+            during mainpage_c.fragmentVersion($mainpageVersion) {
+              during inbound(contactListEntry(sessionInfo.email, $contact)) {
+                field this.isPresent = false;
+                field this.isInvited = false;
+                dataflow {
+                  this.isInvited = this.invitees.contains(contact);
+                }
+                during inbound(present(contact)) {
+                  on start { this.isPresent = true; }
+                  on stop { this.isPresent = false; }
+                }
+                var c = this.ui.context(mainpageVersion, 'all-contacts', contact);
+                assert c.html('.contact-list', Mustache.render(entry, {
+                  email: contact,
+                  avatar: avatar(contact),
+                  isPresent: this.isPresent,
+                  isInvited: this.isInvited
+                })) when (this.isInvited ||
+                          !this.searchString ||
+                          contact.indexOf(this.searchString) !== -1);
+                on message c.event('.toggle-invitee-status', 'click', _) {
+                  if (this.invitees.contains(contact)) {
+                    this.invitees = this.invitees.remove(contact);
+                  } else {
+                    this.invitees = this.invitees.add(contact);
+                  }
+                  this.displayedSearchString = this.searchString;
+                }
+              }
+            }
           }
         }
       }
@@ -381,7 +487,7 @@ assertion type inputValue(selector, value);
 
 function spawnInputChangeMonitor() {
   function valOf(e) {
-    return e.type === 'checkbox' ? e.checked : e.value;
+    return e ? (e.type === 'checkbox' ? e.checked : e.value) : null;
   }
 
   actor {
@@ -393,4 +499,17 @@ function spawnInputChangeMonitor() {
       }
     }
   }
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+function random_hex_string(halfLength) {
+  var bs = new Uint8Array(halfLength);
+  var encoded = [];
+  crypto.getRandomValues(bs);
+  for (var i = 0; i < bs.length; i++) {
+    encoded.push("0123456789abcdef"[(bs[i] >> 4) & 15]);
+    encoded.push("0123456789abcdef"[bs[i] & 15]);
+  }
+  return encoded.join('');
 }

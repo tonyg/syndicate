@@ -1,0 +1,7 @@
+<div class="col-xs-12 col-md-6 col-lg-4 p-1">
+  <div class="cursor-interactive contact-list-present-{{isPresent}} toggle-invitee-status p-2 {{#isInvited}}bg-primary text-white{{/isInvited}} rounded">
+    {{#isInvited}}<span class="invited-tick"><i class="icon ion-checkmark"></i></span>{{/isInvited}}
+    {{^isInvited}}<img class="avatar" src="{{avatar}}">{{/isInvited}}
+    <span class="forcewrap">{{email}}</span>
+  </div>
+</div>

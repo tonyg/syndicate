@@ -8,6 +8,7 @@
 (require "protocol.rkt")
 (require "duplicate.rkt")
 
+;; TODO: Move to protocol.rkt
 (struct online () #:prefab)
 (struct present (email) #:prefab)
 

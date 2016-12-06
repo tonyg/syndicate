@@ -141,8 +141,8 @@
 ;; (conversation String String Principal Markup Boolean
 (struct conversation (id title creator blurb) #:prefab) ;; ASSERTION
 
-;; (invitation String Principal)
-(struct invitation (conversation-id invitee) #:prefab) ;; ASSERTION
+;; (invitation String Principal Principal)
+(struct invitation (conversation-id inviter invitee) #:prefab) ;; ASSERTION
 
 ;; (in-conversation String Principal)
 ;; Records conversation membership.

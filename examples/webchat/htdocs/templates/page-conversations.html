@@ -8,10 +8,15 @@
       </div>
     </div>
     <div class="col-xs-8">
+      {{#selectedCid}}
+      {{selectedCid}}
+      {{/selectedCid}}
+      {{^selectedCid}}
       <p class="align-center">
         Select a conversation from the column to the left,
         or <a href="#/new-chat">create a new conversation</a>.
       </p>
+      {{/selectedCid}}
     </div>
   </div>
 </div>

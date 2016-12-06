@@ -1,4 +1,35 @@
 <h2>New Conversation</h2>
+<hr>
+
+<h4>Select people to add</h4>
+<div class="input-group">
+  <input class="form-control"
+         type="search"
+         id="search-contacts"
+         placeholder="Search contacts"
+         value="{{searchString}}">
+  <div class="input-group-addon"><i class="icon ion-search"></i></div>
+</div>
 <div class="container">
   <div class="contact-list" class="row"></div>
 </div>
+
+<hr>
+<h4>Configure the conversation</h4>
+<form>
+  <div class="form-group">
+    <label for="conversation-title">Conversation Title</label>
+    <input type="text" class="form-control" id="conversation-title" placeholder="{{suggestedTitle}}">
+  </div>
+  <div class="form-group">
+    <label for="conversation-blurb">Conversation Description</label>
+    <textarea class="form-control" id="conversation-blurb" rows="3"></textarea>
+  </div>
+
+  <button type="submit" class="btn btn-success create-conversation {{#noInvitees}}disabled{{/noInvitees}}">Create conversation</button>
+  {{#noInvitees}}
+  <div class="alert alert-danger">
+    You must invite at least one person to the conversation.
+  </div>
+  {{/noInvitees}}
+</form>
