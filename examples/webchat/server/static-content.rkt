@@ -33,6 +33,7 @@
        (define url->path (make-url->path templates-path))
        (during (api _ (observe (ui-template $name _)))
          (define-values (path path-pieces) (url->path (string->url name)))
-         (log-info "Observation of ~v" path)
+         (on-start (log-info "Start observation of ~v" path))
+         (on-stop (log-info "Stop observation of ~v" path))
          (during (file-content path file->string $data)
            (assert (api _ (ui-template name data))))))

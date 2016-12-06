@@ -19,7 +19,5 @@
          (on-start (log-info "Account ~s created." email))
          (on-stop (log-info "Account ~s deleted." email))
          (assert (account email))
-         (assert (issuer email (p:follow email)))
-         ;; (assert (issuer email (p:invite email)))
-         ;; (assert (issuer email (p:see-presence email)))
+         (assert (grant email email email (p:follow email) #t))
          (stop-when (message (delete-account email)))))

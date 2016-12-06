@@ -9,3 +9,6 @@
 (spawn-reloader "static-content.rkt")
 (spawn-reloader "account.rkt")
 (spawn-reloader "pages.rkt")
+(spawn-reloader "qa.rkt")
+(spawn-reloader "contacts.rkt")
+(spawn-reloader "conversation.rkt")

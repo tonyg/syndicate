@@ -2,6 +2,10 @@
 
 (provide (all-defined-out)) ;; TODO
 
+;; A Markup is a String containing very carefully-chosen extensions
+;; that allow a little bit of plain-text formatting without opening
+;; the system up to Cross-Site Scripting (XSS) vulnerabilities.
+
 ;;---------------------------------------------------------------------------
 ;; Server State
 
@@ -64,9 +68,6 @@
 
 ;; TODO: Action: report a cap request as spam or some other kind of nuisance
 
-;; (issuer Principal Any)
-(struct issuer (email permission) #:prefab) ;; ASSERTION
-
 ;; (grant Principal Principal Principal Any Boolean)
 ;; Links in a grant chain.
 (struct grant (issuer grantor grantee permission delegable?) #:prefab) ;; ASSERTION
@@ -91,7 +92,14 @@
 ;; W Capability to visibly block X from contacting one in any way
 ;; W Capability to mute an individual outside the context of any particular conversation for a certain length of time
 
+;; (contact-list-entry Principal Principal)
+;; Asserts that `member` is a member of the contact list owned by `owner`.
+(struct contact-list-entry (owner member) #:prefab) ;; ASSERTION
+
+;; (p:follow Principal)
+;; When (permitted X Y (p:follow X) _), X says that Y may follow X.
 (struct p:follow (email) #:prefab)
+
 ;; (struct p:invite (email) #:prefab)
 ;; (struct p:see-presence (email) #:prefab)
 
@@ -130,28 +138,11 @@
 ;; Simple posting is a combination of draft+approve.
 ;; Flagging a post for moderator attention is a kind of reaction.
 
-;; (conversation String String Principal Markdown Boolean
+;; (conversation String String Principal Markup Boolean
 (struct conversation (id title creator blurb) #:prefab) ;; ASSERTION
-
-;; (delete-conversation String)
-;; TODO: use resource management messages instead
-(struct delete-conversation (id) #:prefab) ;; MESSAGE
 
 ;; (invitation String Principal)
 (struct invitation (conversation-id invitee) #:prefab) ;; ASSERTION
-
-;; (join-conversation String Principal)
-;; Used to accept an invitation
-;; TODO: use resource management messages instead
-(struct join-conversation (id member) #:prefab) ;; MESSAGE
-
-;; (leave-conversation String Principal)
-;; Used to - cancel open invitations (by issuer)
-;;         - reject open invitations (by invitee)
-;;         - eject a member from a conversation (by a moderator)
-;;         - leave a conversation (by a member)
-;; TODO: use resource management messages instead
-(struct leave-conversation (id member) #:prefab) ;; MESSAGE
 
 ;; (in-conversation String Principal)
 ;; Records conversation membership.
@@ -171,16 +162,17 @@
 ;; A fragment of HTML for use in the web client.
 (struct ui-template (name data) #:prefab) ;; ASSERTION
 
-;; (question String String Principal String Markdown QuestionType)
-(struct question (id class target title blurb type) #:prefab) ;; ASSERTION
+;; (question String Seconds String Principal String Markup QuestionType)
+(struct question (id timestamp class target title blurb type) #:prefab) ;; ASSERTION
 
 ;; (answer String Any)
 (struct answer (id value) #:prefab) ;; MESSAGE
 
 ;; A QuestionType is one of
-;; - (yes/no-question Markdown Markdown)
-;; - (option-question (Listof (Cons Any Markdown)))
+;; - (yes/no-question Markup Markup)
+;; - (option-question (Listof (List Any Markup)))
 ;; - (text-question Boolean)
 (struct yes/no-question (false-value true-value) #:prefab)
 (struct option-question (options) #:prefab)
 (struct text-question (multiline?) #:prefab)
+(struct acknowledge-question () #:prefab)

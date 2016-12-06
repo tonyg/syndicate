@@ -1,0 +1,20 @@
+<li class="nav-item dropdown">
+  <span class="nav-link dropdown-toggle contact-list-present-{{globallyVisible}} cursor-interactive" data-toggle="dropdown" id="nav-account">
+    <img class="avatar" src="{{avatar}}">
+    <span class="alert-count hide-zero-count count{{questionCount}}">{{questionCount}}</span>
+    <span class="forcewrap">{{email}}</span></span>
+  <div class="dropdown-menu dropdown-menu-right" area-labelledby="nav-account">
+    <button class="dropdown-item toggleInvisible"><i class="icon ion-checkmark dropdown-marginal" {{#locallyVisible}}hidden{{/locallyVisible}}></i>Be invisible</button>
+    <div class="dropdown-divider"></div>
+    <a class="dropdown-item" href="#/permissions">Permissions...</a>
+    <div class="dropdown-divider"></div>
+    <a class="dropdown-item" href="#/questions">
+      <span class="alert-count hide-zero-count count{{questionCount}}">{{questionCount}}</span>
+      Question<span class="plural count{{questionCount}}">s</span> waiting for your answer</a>
+    <a class="dropdown-item" href="#/my-requests">
+      <span class="normal-count hide-zero-count count{{myRequestCount}}">{{myRequestCount}}</span>
+      Request<span class="plural count{{myRequestCount}}">s</span> for others to answer</a>
+    <div class="dropdown-divider"></div>
+    <a class="dropdown-item" href="#/contacts">Manage contacts</a>
+  </div>
+</li>

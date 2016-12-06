@@ -1,0 +1,11 @@
+<div class="card col-xs-12 col-lg-6 {{questionClass}}">
+  <div class="card-block">
+    <h4 class="card-title">{{title}}</h4>
+    {{&blurb}}
+    <div class="list-group">
+      {{#options}}
+      <button class="list-group-item list-group-item-action response" data-value="{{0}}">{{1}}</button>
+      {{/options}}
+    </div>
+  </div>
+</div>

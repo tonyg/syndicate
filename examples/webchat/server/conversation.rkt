@@ -1,7 +1,7 @@
 #lang syndicate/actor
 
-(provide )
+(require/activate syndicate/reload)
+(require/activate syndicate/supervise)
+(require/activate "trust.rkt")
 
 (require "protocol.rkt")
-
-(actor #:name 

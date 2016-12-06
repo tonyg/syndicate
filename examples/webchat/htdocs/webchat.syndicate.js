@@ -4,7 +4,9 @@
   // the desired effect!
   assertion type online();
   assertion type present(email);
+
   assertion type uiTemplate(name, data) = "ui-template";
+
   assertion type permitted(issuer, email, permission, isDelegable);
   assertion type grant(issuer, grantor, grantee, permission, isDelegable);
   assertion type permissionRequest(issuer, grantee, permission) = "permission-request";
@@ -16,6 +18,16 @@
   assertion type pFollow(email) = "p:follow";
   // assertion type pInvite(email) = "p:invite";
   // assertion type pSeePresence(email) = "p:see-presence";
+
+  assertion type contactListEntry(owner, member) = "contact-list-entry";
+
+  assertion type question(id, timestamp, klass, target, title, blurb, type);
+  assertion type answer(id, value);
+  assertion type yesNoQuestion(falseValue, trueValue) = "yes/no-question";
+  assertion type optionQuestion(options) = "option-question";
+  // ^ options = [[Any, Markdown]]
+  assertion type textQuestion(isMultiline) = "text-question";
+  assertion type acknowledgeQuestion() = "acknowledge-question";
 
   var brokerConnected = Syndicate.Broker.brokerConnected;
   var brokerConnection = Syndicate.Broker.brokerConnection;
@@ -42,6 +54,10 @@
 
   function inbound(x) {
     return fromBroker(brokerUrl, x);
+  }
+
+  function avatar(email) {
+    return 'https://www.gravatar.com/avatar/' + md5(email.trim().toLowerCase()) + '?s=48&d=retro';
   }
 
   ///////////////////////////////////////////////////////////////////////////
@@ -73,6 +89,11 @@
       actor {
         this.ui = new Syndicate.UI.Anchor();
         field this.connectedTo = null;
+        field this.myRequestCount = 0; // requests *I* have made of others
+        field this.otherRequestCount = 0; // requests *others* have made of me
+        field this.questionCount = 0; // questions from the system
+        field this.globallyVisible = false; // mirrors *other people's experience of us*
+        field this.locallyVisible = true;
 
         assert brokerConnection(brokerUrl);
 
@@ -81,7 +102,19 @@
 
         var mainpage_c = this.ui.context('mainpage');
         during inbound(uiTemplate("mainpage.html", $mainpage)) {
-          assert mainpage_c.html('div#main-div', mainpage);
+          assert mainpage_c.html('div#main-div', Mustache.render(
+            mainpage,
+            {
+              questionCount: this.questionCount,
+              myRequestCount: this.myRequestCount,
+              otherRequestCount: this.otherRequestCount,
+              globallyVisible: this.globallyVisible
+            }));
+        }
+
+        during inbound(online()) {
+          on start { this.globallyVisible = true; }
+          on stop { this.globallyVisible = false; }
         }
 
         during mainpage_c.fragmentVersion($mainpageVersion) {
@@ -89,12 +122,6 @@
           // of nested widgetry. If we didn't include mainpageVersion in each subwidget's
           // context, then so long as the subwidget's content itself remained unchanged,
           // the user would see the subwidget disappear when mainpage.html changed.
-          on start { console.log('mainpage up', mainpageVersion); }
-          on stop { console.log('mainpage down', mainpageVersion); }
-
-          during inputValue('#invisible', false) {
-            assert outbound(online());
-          }
 
           on asserted Syndicate.UI.locationHash($hash) {
             var tab = hash.substr(1);
@@ -105,30 +132,69 @@
             $('#main-tab-tab-' + tab).addClass('active');
           }
 
-          during inbound(uiTemplate("present-entry.html", $presentEntry)) {
-            during inbound(present($who)) {
-              var c = this.ui.context(mainpageVersion, 'present', who);
-              assert c.html('#present-entries', Mustache.render(
-                presentEntry,
-                {
-                  email: who,
-                  avatar: 'https://www.gravatar.com/avatar/' + md5(who.trim().toLowerCase()) + '?s=48&d=retro'
-                }));
+          during inbound(uiTemplate("nav-account.html", $entry)) {
+            var c = this.ui.context(mainpageVersion, 'nav', 0, 'account');
+            assert outbound(online()) when (this.locallyVisible);
+            assert c.html('#nav-ul', Mustache.render(
+              entry,
+              {
+                email: sessionInfo.email,
+                avatar: avatar(sessionInfo.email),
+                questionCount: this.questionCount,
+                myRequestCount: this.myRequestCount,
+                otherRequestCount: this.otherRequestCount,
+                globallyVisible: this.globallyVisible,
+                locallyVisible: this.locallyVisible
+              }));
+            on message c.event('.toggleInvisible', 'click', _) {
+              this.locallyVisible = !this.locallyVisible;
+            }
+          }
+
+          during inbound(uiTemplate("contact-entry.html", $entry)) {
+            during Syndicate.UI.locationHash('/contacts') {
+              during inbound(contactListEntry(sessionInfo.email, $contact)) {
+                field this.isPresent = false;
+                on asserted inbound(present(contact)) { this.isPresent = true; }
+                on retracted inbound(present(contact)) { this.isPresent = false; }
+                var c = this.ui.context(mainpageVersion, 'all-contacts', contact);
+                assert c.html('#main-tab-body-contacts .contact-list',
+                              Mustache.render(entry, {
+                                email: contact,
+                                avatar: avatar(contact),
+                                isPresent: this.isPresent
+                              }));
+                on message c.event('.do-hi', 'click', $e) {
+                  alert(contact);
+                }
+              }
             }
           }
 
           during inputValue('#add-contact-email', $contact) {
-            on message mainpage_c.event('#add-contact', 'click', _) {
-              :: outbound(createResource(permissionRequest(contact,
-                                                           sessionInfo.email,
-                                                           pFollow(contact))));
-              // :: outbound(createResource(permissionRequest(contact,
-              //                                              sessionInfo.email,
-              //                                              pInvite(contact))));
-              // :: outbound(createResource(permissionRequest(contact,
-              //                                              sessionInfo.email,
-              //                                              pSeePresence(contact))));
-              $('#add-contact-email').val('');
+            during inputValue('#reciprocate', $reciprocate) {
+              on message mainpage_c.event('#add-contact', 'click', _) {
+                if (reciprocate) {
+                  :: outbound(createResource(grant(sessionInfo.email,
+                                                   sessionInfo.email,
+                                                   contact,
+                                                   pFollow(sessionInfo.email),
+                                                   false)));
+                }
+
+                :: outbound(createResource(contactListEntry(sessionInfo.email, contact)));
+                :: outbound(createResource(permissionRequest(contact,
+                                                             sessionInfo.email,
+                                                             pFollow(contact))));
+
+                // :: outbound(createResource(permissionRequest(contact,
+                //                                              sessionInfo.email,
+                //                                              pInvite(contact))));
+                // :: outbound(createResource(permissionRequest(contact,
+                //                                              sessionInfo.email,
+                //                                              pSeePresence(contact))));
+                $('#add-contact-email').val('');
+              }
             }
           }
 
@@ -162,37 +228,57 @@
             }
           }
 
-          during inbound(uiTemplate("my-permission-request.html", $entry)) {
+          during inbound(uiTemplate("permission-request-out-GENERIC.html", $genericEntry)) {
             during inbound(permissionRequest($issuer, sessionInfo.email, $permission)) {
+              on start { this.myRequestCount++; }
+              on stop { this.myRequestCount--; }
+
               var c = this.ui.context(mainpageVersion, 'my-permission-request', issuer, permission);
+              field this.entry = genericEntry;
               assert c.html('#my-permission-requests',
-                            Mustache.render(entry, {issuer: issuer,
-                                                    permission: JSON.stringify(permission)}));
+                            Mustache.render(this.entry,
+                                            {issuer: issuer,
+                                             permission: permission,
+                                             permissionJSON: JSON.stringify(permission)}))
+                when (this.entry);
+              var specificTemplate = "permission-request-out-" +
+                  encodeURIComponent(permission.meta.label) + ".html";
+              on asserted inbound(uiTemplate(specificTemplate, $specificEntry)) {
+                this.entry = specificEntry || genericEntry;
+              }
               on message c.event('.cancel', 'click', _) {
                 :: outbound(deleteResource(permissionRequest(issuer, sessionInfo.email, permission)));
               }
             }
           }
 
-          during inbound(uiTemplate("others-permission-request.html", $entry)) {
-            field this.requestCount = 0;
+          during inputValue('#show-all-requests-from-others', $showRequestsFromOthers) {
+            on start {
+              var d = $('#all-requests-from-others-div');
+              if (showRequestsFromOthers) { d.show(); } else { d.hide(); }
+            }
+          }
 
-            assert mainpage_c.context(mainpageVersion, 'requestCount')
-              .html('#request-count', this.requestCount);
-            assert Syndicate.UI.uiAttribute('.request-count-sensitive',
-                                            'class',
-                                            'count' + this.requestCount);
-
+          during inbound(uiTemplate("permission-request-in-GENERIC.html", $genericEntry)) {
             during inbound(permissionRequest($issuer, $grantee, $permission)) {
               if (grantee !== sessionInfo.email) {
-                on start { this.requestCount++; }
-                on stop { this.requestCount--; }
+                on start { this.otherRequestCount++; }
+                on stop { this.otherRequestCount--; }
 
                 var c = this.ui.context(mainpageVersion, 'others-permission-request', issuer, grantee, permission);
+                field this.entry = genericEntry;
                 assert c.html('#others-permission-requests',
-                              Mustache.render(entry, {issuer: issuer,
-                                                      grantee: grantee,
-                                                      permission: JSON.stringify(permission)}));
+                              Mustache.render(this.entry,
+                                              {issuer: issuer,
+                                               grantee: grantee,
+                                               permission: permission,
+                                               permissionJSON: JSON.stringify(permission)}))
+                  when (this.entry);
+                var specificTemplate = "permission-request-in-" +
+                    encodeURIComponent(permission.meta.label) + ".html";
+                on asserted inbound(uiTemplate(specificTemplate, $specificEntry)) {
+                  this.entry = specificEntry || genericEntry;
+                }
                 on message c.event('.grant', 'click', _) {
                   :: outbound(createResource(grant(issuer,
                                                    sessionInfo.email,
@@ -206,9 +292,41 @@
               }
             }
           }
+
+          during inbound(question($qid, $timestamp, $klass, sessionInfo.email, $title, $blurb, $qt))
+          {
+            on start { this.questionCount++; }
+            on stop { this.questionCount--; }
+
+            var c = this.ui.context(mainpageVersion, 'question', timestamp, qid);
+
+            switch (qt.meta.label) {
+              case "option-question": {
+                var options = qt.fields[0];
+                during inbound(uiTemplate("option-question.html", $entry)) {
+                  assert c.html('#question-container',
+                                Mustache.render(entry, {questionClass: klass,
+                                                        title: title,
+                                                        blurb: blurb,
+                                                        options: options}));
+                  on message c.event('.response', 'click', $e) {
+                    react { assert outbound(answer(qid, e.target.dataset.value)); }
+                  }
+                }
+                break;
+              }
+              default: {
+                break;
+              }
+            }
+          }
         }
       }
     }
+
+    G.dataspace.setOnStateChange(function (mux, patch) {
+      $("#debug-space").text(Syndicate.prettyTrie(mux.routingTable));
+    });
   }
 })();
 

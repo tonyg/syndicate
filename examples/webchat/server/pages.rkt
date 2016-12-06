@@ -19,12 +19,13 @@
 
 (define (page #:head [extra-head '()]
               #:body-id [body-id #f]
-              #:nav-heading [nav-heading "Syndicate Webchat"]
+              #:nav-heading [nav-heading `(a ((href "/#/conversations")) "Syndicate Webchat")]
               title . body-elements)
   `(html ((lang "en"))
          (head (meta ((charset "utf-8")))
                (meta ((http-equiv "X-UA-Compatible") (content "IE=edge")))
                (meta ((name "viewport") (content "width=device-width, initial-scale=1.0, shrink-to-fit=no")))
+               (meta ((name "format-detection") (content "email=no"))) ;; TODO: Mobile chrome seems to autolink email addresses ?!?!
                (title ,title)
                (link ((rel "stylesheet")
                       (href "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.5/css/bootstrap.min.css")
@@ -45,6 +46,8 @@
                (script ((src "https://cdnjs.cloudflare.com/ajax/libs/blueimp-md5/2.6.0/js/md5.min.js")
                         (integrity "sha256-I0CACboBQ1ky299/4LVi2tzEhCOfx1e7LbCcFhn7M8Y=")
                         (crossorigin "anonymous")))
+               (script ((src "/linkify.min.js")))
+               (script ((src "/linkify-string.min.js")))
                ;; (script ((src "/syndicatecompiler.min.js")))
                (script ((src "/syndicate.min.js")))
                (script ((src "/webchat.js")))
@@ -56,12 +59,13 @@
                       `()))
                (div ((class "container"))
                     (div ((class "header clearfix"))
-                         (nav (ul ((id "nav-ul") (class "nav nav-pills float-xs-right"))
+                         (nav ((class "navbar bg-faded"))
+                              (span ((id "nav-heading") (class "navbar-brand text-muted")) ,nav-heading)
+                              (ul ((id "nav-ul") (class "nav navbar-nav nav-pills float-xs-right"))
                                   ;; (li ((class "nav-item")) (a ((class "nav-link active") (href "#")) "Home " (span ((class "sr-only")) "(current)")))
                                   ;; (li ((class "nav-item")) (a ((class "nav-link") (href "#")) "About"))
                                   ;; (li ((class "nav-item")) (a ((class "nav-link") (href "#")) "Contact"))
-                                  ))
-                         (h3 ((id "nav-heading") (class "text-muted")) ,nav-heading))
+                                  )))
 
                     (div ((id "main-div")))
                     ;; (div ((class "row marketing"))
@@ -143,7 +147,6 @@
    id
    (page (format "Webchat: ~a" email)
          #:body-id "webchat-main"
-         #:nav-heading email
          #:head (list `(meta ((itemprop "webchat-session-email") (content ,email)))
                       `(meta ((itemprop "webchat-session-id") (content ,sid)))))))
 

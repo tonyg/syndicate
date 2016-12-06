@@ -22,17 +22,13 @@
                  #:scope scope
                  #:hook (lambda ()
                           (stop-when (message (end-session sid)))
-                          (stop-when (message (delete-account email)))))]))))
-
-(struct online () #:prefab)
-(struct present (email) #:prefab)
-
-(supervise
- (actor #:name 'reflect-presence
-        (stop-when-reloaded)
-        (during (api (session $who _) (online))
-          (during (permitted who $grantee (p:follow #;p:see-presence who) _)
-            (assert (api (session grantee _) (present who)))))))
+                          (stop-when (message (delete-account email)))))]
+               [else
+                (web-respond/xexpr! id
+                                    #:header (web-response-header #:code 401
+                                                                  #:message #"Unauthorized")
+                                    `(html (body (h1 "Unauthorized")
+                                                 (a ((href "/")) "Login"))))]))))
 
 (supervise
  (actor #:name 'reflect-trust
@@ -43,7 +39,9 @@
           (during ($ r (permission-request _ who _))
             (assert (api (session who _) r)))
           (during ($ g (grant _ who _ _ _))
-            (assert (api (session who _) g))))))
+            (assert (api (session who _) g)))
+          (during ($ c (contact-list-entry who _))
+            (assert (api (session who _) c))))))
 
 (supervise
  (actor #:name 'reflect-grant-requests
@@ -58,6 +56,13 @@
 (supervise
  (actor #:name 'take-trust-instructions
         (stop-when-reloaded)
+
+        (on (message (api (session $owner _) (create-resource (? contact-list-entry? $e))))
+            (when (equal? owner (contact-list-entry-owner e))
+              (send! (create-resource e))))
+        (on (message (api (session $owner _) (delete-resource (? contact-list-entry? $e))))
+            (when (equal? owner (contact-list-entry-owner e))
+              (send! (delete-resource e))))
 
         (on (message (api (session $grantor _) (create-resource (? grant? $g))))
             (when (equal? grantor (grant-grantor g))
