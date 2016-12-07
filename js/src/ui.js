@@ -245,10 +245,8 @@ function UIFragment(fragmentId) {
   this.name = ['uiFragment', fragmentId];
 }
 
-var nextVersion = 0;
 UIFragment.prototype.boot = function () {
   return Patch.sub(Trie.projectionToPattern(this.demandProj)) // track demand
-    .andThen(Patch.assert(uiFragmentVersion(this.fragmentId, nextVersion++))) // assert presence
     .andThen(Patch.sub(Trie.projectionToPattern(this.eventDemandProj)))
     // ^ track demand for fragment-specific events
   ;
@@ -394,6 +392,7 @@ UIFragment.prototype.updateContent = function (newSelector, newHtml, newOrderBy)
   });
 };
 
+var nextVersion = 0;
 UIFragment.prototype.handleEvent = function (e) {
   var self = this;
 
