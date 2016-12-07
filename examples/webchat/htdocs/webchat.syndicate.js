@@ -14,7 +14,7 @@
   assertion type conversation(id, title, creator, blurb);
   assertion type invitation(conversationId, inviter, invitee);
   assertion type inConversation(conversationId, member) = "in-conversation";
-  assertion type post(id, timestamp, conversationId, contentType, content);
+  assertion type post(id, timestamp, conversationId, author, contentType, content);
 
   message type createResource(description) = "create-resource";
   message type updateResource(description) = "update-resource";
@@ -33,6 +33,12 @@
   // ^ options = [[Any, Markdown]]
   assertion type textQuestion(isMultiline) = "text-question";
   assertion type acknowledgeQuestion() = "acknowledge-question";
+
+  //---------------------------------------------------------------------------
+  // Local assertions and messages
+
+  assertion type selectedCid(cid); // currently-selected conversation ID, or null
+  message type windowWidthChanged(newWidth);
 
   //---------------------------------------------------------------------------
 
@@ -104,6 +110,15 @@
         field this.globallyVisible = false; // mirrors *other people's experience of us*
         field this.locallyVisible = true;
         field this.showRequestsFromOthers = false;
+        field this.miniMode = $(window).width() < 768;
+
+        window.addEventListener('resize', Syndicate.Dataspace.wrap(function () {
+          :: windowWidthChanged($(window).width());
+        }));
+
+        on message windowWidthChanged($newWidth) {
+          this.miniMode = newWidth < 768;
+        }
 
         assert brokerConnection(brokerUrl);
 
@@ -355,40 +370,224 @@
         during Syndicate.UI.locationHash($locationHash) {
           var m = locationHash.match(conversations_re);
           if (m) {
-            var selectedCid = m[2] || null;
+            assert selectedCid(m[2] || false);
+          }
+        }
 
-            during inbound(uiTemplate("page-conversations.html", $mainEntry)) {
-              assert mainpage_c.html('div#main-div', Mustache.render(mainEntry, {
-                selectedCid: selectedCid
-              }));
-            }
+        during inbound(uiTemplate("page-conversations.html", $mainEntry)) {
+          during selectedCid(false) {
+            assert mainpage_c.html('div#main-div', Mustache.render(mainEntry, {
+              miniMode: this.miniMode,
+              showConversationList: true,
+              showConversationMain: !this.miniMode,
+              showConversationInfo: false,
+              showConversationPosts: false,
+              selected: false
+            }));
+          }
+        }
 
-            during inbound(uiTemplate("conversation-index-entry.html", $indexEntry)) {
-              during mainpage_c.fragmentVersion($mainpageVersion) {
-                during inbound(inConversation($cid, sessionInfo.email)) {
-                  field this.members = Immutable.Set();
-                  on asserted inbound(inConversation(cid, $who)) {
-                    this.members = this.members.add(who);
+        // Move to the conversation index page when we leave a
+        // conversation (which also happens automatically when it is
+        // deleted)
+        during selectedCid($selected) {
+          on retracted inbound(inConversation(selected, sessionInfo.email)) {
+            :: Syndicate.UI.setLocationHash('/conversations');
+          }
+        }
+
+        during inbound(inConversation($cid, sessionInfo.email)) {
+          field this.members = Immutable.Set();
+          field this.title = '';
+          field this.creator = '';
+          field this.blurb = '';
+          field this.editingTitle = false;
+          field this.editingBlurb = false;
+
+          field this.membersJSON = [];
+          dataflow {
+            this.membersJSON = this.members.map(function (m) { return {
+              email: m,
+              avatar: avatar(m)
+            }; }).toArray();
+          }
+
+          on asserted inbound(inConversation(cid, $who)) {
+            this.members = this.members.add(who);
+          }
+          on retracted inbound(inConversation(cid, $who)) {
+            this.members = this.members.remove(who);
+          }
+
+          on asserted inbound(conversation(cid, $title, $creator, $blurb)) {
+            this.title = title;
+            this.creator = creator;
+            this.blurb = blurb;
+          }
+
+          during inbound(uiTemplate("page-conversations.html", $mainEntry)) {
+            during selectedCid($selected) {
+              if (selected === cid) {
+                field this.showInfoMode = false;
+                field this.latestPostTimestamp = 0;
+                field this.latestPostId = null;
+
+                assert mainpage_c.html('div#main-div', Mustache.render(mainEntry, {
+                  miniMode: this.miniMode,
+                  showConversationList: !this.miniMode,
+                  showConversationMain: true,
+                  showConversationInfo: !this.miniMode || this.showInfoMode,
+                  showConversationPosts: !this.miniMode || !this.showInfoMode,
+                  selected: selected,
+                  title: this.title,
+                  blurb: this.blurb,
+                  members: this.membersJSON,
+                  editingTitle: this.editingTitle,
+                  editingBlurb: this.editingBlurb,
+                  overflowMenuItems: [
+                    {label: "Invite user...", action: "invite-to-conversation"},
+                    {label: "Leave conversation", action: "leave-conversation"},
+                    {separator: true,
+                     hidden: sessionInfo.email !== this.creator},
+                    {label: "Delete conversation", action: "delete-conversation",
+                     hidden: sessionInfo.email !== this.creator}
+                  ]
+                }));
+
+                on message mainpage_c.event('#message-input', 'focus', $e) {
+                  setTimeout(function () { e.target.scrollIntoView(false); }, 500);
+                }
+
+                on message mainpage_c.event('#send-message-button', 'click', _) {
+                  var message = ($("#message-input").val() || '').trim();
+                  if (message) {
+                    :: outbound(createResource(post(random_hex_string(16),
+                                                    +(new Date()),
+                                                    cid,
+                                                    sessionInfo.email,
+                                                    "text/plain",
+                                                    message)));
                   }
-                  on retracted inbound(inConversation(cid, $who)) {
-                    this.members = this.members.remove(who);
+                  $("#message-input").val('').focus();
+                }
+
+                on message mainpage_c.event('.invite-to-conversation', 'click', _) {
+                  $('#invitation-modal').modal({});
+                }
+
+                on message mainpage_c.event('.send-invitation', 'click', _) {
+                  var invitee = $('#invited-username').val().trim();
+                  if (invitee) {
+                    :: outbound(createResource(invitation(cid, sessionInfo.email, invitee)));
+                    $('#invited-username').val('');
+                    $('#invitation-modal').modal('hide');
                   }
-                  during inbound(conversation(cid, $title, $creator, $blurb)) {
-                    var c = this.ui.context(mainpageVersion, 'conversationIndex', cid);
-                    assert c.html('#conversation-list', Mustache.render(indexEntry, {
-                      isSelected: selectedCid === cid,
-                      selectedCid: selectedCid,
-                      cid: cid,
-                      title: title,
-                      creator: creator,
-                      members: this.members.toArray()
-                    }));
-                    on message c.event('.card-block', 'click', _) {
-                      if (selectedCid === cid) {
-                        :: Syndicate.UI.setLocationHash('/conversations');
-                      } else {
-                        :: Syndicate.UI.setLocationHash('/conversations/' + cid);
+                }
+
+                on message mainpage_c.event('.leave-conversation', 'click', _) {
+                  :: outbound(deleteResource(inConversation(cid, sessionInfo.email)));
+                }
+
+                on message mainpage_c.event('.delete-conversation', 'click', _) {
+                  if (confirm("Delete this conversation?")) {
+                    :: outbound(deleteResource(conversation(cid,
+                                                            this.title,
+                                                            this.creator,
+                                                            this.blurb)));
+                  }
+                }
+
+                on message mainpage_c.event('.toggle-info-mode', 'click', _) {
+                  this.showInfoMode = !this.showInfoMode;
+                }
+                on message mainpage_c.event('.end-info-mode', 'click', _) {
+                  this.showInfoMode = false;
+                }
+
+                on message mainpage_c.event('#edit-conversation-title', 'click', _) {
+                  this.editingTitle = true;
+                }
+                on message mainpage_c.event('#title-heading', 'dblclick', _) {
+                  this.editingTitle = true;
+                }
+                on message mainpage_c.event('#accept-conversation-title', 'click', _) {
+                  this.title = $('#conversation-title').val();
+                  :: outbound(updateResource(conversation(cid,
+                                                          this.title,
+                                                          this.creator,
+                                                          this.blurb)));
+                  this.editingTitle = false;
+                }
+                on message mainpage_c.event('#cancel-edit-conversation-title', 'click', _) {
+                  this.editingTitle = false;
+                }
+
+                on message mainpage_c.event('#edit-conversation-blurb', 'click', _) {
+                  this.editingBlurb = true;
+                }
+                on message mainpage_c.event('#blurb', 'dblclick', _) {
+                  this.editingBlurb = true;
+                }
+                on message mainpage_c.event('#accept-conversation-blurb', 'click', _) {
+                  this.blurb = $('#conversation-blurb').val();
+                  :: outbound(updateResource(conversation(cid,
+                                                          this.title,
+                                                          this.creator,
+                                                          this.blurb)));
+                  this.editingBlurb = false;
+                }
+                on message mainpage_c.event('#cancel-edit-conversation-blurb', 'click', _) {
+                  this.editingBlurb = false;
+                }
+
+                during inbound(post($pid, $timestamp, cid, $author, $contentType, $content)) {
+                  if (timestamp > this.latestPostTimestamp) {
+                    this.latestPostTimestamp = timestamp;
+                    this.latestPostId = pid;
+                  }
+                  during mainpage_c.fragmentVersion($mainpageVersion) {
+                    function cleanContentType(t) {
+                      return t.replace('/', '-');
+                    }
+                    during inbound(
+                      uiTemplate("post-entry-" + cleanContentType(contentType) + ".html", $entry))
+                    {
+                      var c = this.ui.context(mainpageVersion, 'post', timestamp, pid);
+                      assert c.html('.posts', Mustache.render(entry, {
+                        postId: pid,
+                        date: new Date(timestamp).toString(),
+                        postClass: (author === sessionInfo.email) ? "from-me" : "to-me",
+                        author: author,
+                        contentType: cleanContentType(contentType),
+                        content: content
+                      }));
+                      on asserted c.fragmentVersion(_) {
+                        if ((this.latestPostTimestamp === timestamp) &&
+                            (this.latestPostId === pid)) {
+                          $("#post-" + pid)[0].scrollIntoView(false);
+                        }
                       }
+                    }
+                  }
+                }
+              }
+
+              during inbound(uiTemplate("conversation-index-entry.html", $indexEntry)) {
+                during mainpage_c.fragmentVersion($mainpageVersion) {
+                  var c = this.ui.context(mainpageVersion, 'conversationIndex', cid);
+                  assert c.html('#conversation-list', Mustache.render(indexEntry, {
+                    isSelected: selected === cid,
+                    selected: selected,
+                    cid: cid,
+                    title: this.title,
+                    creator: this.creator,
+                    members: this.membersJSON
+                  }));
+                  on message c.event('.card-block', 'click', _) {
+                    if (selected === cid) {
+                      :: Syndicate.UI.setLocationHash('/conversations');
+                    } else {
+                      :: Syndicate.UI.setLocationHash('/conversations/' + cid);
                     }
                   }
                 }
@@ -401,17 +600,11 @@
           field this.invitees = Immutable.Set();
           field this.searchString = '';
           field this.displayedSearchString = ''; // avoid resetting HTML every keystroke. YUCK
-          field this.suggestedTitle = '';
-
-          dataflow {
-            this.suggestedTitle = this.invitees.toArray().join(', ');
-          }
 
           during inbound(uiTemplate("page-new-chat.html", $mainEntry)) {
             assert mainpage_c.html('div#main-div', Mustache.render(mainEntry, {
               noInvitees: this.invitees.isEmpty(),
-              searchString: this.displayedSearchString,
-              suggestedTitle: this.suggestedTitle
+              searchString: this.displayedSearchString
             }));
           }
 
@@ -420,12 +613,9 @@
               this.searchString = e.target.value.trim();
             }
 
-            on message Syndicate.UI.globalEvent('.create-conversation', 'click', _) {
-              // TODO: ^ Would like to use
-              // mainpage_c.event('.create-conversation', 'click', _)
-              // here, but the DOM nodes aren't created in time, it seems
+            on message mainpage_c.event('.create-conversation', 'click', _) {
               if (!this.invitees.isEmpty()) {
-                var title = $('#conversation-title').val() || this.suggestedTitle;
+                var title = $('#conversation-title').val();
                 var blurb = $('#conversation-blurb').val();
                 var cid = random_hex_string(32);
                 :: outbound(createResource(conversation(cid, title, sessionInfo.email, blurb)));

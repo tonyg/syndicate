@@ -1,22 +1,153 @@
-<div class="container">
-  <div class="row">
-    <div class="col-xs-4">
-      <div id="conversation-list">
+<div class="modal fade" id="invitation-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog" role="document">
+    <form class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+        <h4 class="modal-title" id="myModalLabel">Invite User</h4>
+      </div>
+      <div class="modal-body">
+        <label for="invited-username">User to invite:</label>
+        <input type="email" class="form-control" id="invited-username" placeholder="username@example.com">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-default send-invitation">Invite</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="container h-100">
+  <div class="row h-100">
+    {{#showConversationList}}
+    <div class="col-md-4 h-100 column-container">
+      <div id="conversation-list" class="column-fill">
       </div>
       <div class="align-center">
         <a class="big-icon text-gray-dark" href="#/new-chat"><i class="cursor-interactive icon ion-plus-circled"></i></a>
       </div>
     </div>
-    <div class="col-xs-8">
-      {{#selectedCid}}
-      {{selectedCid}}
-      {{/selectedCid}}
-      {{^selectedCid}}
+    {{/showConversationList}}
+    {{#showConversationMain}}
+    <div class="col-md-8 h-100 column-container">
+      {{#selected}}
+
+      <div class="column-fill post-backdrop">
+        {{#miniMode}}
+        <div class="conversation-control-panel bg-primary text-white px-1 mb-1">
+          <div class="float-right dropdown">
+            <i class="cursor-interactive icon ion-more" data-toggle="dropdown"></i>
+            <div class="dropdown-menu dropdown-menu-right">
+              {{#overflowMenuItems}}
+              {{#separator}}
+              <div class="dropdown-divider"></div>
+              {{/separator}}
+              {{^separator}}
+              <button class="dropdown-item {{action}}">{{label}}</button>
+              {{/separator}}
+              {{/overflowMenuItems}}
+            </div>
+          </div>
+          <i class="toggle-info-mode float-right icon ion-information-circled pr-1"></i>
+          {{#showConversationInfo}}
+          <i class="end-info-mode icon ion-arrow-left-c" style="padding-right: 0.5rem"></i>
+          {{/showConversationInfo}}
+          {{^showConversationInfo}}
+          <a class="text-white" style="padding-right: 0.5rem" href="#/conversations"><i class="icon ion-arrow-left-c"></i></a>
+          {{/showConversationInfo}}
+          <span>{{title}}{{^title}}<i class="text-muted">Untitled</i>{{/title}}</span>
+        </div>
+        {{/miniMode}}
+
+        {{#showConversationInfo}}
+        <div>
+          <div class="float-right dropdown mr-1">
+            <i class="cursor-interactive big-icon icon ion-more" data-toggle="dropdown"></i>
+            <div class="dropdown-menu dropdown-menu-right">
+              {{#overflowMenuItems}}
+              {{^hidden}}
+              {{#separator}}
+              <div class="dropdown-divider"></div>
+              {{/separator}}
+              {{^separator}}
+              <button class="dropdown-item {{action}}">{{label}}</button>
+              {{/separator}}
+              {{/hidden}}
+              {{/overflowMenuItems}}
+            </div>
+          </div>
+          {{#editingTitle}}
+          <h2 class="mr-1">
+            <form class="form-inline">
+              <input type="text" autocomplete="off" class="form-control" id="conversation-title" value="{{title}}">
+              <button class="form-control btn btn-primary btn-default" id="accept-conversation-title"><i class="icon ion-checkmark"></i></button>
+              <button class="form-control btn btn-secondary" id="cancel-edit-conversation-title"><i class="icon ion-close"></i></button>
+            </form>
+          </h2>
+          {{/editingTitle}}
+          {{^editingTitle}}
+          <form class="form-inline float-right">
+            <button class="form-control btn" id="edit-conversation-title"><i class="icon ion-edit"></i></button>
+          </form>
+          <h2 id="title-heading">{{title}}{{^title}}<i class="text-muted">Untitled</i>{{/title}}</h2>
+          {{/editingTitle}}
+          <hr>
+
+          {{#editingBlurb}}
+          <div class="mr-1">
+            <textarea rows="3" class="form-control" id="conversation-blurb">{{blurb}}</textarea>
+            <form class="form-inline align-right pb-1">
+              <button class="form-control btn btn-primary btn-default" id="accept-conversation-blurb"><i class="icon ion-checkmark"></i></button>
+              <button class="form-control btn btn-secondary" id="cancel-edit-conversation-blurb"><i class="icon ion-close"></i></button>
+            </form>
+          </div>
+          {{/editingBlurb}}
+          {{^editingBlurb}}
+          <div>
+            <form class="form-inline float-right">
+              <button class="form-control btn" id="edit-conversation-blurb"><i class="icon ion-edit"></i></button>
+            </form>
+            <div id="blurb" class="blurb-box">
+              {{#blurb}}
+              <p>{{blurb}}</p>
+              {{/blurb}}
+              {{^blurb}}
+              <p><i class="text-muted">Set a conversation topic here</i></p>
+              {{/blurb}}
+            </div>
+          </div>
+          {{/editingBlurb}}
+        </div>
+        {{/showConversationInfo}}
+
+        {{#showConversationPosts}}
+        <div class="posts"></div>
+        {{/showConversationPosts}}
+      </div>
+      {{#showConversationPosts}}
+      <form id="message-input-form" class="form-inline pt-1" style="display: flex;">
+        <input type="text" autocomplete="off" id="message-input" class="form-control" style="flex: 1">
+        <button id="send-message-button" class="form-control btn btn-primary" style="max-width: 3em"><i class="icon ion-paper-airplane"></i></button>
+      </form>
+      {{/showConversationPosts}}
+
+      {{/selected}}
+
+      {{^selected}}
       <p class="align-center">
         Select a conversation from the column to the left,
         or <a href="#/new-chat">create a new conversation</a>.
       </p>
-      {{/selectedCid}}
+      {{/selected}}
     </div>
+    {{/showConversationMain}}
   </div>
 </div>
+{{#miniMode}}
+<style>
+  footer { display: none; }
+  #message-input-form { margin-bottom: 1rem; }
+</style>
+{{/miniMode}}

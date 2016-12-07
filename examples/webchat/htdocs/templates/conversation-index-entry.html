@@ -1,8 +1,8 @@
 <div class="card conversation-card">
   <div class="card-block {{#isSelected}}bg-primary text-white{{/isSelected}}">
-    <div class="card-title">{{title}}</div>
+    <div class="card-title">{{title}}{{^title}}<i>Untitled</i>{{/title}}</div>
     {{#members}}
-    {{.}}
+    <img src="{{avatar}}">
     {{/members}}
   </div>
 </div>

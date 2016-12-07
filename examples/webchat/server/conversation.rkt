@@ -11,6 +11,9 @@
 (require "duplicate.rkt")
 (require "util.rkt")
 
+(define (user-in-conversation? who cid)
+  (immediate-query [query-value #f (in-conversation cid who) #t]))
+
 (supervise
  (actor #:name 'take-conversation-instructions
         (stop-when-reloaded)
@@ -18,6 +21,9 @@
         (on (message (api (session $creator _) (create-resource (? conversation? $c))))
             (when (equal? creator (conversation-creator c))
               (send! (create-resource c))))
+        (on (message (api (session $updater _) (update-resource (? conversation? $c))))
+            (when (user-in-conversation? updater (conversation-id c))
+              (send! (update-resource c))))
         (on (message (api (session $creator _) (delete-resource (? conversation? $c))))
             (when (equal? creator (conversation-creator c))
               (send! (delete-resource c))))
@@ -35,7 +41,18 @@
         (on (message (api (session $who _) (delete-resource (? invitation? $i))))
             (when (or (equal? who (invitation-inviter i))
                       (equal? who (invitation-invitee i)))
-              (send! (delete-resource i))))))
+              (send! (delete-resource i))))
+
+        (on (message (api (session $who _) (create-resource (? post? $p))))
+            (when (and (user-in-conversation? who (post-conversation-id p))
+                       (equal? who (post-author p)))
+              (send! (create-resource p))))
+        (on (message (api (session $who _) (update-resource (? post? $p))))
+            (when (equal? who (post-author p))
+              (send! (update-resource p))))
+        (on (message (api (session $who _) (delete-resource (? post? $p))))
+            (when (equal? who (post-author p))
+              (send! (delete-resource p))))))
 
 (supervise
  (actor #:name 'relay-conversation-state
@@ -53,7 +70,7 @@
             (assert (api (session who _) i)))
           (during ($ c (conversation cid _ _ _))
             (assert (api (session who _) c)))
-          (during ($ p (post _ _ cid _ _))
+          (during ($ p (post _ _ cid _ _ _))
             (assert (api (session who _) p))))))
 
 (supervise
@@ -68,7 +85,10 @@
                    (on-stop (log-info "~v deleted" (c)))
                    (assert (c))
                    (stop-when-duplicate (list 'conversation cid))
-                   (stop-when (message (delete-resource (conversation cid _ _ _))))))))
+                   (stop-when (message (delete-resource (conversation cid _ _ _))))
+                   (on (message (update-resource (conversation cid $newtitle _ $newblurb)))
+                       (title newtitle)
+                       (blurb newblurb))))))
 
 (supervise
  (actor #:name 'in-conversation-factory
@@ -79,7 +99,8 @@
                    (on-stop (log-info "~s leaves conversation ~a" who cid))
                    (assert i)
                    (stop-when-duplicate i)
-                   (stop-when (message (delete-resource i)))))))
+                   (stop-when (message (delete-resource i)))
+                   (stop-when (message (delete-resource (conversation cid _ _ _))))))))
 
 (supervise
  (actor #:name 'invitation-factory
@@ -92,7 +113,23 @@
                    (assert i)
                    (stop-when-duplicate i)
                    (stop-when (message (delete-resource i)))
+                   (stop-when (message (delete-resource (conversation cid _ _ _))))
                    (stop-when (asserted (in-conversation cid invitee)))))))
+
+(supervise
+ (actor #:name 'post-factory
+        (stop-when-reloaded)
+        (on (message (create-resource
+                      ($ p0 (post $pid $timestamp $cid $author $content-type $content0))))
+            (actor #:name p0
+                   (field [content content0])
+                   (define/dataflow p (post pid timestamp cid author content-type (content)))
+                   (assert (p))
+                   (stop-when-duplicate (list 'post cid pid))
+                   (stop-when (message (delete-resource (post pid _ cid _ _ _))))
+                   (stop-when (message (delete-resource (conversation cid _ _ _))))
+                   (on (message (update-resource (post pid _ cid _ _ $newcontent)))
+                       (content newcontent))))))
 
 (supervise
  (actor #:name 'conversation:questions

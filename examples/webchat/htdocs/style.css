@@ -8,6 +8,29 @@ img.avatar {
 
 /* --------------------------------------------------------------------------- */
 
+.main-container {
+    display: flex;
+    height: 100vh;
+    flex-direction: column;
+}
+
+#main-div {
+    flex: 1;
+    overflow: auto;
+}
+
+.column-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.column-fill {
+    flex: 1;
+    overflow: auto;
+}
+
+/* --------------------------------------------------------------------------- */
+
 .alert-count {
     background: red;
     color: white;
@@ -72,4 +95,77 @@ img.avatar {
 .invited-tick .icon {
     position: relative;
     top: 0.5rem;
+}
+
+.blurb-box {
+}
+
+.float-right { float: right; }
+
+.main-container footer {
+    padding-top: 1rem;
+    text-align: right;
+}
+
+/* --------------------------------------------------------------------------- */
+
+.conversation-control-panel {
+    font-size: 2rem;
+}
+
+.post-backdrop {
+    overflow-y: scroll;
+}
+
+.post {
+    margin: 20px;
+}
+
+.post .post-body {
+    background: white;
+    border: solid #d3d3d3 1px;
+    border-radius: 1.5rem;
+    padding: 1rem;
+    margin: 0 0px;
+}
+
+.post p {
+    margin-bottom: 0;
+}
+
+.post.from-me .post-body {
+    background: #e8e8ff;
+    margin-left: 4rem;
+    margin-right: -1px;
+}
+
+.post.to-me .post-body {
+    margin-left: -1px;
+    margin-right: 4rem;
+}
+
+.post.from-me:after {
+    content: url('/speechbubble-r.png');
+    position: relative;
+    /* left: 100%; */
+    right: -100%;
+    top: -40px;
+    height: 0px;
+    width: 0px;
+    display: block;
+}
+
+.post.to-me:after {
+    content: url('/speechbubble-l.png');
+    position: relative;
+    left: -16px;
+    top: -40px;
+    height: 0px;
+    width: 0px;
+    display: block;
+}
+
+.post-body > img {
+    max-width: 100%;
+    max-height: 100%;
 }

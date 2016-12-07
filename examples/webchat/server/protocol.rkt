@@ -151,6 +151,7 @@
 (struct post (id ;; String
               timestamp ;; Seconds
               conversation-id ;; String
+              author ;; Principal
               content-type ;; MimeTypeString
               content ;; Any
               ) #:prefab) ;; ASSERTION

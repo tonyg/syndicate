@@ -60,7 +60,7 @@
          (body (,@(if body-id
                       `((id ,body-id))
                       `()))
-               (div ((class "container"))
+               (div ((class "container main-container"))
                     (div ((class "header clearfix"))
                          (nav ((class "navbar bg-faded"))
                               ;; (span ((id "nav-heading") (class "navbar-brand text-muted")) ,nav-heading)
