@@ -565,14 +565,14 @@
   (syntax-parse stx
     [(_ field-name absent-expr P expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
-       (let ()
+       (let ((F field-name))
          (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
-             (field-name expr))
+             (F expr))
          (on (retracted P) #:priority *query-priority-high*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
-             (field-name absent-expr))
-         field-name))]))
+             (F absent-expr))
+         F))]))
 
 (define-syntax (query-set stx)
   (syntax-parse stx
@@ -586,14 +586,14 @@
   (syntax-parse stx
     [(_ field-name P expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
-       (let ()
+       (let ((F field-name))
          (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
-             (field-name (set-add (field-name) expr)))
+             (F (set-add (F) expr)))
          (on (retracted P) #:priority *query-priority-high*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
-             (field-name (set-remove (field-name) expr)))
-         field-name))]))
+             (F (set-remove (F) expr)))
+         F))]))
 
 (define-syntax (query-hash stx)
   (syntax-parse stx
@@ -607,20 +607,20 @@
   (syntax-parse stx
     [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
-       (let ()
+       (let ((F field-name))
          (on (asserted P) #:priority *query-priority*
              (let ((key key-expr))
-               (when (hash-has-key? (field-name) key)
+               (when (hash-has-key? (F) key)
                  (log-warning "query-hash: field ~v with pattern ~v: overwriting existing entry ~v"
                               'field-name
                               'P
                               key))
                #,@(schedule-query-handler-stxs (attribute on-add.expr))
-               (field-name (hash-set (field-name) key value-expr))))
+               (F (hash-set (F) key value-expr))))
          (on (retracted P) #:priority *query-priority-high*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
-             (field-name (hash-remove (field-name) key-expr)))
-         field-name))]))
+             (F (hash-remove (F) key-expr)))
+         F))]))
 
 (define-syntax (query-hash-set stx)
   (syntax-parse stx
@@ -634,14 +634,14 @@
   (syntax-parse stx
     [(_ field-name P key-expr value-expr on-add:on-add on-remove:on-remove)
      (quasisyntax/loc stx
-       (let ()
+       (let ((F field-name))
          (on (asserted P) #:priority *query-priority*
              #,@(schedule-query-handler-stxs (attribute on-add.expr))
-             (field-name (hashset-add (field-name) key-expr value-expr)))
+             (F (hashset-add (F) key-expr value-expr)))
          (on (retracted P) #:priority *query-priority-high*
              #,@(schedule-query-handler-stxs (attribute on-remove.expr))
-             (field-name (hashset-remove (field-name) key-expr value-expr)))
-         field-name))]))
+             (F (hashset-remove (F) key-expr value-expr)))
+         F))]))
 
 (define-syntax-rule (define/query-value id ae P x ...) (define id (query-value id ae P x ...)))
 (define-syntax-rule (define/query-set id P x ...) (define id (query-set id P x ...)))
