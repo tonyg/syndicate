@@ -1,0 +1,7 @@
+<div id="post-{{postId}}" class="post {{#fromMe}}from-me{{/fromMe}}{{^fromMe}}to-me{{/fromMe}}">
+  <div class="post-body {{contentClass}} clearfix">
+    {{^fromMe}}<p class="post-author text-muted">{{author}}</p>{{/fromMe}}
+    <div class="post-item-container"></div>
+    <div class="post-date text-muted">{{time}}</div>
+  </div>
+</div>

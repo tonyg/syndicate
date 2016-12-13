@@ -14,7 +14,7 @@
   assertion type conversation(id, title, creator, blurb);
   assertion type invitation(conversationId, inviter, invitee);
   assertion type inConversation(conversationId, member) = "in-conversation";
-  assertion type post(id, timestamp, conversationId, author, contentType, content);
+  assertion type post(id, timestamp, conversationId, author, items);
 
   message type createResource(description) = "create-resource";
   message type updateResource(description) = "update-resource";
@@ -39,6 +39,9 @@
 
   assertion type selectedCid(cid); // currently-selected conversation ID, or null
   message type windowWidthChanged(newWidth);
+
+  assertion type draftItem(timestamp, dataURL);
+  message type draftSent();
 
   //---------------------------------------------------------------------------
 
@@ -74,6 +77,10 @@
   }
 
   ///////////////////////////////////////////////////////////////////////////
+
+  document.addEventListener('dragover', function (e) {
+    e.preventDefault(); // make it so drag-and-drop doesn't load the dropped object into the browser
+  });
 
   window.addEventListener('load', function () {
     if (document.body.id === 'webchat-main') {
@@ -432,6 +439,10 @@
                 field this.latestPostTimestamp = 0;
                 field this.latestPostId = null;
 
+                field this.draftItems = Immutable.Map();
+                on asserted draftItem($ts, $d) { this.draftItems = this.draftItems.set(ts, d); }
+                on retracted draftItem($ts, _) { this.draftItems = this.draftItems.remove(ts); }
+
                 assert mainpage_c.html('div#main-div', Mustache.render(mainEntry, {
                   miniMode: this.miniMode,
                   showConversationList: !this.miniMode,
@@ -458,17 +469,81 @@
                   setTimeout(function () { e.target.scrollIntoView(false); }, 500);
                 }
 
+                var spawnItemFromDataURL = (function (ui) {
+                  return function (dataURL) {
+                    var timestamp = +(new Date());
+                    actor {
+                      field this.ui = ui.context('draft-post', timestamp);
+                      assert draftItem(timestamp, dataURL);
+                      manifestPostItem(this.ui,
+                                       '#pending-draft-items',
+                                       {
+                                         isDraft: true,
+                                         postId: 'draft',
+                                         timestamp: timestamp,
+                                         fromMe: true,
+                                         author: sessionInfo.email
+                                       },
+                                       dataURL);
+                      stop on message draftSent();
+                      stop on message this.ui.event('.close-draft', 'click', _);
+                    }
+                  };
+                })(this.ui);
+
+                var handleDataTransfer = function (dataTransfer) {
+                  return dataTransferFiles(dataTransfer, Syndicate.Dataspace.wrap(
+                    function (dataURLs) {
+                      dataURLs.forEach(spawnItemFromDataURL);
+                    }));
+                };
+
+                on message mainpage_c.event('#conversation-main', 'drop', $e) {
+                  handleDataTransfer.call(this, e.dataTransfer);
+                }
+
+                on message mainpage_c.event('#message-input', '+paste', $e) {
+                  if (handleDataTransfer.call(this, e.clipboardData)) {
+                    e.preventDefault();
+                  }
+                }
+
+                on message mainpage_c.event('#attach-item-button', 'click', _) {
+                  console.log('clickenating');
+                  $('#attach-item-file').click();
+                }
+                on message mainpage_c.event('#attach-item-file', 'change', $e) {
+                  if (e.target.files) {
+                    for (var i = 0; i < e.target.files.length; i++) {
+                      var file = e.target.files[i];
+                      var reader = new FileReader();
+                      reader.addEventListener('load', Syndicate.Dataspace.wrap(function (e) {
+                        spawnItemFromDataURL(e.target.result);
+                      }));
+                      reader.readAsDataURL(file);
+                    }
+                  }
+                }
+
                 on message mainpage_c.event('#send-message-button', 'click', _) {
+                  var timestamp = +(new Date());
+                  var items = this.draftItems.entrySeq().toArray();
+                  items.sort(function (a, b) { return a[0] - b[0]; });
                   var message = ($("#message-input").val() || '').trim();
                   if (message) {
+                    var b64 = btoa(unescape(encodeURIComponent(message))); // utf-8, then base64
+                    items.push([timestamp,
+                                "data:text/plain;charset=utf-8;base64," + encodeURIComponent(b64)]);
+                  }
+                  if (items.length) {
                     :: outbound(createResource(post(random_hex_string(16),
-                                                    +(new Date()),
+                                                    timestamp,
                                                     cid,
                                                     sessionInfo.email,
-                                                    "text/plain",
-                                                    message)));
+                                                    items.map(function (di) { return di[1]; }))));
                   }
                   $("#message-input").val('').focus();
+                  :: draftSent();
                 }
 
                 on message mainpage_c.event('.invite-to-conversation', 'click', _) {
@@ -540,32 +615,33 @@
                   this.editingBlurb = false;
                 }
 
-                during inbound(post($pid, $timestamp, cid, $author, $contentType, $content)) {
-                  if (timestamp > this.latestPostTimestamp) {
-                    this.latestPostTimestamp = timestamp;
-                    this.latestPostId = pid;
-                  }
-                  during mainpage_c.fragmentVersion($mainpageVersion) {
-                    function cleanContentType(t) {
-                      return t.replace('/', '-');
+                during mainpage_c.fragmentVersion($mainpageVersion) {
+                  during inbound(post($pid, $timestamp, cid, $author, $items)) {
+                    var fromMe = (author === sessionInfo.email);
+                    var postInfo = {
+                      isDraft: false,
+                      postId: pid,
+                      timestamp: timestamp,
+                      date: new Date(timestamp).toString(),
+                      time: new Date(timestamp).toTimeString().substr(0, 8),
+                      fromMe: fromMe,
+                      author: author
+                    };
+                    if (timestamp > this.latestPostTimestamp) {
+                      this.latestPostTimestamp = timestamp;
+                      this.latestPostId = pid;
                     }
-                    during inbound(
-                      uiTemplate("post-entry-" + cleanContentType(contentType) + ".html", $entry))
-                    {
-                      var c = this.ui.context(mainpageVersion, 'post', timestamp, pid);
-                      assert c.html('.posts', Mustache.render(entry, {
-                        postId: pid,
-                        date: new Date(timestamp).toString(),
-                        postClass: (author === sessionInfo.email) ? "from-me" : "to-me",
-                        author: author,
-                        contentType: cleanContentType(contentType),
-                        content: content
-                      }));
-                      on asserted c.fragmentVersion(_) {
-                        if ((this.latestPostTimestamp === timestamp) &&
-                            (this.latestPostId === pid)) {
-                          $("#post-" + pid)[0].scrollIntoView(false);
-                        }
+                    var c = this.ui.context(mainpageVersion, 'post', timestamp, pid);
+                    during inbound(uiTemplate("post-entry.html", $postEntryTemplate)) {
+                      assert c.html('.posts', Mustache.render(postEntryTemplate, postInfo));
+                      during c.fragmentVersion(_) {
+                        var itemCounter = 0;
+                        items.forEach((function (itemURL) {
+                          manifestPostItem(c.context('item', itemCounter++),
+                                           '#post-' + pid + ' .post-item-container',
+                                           postInfo,
+                                           itemURL);
+                        }).bind(this));
                       }
                     }
                   }
@@ -668,6 +744,49 @@
     //   $("#debug-space").text(Syndicate.prettyTrie(mux.routingTable));
     // });
   }
+
+  var nextItemid = 0;
+  function manifestPostItem(uiContext, containerSelector, postInfo, itemURL) {
+    function cleanContentType(t) {
+      t = t.toLowerCase();
+      if (t.startsWith('image/')) {
+        t = 'image';
+      } else {
+        t = t.replace('/', '-');
+      }
+      return t;
+    }
+
+    var item = parseDataURL(itemURL);
+    var itemId = 'post-' + postInfo.postId + '-item-' + nextItemid++;
+    var contentClass = cleanContentType(item.type);
+    var itemInfo = {
+      itemId: itemId,
+      postInfo: postInfo,
+      contentClass: contentClass,
+      item: item,
+      itemURL: itemURL
+    };
+
+    during inbound(uiTemplate("post-item.html", $postItemTemplate)) {
+      during inbound(uiTemplate("post-item-" + contentClass + ".html", $entry)) {
+        assert uiContext.html(containerSelector, Mustache.render(postItemTemplate, itemInfo));
+        on asserted uiContext.fragmentVersion(_) {
+          var innerContext = uiContext.context('item-body');
+          assert innerContext.html('#' + itemId + ' .post-item-body-container',
+                                   Mustache.render(entry, itemInfo));
+          if (!postInfo.isDraft) {
+            on asserted innerContext.fragmentVersion(_) {
+              if ((this.latestPostTimestamp === postInfo.timestamp) &&
+                  (this.latestPostId === postInfo.postId)) {
+                setTimeout(function () { $("#post-" + postInfo.postId)[0].scrollIntoView(false); }, 1);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 })();
 
 ///////////////////////////////////////////////////////////////////////////
@@ -702,4 +821,134 @@ function random_hex_string(halfLength) {
     encoded.push("0123456789abcdef"[bs[i] & 15]);
   }
   return encoded.join('');
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+function parseDataURL(u) {
+  var pieces;
+
+  if (!u.startsWith('data:')) return null;
+  u = u.substr(5);
+
+  pieces = u.split(',');
+  if (pieces.length !== 2) return null;
+
+  var mimeType = pieces[0];
+  var data = decodeURIComponent(pieces[1]);
+  var isBase64 = false;
+
+  if (mimeType.endsWith(';base64')) {
+    mimeType = mimeType.substr(0, mimeType.length - 7);
+    isBase64 = true;
+  }
+
+  if (isBase64) {
+    data = atob(data);
+  }
+
+  pieces = mimeType.split(';');
+  var type = pieces[0];
+
+  var parameters = {};
+  for (var i = 1; i < pieces.length; i++) {
+    var m = pieces[i].match(/^([^=]+)=(.*)$/);
+    if (m) {
+      parameters[m[1].toLowerCase()] = m[2];
+    }
+  }
+
+  if (type.startsWith('text/')) {
+    var charset = (parameters.charset || 'US-ASCII').toLowerCase();
+    switch (charset) {
+      case 'utf-8':
+        data = decodeURIComponent(escape(data));
+        break;
+      case 'us-ascii':
+      case 'ascii':
+      case 'latin1':
+      case 'iso-8859-1':
+        break;
+      default:
+        console.warn('Unknown charset while decoding data URL:', charset);
+        break;
+    }
+  }
+
+  return {
+    type: type,
+    parameters: parameters,
+    data: data
+  };
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+// Extract file contents from a DataTransfer object
+function dataTransferFiles(d, k) {
+  var items = d.items;
+  var types = d.types;
+  var files = d.files;
+
+  var results = [];
+  var expectedCount = files.length;
+  var completedCount = 0;
+
+  function completeOne() {
+    completedCount++;
+    if (completedCount === expectedCount) {
+      k(results);
+    }
+  }
+
+  for (var i = 0; i < items.length; i++) {
+    (function (i) {
+      var item = items[i];
+      var type = types[i];
+      if (type === 'text/uri-list') {
+        expectedCount++;
+        item.getAsString(function (itemstr) {
+          var firstChunk = itemstr.substr(0, 6).toLowerCase();
+          if (firstChunk.startsWith('http:') || firstChunk.startsWith('https:')) {
+            $.ajax({
+              type: "GET",
+              url: itemstr,
+              beforeSend: function (xhr) {
+                xhr.overrideMimeType('text/plain; charset=x-user-defined');
+              },
+              success: function (_data, _status, xhr) {
+                var contentType = xhr.getResponseHeader('content-type');
+                var rawdata = xhr.responseText;
+                var data = [];
+                for (var j = 0; j < rawdata.length; j++) {
+                  data = data + String.fromCharCode(rawdata.charCodeAt(j) & 0xff);
+                }
+                results.push('data:' + contentType + ';base64,' + encodeURIComponent(btoa(data)));
+                completeOne();
+              },
+              error: function () {
+                completeOne();
+              }
+            });
+          } else {
+            completeOne();
+          }
+        });
+      }
+    })(i);
+  }
+
+  for (var i = 0; i < files.length; i++) {
+    (function (i) {
+      var file = files[i];
+      var reader = new FileReader();
+      reader.addEventListener('load', function (e) {
+        results.push(e.target.result);
+        completeOne();
+      });
+      reader.readAsDataURL(file);
+    })(i);
+  }
+
+  return (expectedCount > 0);
 }

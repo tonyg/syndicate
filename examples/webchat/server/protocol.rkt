@@ -152,8 +152,7 @@
               timestamp ;; Seconds
               conversation-id ;; String
               author ;; Principal
-              content-type ;; MimeTypeString
-              content ;; Any
+              items ;; Listof DataURLString
               ) #:prefab) ;; ASSERTION
 
 ;;---------------------------------------------------------------------------

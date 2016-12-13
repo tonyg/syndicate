@@ -70,7 +70,7 @@
             (assert (api (session who _) i)))
           (during ($ c (conversation cid _ _ _))
             (assert (api (session who _) c)))
-          (during ($ p (post _ _ cid _ _ _))
+          (during ($ p (post _ _ cid _ _))
             (assert (api (session who _) p))))))
 
 (supervise
@@ -120,16 +120,16 @@
  (actor #:name 'post-factory
         (stop-when-reloaded)
         (on (message (create-resource
-                      ($ p0 (post $pid $timestamp $cid $author $content-type $content0))))
+                      ($ p0 (post $pid $timestamp $cid $author $items0))))
             (actor #:name p0
-                   (field [content content0])
-                   (define/dataflow p (post pid timestamp cid author content-type (content)))
+                   (field [items items0])
+                   (define/dataflow p (post pid timestamp cid author (items)))
                    (assert (p))
                    (stop-when-duplicate (list 'post cid pid))
-                   (stop-when (message (delete-resource (post pid _ cid _ _ _))))
+                   (stop-when (message (delete-resource (post pid _ cid _ _))))
                    (stop-when (message (delete-resource (conversation cid _ _ _))))
-                   (on (message (update-resource (post pid _ cid _ _ $newcontent)))
-                       (content newcontent))))))
+                   (on (message (update-resource (post pid _ cid _ $newitems)))
+                       (items newitems))))))
 
 (supervise
  (actor #:name 'conversation:questions

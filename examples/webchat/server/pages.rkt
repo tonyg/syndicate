@@ -62,7 +62,7 @@
                       `()))
                (div ((class "container main-container"))
                     (div ((class "header clearfix"))
-                         (nav ((class "navbar bg-faded"))
+                         (nav ((class "navbar"))
                               ;; (span ((id "nav-heading") (class "navbar-brand text-muted")) ,nav-heading)
                               (ul ((id "nav-ul") (class "nav navbar-nav nav-pills float-xs-right"))
                                   ;; (li ((class "nav-item")) (a ((class "nav-link active") (href "#")) "Home " (span ((class "sr-only")) "(current)")))

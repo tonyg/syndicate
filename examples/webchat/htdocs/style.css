@@ -127,6 +127,7 @@ img.avatar {
     border-radius: 1.5rem;
     padding: 1rem;
     margin: 0 0px;
+    min-height: 60px;
 }
 
 .post p {
@@ -165,7 +166,44 @@ img.avatar {
     display: block;
 }
 
-.post-body > img {
+.post-date {
+    float: right;
+    height: 0.25em;
+    display: block;
+    font-size: 0.75rem;
+    padding-right: 0.5em;
+}
+
+.post-author {
+    /* font-weight: bold; */
+    font-size: 0.75rem;
+    position: relative;
+    top: -0.75em;
+    height: 0.75em;
+}
+
+.post-item {
+}
+
+.post-item-draft {
+    /* background: #e8e8ff; */
+    background: white;
+    border: solid #d3d3d3 1px;
+    border-radius: 1.5rem;
+    padding: 1rem;
+    margin: 1rem 0 0 0;
+}
+
+.post-item-draft .close-draft {
+    float: right;
+}
+
+.post-item-image {
     max-width: 100%;
-    max-height: 100%;
+    max-height: 50vh;
+}
+
+.post-item-draft .post-item-image {
+    max-width: 80%;
+    max-height: 30vh;
 }
