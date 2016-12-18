@@ -17,6 +17,7 @@
                "struct-defaults"
                "auxiliary-macro-context"
                "sandbox-lib"
+               "images-lib"
 	       ))
 (define build-deps '("racket-doc"
                      "scribble-lib"
