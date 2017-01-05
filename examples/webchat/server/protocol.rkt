@@ -31,11 +31,6 @@
 ;; Represents an extant account.
 (struct account (email) #:prefab) ;; ASSERTION
 
-;; (delete-account EmailString)
-;; Deletes the account named by the given email.
-;; As a side effect, should delete all sessions associated with the account.
-(struct delete-account (email) #:prefab) ;; MESSAGE
-
 ;;---------------------------------------------------------------------------
 ;; API requests and assertions
 

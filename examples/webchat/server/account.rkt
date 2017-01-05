@@ -23,4 +23,4 @@
          (on-stop (log-info "Account ~s deleted." email))
          (assert (account email))
          (assert (grant email email email (p:follow email) #t))
-         (stop-when (message (delete-account email)))))
+         (stop-when (message (delete-resource (account email))))))

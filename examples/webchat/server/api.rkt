@@ -22,7 +22,7 @@
                  #:scope scope
                  #:hook (lambda ()
                           (stop-when (message (end-session sid)))
-                          (stop-when (message (delete-account email)))))]
+                          (stop-when (message (delete-resource (account email))))))]
                [else
                 (web-respond/xexpr! id
                                     #:header (web-response-header #:code 401

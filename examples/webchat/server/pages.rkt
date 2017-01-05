@@ -223,7 +223,7 @@
          (assert (login-link email sid))
          (stop-when (asserted (session _ sid))) ;; happy path
          (stop-when (message (end-session sid)))
-         (stop-when (message (delete-account email)))
+         (stop-when (message (delete-resource (account email))))
          (stop-when-timeout (* 10 1000)))) ;; 10 seconds
 
 (define (login-link-emailed-page id maybe-insecure-validation-url)
@@ -267,5 +267,5 @@
          (on-stop (log-info "Session ~s for ~s stopped." sid email))
          (assert (session email sid))
          (stop-when (message (end-session sid)))
-         (stop-when (message (delete-account email)))
+         (stop-when (message (delete-resource (account email))))
          (stop-when-timeout (* 7 86400 1000)))) ;; 1 week

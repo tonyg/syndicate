@@ -29,9 +29,9 @@
                   (stop-when (message (delete-resource g)))
                   (stop-when (message
                               (delete-resource (permitted issuer grantee permission delegable?))))
-                  (stop-when (message (delete-account issuer)))
-                  (stop-when (message (delete-account grantor)))
-                  (stop-when (message (delete-account grantee))))))
+                  (stop-when (message (delete-resource (account issuer))))
+                  (stop-when (message (delete-resource (account grantor))))
+                  (stop-when (message (delete-resource (account grantee)))))))
 
 (actor #:name 'request-factory
        (stop-when-reloaded)
