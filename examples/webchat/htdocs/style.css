@@ -207,3 +207,7 @@ img.avatar {
     max-width: 80%;
     max-height: 30vh;
 }
+
+.post-item.application-octet-stream .post-item-body-container td {
+    text-align: center;
+}
