@@ -9,12 +9,14 @@
 (require net/uri-codec)
 
 (require/activate syndicate/reload)
+(require/activate syndicate/supervise)
 (require/activate syndicate/drivers/config)
 (require/activate syndicate/drivers/smtp)
 (require/activate syndicate/drivers/timestate)
 (require/activate syndicate/drivers/web)
 
 (require "protocol.rkt")
+(require "duplicate.rkt")
 (require "session-cookie.rkt")
 
 (define (page #:head [extra-head '()]
@@ -250,7 +252,7 @@
            (match (immediate-query (query-value #f (login-link $email sid) email))
              [#f (login-link-expired-page id)]
              [email
-              (spawn-session-monitor email sid)
+              (send! (create-resource (session email sid)))
               (web-redirect! id "/" #:headers (list (format-cookie (session-id->cookie sid))))])))
 
 (define (login-link-expired-page id)
@@ -261,11 +263,16 @@
                     `(p ((class "lead"))
                         "Please " (a ((href "/")) "return to the main page") ".")))))
 
-(define (spawn-session-monitor email sid)
-  (actor #:name (list 'session-monitor email sid)
-         (on-start (log-info "Session ~s for ~s started." sid email))
-         (on-stop (log-info "Session ~s for ~s stopped." sid email))
-         (assert (session email sid))
-         (stop-when (message (end-session sid)))
-         (stop-when (message (delete-resource (account email))))
-         (stop-when-timeout (* 7 86400 1000)))) ;; 1 week
+(supervise
+ (actor #:name 'session-monitor-factory
+        (stop-when-reloaded)
+        (on (message (create-resource ($ s (session $email $sid))))
+            (actor #:name (list 'session-monitor email sid)
+                   (on-start (log-info "Session ~s for ~s started." sid email))
+                   (on-stop (log-info "Session ~s for ~s stopped." sid email))
+                   (assert s)
+                   (stop-when-duplicate s)
+                   (stop-when (message (delete-resource s)))
+                   (stop-when (message (delete-resource (account email))))
+                   (stop-when (message (end-session sid)))
+                   (stop-when-timeout (* 7 86400 1000)))))) ;; 1 week

@@ -3,24 +3,25 @@
 (require racket/set)
 
 (require/activate syndicate/reload)
+(require/activate syndicate/supervise)
 
 (require "protocol.rkt")
+(require "duplicate.rkt")
 
 (actor #:name 'account-manager
        (stop-when-reloaded)
        (define/query-set accounts (account $e) e)
-       (on (message (create-resource (account $e)))
-           (when (not (set-member? (accounts) e))
-             (spawn-account e)))
        (on (asserted (session $email _))
            (when (not (set-member? (accounts) email))
-             (spawn-account email))))
+             (send! (create-resource (account email))))))
 
-(define (spawn-account email)
-  (actor #:name (list 'account email)
-         (stop-when-reloaded)
-         (on-start (log-info "Account ~s created." email))
-         (on-stop (log-info "Account ~s deleted." email))
-         (assert (account email))
-         (assert (grant email email email (p:follow email) #t))
-         (stop-when (message (delete-resource (account email))))))
+(actor #:name 'account-factory
+       (stop-when-reloaded)
+       (on (message (create-resource ($ a (account $email))))
+           (actor #:name (list 'account email)
+                  (on-start (log-info "Account ~s created." email))
+                  (on-stop (log-info "Account ~s deleted." email))
+                  (assert a)
+                  (assert (grant email email email (p:follow email) #t))
+                  (stop-when-duplicate a)
+                  (stop-when (message (delete-resource a))))))
