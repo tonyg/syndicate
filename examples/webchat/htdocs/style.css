@@ -208,6 +208,6 @@ img.avatar {
     max-height: 30vh;
 }
 
-.post-item.application-octet-stream .post-item-body-container td {
+.post-item .post-item-body-container table.application-octet-stream td {
     text-align: center;
 }

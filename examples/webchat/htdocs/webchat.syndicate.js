@@ -769,18 +769,23 @@
     };
 
     during inbound(uiTemplate("post-item.html", $postItemTemplate)) {
-      during inbound(uiTemplate("post-item-" + contentClass + ".html", $entry)) {
-        assert uiContext.html(containerSelector, Mustache.render(postItemTemplate, itemInfo));
-        on asserted uiContext.fragmentVersion(_) {
-          var innerContext = uiContext.context('item-body');
-          assert innerContext.html('#' + itemId + ' .post-item-body-container',
-                                   Mustache.render(entry, itemInfo));
-          if (!postInfo.isDraft) {
-            on asserted innerContext.fragmentVersion(_) {
-              if ((this.latestPostTimestamp === postInfo.timestamp) &&
-                  (this.latestPostId === postInfo.postId)) {
-                setTimeout(function () { $("#post-" + postInfo.postId)[0].scrollIntoView(false); }, 1);
-              }
+      field this.entry = false;
+      on asserted inbound(uiTemplate("post-item-" + contentClass + ".html", $entry)) {
+        if (entry) this.entry = entry;
+      }
+      on asserted inbound(uiTemplate("post-item-application-octet-stream.html", $entry)) {
+        if (entry && !this.entry) this.entry = entry;
+      }
+      assert uiContext.html(containerSelector, Mustache.render(postItemTemplate, itemInfo));
+      on asserted uiContext.fragmentVersion(_) {
+        var innerContext = uiContext.context('item-body');
+        assert innerContext.html('#' + itemId + ' .post-item-body-container',
+                                 Mustache.render(this.entry, itemInfo)) when (this.entry);
+        if (!postInfo.isDraft) {
+          on asserted innerContext.fragmentVersion(_) {
+            if ((this.latestPostTimestamp === postInfo.timestamp) &&
+                (this.latestPostId === postInfo.postId)) {
+              setTimeout(function () { $("#post-" + postInfo.postId)[0].scrollIntoView(false); }, 1);
             }
           }
         }
