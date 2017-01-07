@@ -100,6 +100,8 @@
                 (retract! (irc-presence C
                                         (bytes->string/utf-8 src)
                                         (bytes->string/utf-8 tgt)))]
+               [(regexp #px#"^:([^!]+)![^ ]* QUIT :(.*)\r$" (list _ src _quitmsg))
+                (retract! (irc-presence C (bytes->string/utf-8 src) ?))]
                [(regexp #px#"^:([^!]+)![^ ]* JOIN ([^ ]+)\r$" (list _ src-bs tgt))
                 (define src (bytes->string/utf-8 src-bs))
                 (when (not (equal? src nick)) ;; See above marked (*)
