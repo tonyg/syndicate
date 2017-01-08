@@ -66,13 +66,16 @@
          (on (message (tcp-channel-line RH LH $line-bytes))
              (log-syndicate/drivers/irc-debug "irc got ~v" line-bytes)
              (match line-bytes
+
                [(regexp #px#"^PING(.*)\r$" (list _ line-tail))
                 (irc-send! "PONG"line-tail)]
+
                [(regexp #px#"^:([^!]+)![^ ]* PRIVMSG ([^ ]+) :(.*)\r$" (list _ src tgt body))
                 (send! (irc-inbound C
                                     (bytes->string/utf-8 src)
                                     (bytes->string/utf-8 tgt)
                                     (bytes->string/utf-8 body)))]
+
                [(regexp #px#"^:[^ ]* 353 [^:]+ ([^ ]+) :(.*)\r$" (list _ tgt names))
                 (names-tgt (bytes->string/utf-8 tgt))
                 (define new-names
@@ -81,10 +84,9 @@
                       [(regexp #px"@(.*)" (list _ n1)) n1]
                       [(regexp #px"\\+(.*)" (list _ n1)) n1]
                       [n1 n1])))
-                (log-syndicate/drivers/irc-debug "New names ~v ~v" (names-tgt) new-names)
                 (names-acc (set-union (names-acc) new-names))]
+
                [(regexp #px#"^:[^ ]* 366 " (list _))
-                (log-syndicate/drivers/irc-debug "Final names ~v" (names-acc))
                 (retract! (irc-presence C ? (names-tgt)))
                 (for ((n (names-acc)))
                   (assert! (irc-presence C n (names-tgt))))
@@ -96,16 +98,16 @@
                 ;; is pretty hacky!
                 (names-tgt #f)
                 (names-acc (set))]
+
                [(regexp #px#"^:([^!]+)![^ ]* PART ([^ ]+)\r$" (list _ src tgt))
-                (retract! (irc-presence C
-                                        (bytes->string/utf-8 src)
-                                        (bytes->string/utf-8 tgt)))]
+                (retract! (irc-presence C (bytes->string/utf-8 src) (bytes->string/utf-8 tgt)))]
+
                [(regexp #px#"^:([^!]+)![^ ]* QUIT :(.*)\r$" (list _ src _quitmsg))
                 (retract! (irc-presence C (bytes->string/utf-8 src) ?))]
+
                [(regexp #px#"^:([^!]+)![^ ]* JOIN ([^ ]+)\r$" (list _ src-bs tgt))
                 (define src (bytes->string/utf-8 src-bs))
                 (when (not (equal? src nick)) ;; See above marked (*)
-                  (assert! (irc-presence C
-                                         src
-                                         (bytes->string/utf-8 tgt))))]
+                  (assert! (irc-presence C src (bytes->string/utf-8 tgt))))]
+
                [_ (void)]))))
