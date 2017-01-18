@@ -39,8 +39,6 @@ route ('<' : nc : s) (Br (os, w, _)) f =
       Nothing -> route s (makeTail n w) f
 route (x : s) (Br (_, w, h)) f = route s (Map.findWithDefault w x h) f
 
-get w h x = Map.findWithDefault w x h
-
 combine f leftEmpty rightEmpty r1 r2 = g r1 r2
     where g (Ok v) r2 = f (Ok v) r2
           g r1 (Ok v) = f r1 (Ok v)
@@ -56,7 +54,7 @@ foldKeys g (Br (os1, w1, h1)) (Br (os2, w2, h2)) =
                         let o2 = Map.findWithDefault (makeTail size w2) size os2 in
                         let o = g o1 o2 in
                         if stripTail size o == Just w then acc else Map.insert size o acc
-          f x acc = update x (g (get w1 h1 x) (get w2 h2 x)) w acc
+          f x acc = update x (g (Map.findWithDefault w1 x h1) (Map.findWithDefault w2 x h2)) w acc
           keys = Set.union (Map.keysSet h1) (Map.keysSet h2)
 
 collapse (Br (os, Mt, h)) | Map.null os && Map.null h = empty
