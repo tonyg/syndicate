@@ -39,7 +39,7 @@
      (on-start (send! (tcp-out id (~a user " arrived"))))
      (on-stop  (send! (tcp-out id (~a user " left")))))
    (on (message (speak $user $text))
-       (send! (tcp-out id (~a user " says " text))))
+       (send! (tcp-out id (~a user " says '" text "'"))))
    (on (message (tcp-in id $line))
        (send! (speak me line)))))
 
