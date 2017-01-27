@@ -10,7 +10,7 @@
   - You can view a colored trace of a program's execution on stderr by setting the MINIMART_TRACE environment variable, e.g.
 
     ```
-    $ MINIMART_TRACE=xetpag racket foo.rkt
+    $ SYNDICATE_TRACE=xetpag racket foo.rkt
     ```
 
     shows  
