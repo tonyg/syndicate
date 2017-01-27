@@ -536,14 +536,15 @@
 (define (actor-behavior e s)
   (cond
     [e
-     (match-define (actor-state π-old ft) s)
-     (match (run-facets ft π-old mt-σ e)
-       [(ok _ ft π as)
-        (define next-π (if (scn? e) (scn-trie e) π-old))
-        (transition (actor-state next-π ft)
-                    (cons (scn π) as))]
-       [as
-        (quit as)])]
+     (with-handlers ([exn:fail? (lambda (e) (quit #:exceptiuon e (list)))])
+       (match-define (actor-state π-old ft) s)
+       (match (run-facets ft π-old mt-σ e)
+         [(ok _ ft π as)
+          (define next-π (if (scn? e) (scn-trie e) π-old))
+          (transition (actor-state next-π ft)
+                      (cons (scn π) as))]
+         [as
+          (quit as)]))]
     [else #f]))
 
 ;; run : Program -> Syndicate
