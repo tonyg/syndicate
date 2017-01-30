@@ -10,6 +10,8 @@
 (define mt-scn (scn trie-empty))
 
 ;; an `exp` is either
+;; ('lambda (var ...) exp) or
+;; (exp exp ...) or
 ;; ('begin exp ...) or
 ;; ('let (var exp) exp) or
 ;; ('if exp exp exp) or
@@ -29,7 +31,9 @@
 ;; atom or
 ;; ('list val ...) or
 ;; (outbound val) or
-;; (inbound val)
+;; (inbound val) or
+;; (closure Γ ('lambda (var ...) exp))
+(struct closure (env fun) #:transparent)
 
 ;; `primop` is one of
 ;; + * / - and or not equal? null? car cdr printf
@@ -234,7 +238,7 @@
     [`(react ,O ...)
      (define-values (new-sto as ft) (boot-facet e Γ σ))
      (values (void) new-sto as (list ft))]
-    [`(actor _)
+    [`(actor ,_)
      ;; don't pass in parent store
      (define spawn-action (boot-actor e Γ))
      (values (void) σ (list spawn-action) (list))]
@@ -249,6 +253,9 @@
     [(? symbol? id)
      (let ([v (env-lookup Γ id)])
        (values v σ (list) (list)))]
+    [`(lambda (,vars ...) ,exp)
+     (define c (closure Γ e))
+     (values c σ (list) (list))]
     [`(begin ,es ...)
      (for/fold ([v (void)]
                 [σ σ]
@@ -301,6 +308,23 @@
          (values (cons v vs) new-sto (append as more-as) (append facets more-facets))))
      (define v (apply-primop primop (reverse args)))
      (values v sto as facets)]
+    [`(,f-exp ,exps ...)
+     (define-values (clo f-σ f-as f-fs) (eval-exp f-exp Γ σ))
+     (unless (closure? clo) (error 'eval-exp "tried to apply non-function ~v" clo))
+     (define-values (rev-args sto as facets)
+       (for/fold ([rev-vs (list)]
+                  [σ f-σ]
+                  [as f-as]
+                  [facets f-fs])
+                 ([e (in-list exps)])
+         (define-values (v new-sto more-as more-facets) (eval-exp e Γ σ))
+         (values (cons v rev-vs) new-sto (append as more-as) (append facets more-facets))))
+     (match-define (closure clo-env `(lambda (,vars ...) ,body-exp)) clo)
+     (unless (= (length rev-args) (length vars))
+       (error 'eval-exp "wrong number of arguments; expected ~v, got ~v" (length vars) (length rev-args)))
+     (define new-env (append (map binding vars (reverse rev-args)) clo-env))
+     (define-values (v final-sto even-more-as even-more-fs) (eval-exp body-exp new-env sto))
+     (values v final-sto (append as even-more-as) (append facets even-more-fs))]
     [x (values x σ (list) (list))]))
 
 (module+ test
@@ -308,14 +332,14 @@
   (let-values ([(v s as f) (eval-exp `(begin 1 2 3) mt-Γ mt-σ)])
     (check-equal? v 3))
   ;; variable lookup
-  (let-values ([(v s as f) (eval-exp 'x (list (binding 'x 'hello)
-                                           (binding 'y 'bye)
-                                           (binding 'x 'world))
+  (let-values ([(v s as f) (eval-exp 'x (list (binding 'x "hello")
+                                           (binding 'y "bye")
+                                           (binding 'x "world"))
                                   mt-σ)])
-    (check-equal? v 'hello))
+    (check-equal? v "hello"))
   ;; variable binding
-  (let-values ([(v s as f) (eval-exp '(let (y 12) 'cake) mt-Γ mt-σ)])
-    (check-equal? v ''cake))
+  (let-values ([(v s as f) (eval-exp '(let (y 12) "cake") mt-Γ mt-σ)])
+    (check-equal? v "cake"))
   (let-values ([(v s as f) (eval-exp '(let (y 12) y) mt-Γ mt-σ)])
     (check-equal? v 12))
   ;; if
@@ -328,7 +352,7 @@
     (check-equal? as (list (message 5)))
     (check-true (void? v)))
   ;; set!
-  (let-values ([(v s as f) (eval-exp '(set! x 12) mt-Γ (make-store '(x . 'hello)))])
+  (let-values ([(v s as f) (eval-exp '(set! x 12) mt-Γ (make-store '(x . "hello")))])
     (check-true (void? v))
     (check-equal? (hash-ref s 'x) 12))
   (let-values ([(v s as f) (eval-exp '(begin (set! x (+ 1 (read x)))
@@ -339,10 +363,21 @@
                                        mt-Γ (make-store '(x . 0)))])
     (check-equal? v 4))
   ;; store read
-  (let-values ([(v s as f) (eval-exp '(read x) mt-Γ (make-store '(y . 5) '(x . 'hello)))])
-    (check-equal? v ''hello))
+  (let-values ([(v s as f) (eval-exp '(read x) mt-Γ (make-store '(y . 5) '(x . "hello")))])
+    (check-equal? v "hello"))
   (let-values ([(v s as f) (eval-exp '(+ (- 5 1) (/ 4 (if (not #t) 1 2))) mt-Γ mt-σ)])
-    (check-equal? v 6)))
+    (check-equal? v 6))
+  ;; lambda
+  (let-values ([(v s as f) (eval-exp '(let (f (lambda (x) (+ x 1))) (f 3)) mt-Γ mt-σ)])
+    (check-equal? v 4))
+  (let-values ([(v s as f) (eval-exp '(let (z 12)
+                                        (let (f (lambda (x) (+ x z)))
+                                          (let (z 4)
+                                            (f 3)))) mt-Γ mt-σ)])
+    (check-equal? v 15))
+  (let-values ([(v s as f) (eval-exp '(let (f (lambda () (actor (react (assert 5)))))
+                                        (f)) mt-Γ mt-σ)])
+    (check-false (empty? as))))
 
 ;; dollar-id? : any -> bool
 ;; test if the input is a symbol whose first character is $
@@ -433,15 +468,15 @@
                 (list (list)))
   (check-equal? (occurrences `(asserted 5) (message 5) trie-empty mt-Γ mt-σ)
                 (list))
-  (check-equal? (occurrences `(asserted (list 'price $x))
-                             (scn (assertion '(list 'price 12)))
-                             (assertion '(list 'price 5))
+  (check-equal? (occurrences `(asserted (list "price" $x))
+                             (scn (assertion '(list "price" 12)))
+                             (assertion '(list "price" 5))
                              mt-Γ mt-σ)
                 (list (list (binding 'x 12))))
   (check-equal? (list->set
-                 (occurrences `(asserted (list 'price $x))
-                              (scn (π-union (assertion '(list 'price 12)) (assertion '(list 'price 16))))
-                              (assertion '(list 'price 5))
+                 (occurrences `(asserted (list "price" $x))
+                              (scn (π-union (assertion '(list "price" 12)) (assertion '(list "price" 16))))
+                              (assertion '(list "price" 5))
                               mt-Γ mt-σ))
                 (set (list (binding 'x 12)) (list (binding 'x 16)))))
 
@@ -617,32 +652,45 @@
 
 (define ping-pong
   `(
-    (actor (react (on (message 'ping)
+    (actor (react (on (message "ping")
                       (printf "ping\n")
-                      (send! 'pong))))
-    (actor (react (on (message 'pong)
+                      (send! "pong"))))
+    (actor (react (on (message "pong")
                       (printf "pong\n")
-                      (send! 'ping))
-                  (on-start (send! 'ping))))))
+                      (send! "ping"))
+                  (on-start (send! "ping"))))))
 
 (define bank-account
   `(
     (actor (react (field balance 0)
-                  (assert (list 'account (read balance)))
-                  (on (message (list 'deposit $amount))
+                  (assert (list "account" (read balance)))
+                  (on (message (list "deposit" $amount))
                       (set! balance (+ (read balance) amount)))))
 
-    (actor (react (on (asserted (list 'account $balance))
+    (actor (react (on (asserted (list "account" $balance))
                (printf "Balance changed to ~a\n" balance))))
 
-    (actor (react (stop-when (asserted (observe (list 'deposit _)))
-                              (send! (list 'deposit +100))
-                              (send! (list 'deposit -30)))))))
+    (actor (react (stop-when (asserted (observe (list "deposit" _)))
+                              (send! (list "deposit" +100))
+                              (send! (list "deposit" -30)))))))
 
 (define multi-level-ex
   '(
     (actor (react (on (asserted "hello")
                       (printf "goodbye"))))
     (dataspace (actor (react (assert (outbound "hello")))))))
+
+(define ff
+  '(
+    (actor (react (on (message 5)
+                      (printf "5\n"))
+                  (on (asserted (observe 12))
+                      (printf "12\n"))
+                  (on (asserted (observe 16))
+                      (printf "16\n"))))
+    (actor (react (on (asserted 12))
+                  (on-start (send! 5))
+                  (on (asserted 16))
+                  (on-start (send! 5))))))
 
 (run multi-level-ex)
