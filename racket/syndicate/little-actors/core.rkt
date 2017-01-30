@@ -16,15 +16,20 @@
 ;; ('send! exp) or
 ;; ('react O ...) or
 ;; ('actor ('react O ...)) or
+;; ('dataspace actor ...) or
+;; ('outbound exp) or
+;; ('inbound exp) or
 ;; ('set! var exp) or
 ;; ('read var) or
-;; ('list exp ...)
+;; ('list exp ...) or
 ;; (primop exp ...) or
 ;; atom
 
 ;; a `val` is either
 ;; atom or
-;; ('list val ...)
+;; ('list val ...) or
+;; (outbound val) or
+;; (inbound val)
 
 ;; `primop` is one of
 ;; + * / - and or not equal? null? car cdr printf
@@ -37,7 +42,9 @@
 ;; ('on-start exp ...)
 
 ;; a `facet` is ('react O ...)
-;; an `actor` is ('actor facet)
+;; an `actor` is
+;; ('actor facet) or
+;; ('dataspace actor ...)
 
 ;; an E is either
 ;; ('asserted pat) or
@@ -48,7 +55,9 @@
 ;; $var or
 ;; _ or
 ;; exp or
-;; ('observe pat)
+;; ('observe pat) or
+;; ('inbound pat) or
+;; ('outbound pat) or
 ;; ('list pat ...)
 
 ;; a Γ is a (Listof Binding)
@@ -205,20 +214,38 @@
        (values new-sto (append as more-as) (append facets more-facets))]
       [_ (values sto as facets)])))
 
+;; boot-actor : actor Γ -> Action
+(define (boot-actor a Γ)
+  (match a
+    [`(actor ,facet)
+     (define-values (_ as ft) (boot-facet facet Γ mt-σ))
+     (define assertions (ft-assertions ft mt-σ))
+     (spawn actor-behavior
+            (actor-state trie-empty ft)
+            (cons (scn assertions) as))]
+    [`(dataspace ,as ...)
+     (define boot-actions (for/list ([a (in-list as)])
+                            (boot-actor a Γ)))
+     (spawn-dataspace boot-actions)]))
+
 ;; eval-exp : exp Γ σ -> (Values val σ (Listof Action) (Listof FacetTree))
 (define (eval-exp e Γ σ)
   (match e
     [`(react ,O ...)
      (define-values (new-sto as ft) (boot-facet e Γ σ))
      (values (void) new-sto as (list ft))]
-    [`(actor (react ,O ...))
+    [`(actor _)
      ;; don't pass in parent store
-     (define-values (_ as ft) (boot-facet (second e) Γ mt-σ))
-     (define assertions (ft-assertions ft mt-σ))
-     (define spawn-action (spawn actor-behavior
-                                 (actor-state trie-empty ft)
-                                 (cons (scn assertions) as)))
+     (define spawn-action (boot-actor e Γ))
      (values (void) σ (list spawn-action) (list))]
+    [`(dataspace ,actors ...)
+     (values (void) σ (list (boot-actor e Γ)) (list))]
+    [`(outbound ,exp)
+     (define-values (v new-sto as facets) (eval-exp exp Γ σ))
+     (values (outbound v) σ as facets)]
+    [`(inbound ,exp)
+     (define-values (v new-sto as facets) (eval-exp exp Γ σ))
+     (values (inbound v) σ as facets)]
     [(? symbol? id)
      (let ([v (env-lookup Γ id)])
        (values v σ (list) (list)))]
@@ -328,6 +355,7 @@
   (string->symbol (substring (symbol->string s) 1)))
 
 ;; eval-pat : pat Γ σ -> meta-pattern
+;; technically this results in a Projection because it includes captures
 ;; if you put effects in your pattern then you deserve bad things
 (define (eval-pat pat Γ σ)
   (match pat
@@ -337,6 +365,10 @@
              (eval-pat p Γ σ)))]
     [`(observe ,pat)
      (observe (eval-pat pat Γ σ))]
+    [`(inbound ,pat)
+     (inbound (eval-pat pat Γ σ))]
+    [`(outbound ,pat)
+     (outbound (eval-pat pat Γ σ))]
     [(? dollar-id? s)
      (?!)]
     ['_ ?]
@@ -351,6 +383,10 @@
      (flatten (for/list ([p (in-list pats)])
                 (pat-bindings p)))]
     [`(observe ,pat)
+     (pat-bindings pat)]
+    [`(inbound ,pat)
+     (pat-bindings pat)]
+    [`(outbound ,pat)
      (pat-bindings pat)]
     [(? dollar-id? s)
      (list (undollar s))]
@@ -567,8 +603,7 @@
 (define (run p)
   (define boot-actions
     (for/list ([boot (in-list p)])
-      (match-define-values (v _ (list s) fs) (eval-exp boot mt-Γ mt-σ))
-      s))
+      (boot-actor boot mt-Γ)))
   (run-ground boot-actions))
 
 (define test-program
@@ -604,4 +639,10 @@
                               (send! (list 'deposit +100))
                               (send! (list 'deposit -30)))))))
 
-(run bank-account)
+(define multi-level-ex
+  '(
+    (actor (react (on (asserted "hello")
+                      (printf "goodbye"))))
+    (dataspace (actor (react (assert (outbound "hello")))))))
+
+(run multi-level-ex)
