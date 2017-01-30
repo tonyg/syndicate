@@ -22,10 +22,14 @@
 ;; (primop exp ...) or
 ;; atom
 
+;; a `val` is either
+;; atom or
+;; ('list val ...)
+
 ;; `primop` is one of
 ;; + * / - and or not equal? null? car cdr printf
 
-;; an `O` is either
+;; an `O` (endpoint) is either
 ;; ('field var exp) or
 ;; ('assert exp) or
 ;; ('on E exp ...) or
@@ -33,6 +37,7 @@
 ;; ('on-start exp ...)
 
 ;; a `facet` is ('react O ...)
+;; an `actor` is ('actor facet)
 
 ;; an E is either
 ;; ('asserted pat) or
@@ -47,11 +52,11 @@
 ;; ('list pat ...)
 
 ;; a Γ is a (Listof Binding)
-;; a Binding is (binding var atom)
+;; a Binding is (binding var val)
 (struct binding (id v) #:transparent)
 
 ;; a σ is either
-;; (Hashof var atom) or
+;; (Hashof var val) or
 ;; (store-concat σ σ)
 (struct store-concat (σ1 σ2) #:transparent)
 ;; σ1 is the "parent" to σ2 (local)
@@ -65,12 +70,12 @@
 ;; a π is a trie
 (define π-union assertion-set-union)
 
-;; a Program is a (Listof ('actor ('react O ...)))
+;; a Program is a (Listof actor)
 
 (define mt-Γ (list))
 (define mt-σ (hash))
 
-;; env-lookup : Γ var -> atom
+;; env-lookup : Γ var -> val
 ;; or throws an error for unbound variables
 (define (env-lookup Γ id)
   (match Γ
@@ -80,11 +85,11 @@
          v
          (env-lookup rest id))]))
 
-;; extend-env : Γ var atom -> Γ
+;; extend-env : Γ var val -> Γ
 (define (extend-env Γ id v)
   (cons (binding id v) Γ))
 
-;; update-sto : σ var atom -> σ
+;; update-sto : σ var val -> σ
 ;; update the value of var in the store, if present.
 ;; otherwise throw an error
 (define (update-sto σ id v)
@@ -115,7 +120,7 @@
 (define (primop? x)
   (member x '(+ - * / - and or not equal? null? car cdr printf)))
 
-;; apply-primop : primop (Listof atom) -> atom
+;; apply-primop : primop (Listof val) -> val
 (define (apply-primop op args)
   (match* (op args)
     [('+ `(,v1 ,v2))
@@ -148,7 +153,7 @@
      (error 'apply-primop "invalid primitive application: ~v ~v" op args)]))
     
 
-;; sto-fetch : σ var -> atom
+;; sto-fetch : σ var -> val
 ;; retrieve the value of field var.
 ;; if not present throw an error
 (define (sto-fetch σ id)
@@ -162,7 +167,7 @@
            (hash-ref σ id)
            (k))])))
 
-;; make-store : (Listof (cons var atom)) -> σ
+;; make-store : (Listof (cons var val)) -> σ
 (define (make-store . vs)
   (make-immutable-hash vs))
 
@@ -200,7 +205,7 @@
        (values new-sto (append as more-as) (append facets more-facets))]
       [_ (values sto as facets)])))
 
-;; eval-exp : exp Γ σ -> (Values atom σ (Listof Action) (Listof FacetTree))
+;; eval-exp : exp Γ σ -> (Values val σ (Listof Action) (Listof FacetTree))
 (define (eval-exp e Γ σ)
   (match e
     [`(react ,O ...)
