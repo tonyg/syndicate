@@ -184,11 +184,50 @@
 (define (make-store . vs)
   (make-immutable-hash vs))
 
+;; A (Continue A) is (continue A σ (Listof Action) (Listof FacetTree))
+(struct continue (v sto as fs) #:transparent)
+;; A Stop is (stop σ (Listof Action))
+(struct stop (sto as) #:transparent)
+;; A (Result A) is a Stop or (Continue A)
+
+;; result-bind : Result (Any σ Any ... -> Result) Any ... -> Result
+(define (result-bind r f . extra-args)
+  (match r
+    [(continue v σ as fs)
+     (match (apply f (cons v (cons σ extra-args)))
+       [(continue next-v next-σ more-as more-fs)
+        (continue next-v next-σ (append as more-as) (append fs more-fs))]
+       [s s])]
+    [s s]))
+
+;; result-map : (Result A) (A -> B) -> (Result B)
+(define (result-map f r)
+  (match r
+    [(continue v σ as fs)
+     (continue (f v) σ as fs)]
+    [s s]))
+
+;; sequence-steps : Any σ (Listof (Any σ -> Result)) -> Result
+(define (sequence-steps v σ steps)
+  (for/fold ([r (inj-result v σ)])
+            ([s (in-list steps)])
+    (result-bind r s)))
+
+;; inj-result : A σ -> (Continue A)
+(define (inj-result v σ)
+  (continue v σ (list) (list)))
+
+;; for-steps : A σ (Sequenceof B) (A σ B -> (Result A)) -> (Result A)
+(define (for-steps v σ seq f)
+  (for/fold ([r (inj-result v σ)])
+            ([x seq])
+    (result-bind r f x)))
+
 ;; boot-facet : facet Γ σ -> (Values σ (Listof Action) FacetTree)
 (define (boot-facet f Γ σ)
   (define initial-sto (initial-store f Γ σ))
-  (match-define-values ((store-concat parent-sto facet-sto) as fs)
-                       (eval-start-actions f Γ (store-concat σ initial-sto)))
+  (match-define (continue _ (store-concat parent-sto facet-sto) as fs)
+    (eval-start-actions f Γ (store-concat σ initial-sto)))
   (values parent-sto as (facet-tree f Γ facet-sto fs)))
 
 ;; initial-store : facet Γ σ -> σ
@@ -197,26 +236,24 @@
   (match-define `(react ,O ...) f)
   (define locations
     (for/fold ([locations (list)])
-            ([o (in-list O)])
-    (match o
-      [`(field ,id ,exp)
-       (define-values (v s as fs) (eval-exp exp Γ σ))
-       (cons (cons id v) locations)]
-      [_ locations])))
+              ([o (in-list O)])
+      (match o
+        [`(field ,id ,exp)
+         (match-define (continue v _ _ _) (eval-exp exp Γ σ))
+         (cons (cons id v) locations)]
+        [_ locations])))
   (apply make-store locations))
 
-;; eval-start-actions : facet Γ σ -> (Values σ (Listof Action) (Listof FacetTree))
+;; eval-start-actions : facet Γ σ -> (Continue #f)
 (define (eval-start-actions f Γ σ)
   (match-define `(react ,O ...) f)
-  (for/fold ([sto σ]
-             [as (list)]
-             [facets (list)])
-            ([o (in-list O)])
-    (match o
-      [`(on-start ,exp ...)
-       (define-values (new-sto more-as more-facets) (eval-exp* exp Γ σ))
-       (values new-sto (append as more-as) (append facets more-facets))]
-      [_ (values sto as facets)])))
+  (for-steps #f σ (in-list O)
+    (lambda (_ σ o)
+      (match o
+        [`(on-start ,exp ...)
+         (eval-exp* exp Γ σ)]
+        [_
+         (inj-result #f σ)]))))
 
 ;; boot-actor : actor Γ -> Action
 (define (boot-actor a Γ)
@@ -232,151 +269,129 @@
                             (boot-actor a Γ)))
      (spawn-dataspace boot-actions)]))
 
-;; eval-exp : exp Γ σ -> (Values val σ (Listof Action) (Listof FacetTree))
+;; eval-exp : exp Γ σ -> (Continue val)
 (define (eval-exp e Γ σ)
   (match e
     [`(react ,O ...)
      (define-values (new-sto as ft) (boot-facet e Γ σ))
-     (values (void) new-sto as (list ft))]
+     (continue (void) new-sto as (list ft))]
     [`(actor ,_)
      ;; don't pass in parent store
      (define spawn-action (boot-actor e Γ))
-     (values (void) σ (list spawn-action) (list))]
+     (continue (void) σ (list spawn-action) (list))]
     [`(dataspace ,actors ...)
-     (values (void) σ (list (boot-actor e Γ)) (list))]
+     (continue (void) σ (list (boot-actor e Γ)) (list))]
     [`(outbound ,exp)
-     (define-values (v new-sto as facets) (eval-exp exp Γ σ))
-     (values (outbound v) σ as facets)]
+     (match-define (continue v new-sto as facets) (eval-exp exp Γ σ))
+     (continue (outbound v) σ as facets)]
     [`(inbound ,exp)
-     (define-values (v new-sto as facets) (eval-exp exp Γ σ))
-     (values (inbound v) σ as facets)]
+     (match-define (continue v new-sto as facets) (eval-exp exp Γ σ))
+     (continue (inbound v) σ as facets)]
     [(? symbol? id)
      (let ([v (env-lookup Γ id)])
-       (values v σ (list) (list)))]
+       (continue v σ (list) (list)))]
     [`(lambda (,vars ...) ,exp)
      (define c (closure Γ e))
-     (values c σ (list) (list))]
+     (continue c σ (list) (list))]
     [`(begin ,es ...)
-     (for/fold ([v (void)]
-                [σ σ]
-                [as (list)]
-                [facets (list)])
-               ([e (in-list es)])
-       (define-values (v new-sto more-as more-facets) (eval-exp e Γ σ))
-       (values v new-sto (append as more-as) (append facets more-facets)))]
+     (for-steps (void) σ (in-list es)
+       (lambda (v σ e) (eval-exp e Γ σ)))]
     [`(list ,es ...)
-     (define-values (rev-vs new-sto as facets)
-       (for/fold ([rev-vs (list)]
-                  [σ σ]
-                  [as (list)]
-                  [facets (list)])
-                 ([e (in-list es)])
-         (define-values (v new-sto more-as more-facets) (eval-exp e Γ σ))
-         (values (cons v rev-vs) new-sto (append as more-as) (append facets more-facets))))
-     (values (cons 'list (reverse rev-vs)) new-sto as facets)]
+     (define res (for-steps (list) σ (in-list es)
+                   (lambda (rev-vs σ e)
+                     (result-map (lambda (v) (cons v rev-vs))
+                                 (eval-exp e Γ σ)))))
+     (result-map (lambda (rev-vs) (cons 'list (reverse rev-vs)))
+                 res)]
     [`(let (,x ,exp) ,body-exp)
-     (define-values (v new-sto as facets) (eval-exp exp Γ σ))
-     (define new-Γ (extend-env Γ x v))
-     (define-values (result-v final-sto more-as more-facets) (eval-exp body-exp new-Γ new-sto))
-     (values result-v final-sto (append as more-as) (append facets more-facets))]
+     (result-bind (eval-exp exp Γ σ)
+                  (lambda (v new-sto)
+                    (define new-Γ (extend-env Γ x v))
+                    (eval-exp body-exp new-Γ new-sto)))]
     [`(if ,pred-exp ,then-exp ,else-exp)
-     (define-values (pred-v pred-sto as facets) (eval-exp pred-exp Γ σ))
-     (define-values (result-v final-sto more-as more-facets)
-       (if pred-v
-           (eval-exp then-exp Γ pred-sto)
-           (eval-exp else-exp Γ pred-sto)))
-     (values result-v final-sto (append as more-as) (append facets more-facets))]
+     (result-bind (eval-exp pred-exp Γ σ)
+                  (lambda (v new-sto)
+                    (if v
+                        (eval-exp then-exp Γ new-sto)
+                        (eval-exp else-exp Γ new-sto))))]
     [`(send! ,exp)
-     (define-values (v new-sto as facets) (eval-exp exp Γ σ))
-     (values (void) new-sto (append as (list (message v))) facets)]
+     (match-define (continue v new-sto as facets) (eval-exp exp Γ σ))
+     (continue (void) new-sto (append as (list (message v))) facets)]
     [`(set! ,id ,exp)
-     (define-values (v new-sto as facets) (eval-exp exp Γ σ))
+     (match-define (continue v new-sto as facets) (eval-exp exp Γ σ))
      (define result-sto (update-sto new-sto id v))
-     (values (void) result-sto as facets)]
+     (continue (void) result-sto as facets)]
     [`(read ,id)
      (define v (sto-fetch σ id))
-     (values v σ (list) (list))]
+     (continue v σ (list) (list))]
     [`(,primop ,exp ..1)
      #:when (primop? primop)
-     (define-values (args sto as facets)
-       (for/fold ([vs (list)]
-                  [σ σ]
-                  [as (list)]
-                  [facets (list)])
-                 ([e (in-list exp)])
-         (define-values (v new-sto more-as more-facets) (eval-exp e Γ σ))
-         (values (cons v vs) new-sto (append as more-as) (append facets more-facets))))
-     (define v (apply-primop primop (reverse args)))
-     (values v sto as facets)]
+     (result-bind (eval-exp* exp Γ σ)
+                  (lambda (arg-vs new-sto)
+                    (inj-result (apply-primop primop arg-vs) σ)))]
     [`(,f-exp ,exps ...)
-     (define-values (clo f-σ f-as f-fs) (eval-exp f-exp Γ σ))
-     (unless (closure? clo) (error 'eval-exp "tried to apply non-function ~v" clo))
-     (define-values (rev-args sto as facets)
-       (for/fold ([rev-vs (list)]
-                  [σ f-σ]
-                  [as f-as]
-                  [facets f-fs])
-                 ([e (in-list exps)])
-         (define-values (v new-sto more-as more-facets) (eval-exp e Γ σ))
-         (values (cons v rev-vs) new-sto (append as more-as) (append facets more-facets))))
-     (match-define (closure clo-env `(lambda (,vars ...) ,body-exp)) clo)
-     (unless (= (length rev-args) (length vars))
-       (error 'eval-exp "wrong number of arguments; expected ~v, got ~v" (length vars) (length rev-args)))
-     (define new-env (append (map binding vars (reverse rev-args)) clo-env))
-     (define-values (v final-sto even-more-as even-more-fs) (eval-exp body-exp new-env sto))
-     (values v final-sto (append as even-more-as) (append facets even-more-fs))]
-    [x (values x σ (list) (list))]))
+     (result-bind (eval-exp f-exp Γ σ)
+                  (lambda (f-v new-sto)
+                    (unless (closure? f-v) (error 'eval-exp "tried to apply non-function ~v" f-v))
+                    (result-bind (eval-exp* exps Γ σ)
+                                 (lambda (arg-vs final-sto)
+                                   (match-define (closure clo-env `(lambda (,vars ...) ,body-exp)) f-v)
+                                   (unless (= (length arg-vs) (length vars))
+                                     (error 'eval-exp "wrong number of arguments; expected ~v, got ~v" (length vars) (length arg-vs)))
+                                   (define new-env (append (map binding vars arg-vs) clo-env))
+                                   (eval-exp body-exp new-env final-sto)))))]
+    [x (continue x σ (list) (list))]))
 
 (module+ test
   ;; sequencing result
-  (let-values ([(v s as f) (eval-exp `(begin 1 2 3) mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp `(begin 1 2 3) mt-Γ mt-σ)])
     (check-equal? v 3))
   ;; variable lookup
-  (let-values ([(v s as f) (eval-exp 'x (list (binding 'x "hello")
-                                           (binding 'y "bye")
-                                           (binding 'x "world"))
-                                  mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp 'x (list (binding 'x "hello")
+                                                      (binding 'y "bye")
+                                                      (binding 'x "world"))
+                                             mt-σ)])
     (check-equal? v "hello"))
   ;; variable binding
-  (let-values ([(v s as f) (eval-exp '(let (y 12) "cake") mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp '(let (y 12) "cake") mt-Γ mt-σ)])
     (check-equal? v "cake"))
-  (let-values ([(v s as f) (eval-exp '(let (y 12) y) mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp '(let (y 12) y) mt-Γ mt-σ)])
     (check-equal? v 12))
   ;; if
-  (let-values ([(v s as f) (eval-exp '(if #f 5 6) mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp '(if #f 5 6) mt-Γ mt-σ)])
     (check-equal? v 6))
-  (let-values ([(v s as f) (eval-exp '(if #t 5 6) mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp '(if #t 5 6) mt-Γ mt-σ)])
     (check-equal? v 5))
   ;; send!
-  (let-values ([(v s as f) (eval-exp '(send! 5) mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp '(send! 5) mt-Γ mt-σ)])
     (check-equal? as (list (message 5)))
     (check-true (void? v)))
   ;; set!
-  (let-values ([(v s as f) (eval-exp '(set! x 12) mt-Γ (make-store '(x . "hello")))])
+  (match-let ([(continue v s as f) (eval-exp '(set! x 12) mt-Γ (make-store '(x . "hello")))])
     (check-true (void? v))
     (check-equal? (hash-ref s 'x) 12))
-  (let-values ([(v s as f) (eval-exp '(begin (set! x (+ 1 (read x)))
-                                               (set! x (+ 1 (read x)))
-                                               (set! x (+ 1 (read x)))
-                                               (set! x (+ 1 (read x)))
-                                               (read x))
-                                       mt-Γ (make-store '(x . 0)))])
+  (match-let ([(continue v s as f) (eval-exp '(begin (set! x (+ 1 (read x)))
+                                                     (set! x (+ 1 (read x)))
+                                                     (set! x (+ 1 (read x)))
+                                                     (set! x (+ 1 (read x)))
+                                                     (read x))
+                                             mt-Γ (make-store '(x . 0)))])
     (check-equal? v 4))
   ;; store read
-  (let-values ([(v s as f) (eval-exp '(read x) mt-Γ (make-store '(y . 5) '(x . "hello")))])
+  (match-let ([(continue v s as f) (eval-exp '(read x) mt-Γ (make-store '(y . 5) '(x . "hello")))])
     (check-equal? v "hello"))
-  (let-values ([(v s as f) (eval-exp '(+ (- 5 1) (/ 4 (if (not #t) 1 2))) mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp '(+ (- 5 1) (/ 4 (if (not #t) 1 2))) mt-Γ mt-σ)])
     (check-equal? v 6))
   ;; lambda
-  (let-values ([(v s as f) (eval-exp '(let (f (lambda (x) (+ x 1))) (f 3)) mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp '(let (f (lambda (x) (+ x 1))) (f 3)) mt-Γ mt-σ)])
     (check-equal? v 4))
-  (let-values ([(v s as f) (eval-exp '(let (z 12)
-                                        (let (f (lambda (x) (+ x z)))
-                                          (let (z 4)
-                                            (f 3)))) mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp '(let (z 12)
+                                                (let (f (lambda (x) (+ x z)))
+                                                  (let (z 4)
+                                                    (f 3)))) mt-Γ mt-σ)])
     (check-equal? v 15))
-  (let-values ([(v s as f) (eval-exp '(let (f (lambda () (actor (react (assert 5)))))
-                                        (f)) mt-Γ mt-σ)])
+  (match-let ([(continue v s as f) (eval-exp '(let (f (lambda () (actor (react (assert 5)))))
+                                                (f)) mt-Γ mt-σ)])
     (check-false (empty? as))))
 
 ;; dollar-id? : any -> bool
@@ -408,7 +423,7 @@
      (?!)]
     ['_ ?]
     [exp
-     (define-values (v s as fs) (eval-exp exp Γ σ))
+     (match-define (continue v _ _ _) (eval-exp exp Γ σ))
      v]))
 
 ;; pat-bindings : pat -> (Listof var)
@@ -485,76 +500,56 @@
   ;; projection->pattern to convert captures to wildcards
   (assertion (projection->pattern (observe (eval-pat (E-pat E) Γ σ)))))
 
-;; eval-exp* : (Listof exp) Γ σ -> (Values σ (Listof Action) (Listof FacetTree))
-;; evaluate a sequence of expressions for effect
+;; eval-exp* : (Listof exp) Γ σ -> (Result (Listof Values))
+;; evaluate a sequence of expressions
 (define (eval-exp* exps Γ σ)
-  (for/fold ([sto σ]
-             [as (list)]
-             [facets (list)])
-            ([e (in-list exps)])
-    (define-values (v new-sto more-as more-facets) (eval-exp e Γ σ))
-    (values new-sto (append as more-as) (append facets more-facets))))
+  (for-steps (list) σ (in-list exps)
+    (lambda (vs σ e)
+      (result-map (lambda (v) (append vs (list v)))
+                  (eval-exp e Γ σ)))))
 
-;; A Continue is (continue σ (Listof Action) (Listof FacetTree))
-(struct continue (sto as fs) #:transparent)
-;; A Stop is (stop σ (Listof Action))
-(struct stop (sto as) #:transparent)
-
-;; run-facet : facet π σ Γ Event -> (U Continue Stop)
+;; run-facet : facet π σ Γ Event -> Result
 (define (run-facet f π-old σ Γ e)
   (match-define `(react ,O ...) f)
-  (for/fold ([s (continue σ (list) (list))])
-            ([o (in-list O)])
-    (match s
-      [(stop _ _) s]
-      [(continue σ as facets)
-       (match (run-endpoint o π-old σ Γ e)
-         [(stop σ as)
-           ;; ok to discard previous as here I guess
-          (stop σ as)]
-         [(continue new-sto more-as more-facets)
-          (continue new-sto (append as more-as) (append facets more-facets))])])))
+  (for-steps #f σ (in-list O)
+    (lambda (_ σ o)
+      (run-endpoint o π-old σ Γ e))))
       
 
-;; run-endpoint : O π σ Γ Event -> (U Continue Stop)
+;; run-endpoint : O π σ Γ Event -> Result
+;; determine the effects of an endpoint in response to an event
 (define (run-endpoint O π-old σ Γ e)
   (match O
+    ;; event-insensitive endpoints
     [`(field ,_ ,_)
-     (continue σ (list) (list))]
+     (inj-result #f σ)]
     [`(on-start ,exp ...)
-     (continue σ (list) (list))]
+     (inj-result #f σ)]
     [`(assert ,exp)
-     (continue σ (list) (list))]
+     (inj-result #f σ)]
+    ;; event sensitive
     [`(stop-when ,E ,exps ...)
      (define bindings (occurrences E e π-old Γ σ))
      (cond
        [(empty? bindings)
-        (continue σ (list) (list))]
+        (inj-result #f σ)]
        [else
-        (define-values (sto as)
-          (for/fold ([sto σ]
-                     [as (list)])
-                    ([captures (in-list bindings)])
-            (define extended-env (append captures Γ))
-            ;; seems like we should ignore new facets here?
-            (define-values (new-sto more-as facets) (eval-exp* exps extended-env sto))
-            (values new-sto (append as more-as))))
+        (match-define (continue _ sto as _)
+          (for-steps #f σ (in-list bindings)
+            (lambda (_ σ captures)
+              (define extended-env (append captures Γ))
+              (eval-exp* exps extended-env σ))))
         (stop sto as)])]
     [`(on ,E ,exps ...)
      (define bindings (occurrences E e π-old Γ σ))
      (cond
        [(empty? bindings)
-        (continue σ (list) (list))]
+        (inj-result #f σ)]
        [else
-        (define-values (sto as facets)
-          (for/fold ([sto σ]
-                     [as (list)]
-                     [facets (list)])
-                    ([captures (in-list bindings)])
+        (for-steps #f σ (in-list bindings)
+          (lambda (_ sto captures)
             (define extended-env (append captures Γ))
-            (define-values (new-sto more-as more-facets) (eval-exp* exps extended-env sto))
-            (values new-sto (append as more-as) (append facets more-facets))))
-        (continue sto as facets)])]))
+            (eval-exp* exps extended-env sto)))])]))
 
 ;; endpoint-assertions : O Γ σ -> π
 ;; IGNORE effects from such expressions (yadda yadda evil yadda yadda)
@@ -565,7 +560,7 @@
     [`(on-start ,exp ...)
      trie-empty]
     [`(assert ,exp)
-     (define-values (v new-sto as facets) (eval-exp exp Γ σ))
+     (match-define (continue v _ _ _) (eval-exp exp Γ σ))
      (assertion v)]
     [`(stop-when ,E ,exps ...)
      (subscription E Γ σ)]
@@ -588,7 +583,7 @@
   (define facet-sto (store-concat parent-sto sto))
   ;; I'm really not confident about the way the stores are being handled here
   (match (run-facet stx π facet-sto env e)
-    [(continue new-sto as new-facets)
+    [(continue _ new-sto as new-facets)
      (define-values (final-sto final-as new-children)
        (for/fold ([sto new-sto]
                   [as as]
@@ -622,7 +617,7 @@
 (define (actor-behavior e s)
   (cond
     [e
-     (with-handlers ([exn:fail? (lambda (e) (quit #:exception e (list)))])
+     (with-handlers ([exn:fail? (lambda (e) (eprintf "exception: ~v\n" e) (quit #:exception e (list)))])
        (match-define (actor-state π-old ft) s)
        (match (run-facets ft π-old mt-σ e)
          [(ok _ ft as)
@@ -668,7 +663,9 @@
                       (set! balance (+ (read balance) amount)))))
 
     (actor (react (on (asserted (list "account" $balance))
-               (printf "Balance changed to ~a\n" balance))))
+                      (printf "Balance changed to ~a\n" balance))
+                  (stop-when (asserted (list "account" 70))
+                             (printf "bye\n"))))
 
     (actor (react (stop-when (asserted (observe (list "deposit" _)))
                               (send! (list "deposit" +100))
@@ -693,4 +690,4 @@
                   (on (asserted 16))
                   (on-start (send! 5))))))
 
-(run multi-level-ex)
+(run bank-account)
