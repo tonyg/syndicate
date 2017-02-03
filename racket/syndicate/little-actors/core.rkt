@@ -43,7 +43,8 @@
 ;; ('assert exp) or
 ;; ('on E exp ...) or
 ;; ('stop-when E exp ...) or
-;; ('on-start exp ...)
+;; ('on-start exp ...) or
+;; ('on-stop exp ...)
 
 ;; a `facet` is ('react O ...)
 ;; an `actor` is
@@ -513,8 +514,7 @@
   (match-define `(react ,O ...) f)
   (for-steps #f σ (in-list O)
     (lambda (_ σ o)
-      (run-endpoint o π-old σ Γ e))))
-      
+      (run-endpoint o π-old σ Γ e))))      
 
 ;; run-endpoint : O π σ Γ Event -> Result
 ;; determine the effects of an endpoint in response to an event
@@ -524,6 +524,8 @@
     [`(field ,_ ,_)
      (inj-result #f σ)]
     [`(on-start ,exp ...)
+     (inj-result #f σ)]
+    [`(on-stop ,exp ...)
      (inj-result #f σ)]
     [`(assert ,exp)
      (inj-result #f σ)]
@@ -559,6 +561,8 @@
      trie-empty]
     [`(on-start ,exp ...)
      trie-empty]
+    [`(on-stop ,exp ...)
+     trie-empty]
     [`(assert ,exp)
      (match-define (continue v _ _ _) (eval-exp exp Γ σ))
      (assertion v)]
@@ -574,10 +578,35 @@
             ([o (in-list O)])
     (π-union π (endpoint-assertions o Γ σ))))
 
+;; shutdown-facet : facet σ -> Stop
+;; run each on-stop endpoint of a facet
+(define (shutdown-facet f Γ σ)
+  (match-define `(react ,O ...) f)
+  (for/fold ([s (stop σ (list))])
+            ([o (in-list O)])
+    (match-define (stop σ as) s)
+    (match o
+      [`(on-stop ,exps ...)
+       (match-define (continue _ next-sto more-as _) (eval-exp* exps Γ σ))
+       (stop next-sto (append as more-as))]
+      [_ s])))
+             
+;; shutdown-facet-tree : FacetTree σ -> Stop
+(define (shutdown-facet-tree ft parent-sto)
+  (match-define (facet-tree stx Γ sto children) ft)
+  (define facet-sto (store-concat parent-sto sto))
+  (match-define (stop (store-concat new-parent-sto _) as)
+    (for/fold ([s (shutdown-facet stx Γ facet-sto)])
+              ([f (in-list children)])
+      (match-define (stop σ as) s)
+      (match-define (stop next-sto more-as) (shutdown-facet-tree f σ))
+      (stop next-sto (append as more-as))))
+  (stop new-parent-sto as))
+
 
 ;; an OK is (ok σ FacetTree (ListofAction))
 (struct ok (sto ft as) #:transparent)
-;; run-facets : FacetTree π σ Event -> (U OK (Listof Action))
+;; run-facets : FacetTree π σ Event -> (U OK Stop)
 (define (run-facets ft π parent-sto e)
   (match-define (facet-tree stx env sto children) ft)
   (define facet-sto (store-concat parent-sto sto))
@@ -595,14 +624,17 @@
                     (append as more-as)
                     ;; n^2 but let's keep the order the same
                     (append new-children (list new-ft)))]
-           [more-as
-            (values sto
+           [(stop new-sto more-as)
+            (values new-sto
                     (append as more-as)
                     new-children)])))
      (match-define (store-concat new-parent-sto new-facet-sto) final-sto)
      (ok new-parent-sto (facet-tree stx env new-facet-sto new-children) final-as)]
-    [(stop _ as)
-     as]))
+    [(stop (store-concat new-parent-sto new-facet-sto) as)
+     (match-define (stop final-parent-sto more-as)
+       (shutdown-facet-tree (facet-tree stx env new-facet-sto children)
+                            new-parent-sto))
+     (stop final-parent-sto (append as more-as))]))
 
 ;; ft-assertions : FacetTree σ -> π
 (define (ft-assertions ft σ)
@@ -625,7 +657,7 @@
           (define next-π (if (scn? e) (scn-trie e) π-old))
           (transition (actor-state next-π ft)
                       (cons (scn assertions) as))]
-         [as
+         [(stop _ as)
           (quit as)]))]
     [else #f]))
 
@@ -665,7 +697,8 @@
     (actor (react (on (asserted (list "account" $balance))
                       (printf "Balance changed to ~a\n" balance))
                   (stop-when (asserted (list "account" 70))
-                             (printf "bye\n"))))
+                             (printf "bye\n"))
+                  (on-stop (printf "good.\n"))))
 
     (actor (react (stop-when (asserted (observe (list "deposit" _)))
                               (send! (list "deposit" +100))
@@ -689,5 +722,17 @@
                   (on-start (send! 5))
                   (on (asserted 16))
                   (on-start (send! 5))))))
+
+(define stop-when-priority
+  '(
+    (actor (react (on (message "hello")
+                      (send! "hey")
+                      (printf "MHM.\n"))
+           (stop-when (message "hello")
+                      (printf "NO.\n"))))
+
+    (actor (react (on-start (send! "hello"))
+                  (on (message "hey")
+                      (printf "oh.\n"))))))
 
 (run bank-account)
