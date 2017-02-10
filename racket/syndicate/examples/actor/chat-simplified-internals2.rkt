@@ -9,6 +9,7 @@
 ;; Sketch of a translation from the existing TCP protocol into a simpler one
 
 (struct tcp-connection (id spec) #:prefab)
+(struct tcp-accepted (id) #:prefab)
 (struct tcp-out (id text) #:prefab)
 (struct tcp-in (id text) #:prefab)
 
@@ -18,7 +19,7 @@
    (on (asserted (advertise (tcp-channel $them us _)))
        (define id (seal (list them us)))
        (actor (stop-when (retracted (advertise (tcp-channel them us _))))
-              (stop-when (retracted (observe (tcp-connection id us))))
+              (stop-when (retracted (tcp-accepted id)))
               (assert (tcp-connection id us))
               (on (message (tcp-channel them us $bs))
                   (send! (tcp-in id (string-trim (bytes->string/utf-8 bs)))))
@@ -33,6 +34,7 @@
 
 (actor #:name 'chat-server
  (during/actor (tcp-connection $id (tcp-listener 5999))
+   (assert (tcp-accepted id))
    (define me (gensym 'user))  ;; a random user name
    (assert (present me))
    (during (present $user)
