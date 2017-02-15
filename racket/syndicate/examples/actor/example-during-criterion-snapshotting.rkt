@@ -16,7 +16,7 @@
 
 (struct foo (x y) #:prefab)
 
-(actor (field [x 123])
+(spawn (field [x 123])
        (assert (foo (x) 999))
        (during (foo (x) $v)
                (log-info "x=~a v=~a" (x) v)

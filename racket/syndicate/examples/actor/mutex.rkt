@@ -9,7 +9,7 @@
 (struct resource-status (resource-id waiter-count) #:prefab)
 
 (define (spawn-resource resource-id total-available-leases)
-  (actor (field [waiters (make-queue)]
+  (spawn (field [waiters (make-queue)]
                 [free-lease-count total-available-leases])
 
          (begin/dataflow (log-info "~as available: ~a" resource-id (free-lease-count)))
@@ -46,13 +46,13 @@
 
 (struct philosopher-status (name status) #:prefab)
 
-(actor (define/query-hash-set thinkers (philosopher-status $who $status) status who)
+(spawn (define/query-hash-set thinkers (philosopher-status $who $status) status who)
        (begin/dataflow
          (log-info "~a" (for/list (((status names) (in-hash (thinkers))))
                           (format "~a: ~a" status (set->list names))))))
 
 (define (philosopher name)
-  (actor (field [status 'starting])
+  (spawn (field [status 'starting])
          (assert (philosopher-status name (status)))
 
          (stop-when (rising-edge (eq? (status) 'inspired)))

@@ -40,16 +40,16 @@
 (run-bank-account 'b)
 (run-bank-account 'c)
 
-(actor (on (asserted (named-account $name $balance))
+(spawn (on (asserted (named-account $name $balance))
            (printf "Named account balance ~a = ~a\n" name balance)))
 
-(actor (define/query-set running-apps (running-app $id) id)
+(spawn (define/query-set running-apps (running-app $id) id)
        (begin/dataflow (printf "Running apps: ~v\n" (running-apps))))
 
 (let ()
   (local-require racket/port)
   (define e (read-bytes-line-evt (current-input-port) 'any))
-  (actor (stop-when (message (inbound (external-event e (list (? eof-object? _))))))
+  (spawn (stop-when (message (inbound (external-event e (list (? eof-object? _))))))
          (on (message (inbound (external-event e (list (? bytes? $bs)))))
              (define app-id (bytes->string/utf-8 bs))
              (printf "Killing ~a\n" app-id)

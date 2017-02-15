@@ -8,7 +8,7 @@
 (define remote-handle (tcp-address "localhost" 5999))
 (define stdin-evt (read-bytes-line-evt (current-input-port) 'any))
 
-(actor (stop-when (message (inbound (external-event stdin-evt (list (? eof-object? _))))))
+(spawn (stop-when (message (inbound (external-event stdin-evt (list (? eof-object? _))))))
        (stop-when (retracted (advertise (tcp-channel remote-handle local-handle _))))
        (assert (advertise (tcp-channel local-handle remote-handle _)))
 

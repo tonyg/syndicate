@@ -19,6 +19,6 @@
     (quit (list (message (deposit +100))
                 (message (deposit -30))))))
 
-(spawn manager 0 (scn/union (assertion (observe (deposit ?))) (assertion (account 0))))
-(spawn observer (void) (scn (assertion (observe (account ?)))))
-(spawn updater (void) (scn (assertion (observe (observe (deposit ?))))))
+(actor manager 0 (scn/union (assertion (observe (deposit ?))) (assertion (account 0))))
+(actor observer (void) (scn (assertion (observe (account ?)))))
+(actor updater (void) (scn (assertion (observe (observe (deposit ?))))))

@@ -70,7 +70,7 @@
        (transition (+ count 1)
                    (when (= count 0) (sub (inbound (timer-expired ? ?)))))]
       [_ #f]))
-  (spawn #:name 'drivers/timer
+  (actor #:name 'drivers/timer
          timer-driver
          0 ;; initial count
          (patch-seq (sub (set-timer ? ? ?))

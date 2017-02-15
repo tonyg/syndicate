@@ -1,7 +1,7 @@
 #lang racket/base
 
-(provide actor
-         actor*
+(provide spawn
+         spawn*
          dataspace
 
          react
@@ -19,7 +19,7 @@
          on-event*
          on
          during
-         during/actor
+         during/spawn
          begin/dataflow
          define/dataflow
 
@@ -251,8 +251,8 @@
 
 (begin-for-syntax
   (define-splicing-syntax-class actor-wrapper
-    (pattern (~seq #:actor wrapper))
-    (pattern (~seq) #:attr wrapper #'actor))
+    (pattern (~seq #:spawn wrapper))
+    (pattern (~seq) #:attr wrapper #'spawn))
 
   (define-splicing-syntax-class on-crash-option
     (pattern (~seq #:on-crash expr))
@@ -281,13 +281,13 @@
   (syntax-parse stx
     [(_ name:name script ...)
      (quasisyntax/loc stx
-       (core:make-spawn
+       (core:make-actor
         (lambda ()
           (list actor-behavior
                 (boot-actor (lambda () (begin/void-default script ...)))
                 name.N))))]))
 
-(define-syntax (actor stx)
+(define-syntax (spawn stx)
   (syntax-parse stx
     [(_ (~or (~optional (~seq #:name name-expr) #:defaults ([name-expr #'#f])
                         #:name "#:name")
@@ -301,7 +301,7 @@
              (schedule-action! spawn-action)
              spawn-action)))]))
 
-(define-syntax (actor* stx)
+(define-syntax (spawn* stx)
   (syntax-parse stx
     [(_ name:name script ...)
      (quasisyntax/loc stx
@@ -448,7 +448,7 @@
              (react (stop-when (retracted p))
                     O ...))))]))
 
-(define-syntax (during/actor stx)
+(define-syntax (during/spawn stx)
   (syntax-parse stx
     [(_ P w:actor-wrapper name:name parent-let:let-option oncrash:on-crash-option O ...)
      (define E-stx (syntax/loc #'P (asserted P)))
@@ -456,7 +456,7 @@
        (analyze-pattern E-stx #'P))
      (quasisyntax/loc stx
        (on #,E-stx
-           (let* ((id (gensym 'during/actor))
+           (let* ((id (gensym 'during/spawn))
                   (p #,instantiated) ;; this is the concrete assertion corresponding to demand
                   (inst (instance id p))) ;; this is the assertion representing supply
              (react (stop-when (asserted inst)

@@ -24,7 +24,7 @@
 (struct irc-inbound (conn nick target body) #:prefab) ;; MESSAGE
 (struct irc-outbound (conn target body) #:prefab) ;; MESSAGE
 
-(actor #:name 'irc-connection-factory
+(spawn #:name 'irc-connection-factory
 
        (during (observe (irc-inbound $C _ _ _))
          (assert C))
@@ -32,8 +32,8 @@
        (during (observe (observe (irc-outbound $C _ _)))
          (assert C))
 
-       (during/actor (irc-connection $host $port $nick)
-         #:actor supervise/actor
+       (during/spawn (irc-connection $host $port $nick)
+         #:spawn supervise/actor
          #:name (list 'irc-connection host port nick)
          (define C (irc-connection host port nick))
          (define LH (tcp-handle (gensym 'irc)))

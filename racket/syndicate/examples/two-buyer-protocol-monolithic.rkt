@@ -10,7 +10,7 @@
 
 (define (while-relevant-assert P #:noisy? [noisy #f])
   (define name (format "(while-relevant-assert ~a)" P))
-  (spawn/stateless
+  (actor/stateless
    #:name name
    (lambda (e)
      (match e
@@ -38,7 +38,7 @@
        (assertion-set-union quotes (assertion (book-quote title (hash-ref inv title #f)))))]
     [_ trie-empty]))
 
-;; Event Inventory -> (Values Inventory (ListOf Spawn))
+;; Event Inventory -> (Values Inventory (ListOf actor))
 (define (answer-orders e inv)
   (match e
     [(scn t)
@@ -85,7 +85,7 @@
     [else #f]))
 
 (define (seller inv)
-  (spawn #:name 'seller
+  (actor #:name 'seller
          seller-behavior
          inv
          (scn seller-interests)))
@@ -99,7 +99,7 @@
     (match titles
       ['() (log-info "A has bought everything they wanted!") (scn trie-empty)]
       [(cons title remaining-titles)
-       (spawn/stateless
+       (actor/stateless
         #:name (format "(try-to-buy ~a)" title)
         (lambda (e)
           (match e
@@ -123,7 +123,7 @@
        (try-to-buy remaining-titles budget)]
       [else
        (log-offer title initial-offer)
-       (spawn
+       (actor
         #:name (format "(negotiate-split ~a ~a)" title price)
         (lambda (e my-contribution)
           (match e
@@ -160,7 +160,7 @@
 
 (define (buyer-b funds)
   (define (complete-purchase title price contrib)
-    (spawn/stateless
+    (actor/stateless
      #:name (format "(complete-purchase ~a ~a ~a)" title price contrib)
      (lambda (e)
        (match e
@@ -175,7 +175,7 @@
          [_ #f]))
      (list (scn/union (assertion (split-proposal title price contrib #t))
                       (assertion (observe (order title price ? ?)))))))
-  (spawn
+  (actor
    #:name 'buyer-b
    (lambda (e funds)
      (match e

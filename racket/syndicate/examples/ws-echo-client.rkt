@@ -20,7 +20,7 @@
   (define (generate-reader-id)
     (begin0 reader-count
       (set! reader-count (+ reader-count 1))))
-  (actor (assert (advertise (websocket-message c s _)))
+  (spawn (assert (advertise (websocket-message c s _)))
          (on (asserted (websocket-peer-details c s $la _ $ra _))
              (log-info "~a: local ~v :: remote ~v" c la ra))
          (on (message (inbound (external-event e (list (? bytes? $bs)))))

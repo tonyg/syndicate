@@ -82,7 +82,7 @@
     (for-trie ([(udp-multicast-loopback _ $enabled?) (patch-added p)])
       (udp:udp-multicast-set-loopback! socket enabled?)))
 
-  (spawn #:name (list 'udp-socket local-addr)
+  (actor #:name (list 'udp-socket local-addr)
          (lambda (e s)
 	   (match e
              [(? patch? p)

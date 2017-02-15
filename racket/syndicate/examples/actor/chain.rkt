@@ -4,7 +4,7 @@
 
 (define (chain-step n)
   (printf "chain-step ~v\n" n)
-  (actor* (sleep 1)
+  (spawn* (sleep 1)
           (if (< n 5)
               (chain-step (+ n 1))
               (printf "done.\n"))))

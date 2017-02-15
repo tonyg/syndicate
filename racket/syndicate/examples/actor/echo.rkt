@@ -4,8 +4,8 @@
 (require/activate syndicate/drivers/tcp)
 
 (define server-id (tcp-listener 5999))
-(actor (assert (advertise (observe (tcp-channel _ server-id _))))
-       (during/actor (advertise (tcp-channel $c server-id _))
+(spawn (assert (advertise (observe (tcp-channel _ server-id _))))
+       (during/spawn (advertise (tcp-channel $c server-id _))
                      (on-start (printf "Accepted connection from ~v\n" c))
                      (assert (advertise (tcp-channel server-id c _)))
                      (on (message (tcp-channel c server-id $bs))

@@ -4,7 +4,7 @@
 (struct set-box (new-value) #:transparent)
 (struct box-state (value) #:transparent)
 
-(spawn (lambda (e current-value)
+(actor (lambda (e current-value)
          (match-event e
            [(message (set-box new-value))
             (log-info "box: taking on new-value ~v" new-value)
@@ -14,7 +14,7 @@
        (patch-seq (sub (set-box ?))
                   (assert (box-state 0))))
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (match-event e
            [(patch added removed)
             (transition s (for-trie/list ([(box-state $v) added])

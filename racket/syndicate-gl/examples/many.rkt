@@ -19,7 +19,7 @@
 (define sprite-count 20)
 
 (define (spawn-background)
-  (actor
+  (spawn
    (during (inbound (window $width $height))
            (assert (outbound
                     (scene (seal `((push-matrix (scale ,width ,height)
@@ -29,7 +29,7 @@
 (define i:logo (plt-logo))
 
 (define (spawn-logo)
-  (actor (field [x 100] [y 100])
+  (spawn (field [x 100] [y 100])
          (field [dx (* (- (random) 0.5) speed-limit)]
                 [dy (* (- (random) 0.5) speed-limit)])
          (define/query-value w #f (inbound ($ w (window _ _))) w)
@@ -56,14 +56,14 @@
 (for [(i sprite-count)]
   (spawn-logo))
 
-(actor (on (message (inbound (frame-event $counter $timestamp _ _)))
+(spawn (on (message (inbound (frame-event $counter $timestamp _ _)))
            (when (and (zero? (modulo counter 100)) (positive? timestamp))
              (log-info "~v frames, ~v ms ==> ~v Hz"
                        counter
                        timestamp
                        (/ counter (/ timestamp 1000.0))))))
 
-(actor* (assert! (outbound 'fullscreen))
+(spawn* (assert! (outbound 'fullscreen))
         (until (message (inbound (key-event #\q #t _))))
         (assert! (outbound 'stop)))
 

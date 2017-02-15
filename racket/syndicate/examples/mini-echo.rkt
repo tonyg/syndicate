@@ -3,7 +3,7 @@
 (struct echo-req (body) #:prefab)
 (struct echo-resp (body) #:prefab)
 
-(spawn (lambda (e count)
+(actor (lambda (e count)
          (match e
            [(message (echo-req body))
             (transition (+ count 1)
@@ -12,7 +12,7 @@
        0
        (sub (echo-req ?)))
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (match e
            [(message (echo-resp body))
             (printf "Received: ~v\n" body)

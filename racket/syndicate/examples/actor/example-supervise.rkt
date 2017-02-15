@@ -6,7 +6,7 @@
 
 (supervise
  #:name 'ward-supervisor
- (actor #:name 'ward
+ (spawn #:name 'ward
         (on-start (log-info "Starting ward"))
         (on-stop (log-info "Stopping ward"))
         (on (message 'crash)
@@ -16,7 +16,7 @@
                    (log-info "Bye!"))))
 
 (define (monitor-interest-in thing)
-  (actor #:name (list 'monitor-interest-in thing)
+  (spawn #:name (list 'monitor-interest-in thing)
          (during (observe thing)
            (on-start (log-info "Interest in ~v appeared" thing))
            (on-stop (log-info "Interest in ~v disappeared" thing)))))
@@ -24,7 +24,7 @@
 (monitor-interest-in 'crash)
 (monitor-interest-in 'quit)
 
-(actor* #:name 'main
+(spawn* #:name 'main
         (sleep 1)
         (send! 'crash)
         (sleep 1)

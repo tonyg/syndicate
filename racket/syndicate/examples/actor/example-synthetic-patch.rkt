@@ -24,13 +24,13 @@
 (struct outer (v) #:prefab)
 (struct show () #:prefab)
 
-(actor (field [v "first"])
+(spawn (field [v "first"])
        (assert (outer (v)))
        (assert (show))
        (on (message 2)
            (v "second")))
 
-(actor (on-start (send! 1))
+(spawn (on-start (send! 1))
        (during (outer $v)
                (on-start (log-info "+outer ~v" v))
                (on-stop (log-info "-outer ~v" v))

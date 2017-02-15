@@ -5,7 +5,7 @@
 (struct m (b) #:prefab)
 (struct a (v) #:prefab)
 
-(actor (on (message (m $b))
+(spawn (on (message (m $b))
            (printf "Message: ~v\n" b))
        (on (asserted (a $v))
            (printf "Asserted: ~v\n" v))
@@ -39,7 +39,7 @@
 
 (firewall [(allow (a 'ok-kid))]
           (assert (a 'forbidden-parent))
-          (on-start (actor (assert (a _)))))
+          (on-start (spawn (assert (a _)))))
 
 (firewall [(allow (a 'ok-kid2))
            (allow (a 'ok-parent2))]

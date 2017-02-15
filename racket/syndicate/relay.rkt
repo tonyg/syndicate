@@ -53,7 +53,7 @@
      (define p (patch (relay-drop-interests a r) (relay-drop-interests d r)))
      (and (patch-non-empty? p) p)]
     [_
-     ;; TODO: What should be done about spawn? Anything?
+     ;; TODO: What should be done about actor? Anything?
      ;; TODO: How about quit-dataspace? Could this be a better place for it than core.rkt?
      (error 'relay-drop-action "Cannot drop action ~v" ac)]))
 
@@ -90,8 +90,8 @@
                      inbound-constructor
                      inbound-parenthesis
                      inner-spawn)
-  (make-spawn (lambda ()
-                (define-values (proc initial-transition) (spawn->process+transition inner-spawn))
+  (make-actor (lambda ()
+                (define-values (proc initial-transition) (actor->process+transition inner-spawn))
                 (define initial-relay-state (relay outbound?
                                                    outbound-assertion
                                                    outbound-parenthesis

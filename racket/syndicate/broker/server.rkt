@@ -33,7 +33,7 @@
 (define (spawn-broker-server port
                              #:hostname [hostname ?]
                              #:path [resource-path-str "/"])
-  (actor #:name 'broker:dm
+  (spawn #:name 'broker:dm
          (on (web-request-get (id req)
                               (web-virtual-host "http" hostname port)
                               ,(string->resource-path resource-path-str))
@@ -51,7 +51,7 @@
 (define (spawn-broker-server-connection req-id http-req
                                         #:scope [scope (http-req->scope http-req)]
                                         #:hook [hook void])
-  (actor #:name (list 'broker:connection req-id)
+  (spawn #:name (list 'broker:connection req-id)
          (hook)
 
          (on-start (log-syndicate-broker-info "Starting broker connection ~v" req-id))
@@ -114,5 +114,5 @@
 (module+ main
   (run-ground
    (activate "..")
-   (actor #:name 'broker:vh (assert (web-virtual-host "http" _ 8000)))
+   (spawn #:name 'broker:vh (assert (web-virtual-host "http" _ 8000)))
    (spawn-broker-server 8000)))

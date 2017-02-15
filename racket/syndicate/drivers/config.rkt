@@ -15,7 +15,7 @@
 (struct config (scope item) #:prefab)
 
 (define (spawn-configuration scope path #:hook [hook void])
-  (actor #:name (list 'configuration-monitor scope path)
+  (spawn #:name (list 'configuration-monitor scope path)
          (hook)
          (during (file-content path file->list $items)
            (cond

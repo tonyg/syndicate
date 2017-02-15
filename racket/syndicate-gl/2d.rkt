@@ -134,7 +134,7 @@
 
 ;; KeyboardIntegrator. Integrates key-events into key-pressed assertions.
 (define (spawn-keyboard-integrator #:meta-level [meta-level 1])
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(message (inbound* meta-level (key-event code press? _)))
               (transition (void) ((if press? assert retract) (key-pressed code)))]
@@ -145,7 +145,7 @@
 ;; MouseIntegrator. Integrates mouse-events into mouse-state assertions.
 (define (spawn-mouse-integrator #:meta-level [meta-level 1])
   (define retract-state (retract (mouse-state ? ? ? ? ?)))
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(message (inbound* meta-level (mouse-event 'leave _)))
               (transition (void) retract-state)]
@@ -434,7 +434,7 @@
     (define current-coordinate-maps (hash))
 
     (define-values (proc pending-transition)
-      (spawn->process+transition (spawn-dataspace boot-actions)))
+      (actor->process+transition (spawn-dataspace boot-actions)))
     (define event-queue (make-queue))
 
     (define target-frame-rate 60)

@@ -17,7 +17,7 @@
   (define (print-prompt)
     (printf "> ")
     (flush-output))
-  (actor (field [reader-count 0])
+  (spawn (field [reader-count 0])
          (on-start (print-prompt))
          (stop-when (message (inbound (external-event e (list (? eof-object? _))))))
          (on (message (inbound (external-event e (list (? bytes? $bs)))))
@@ -25,7 +25,7 @@
                [(list "open" name)
                 (define reader-id (reader-count))
                 (reader-count (+ (reader-count) 1))
-                (actor (on-start (printf "Reader ~a opening file ~v.\n" reader-id name))
+                (spawn (on-start (printf "Reader ~a opening file ~v.\n" reader-id name))
                        (stop-when (message `(stop-watching ,name)))
                        (on (asserted (file name $contents))
                            (printf "Reader ~a sees that ~v contains: ~v\n"

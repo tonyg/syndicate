@@ -10,7 +10,7 @@
 
 @section{Instantaneous Actions (I)}
 
-@defform[(actor I ...)]{
+@defform[(spawn I ...)]{
 Spawns an actor that executes each instantaneous action @racket[I] in
 sequence.}
 

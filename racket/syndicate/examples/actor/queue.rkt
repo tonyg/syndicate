@@ -43,7 +43,7 @@
 
 ;; EFFECT: Spawn a queue process named `queue-id`.
 (define (spawn-queue queue-id)
-  (actor #:name (list 'queue queue-id)
+  (spawn #:name (list 'queue queue-id)
          (field [waiters (make-queue)])
          (field [messages (make-queue)])
 
@@ -100,7 +100,7 @@
 ;; Example
 
 (define (spawn-consumer consumer-id initial-credit #:variant [variant 'normal])
-  (actor #:name (list 'consumer consumer-id)
+  (spawn #:name (list 'consumer consumer-id)
          (assert (subscription 'q consumer-id))
          (on-start (send! (credit 'q consumer-id initial-credit)))
          (on (message (delivery 'q consumer-id $body))
@@ -114,7 +114,7 @@
                [(overloaded) ;; don't issue credit
                 (void)]))))
 
-(actor (define/query-hash metrics (metric $k $v) k v)
+(spawn (define/query-hash metrics (metric $k $v) k v)
        (begin/dataflow (log-info "  ~a" (hash->list (metrics)))))
 
 (spawn-queue 'q)
@@ -122,7 +122,7 @@
 (spawn-consumer 'c2 2 #:variant 'crashy)
 (spawn-consumer 'c3 3 #:variant 'overloaded)
 
-(actor* (until (asserted (observe (delivery _ 'q _))))
+(spawn* (until (asserted (observe (delivery _ 'q _))))
         (for ((n (in-range 10)))
           (send! (delivery #f 'q n))
           ;; (flush!)

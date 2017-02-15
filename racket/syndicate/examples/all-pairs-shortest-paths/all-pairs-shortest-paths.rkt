@@ -12,22 +12,22 @@
 (struct path-exists (from to) #:prefab) ;; Hmm.
 (struct min-cost (from to cost) #:prefab)
 
-(actor (assert (link 1 3 -2))
+(spawn (assert (link 1 3 -2))
        (assert (link 2 1 4))
        (assert (link 2 3 3))
        (assert (link 3 4 2))
        (assert (link 4 2 -1)))
 
-(actor (during (link $from $to $cost)
+(spawn (during (link $from $to $cost)
                (assert (path-exists from to))
                (assert (path from to cost))))
 
-(actor (during (link $A $B $link-cost)
+(spawn (during (link $A $B $link-cost)
                (during (path B $C $path-cost)
                        (assert (path-exists A C))
                        (assert (path A C (+ link-cost path-cost))))))
 
-(actor (during (path-exists $from $to)
+(spawn (during (path-exists $from $to)
                (field [costs (set)] [least +inf.0])
                (assert (min-cost from to (least)))
                (on (asserted (path from to $cost))
@@ -38,8 +38,8 @@
                    (costs new-costs)
                    (least (for/fold [(least +inf.0)] [(x new-costs)] (min x least))))))
 
-(actor (during (path $from $to $cost)
+(spawn (during (path $from $to $cost)
                (on-start (displayln `(+ ,(path from to cost))))
                (on-stop (displayln `(- ,(path from to cost))))))
-(actor (on (asserted (min-cost $from $to $cost))
+(spawn (on (asserted (min-cost $from $to $cost))
            (displayln (min-cost from to cost))))

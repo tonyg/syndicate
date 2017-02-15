@@ -8,7 +8,7 @@
 
 (struct later-than (msecs) #:prefab)
 
-(actor #:name 'drivers/timestate
+(spawn #:name 'drivers/timestate
        (during (observe (later-than $msecs))
          (define timer-id (gensym 'timestate))
          (field [expired? #f])

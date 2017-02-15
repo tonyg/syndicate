@@ -10,7 +10,7 @@
                       (observe (tcp-channel (?!) server-id ?))
                       (lambda (c)
                         (printf "Accepted connection from ~v\n" c)
-                        (spawn (lambda (e state)
+                        (actor (lambda (e state)
                                  (match e
                                    [(? patch/removed?)
                                     (printf "Closed connection ~v\n" c)

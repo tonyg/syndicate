@@ -8,7 +8,7 @@
 (struct present (who) #:prefab)
 
 (define (spawn-session them us)
-  (actor (define (send-to-remote fmt . vs)
+  (spawn (define (send-to-remote fmt . vs)
            (send! (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs)))))
 
          (define (say who fmt . vs)
@@ -31,6 +31,6 @@
              (send! (says user (string-trim (bytes->string/utf-8 bs)))))))
 
 (define us (tcp-listener 5999))
-(actor (assert (advertise (observe (tcp-channel _ us _))))
+(spawn (assert (advertise (observe (tcp-channel _ us _))))
        (on (asserted (advertise (tcp-channel $them us _)))
            (spawn-session them us)))

@@ -17,8 +17,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (spawn-filesystem-driver)
-  (actor #:name 'filesystem-driver
-         (during/actor (observe (file-content $name $reader-proc _))
+  (spawn #:name 'filesystem-driver
+         (during/spawn (observe (file-content $name $reader-proc _))
            #:name (list 'file-content name reader-proc)
            (track-file name reader-proc))))
 

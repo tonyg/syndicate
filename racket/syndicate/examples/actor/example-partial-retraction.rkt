@@ -5,7 +5,7 @@
 (struct ready (what) #:prefab)
 (struct entry (key val) #:prefab)
 
-(actor (assert (ready 'listener))
+(spawn (assert (ready 'listener))
        (on (asserted (entry $key _))
            (log-info "key ~v asserted" key)
            (until (retracted (entry key _))
@@ -15,7 +15,7 @@
                       (log-info "del binding: ~v -> ~v" key value)))
            (log-info "key ~v retracted" key)))
 
-(actor (assert (ready 'other-listener))
+(spawn (assert (ready 'other-listener))
        (during (entry $key _)
                (log-info "(other-listener) key ~v asserted" key)
                (on-stop (log-info "(other-listener) key ~v retracted" key))
@@ -29,7 +29,7 @@
   (until (asserted (ready token))
          (assert (ready token))))
 
-(actor* (until (asserted (ready 'listener)))
+(spawn* (until (asserted (ready 'listener)))
         (until (asserted (ready 'other-listener)))
         (assert! (entry 'a 1))
         (assert! (entry 'a 2))

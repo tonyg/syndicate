@@ -4,7 +4,7 @@
 
 (require rackunit)
 
-(spawn (lambda (e u)
+(actor (lambda (e u)
          (if (< (length u) 3)
              (transition
               (append u (list e))
@@ -15,7 +15,7 @@
        '()
        (sub 'a))
 
-(spawn (lambda (e u)
+(actor (lambda (e u)
          (if (< (length u) 3)
              (transition
               (append u (list e))

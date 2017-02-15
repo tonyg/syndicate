@@ -17,7 +17,7 @@
        (if (< n 20)
 	   (transition (+ n 1) (message (websocket-message server-id c (format "msg ~v" n))))
 	   #f)]))
-  (spawn connection-handler
+  (actor connection-handler
 	 0
          (patch-seq (sub (advertise (websocket-message c server-id ?)))
                     (sub (websocket-message c server-id ?))

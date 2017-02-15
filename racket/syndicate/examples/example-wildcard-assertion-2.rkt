@@ -7,7 +7,7 @@
 
 (require syndicate/pretty)
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (printf "Subscriber - Aggregate\n")
          (syndicate-pretty-print s)
          (printf "Subscriber - Patch\n")
@@ -20,7 +20,7 @@
        (patch-seq (sub ?)
                   (unsub (inbound ?))))
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (printf "Asserter\n")
          (syndicate-pretty-print e)
          (newline)

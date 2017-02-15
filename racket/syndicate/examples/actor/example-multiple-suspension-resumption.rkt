@@ -1,7 +1,7 @@
 #lang syndicate/actor
 ;; Shows that the checks enforcing single-use suspension-resumption are working.
 
-(actor #:name 'shouldnt-work
+(spawn #:name 'shouldnt-work
        (field [k #f])
        (on-start
         (flush!)

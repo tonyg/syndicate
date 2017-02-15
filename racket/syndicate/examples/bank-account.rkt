@@ -19,6 +19,6 @@
     (quit (list (message (deposit +100))
                 (message (deposit -30))))))
 
-(spawn manager 0 (patch-seq (assert (observe (deposit ?))) (assert (account 0))))
-(spawn observer (void) (assert (observe (account ?))))
-(spawn updater (void) (assert (observe (observe (deposit ?)))))
+(actor manager 0 (patch-seq (assert (observe (deposit ?))) (assert (account 0))))
+(actor observer (void) (assert (observe (account ?))))
+(actor updater (void) (assert (observe (observe (deposit ?)))))

@@ -31,7 +31,7 @@
 
 (define (spawn-one)
   (define p-at-spawn-time (p))
-  (actor #:name (list 'spawn-one p-at-spawn-time)
+  (spawn #:name (list 'spawn-one p-at-spawn-time)
          (define p-at-start-time (p))
          (assert `(p-at-spawn-time ,p-at-spawn-time))
          (assert `(p-at-start-time ,p-at-start-time))
@@ -39,7 +39,7 @@
          (on (message 'survey)
              (send! `(survey-response ,(p))))))
 
-(actor*
+(spawn*
  (spawn-one)
  (parameterize ((p 'first)) (spawn-one))
  (parameterize ((p 'second)) (spawn-one))

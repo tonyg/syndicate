@@ -2,7 +2,7 @@
 ;; Check that nested-world assertions are properly retracted.
 ;; Should print two "Got SCN:" patches - one adding, and one removing (observe 'die).
 
-#;(spawn (lambda (e s)
+#;(actor (lambda (e s)
          (match e
            [(message 'die) (quit)]
            [_ #f]))
@@ -11,7 +11,7 @@
                   (sub (observe 'die))))
 
 (spawn-dataspace
- (spawn (lambda (e s)
+ (actor (lambda (e s)
           (match e
             [(message (inbound 'die)) (quit)]
             [_ #f]))
@@ -19,7 +19,7 @@
         (patch-seq (sub (inbound 'die))
                    (sub (inbound (observe 'die))))))
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (match e
            [(? patch? p)
             (printf "Got SCN:\n")

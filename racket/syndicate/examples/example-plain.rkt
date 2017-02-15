@@ -61,16 +61,16 @@
      #f]
     [_ #f]))
 
-(run-ground (spawn quasi-spy (void) sub-all-except-meta)
+(run-ground (actor quasi-spy (void) sub-all-except-meta)
 	    (spawn-timer-driver)
 	    (message (set-timer 'tick 1000 'relative))
-	    (spawn ticker
+	    (actor ticker
                    1
                    (patch-seq (sub (observe (set-timer ? ? ?)))
                               (sub (timer-expired 'tick ?))))
-	    (spawn-dataspace (spawn r (void) sub-all-except-meta)
-                             (spawn b 0 '()))
-	    (spawn echoer
+	    (spawn-dataspace (actor r (void) sub-all-except-meta)
+                             (actor b 0 '()))
+	    (actor echoer
                    (void)
                    (sub (inbound (external-event (read-line-evt (current-input-port) 'any) ?))))
-	    (spawn printer (void) (sub `(print ,?))))
+	    (actor printer (void) (sub `(print ,?))))

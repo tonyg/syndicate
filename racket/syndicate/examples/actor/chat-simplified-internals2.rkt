@@ -13,12 +13,12 @@
 (struct tcp-out (id text) #:prefab)
 (struct tcp-in (id text) #:prefab)
 
-(actor #:name 'translate-tcp-protocol-into-simpler-sketch
- (during/actor (observe (tcp-connection _ $us))
+(spawn #:name 'translate-tcp-protocol-into-simpler-sketch
+ (during/spawn (observe (tcp-connection _ $us))
    (assert (advertise (observe (tcp-channel _ us _))))
    (on (asserted (advertise (tcp-channel $them us _)))
        (define id (seal (list them us)))
-       (actor (stop-when (retracted (advertise (tcp-channel them us _))))
+       (spawn (stop-when (retracted (advertise (tcp-channel them us _))))
               (stop-when (retracted (tcp-accepted id)))
               (assert (tcp-connection id us))
               (on (message (tcp-channel them us $bs))
@@ -32,8 +32,8 @@
 (struct speak (who what) #:prefab)
 (struct present (who) #:prefab)
 
-(actor #:name 'chat-server
- (during/actor (tcp-connection $id (tcp-listener 5999))
+(spawn #:name 'chat-server
+ (during/spawn (tcp-connection $id (tcp-listener 5999))
    (assert (tcp-accepted id))
    (define me (gensym 'user))  ;; a random user name
    (assert (present me))

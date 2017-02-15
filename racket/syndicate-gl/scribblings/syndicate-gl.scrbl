@@ -27,7 +27,7 @@ while the @racket[frame%] is active. If @racket[exit?] is true, calls
 
 @defproc[(spawn-keyboard-integrator
           [#:meta-level meta-level natural-number/c 1])
-         spawn?]{
+         actor?]{
 KeyboardIntegrator. Integrates key-events into key-pressed assertions. The
 @racket[meta-level] must point to the root of the 2d dataspace, which defaults
 to assuming is one level removed.

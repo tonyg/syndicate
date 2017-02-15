@@ -6,7 +6,7 @@
 (define CHAN "##syndicatelang")
 (define C (irc-connection "irc.freenode.net" 6667 NICK))
 
-(actor #:name 'irc-connection-example
+(spawn #:name 'irc-connection-example
 
        (on (message (irc-inbound C $who NICK $body))
            (log-info "~a said to me: ~a" who body)

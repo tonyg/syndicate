@@ -2,7 +2,7 @@
 
 (require/activate syndicate/drivers/udp)
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (match e
            [(message (udp-packet src dst #"quit\n"))
             (log-info "Got quit request")

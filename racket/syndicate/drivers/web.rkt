@@ -262,16 +262,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (spawn-web-driver)
-  (actor #:name 'web-server-manager
-         (during/actor (web-virtual-host "http" _ $port)
+  (spawn #:name 'web-server-manager
+         (during/spawn (web-virtual-host "http" _ $port)
                        #:name (list 'web-server port)
                        (setup-web-server "http"
                                          (or (web-server-connection-manager)
                                              (start-connection-manager))
                                          port)))
-  (actor #:name 'web-client-manager
+  (spawn #:name 'web-client-manager
          (on (message (web-request $id 'outbound $req $body))
-             (actor #:name (list 'web-client id)
+             (spawn #:name (list 'web-client id)
                     (do-client-request id req body)))))
 
 (define (setup-web-server scheme cm port)
@@ -309,7 +309,7 @@
                                     (request-headers lowlevel-req)
                                     (url-query (request-uri lowlevel-req)))
                                    (request-post-data/raw lowlevel-req)))
-      (actor #:name (list 'web-req id)
+      (spawn #:name (list 'web-req id)
              (for [(c (request-cookies lowlevel-req))]
                (match-define (client-cookie n v d p) c)
                (assert (web-request-cookie id n v d p)))

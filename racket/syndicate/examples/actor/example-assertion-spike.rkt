@@ -29,17 +29,17 @@
 
 (require/activate syndicate/drivers/timer)
 
-(actor #:name 'main
+(spawn #:name 'main
        (on (message 'trigger)
-           (actor* #:name 'asserter
+           (spawn* #:name 'asserter
                    (assert! 'up)
                    (send! 'done)))
-       (during/actor 'up
+       (during/spawn 'up
                      #:name 'up
                      (on-start (printf "starting\n"))
                      (on-stop (printf "stopping\n"))))
 
-(actor* #:name 'triggerer
+(spawn* #:name 'triggerer
         (until (asserted (observe 'trigger)))
         (send! 'trigger)
         (until (message 'done))

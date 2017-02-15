@@ -4,7 +4,7 @@
 (require (only-in racket/port read-bytes-line-evt))
 
 (define (spawn-command-listener)
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(message (inbound (inbound (external-event _ (list #"quit")))))
               (printf "Quitting just the leaf actor.\n")
@@ -21,7 +21,7 @@
   (define (sub-to-alarm)
     (sub (inbound (inbound
                    (external-event (alarm-evt (+ (current-inexact-milliseconds) 1000)) ?)))))
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(message (inbound (inbound (external-event _ _))))
               (printf "Tick!\n")

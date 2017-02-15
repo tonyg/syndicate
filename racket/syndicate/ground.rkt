@@ -158,7 +158,7 @@
 (define (run-ground . boot-actions)
   (run-ground* (spawn-dataspace #:name 'ground boot-actions)))
 
-;; Spawn -> Void
+;; actor -> Void
 (define (run-ground* s)
-  (define-values (proc t) (spawn->process+transition s))
+  (define-values (proc t) (actor->process+transition s))
   (process-transition t proc trie-empty 0))

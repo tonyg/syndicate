@@ -14,7 +14,7 @@
           [(eqv? (bytes-ref bs i) b) i]
           [else (loop (+ i 1))])))
 
-(actor (during/actor (observe (tcp-channel-line $src $dst _))
+(spawn (during/spawn (observe (tcp-channel-line $src $dst _))
          (field [buffer #""])
          (on (message (tcp-channel src dst $bs))
              (buffer (bytes-append (buffer) bs)))

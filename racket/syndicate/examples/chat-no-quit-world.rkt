@@ -14,7 +14,7 @@
   (define (say who fmt . vs)
     (unless (equal? who user) (send-to-remote "~a ~a\n" who (apply format fmt vs))))
   (list (send-to-remote "Welcome, ~a.\n" user)
-	(spawn/stateless
+	(actor/stateless
          (lambda (e)
            (match e
              [(message (inbound (tcp-channel _ _ bs)))

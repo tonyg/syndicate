@@ -4,7 +4,7 @@
 (struct set-box (new-value) #:transparent)
 (struct box-state (value) #:transparent)
 
-(actor (field [current-value 0])
+(spawn (field [current-value 0])
        (assert (box-state (current-value)))
        (stop-when (rising-edge (= (current-value) 10))
                   (log-info "box: terminating"))
@@ -12,7 +12,7 @@
            (log-info "box: taking on new-value ~v" new-value)
            (current-value new-value)))
 
-(actor (stop-when (retracted (observe (set-box _)))
+(spawn (stop-when (retracted (observe (set-box _)))
                   (log-info "client: box has gone"))
        (on (asserted (box-state $v))
            (log-info "client: learned that box's value is now ~v" v)

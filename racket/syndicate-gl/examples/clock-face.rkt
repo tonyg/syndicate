@@ -32,7 +32,7 @@
   (define i (text content 24 "green"))
   (simple-sprite layer x y (image-width i) (image-height i) i))
 
-(actor (field [minute-angle 0]
+(spawn (field [minute-angle 0]
               [hour-angle 0]
               [start-time (current-inexact-milliseconds)]
               [elapsed-seconds 0]

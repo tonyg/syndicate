@@ -21,7 +21,7 @@
        (and (< n 5)
             (transition (+ n 1) (message (tcp-channel server-id c (string->bytes/utf-8
                                                                    (format "msg ~v\n" n))))))]))
-  (spawn connection-handler
+  (actor connection-handler
 	 0
          (patch-seq (sub (advertise (tcp-channel c server-id ?)))
                     (sub (tcp-channel c server-id ?))

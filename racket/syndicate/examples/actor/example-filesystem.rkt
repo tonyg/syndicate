@@ -7,22 +7,22 @@
 (require (only-in racket/string string-trim string-split))
 
 (let ((e (read-bytes-line-evt (current-input-port) 'any)))
-  (actor #:name 'monitor-shell
+  (spawn #:name 'monitor-shell
          (stop-when (message (inbound (external-event e (list (? eof-object? _)))))
                     (send! (list "close" ?)))
          (on (message (inbound (external-event e (list (? bytes? $command-bytes)))))
              (send! (string-split (string-trim (bytes->string/utf-8 command-bytes)))))))
 
-(actor #:name 'monitor-opener
+(spawn #:name 'monitor-opener
        (on (message (list "open" $name))
-           (actor #:name (list 'monitor name)
+           (spawn #:name (list 'monitor name)
                   (stop-when (message (list "close" name)))
                   (on (asserted (file-content name file->bytes $bs))
                       (log-info "~a: ~v" name bs))))
 
        ;; The driver can track directory "contents" just as well as files.
        (on (message (list "opendir" $name))
-           (actor #:name (list 'monitor name)
+           (spawn #:name (list 'monitor name)
                   (stop-when (message (list "close" name)))
                   (on (asserted (file-content name directory-list $files))
                       (log-info "~a: ~v" name files)))))

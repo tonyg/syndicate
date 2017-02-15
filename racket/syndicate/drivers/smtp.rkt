@@ -60,8 +60,8 @@
      #:password [smtp-account-config-password #f])))
 
 (define (spawn-smtp-driver)
-  (actor #:name 'smtp-account-driver
-         (during/actor (smtp-account-config $id $host $port $user $password $ssl-mode)
+  (spawn #:name 'smtp-account-driver
+         (during/spawn (smtp-account-config $id $host $port $user $password $ssl-mode)
            #:name (list 'smtp-account id)
            (on-start
             (log-syndicate/drivers/smtp-info "~v starting: ~s ~s ~s" id host user ssl-mode))
@@ -100,7 +100,7 @@
                                       #:tls-encode (case ssl-mode
                                                      [(starttls) ports->ssl-ports]
                                                      [else #f]))))))
-         (during/actor (smtp-account-config _ _ _ _ _ _)
+         (during/spawn (smtp-account-config _ _ _ _ _ _)
            ;; By *conditionally* paying attention to inbound messages
            ;; from ground, we ensure that we don't unnecessarily hold
            ;; up ground termination.

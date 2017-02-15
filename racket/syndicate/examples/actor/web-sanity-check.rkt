@@ -12,7 +12,7 @@
   (until (message (timer-expired timer-id _))
          (on-start (send! (set-timer timer-id (* sec 1000.0) 'relative)))))
 
-(actor #:name 'server
+(spawn #:name 'server
        (field [counter 0])
        (assert vh)
 
@@ -20,7 +20,7 @@
                                  'inbound
                                  ($ req (web-request-header _ (web-resource vh `("ws" ())) _ _))
                                  _))
-           (actor (assert (web-response-websocket id))
+           (spawn (assert (web-response-websocket id))
                   (stop-when (retracted (observe (websocket-message id 'outbound _)))
                              (log-info "Connection dropped"))
                   (stop-when (message (websocket-message id 'inbound "quit"))

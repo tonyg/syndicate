@@ -82,7 +82,7 @@
 
 (define (db directory)
   (setup-directory! directory)
-  (spawn (lambda (e old-state)
+  (actor (lambda (e old-state)
            (match e
              [(? patch? p)
               (define-values (added-observations removed-observations)
@@ -102,7 +102,7 @@
 (define binding-projector (?! (binding ? ? ? ?)))
 
 (define (async-update key epoch version value on-complete on-conflict)
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch? p)
               (match (set->list (trie-project/set/single (patch-added p) binding-projector))
@@ -126,7 +126,7 @@
 (db "/tmp/durable-key-value-store")
 
 (define (monitor key)
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch? p)
               (define n (project-assertions (patch-added p) (?!)))

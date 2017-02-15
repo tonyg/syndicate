@@ -7,7 +7,7 @@
                 #:foreground [foreground "white"]
                 #:font-size [font-size 22]
                 name x y label callback)
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(message (inbound (mouse-event _ _ _ "button-down"))) (transition s (callback))]
              [_ #f]))
@@ -29,7 +29,7 @@
   (define (mouse-sub active-pat)
     (patch-seq (unsub (inbound (mouse-event ? ? ? ?)))
                (sub (inbound (mouse-event ? ? active-pat ?)))))
-  (spawn (match-lambda**
+  (actor (match-lambda**
           [((message (inbound (tick-event))) (idle ticks bx by))
            (define new-ticks (+ ticks 1))
            (define displacement (* (cos (* new-ticks 10 1/180 pi)) 4))
@@ -50,7 +50,7 @@
                     (mouse-sub name)
                     (move-to orig-x orig-y))))
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (match e
            [(? patch? p)
             (define-values (in out)

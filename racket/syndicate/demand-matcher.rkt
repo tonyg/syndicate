@@ -215,7 +215,7 @@
                                      (lambda (acs . rs) (cons (apply on-task-exit rs) acs))
                                      default-on-task-exit)
                                  #:task-supervisor task-supervisor))
-  (spawn #:name name
+  (actor #:name name
          demand-matcher-handle-event
 	 d
          (patch-seq (sub (projection->pattern demand-spec))

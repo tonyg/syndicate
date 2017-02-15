@@ -8,7 +8,7 @@
 (struct present (who) #:prefab)
 
 (define (spawn-session them us)
-  (actor (define (send-to-remote fmt . vs)
+  (spawn (define (send-to-remote fmt . vs)
            (send! (outbound (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs))))))
 
          (define (say who fmt . vs)

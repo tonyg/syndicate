@@ -7,7 +7,7 @@
 (define local-handle (tcp-handle 'chat))
 (define remote-handle (tcp-address "localhost" 5999))
 
-(spawn/stateless (lambda (e)
+(actor/stateless (lambda (e)
                    (match e
                      [(? patch/removed?) (quit)]
                      [(message (inbound (external-event _ (list (? eof-object?)))))

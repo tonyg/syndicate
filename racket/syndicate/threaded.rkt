@@ -1,15 +1,15 @@
 #lang racket/base
 
 (provide spawn-threaded-actor
-         actor/thread       ;; \__ once dataspace is split into mux and relay, these three
-         actor*/thread      ;;  |  will be very thin convenience macros over a common impl.
+         spawn/thread       ;; \__ once dataspace is split into mux and relay, these three
+         spawn*/thread      ;;  |  will be very thin convenience macros over a common impl.
          dataspace/thread)  ;; /
 
 (require racket/match)
 (require (for-syntax racket/base))
 
 (require (except-in syndicate dataspace))
-(require (only-in syndicate/actor actor actor* dataspace schedule-action!))
+(require (only-in syndicate/actor spawn spawn* dataspace schedule-action!))
 (require syndicate/hierarchy)
 (require syndicate/store)
 
@@ -29,7 +29,7 @@
      #f]))
 
 (define (spawn-threaded-actor spawn-action-thunk)
-  (make-spawn (lambda ()
+  (make-actor (lambda ()
                 (define path (current-actor-path))
                 (define thd (thread (lambda () (run-thread path spawn-action-thunk))))
                 (thread (lambda ()
@@ -65,20 +65,20 @@
     (signal-background-activity! #f)
     (deliver-event (thread-receive) proc))
 
-  (call-with-values (lambda () (spawn->process+transition (spawn-action-thunk)))
+  (call-with-values (lambda () (actor->process+transition (spawn-action-thunk)))
                     process-transition))
 
-(define-syntax actor/thread
+(define-syntax spawn/thread
   (syntax-rules ()
     [(_ body ...)
      (schedule-action!
-      (spawn-threaded-actor (lambda () (actor body ...))))]))
+      (spawn-threaded-actor (lambda () (spawn body ...))))]))
 
-(define-syntax actor*/thread
+(define-syntax spawn*/thread
   (syntax-rules ()
     [(_ body ...)
      (schedule-action!
-      (spawn-threaded-actor (lambda () (actor* body ...))))]))
+      (spawn-threaded-actor (lambda () (spawn* body ...))))]))
 
 (define-syntax dataspace/thread
   (syntax-rules ()

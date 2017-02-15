@@ -1,7 +1,7 @@
 #lang syndicate/actor
 ;; Demonstrates that fields at actor scope are visible to facets.
 
-(actor* (field [x 123])
+(spawn* (field [x 123])
         (react
          (on (message `(read-from ,$this-field))
              (log-info "Trying to read from ~a" this-field)

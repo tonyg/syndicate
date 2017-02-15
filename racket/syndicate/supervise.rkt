@@ -35,7 +35,7 @@
      (syntax/loc stx
        (supervise* (lambda () name-expr)
                    (lambda () linkage-expr ... (void))
-                   (lambda () (actor O ...))))]))
+                   (lambda () (spawn O ...))))]))
 
 (define (supervise* supervisor-name-thunk linkage-thunk actor-producing-thunk)
   ;; Awkward: the name applies to any and all potential supervisors
@@ -46,13 +46,13 @@
 
 (define ((supervise-spawn supervisor-name-thunk linkage-thunk previous-action-transformer) ac)
   (match (previous-action-transformer ac)
-    [(? spawn? s) (supervise** (or (supervisor-name-thunk) (gensym 'supervisor)) linkage-thunk s)]
+    [(? actor? s) (supervise** (or (supervisor-name-thunk) (gensym 'supervisor)) linkage-thunk s)]
     [other other]))
 
 (define (supervise** supervisor-name linkage-thunk supervisee-spawn-action)
   (actor-action #:name supervisor-name
    (react
-    (linkage-thunk) ;; may contain e.g. linkage instructions from during/actor
+    (linkage-thunk) ;; may contain e.g. linkage instructions from during/spawn
 
     (field [done? #f])
     (stop-when (rising-edge (done?)))
@@ -126,7 +126,7 @@
                 (catch-exns
                  (lambda ()
                    (define-values (initial-proc initial-transition)
-                     (spawn->process+transition supervisee-spawn-action))
+                     (actor->process+transition supervisee-spawn-action))
                    (proc initial-proc)
                    (supervisee-name (process-name initial-proc))
                    initial-transition)

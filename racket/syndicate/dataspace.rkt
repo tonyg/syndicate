@@ -125,7 +125,7 @@
              (hash)))
 
 (define (make-spawn-dataspace #:name [name #f] boot-actions-thunk)
-  (<spawn> (lambda ()
+  (<actor> (lambda ()
              (list dataspace-handle-event
                    (transition (make-dataspace (boot-actions-thunk)) '())
                    name))))
@@ -156,15 +156,15 @@
 
 (define ((perform-action label a) w)
   (match a
-    [(<spawn> boot)
+    [(<actor> boot)
      (invoke-process (mux-next-pid (dataspace-mux w)) ;; anticipate pid allocation
                      (lambda ()
                        (match (boot)
                          [(and results (list (? procedure?) (? general-transition?) _))
                           results]
                          [other
-                          (error 'spawn
-                                 "Spawn boot procedure must yield boot spec; received ~v"
+                          (error 'actor
+                                 "actor boot procedure must yield boot spec; received ~v"
                                  other)]))
                      (lambda (results)
                        (match-define (list behavior initial-transition name) results)

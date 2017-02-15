@@ -23,8 +23,8 @@
 ;; the query pattern. Adding `(let ((F field-name)) ...)` in the
 ;; query-value* macro (and friends) avoids the issue.
 
-(actor (define/query-value w #f ($ w (list 'val _)) w)
+(spawn (define/query-value w #f ($ w (list 'val _)) w)
        (begin/dataflow
          (log-info "w is ~v" (w))))
 
-(actor (assert (list 'val 123)))
+(spawn (assert (list 'val 123)))

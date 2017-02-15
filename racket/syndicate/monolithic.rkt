@@ -7,8 +7,8 @@
                     event?
                     action?
                     clean-transition
-                    spawn
-                    spawn/stateless))
+                    actor
+                    actor/stateless))
 (require "monolithic/scn.rkt")
 (require "monolithic/core.rkt")
 (provide (all-from-out "lang.rkt")

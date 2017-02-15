@@ -5,7 +5,7 @@
 (require "../demand-matcher.rkt")
 (require/activate "../drivers/timer.rkt")
 
-(spawn (lambda (e old-count)
+(actor (lambda (e old-count)
          (match e
            [(? patch?)
             (define-values (in out) (patch-project/set #:take 2 e `(parent ,(?!) ,(?!))))
@@ -21,7 +21,7 @@
 
 (define (insert-record record . monitors)
   (printf "Record ~v inserted, depending on ~v\n" record monitors)
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch/removed?)
               (printf "Retracting ~v because dependencies ~v vanished\n"
@@ -41,7 +41,7 @@
 (insert-record `(parent bob john))
 (insert-record `(parent ebbon bob))
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (match e
            [(? patch?)
             (transition s
@@ -55,7 +55,7 @@
        (void)
        (sub `(parent ,? ,?)))
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (match e
            [(? patch?)
             (transition s
@@ -64,7 +64,7 @@
                                                          `(parent ,(?!) ,(?!))))]
                           (match-define (list A C) AC)
                           (printf "Inductive step for ~v asserted\n" `(parent ,A ,C))
-                          (spawn (lambda (e s)
+                          (actor (lambda (e s)
                                    (define removed-parents
                                      (and (patch? e)
                                           (trie-project (patch-removed e) `(parent ,(?!) ,(?!)))))
@@ -102,7 +102,7 @@
 ;; (spawn-demand-matcher (observe `(ancestor ,(?!) ,(?!)))
 ;;                       (advertise `(ancestor ,(?!) ,(?!)))
 ;;                       (lambda (A B)
-;;                         (spawn (lambda (e old-facts)
+;;                         (actor (lambda (e old-facts)
 ;;                                  (match e
 ;;                                    [(? patch/removed?) (quit)]
 ;;                                    [(? patch?)
@@ -128,7 +128,7 @@
 ;;                                 (sub `(ancestor ,? ,B))
 ;;                                 (pub `(ancestor ,A ,B))))))
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (when (patch? e) (pretty-print-patch e))
          #f)
        (void)
@@ -138,7 +138,7 @@
   (define id (gensym 'after))
   (if (zero? msec)
       (thunk)
-      (spawn (lambda (e s) (and (message? e) (quit (thunk))))
+      (actor (lambda (e s) (and (message? e) (quit (thunk))))
              (void)
              (list (message (set-timer id msec 'relative))
                    (sub (timer-expired id ?))))))

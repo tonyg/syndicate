@@ -4,8 +4,8 @@
 (provide (struct-out message)
          (except-out (struct-out quit) quit)
          (rename-out [quit <quit>])
-         (except-out (struct-out spawn) spawn)
-         (rename-out [spawn <spawn>])
+         (except-out (struct-out actor) actor)
+         (rename-out [actor <actor>])
          (struct-out quit-dataspace)
          (struct-out transition)
 
@@ -45,9 +45,9 @@
          unsub
 
          (rename-out [make-quit quit])
-         make-spawn
-         (rename-out [spawn-process spawn])
-         spawn/stateless
+         make-actor
+         (rename-out [boot-process actor])
+         actor/stateless
 
          general-transition?
          ensure-transition
@@ -62,7 +62,7 @@
          clean-transition
 
          update-process-state
-         spawn->process+transition)
+         actor->process+transition)
 
 (require racket/match)
 (require (only-in racket/list flatten))
@@ -74,7 +74,7 @@
 (struct message (body) #:prefab)
 
 ;; Actions ⊃ Events
-(struct spawn (boot) #:prefab)
+(struct actor (boot) #:prefab)
 (struct quit-dataspace () #:prefab) ;; NB. An action. Compare (quit), a Transition.
 
 ;; A Behavior is a ((Option Event) Any -> Transition): a function
@@ -115,7 +115,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (event? x) (or (patch? x) (message? x)))
-(define (action? x) (or (event? x) (spawn? x) (quit-dataspace? x)))
+(define (action? x) (or (event? x) (actor? x) (quit-dataspace? x)))
 
 (define-syntax-rule (match-event e clause ...)
   (match e
@@ -156,20 +156,20 @@
 (define (update-process-state i new-state)
   (struct-copy process i [state new-state]))
 
-(define (spawn->process+transition s)
-  (match-define (list beh t name) ((spawn-boot s)))
+(define (actor->process+transition s)
+  (match-define (list beh t name) ((actor-boot s)))
   (values (process name beh 'undefined-initial-state) t))
 
 (define (make-quit #:exception [exn #f] . actions)
   (quit exn actions))
 
-(define (make-spawn spawn-producing-thunk)
-  (spawn (let ((parameterization (current-parameterization)))
+(define (make-actor actor-producing-thunk)
+  (actor (let ((parameterization (current-parameterization)))
            (lambda ()
              (call-with-parameterization
               parameterization
               (lambda ()
-                (match (spawn-producing-thunk)
+                (match (actor-producing-thunk)
                   [(list (? procedure? raw-beh) (? general-transition? txn) name)
                    (list (lambda (e s)
                            (call-with-parameterization parameterization (lambda () (raw-beh e s))))
@@ -177,28 +177,28 @@
                          name)]
                   [other other]))))))) ;; punt on error checking to dataspace boot code
 
-(define-syntax spawn-process
+(define-syntax boot-process
   (syntax-rules ()
     [(_ #:name name-exp behavior-exp initial-state-exp initial-action-tree-exp)
-     (make-spawn (lambda ()
+     (make-actor (lambda ()
                    (list behavior-exp
                          (transition initial-state-exp initial-action-tree-exp)
                          name-exp)))]
     [(_ behavior-exp initial-state-exp initial-action-tree-exp)
-     (make-spawn (lambda ()
+     (make-actor (lambda ()
                    (list behavior-exp
                          (transition initial-state-exp initial-action-tree-exp)
                          #f)))]))
 
-(define-syntax spawn/stateless
+(define-syntax actor/stateless
   (syntax-rules ()
     [(_ #:name name-exp behavior-exp initial-action-tree-exp)
-     (spawn-process #:name name-exp
+     (boot-process #:name name-exp
                     (stateless-behavior-wrap behavior-exp)
                     (void)
                     initial-action-tree-exp)]
     [(_ behavior-exp initial-action-tree-exp)
-     (spawn-process (stateless-behavior-wrap behavior-exp)
+     (boot-process (stateless-behavior-wrap behavior-exp)
                     (void)
                     initial-action-tree-exp)]))
 

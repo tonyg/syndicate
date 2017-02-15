@@ -3,7 +3,7 @@
 ;; Demonstrates (hopefully) correct processing of meta-interests when dropping a patch.
 
 (spawn-dataspace
- (spawn (lambda (e u)
+ (actor (lambda (e u)
           (match u
             [0 (transition 1 '())]
             [1 (transition 2 (retract (outbound 'a)))]

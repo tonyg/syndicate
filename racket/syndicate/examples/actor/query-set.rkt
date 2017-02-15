@@ -2,7 +2,7 @@
 
 (require racket/set)
 
-(actor #:name 'queryer
+(spawn #:name 'queryer
        (define/query-value as-value 'absent `(item ,$a ,$b) (list a b))
        (define/query-set as-set `(item ,$a ,$b) (list a b)
          #:on-add (log-info "as-set adding ~v/~v" a b)
@@ -42,7 +42,7 @@
            (printf "----------------------------------------\n")
            (flush-output)))
 
-(actor* #:name 'mutator
+(spawn* #:name 'mutator
         (until (asserted 'observer-in-ds-ready))
         (assert! `(item a 1))
         (assert! `(item b 2))
@@ -60,7 +60,7 @@
              (log-info "Outer level anchor: ~a" anchor)
              (log-info "Inner level anchor: ~a" (level-anchor))
              (log-info "Computed meta-level: ~v" LEVEL)
-             (actor #:name 'observer-in-ds
+             (spawn #:name 'observer-in-ds
                     (assert (outbound* LEVEL 'observer-in-ds-ready))
                     (on-start (log-info "observer-in-ds: STARTING"))
                     (define/query-set items (inbound* LEVEL `(item ,$a ,$b)) (list a b))

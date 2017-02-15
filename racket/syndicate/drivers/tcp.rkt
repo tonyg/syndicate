@@ -93,7 +93,7 @@
   (define listener (tcp:tcp-listen port 128 #t))
   (define control-ch (make-channel))
   (thread (lambda () (tcp-listener-thread control-ch listener server-addr)))
-  (spawn #:name (list 'drivers/tcp:listen port)
+  (actor #:name (list 'drivers/tcp:listen port)
          tcp-listener-behavior
 	 (listener-state control-ch server-addr)
          (patch-seq
@@ -181,7 +181,7 @@
 (define (spawn-connection local-addr remote-addr cin cout)
   (define control-ch (make-channel))
   (thread (lambda () (tcp-connection-thread remote-addr local-addr control-ch cin)))
-  (spawn #:name (list 'drivers/tcp:connect local-addr remote-addr)
+  (actor #:name (list 'drivers/tcp:connect local-addr remote-addr)
          tcp-connection
 	 (connection-state control-ch cout)
          (patch-seq

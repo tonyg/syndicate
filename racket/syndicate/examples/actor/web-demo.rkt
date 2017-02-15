@@ -5,13 +5,13 @@
 (require/activate syndicate/drivers/web)
 (require net/url)
 
-(actor #:name 'server
+(spawn #:name 'server
        (define vh (web-virtual-host "http" ? 9090))
 
        (assert vh)
 
        (on (web-request-incoming (id req) vh _ ("ws" ()))
-           (actor
+           (spawn
             (assert (web-response-websocket id))
             (stop-when (websocket-connection-closed id) (log-info "Connection dropped"))
             (stop-when (websocket-message-recv id "quit") (log-info "Received quit command"))

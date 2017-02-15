@@ -3,9 +3,9 @@
 (require syndicate/threaded)
 (require/activate syndicate/drivers/timer)
 
-(actor
- (during/actor (observe `(fib ,$n ,_))
-               #:actor actor/thread
+(spawn
+ (during/spawn (observe `(fib ,$n ,_))
+               #:spawn spawn/thread
                (on-start (log-info "Computing fib ~a..." n))
                (on-stop (log-info "Leaving fib ~a" n))
                (assert `(up ,n))
@@ -24,7 +24,7 @@
                                       answer))))))))
 
 (dataspace/thread
- (actor
+ (spawn
   (field [tick-count 0])
   (define (arm!)
     (log-info "Tick ~v!" (tick-count))

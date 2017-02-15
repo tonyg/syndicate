@@ -16,10 +16,10 @@
 
 (struct x (v) #:prefab)
 
-(actor (on (message (x 'ping))
+(spawn (on (message (x 'ping))
            (send! (x 'pong))))
 
-(actor (field [flag 'clear])
+(spawn (field [flag 'clear])
        (begin/dataflow
          (printf "flag: ~v\n" (flag)))
 
@@ -34,5 +34,5 @@
        (on (message (x 'first))
            (spec 'ping)))
 
-(actor (on (message (x $v))
+(spawn (on (message (x $v))
            (printf "- ~v\n" v)))

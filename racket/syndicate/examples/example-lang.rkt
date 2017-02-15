@@ -18,7 +18,7 @@
      (newline)])
   (printf "========================================\n")
   #f)
-(spawn quasi-spy (void) sub-all-except-meta)
+(actor quasi-spy (void) sub-all-except-meta)
 
 (define (r e s)
   (match e
@@ -32,8 +32,8 @@
 	    #f)]
     [_ #f]))
 
-(spawn-dataspace (spawn r (void) sub-all-except-meta)
-                 (spawn b 0 '()))
+(spawn-dataspace (actor r (void) sub-all-except-meta)
+                 (actor b 0 '()))
 
 (define (echoer e s)
   (match e
@@ -43,7 +43,7 @@
      (transition s (message `(print (got-line ,line))))]
     [_ #f]))
 
-(spawn echoer
+(actor echoer
        (void)
        (sub (inbound (external-event (read-line-evt (current-input-port) 'any) ?))))
 
@@ -61,7 +61,7 @@
     [_ #f]))
 
 (message (set-timer 'tick 1000 'relative))
-(spawn ticker
+(actor ticker
        1
        (patch-seq (sub (observe (set-timer ? ? ?)))
                   (sub (timer-expired 'tick ?))))
@@ -73,6 +73,6 @@
      #f]
     [_ #f]))
 
-(spawn printer
+(actor printer
        (void)
        (sub `(print ,?)))

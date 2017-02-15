@@ -17,7 +17,7 @@
 
 (define (tcp-proxy-process them us)
   (define id (seal (list them us)))
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(message (tcp-channel _ _ bs))
               (transition s (message (tcp-incoming-data id bs)))]
@@ -41,7 +41,7 @@
   (define (say who fmt . vs)
     (unless (equal? who user) (send-to-remote "~a ~a\n" who (apply format fmt vs))))
   (list (send-to-remote "Welcome, ~a.\n" user)
-	(spawn/stateless
+	(actor/stateless
          (lambda (e)
            (match e
              [(message (tcp-incoming-data _ bs))
@@ -68,7 +68,7 @@
                       (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?))
                       tcp-proxy-process)
 
-(spawn (lambda (e s)
+(actor (lambda (e s)
          (if (patch? e)
              (transition s
                          (for/list [(id (project-assertions (patch-added e)

@@ -15,8 +15,8 @@
          (struct-out monolithic-wrapper)
          wrap-monolithic-state
          wrap-monolithic-behaviour
-         (rename-out [spawn-monolithic spawn])
-         (rename-out [spawn-monolithic/stateless spawn/stateless]))
+         (rename-out [actor-monolithic actor])
+         (rename-out [actor-monolithic/stateless actor/stateless]))
 
 (require racket/match)
 (require (only-in racket/list flatten))
@@ -32,7 +32,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (event? x) (or (scn? x) (message? x)))
-(define (action? x) (or (event? x) (spawn? x) (quit-dataspace? x)))
+(define (action? x) (or (event? x) (actor? x) (quit-dataspace? x)))
 
 (define (clean-transition t)
   (match t
@@ -120,30 +120,30 @@
                                             [state new-underlying-state])
                                monolithic-actions)])))
 
-(define-syntax spawn-monolithic
+(define-syntax actor-monolithic
   (syntax-rules ()
     [(_ #:name name-exp behavior-exp initial-state-exp initial-action-tree-exp)
-     (make-spawn (lambda ()
+     (make-actor (lambda ()
                    (list (wrap-monolithic-behaviour behavior-exp)
                          (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
                                                  (clean-actions initial-action-tree-exp))
                          name-exp)))]
     [(_ behavior-exp initial-state-exp initial-action-tree-exp)
-     (make-spawn (lambda ()
+     (make-actor (lambda ()
                    (list (wrap-monolithic-behaviour behavior-exp)
                          (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
                                                  (clean-actions initial-action-tree-exp))
                          #f)))]))
 
-(define-syntax spawn-monolithic/stateless
+(define-syntax actor-monolithic/stateless
   (syntax-rules ()
     [(_ #:name name-exp behavior-exp initial-action-tree-exp)
-     (spawn-monolithic #:name name-exp
+     (actor-monolithic #:name name-exp
                        (stateless-behavior-wrap behavior-exp)
                        (void)
                        initial-action-tree-exp)]
     [(_ behavior-exp initial-action-tree-exp)
-     (spawn-monolithic (stateless-behavior-wrap behavior-exp)
+     (actor-monolithic (stateless-behavior-wrap behavior-exp)
                        (void)
                        initial-action-tree-exp)]))
 

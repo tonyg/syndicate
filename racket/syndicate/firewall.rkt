@@ -49,8 +49,8 @@
     [(_ ((~literal forbid) expr)) (syntax/loc stx (retract expr))]))
 
 (define (spawn-firewall limit inner-spawn)
-  (make-spawn (lambda ()
-                (define-values (proc initial-transition) (spawn->process+transition inner-spawn))
+  (make-actor (lambda ()
+                (define-values (proc initial-transition) (actor->process+transition inner-spawn))
                 (list firewall-handle-event
                       (firewall-transition initial-transition (firewall limit proc))
                       (process-name proc)))))
@@ -79,7 +79,7 @@
           (message c))]
     [(patch a d)
      (patch (limit-trie limit a) (limit-trie limit d))]
-    [(? spawn? s)
+    [(? actor? s)
      (spawn-firewall limit s)]
     [_
      (error 'firewall-action "Cannot filter action ~v" ac)]))

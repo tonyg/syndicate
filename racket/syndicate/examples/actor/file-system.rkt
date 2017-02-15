@@ -5,7 +5,7 @@
 (require/activate "fs-shell.rkt")
 (require/activate "fs-protocol.rkt")
 
-(actor (field [files (hash)])
+(spawn (field [files (hash)])
        (on (asserted (observe (file $name _)))
            (printf "At least one reader exists for ~v\n" name)
            (until (retracted (observe (file name _)))

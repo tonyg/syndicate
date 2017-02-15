@@ -2,7 +2,7 @@
 ;; Demonstrates that fields may used in a child facet of a declaring
 ;; facet, but not the other way around.
 
-(actor #:name 'reading-actor
+(spawn #:name 'reading-actor
        (field [top 123])
        (on (message `(read-from ,$this-field))
            (log-info "Trying to read from ~a" this-field)

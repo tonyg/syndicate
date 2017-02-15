@@ -136,7 +136,7 @@
 						  (ssl-options->ssl-tcp@ ssl-options)
 						  tcp@)
 				       (connection-handler server-addr)))
-  (spawn #:name (list 'drivers/websocket:listen port)
+  (actor #:name (list 'drivers/websocket:listen port)
          websocket-listener
 	 (listener-state shutdown-procedure server-addr)
          (patch-seq
@@ -160,7 +160,7 @@
      (when (not (exn? c))
        (log-info "Connected to ~a ~a" url (current-inexact-milliseconds))
        (connection-thread-loop control-ch c id))))
-  (spawn #:name (list 'drivers/websocket:connect/initial local-addr remote-addr id)
+  (actor #:name (list 'drivers/websocket:connect/initial local-addr remote-addr id)
          (lambda (e buffered-messages-rev)
            (match e
              [(message (inbound (websocket-connection _ _ _ c _)))
@@ -214,7 +214,7 @@
       [_ #f])))
 
 (define (spawn-connection local-addr remote-addr id c control-ch)
-  (spawn #:name (list 'drivers/websocket:connect local-addr remote-addr id)
+  (actor #:name (list 'drivers/websocket:connect local-addr remote-addr id)
          websocket-connection-behaviour
 	 (connection-state local-addr remote-addr c control-ch)
          (patch-seq

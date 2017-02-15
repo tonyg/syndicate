@@ -60,7 +60,7 @@
                                           label)))))
 
 (define (actor-view name parent-pid pid is-dataspace?)
-  (actor #:name (list 'actor-view name pid)
+  (spawn #:name (list 'actor-view name pid)
 
          (field [pos #f])
          (define/query-value win #f (inbound (window $w $h)) (window w h)
@@ -123,7 +123,7 @@
                   1x1-white-rectangle)))
 
 (define (spawn-influence-view-factory)
-  (actor #:name 'influence-view-factory
+  (spawn #:name 'influence-view-factory
          (field [pairs (set)])
          (on (message (influence $subject $object))
              (define entry (cons subject object))
@@ -132,7 +132,7 @@
                (react
                 (stop-when (retracted (view-position subject _)) (pairs (set-remove (pairs) entry)))
                 (stop-when (retracted (view-position object _)) (pairs (set-remove (pairs) entry))))
-               (actor #:name (list 'influence-view entry)
+               (spawn #:name (list 'influence-view entry)
                       (field [strength 1] [line-width 0])
                       (define/query-value subject-pos #f (view-position subject $p) p)
                       (define/query-value object-pos #f (view-position object $p) p)
@@ -153,7 +153,7 @@
                           (strength (+ (strength) 1))))))))
 
 (define (spawn-layout-engine)
-  (actor #:name 'layout-engine
+  (spawn #:name 'layout-engine
          (define/query-value win #f (inbound (window $w $h)) (window w h))
          (define/query-hash positions (view-position $pid $pos) pid pos)
          (define/query-set springs ($ s (spring _ _ _ _ _)) s)
@@ -213,7 +213,7 @@
   (with-store ((current-trace-procedures '()))
     ((2d-dataspace #:label "Syndicate IDE" #:exit? exit?)
 
-     (actor #:name 'user-thread-death-monitor
+     (spawn #:name 'user-thread-death-monitor
             (field [user-thread-running? #t])
             (assert #:when (user-thread-running?) 'user-thread-running)
             (on (message (inbound (? frame-event? _)))
@@ -222,7 +222,7 @@
      ;; Ground dataspace
      (actor-view 'ground #f '() #t)
 
-     (actor #:name 'notification-relay
+     (spawn #:name 'notification-relay
             (on (message (inbound (? frame-event? _)))
                 (let loop ()
                   (define n (async-channel-try-get from-user-thread-ch))
@@ -245,14 +245,14 @@
                      (send! n)])
                   (when n (loop)))))
 
-     (actor #:name 'quit-listener
+     (spawn #:name 'quit-listener
             (on (message (inbound (key-event #\q #t _)))
                 (assert! (outbound 'stop))))
 
      (spawn-influence-view-factory)
      (spawn-layout-engine)
 
-     ;; (actor #:name 'debug
+     ;; (spawn #:name 'debug
      ;;        (on (message (? trace-notification? $n))
      ;;            (log-info "INBOUND: ~v --~v--> ~v"
      ;;                      (trace-notification-source n)

@@ -24,9 +24,9 @@
 
 (define (non-void-field? f) (not (void? (f))))
 
-(define (cell-expr->actor-expr name expr)
+(define (cell-expr->spawn-expr name expr)
   (define bindings (set->list (extract-bindings expr)))
-  `(actor (stop-when (message (set-cell ',name _)))
+  `(spawn (stop-when (message (set-cell ',name _)))
           (field ,@(for/list [(b bindings)] `[,b (void)]))
           (assert #:when (andmap non-void-field? (list ,@bindings))
                   (cell ',name
@@ -36,16 +36,16 @@
               `(on (asserted (cell ',b $value))
                    (,b value)))))
 
-(actor (on (message (set-cell $name $expr))
-           (define actor-expr (cell-expr->actor-expr name expr))
-           ;; (local-require racket/pretty) (pretty-print actor-expr)
-           (eval actor-expr (namespace-anchor->namespace ns))))
+(spawn (on (message (set-cell $name $expr))
+           (define spawn-expr (cell-expr->spawn-expr name expr))
+           ;; (local-require racket/pretty) (pretty-print spawn-expr)
+           (eval spawn-expr (namespace-anchor->namespace ns))))
 
-(actor (on (asserted (cell $name $value))
+(spawn (on (asserted (cell $name $value))
            (printf ">>> ~a ~v\n" name value)
            (flush-output)))
 
-(actor (stop-when (message (inbound 'quit)))
+(spawn (stop-when (message (inbound 'quit)))
        (on (message (inbound (set-cell $name $expr)))
            (send! (set-cell name expr)))
        (void (thread (lambda ()

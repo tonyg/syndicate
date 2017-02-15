@@ -13,7 +13,7 @@
 (struct present (who) #:prefab)
 
 (define (spawn-session id)
-  (actor (define (send-to-remote fmt . vs)
+  (spawn (define (send-to-remote fmt . vs)
            (send! (tcp-outgoing-data id (string->bytes/utf-8 (apply format fmt vs)))))
 
          (define (say who fmt . vs)
@@ -35,10 +35,10 @@
              (send! (says user (string-trim (bytes->string/utf-8 bs)))))))
 
 (define us (tcp-listener 5999))
-(actor (assert (advertise (observe (tcp-channel _ us _))))
+(spawn (assert (advertise (observe (tcp-channel _ us _))))
        (on (asserted (advertise (tcp-channel $them us _)))
            (define id (seal (list them us)))
-           (actor (stop-when (retracted (advertise (tcp-channel them us _))))
+           (spawn (stop-when (retracted (advertise (tcp-channel them us _))))
                   (stop-when (retracted (tcp-local-open id)))
                   (assert (tcp-remote-open id))
                   (on (message (tcp-channel them us $bs))
@@ -46,5 +46,5 @@
                   (on (message (tcp-outgoing-data id $bs))
                       (send! (tcp-channel us them bs))))))
 
-(actor (on (asserted (tcp-remote-open $id))
+(spawn (on (asserted (tcp-remote-open $id))
            (spawn-session id)))

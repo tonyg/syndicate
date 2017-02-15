@@ -32,22 +32,22 @@
 
 (require/activate syndicate/drivers/timestate)
 
-(actor (field [var1 1])
+(spawn (field [var1 1])
        (assert (list 'var1 (var1)))
        (on (message 'tick)
            (var1 (+ (var1) 1))))
 
-(actor (during (list 'var1 $v)
+(spawn (during (list 'var1 $v)
          (assert (list 'var2 (* v 1)))))
 
-(actor (during (list 'var1 $v1)
+(spawn (during (list 'var1 $v1)
          (during (list 'var2 $v2)
            (assert (list 'var3 (+ v1 v2))))))
 
-(actor (on (asserted (list $k $v))
+(spawn (on (asserted (list $k $v))
            (printf "~v = ~v\n" k v)))
 
-(actor* (until (asserted (observe 'tick)))
+(spawn* (until (asserted (observe 'tick)))
         (sleep 0.1)
         (printf "---\n")
         (send! 'tick)

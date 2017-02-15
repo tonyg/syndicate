@@ -5,7 +5,7 @@
 (require "../2d.rkt")
 
 (define (spawn-background)
-  (actor
+  (spawn
    (during (inbound (window $width $height))
            (assert (outbound
                     (scene (seal `((push-matrix (scale ,width ,(* height 2))
@@ -37,7 +37,7 @@
 (define (draggable-shape name orig-x orig-y z plain-image hover-image
                          #:coordinate-map-id [coordinate-map-id #f]
                          #:parent [parent-id #f])
-  (actor (field [x orig-x] [y orig-y])
+  (spawn (field [x orig-x] [y orig-y])
          (define/query-value touching? #f (inbound (touching name)) #t)
          (assert (outbound (simple-sprite #:parent parent-id
                                           #:coordinate-map-id coordinate-map-id
@@ -70,7 +70,7 @@
   (local-require 2htdp/planetcute)
   (define CC character-cat-girl)
 
-  (actor (field [x 100] [y 100])
+  (spawn (field [x 100] [y 100])
          (assert (outbound (simple-sprite #:touchable-id 'player
                                           #:coordinate-map-id 'player
                                           -0.5 (x) (y) (image-width CC) (image-height CC) CC)))
@@ -99,7 +99,7 @@
                (y ny)))))
 
 (define (spawn-frame-counter)
-  (actor (field [i empty-image])
+  (spawn (field [i empty-image])
          (assert (outbound
                   (simple-sprite -10 300 10 (image-width (i)) (image-height (i)) (i))))
          (on (message (inbound (frame-event $counter $sim-time-ms _ _)))
@@ -125,10 +125,10 @@
                  (circle 50 "solid" "green")
                  (circle 50 "solid" "cyan"))
 
-(actor* (until (message (inbound (key-event #\q #t _))))
+(spawn* (until (message (inbound (key-event #\q #t _))))
         (assert! (outbound 'stop)))
 
-(actor (during (inbound (touching $id))
+(spawn (during (inbound (touching $id))
                (on-start (log-info "Touching ~v" id))
                (on-stop (log-info "No longer touching ~v" id))))
 

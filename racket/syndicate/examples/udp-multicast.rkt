@@ -21,7 +21,7 @@
 (define group-address "233.252.0.101") ;; falls within MCAST-TEST-NET
 (define group-port 5999) ;; make sure your firewall is open to UDP on this port
 
-(actor (define me (bytes->hex-string (crypto-random-bytes 8)))
+(spawn (define me (bytes->hex-string (crypto-random-bytes 8)))
        (define h (udp-listener group-port))
 
        (define (rearm!) (send! (set-timer h 1000 'relative)))

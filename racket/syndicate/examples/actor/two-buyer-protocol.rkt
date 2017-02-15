@@ -83,7 +83,7 @@
 ;; SELLER
 ;;
 (define (seller)
-  (actor (field [books (hash "The Wind in the Willows" 3.95
+  (spawn (field [books (hash "The Wind in the Willows" 3.95
                              "Catch 22" 2.22
                              "Candide" 34.95)]
                 [next-order-id 10001483])
@@ -117,7 +117,7 @@
 
                 ;; Tell the ordering party their order ID and delivery date.
                 ;;
-                (actor
+                (spawn
                  (while-relevant-assert
                   (order title offer-price order-id "March 9th")))]))))
 
@@ -175,7 +175,7 @@
                            (log-info "A learns that the split-proposal for ~v was rejected" title)
                            (try-to-split (+ contribution (/ (- price contribution) 2)))))]))])]))
 
-  (actor* (try-to-buy (list "Catch 22"
+  (spawn* (try-to-buy (list "Catch 22"
                             "Encyclopaedia Brittannica"
                             "Candide"
                             "The Wind in the Willows")
@@ -184,7 +184,7 @@
 ;; Serial SPLIT-DISPOSER
 ;;
 (define (buyer-b)
-  (actor ;; This actor maintains a record of the amount of money it has to spend.
+  (spawn ;; This actor maintains a record of the amount of money it has to spend.
          ;;
          (field [funds 5.00])
 
@@ -207,7 +207,7 @@
                 ;; this could perhaps be a facet rather than a full actor) to handle the
                 ;; actual purchase now that we have agreed on a split.
                 ;;
-                (actor* (define-values (order-id delivery-date)
+                (spawn* (define-values (order-id delivery-date)
                           (react/suspend (yield)
                                          ;; While we are in this state, waiting for order confirmation, take
                                          ;; the opportunity to signal to our SPLIT-PROPOSER that we accepted
