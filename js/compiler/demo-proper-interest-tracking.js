@@ -14,7 +14,7 @@ assertion type ready(what);
 assertion type entry(key, val);
 
 ground dataspace {
-  actor named 'listener' {
+  spawn named 'listener' {
     assert ready('listener');
     on asserted entry($key, _) {
       console.log('key asserted', key);
@@ -28,7 +28,7 @@ ground dataspace {
     }
   }
 
-  actor named 'other-listener' {
+  spawn named 'other-listener' {
     assert ready('other-listener');
     during entry($key, _) {
       on start { console.log('(other-listener) key asserted', key); }
@@ -50,7 +50,7 @@ ground dataspace {
     }
   }
 
-  actor named 'driver' {
+  spawn named 'driver' {
     stop on asserted ready('listener') {
       react {
         stop on asserted ready('other-listener') {

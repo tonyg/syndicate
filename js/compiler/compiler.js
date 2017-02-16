@@ -86,10 +86,10 @@ function buildCaseEvent(eventPattern, body) {
 }
 
 var modifiedSourceActions = {
-  ActorStatement_noReact: function(_actorStar, _namedOpt, nameExpOpt, block) {
+  ActorStatement_noReact: function(_spawnStar, _namedOpt, nameExpOpt, block) {
     return buildActor(nameExpOpt, block, false);
   },
-  ActorStatement_withReact: function(_actor, _namedOpt, nameExpOpt, block) {
+  ActorStatement_withReact: function(_spawn, _namedOpt, nameExpOpt, block) {
     return buildActor(nameExpOpt, block, true);
   },
 
@@ -197,7 +197,7 @@ var modifiedSourceActions = {
                                                [],
                                                '{}')) + '}');
   },
-  ActorEndpointStatement_duringActor: function(_during, pattern, _actor, _named, nameExpOpt, block)
+  ActorEndpointStatement_duringSpawn: function(_during, pattern, _spawn, _named, nameExpOpt, block)
   {
     var cachedAssertionVar = gensym('cachedAssertion');
     var actorBlock = {

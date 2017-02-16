@@ -25,7 +25,7 @@ function piece(text, pos, lo, hi, cls) {
 }
 
 function spawnGui() {
-  actor {
+  spawn {
     field this.text = '';
     field this.pos = 0;
     field this.highlightState = false;
@@ -78,7 +78,7 @@ function spawnGui() {
 // Textfield Model
 
 function spawnModel() {
-  actor {
+  spawn {
     field this.fieldValue = "initial";
     field this.cursorPos = this.fieldValue.length; /* positions address gaps between characters */
 
@@ -119,7 +119,7 @@ function spawnModel() {
 // Search engine
 
 function spawnSearch() {
-  actor {
+  spawn {
     field this.searchtext = document.getElementById("searchBox").value;
     field this.fieldValue = "";
     field this.highlight = false;

@@ -9,7 +9,7 @@ ground dataspace G {
   Syndicate.Timer.spawnTimerDriver();
   Syndicate.Broker.spawnBrokerClientDriver();
 
-  actor {
+  spawn {
     var ui = new Syndicate.UI.Anchor();
     var color = tinycolor('hsl ' + (Math.random() * 360 | 0) + ' 100% 50%').toHexString();
     var x = 0;

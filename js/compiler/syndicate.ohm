@@ -18,8 +18,8 @@ Syndicate <: ES5 {
   FunctionBodyBlock = "{" FunctionBody "}"   // odd that this isn't in es5.ohm somewhere
 
   ActorStatement
-    = actorStar (named Expression<withIn>)? FunctionBodyBlock -- noReact
-    | actor (named Expression<withIn>)? FunctionBodyBlock     -- withReact
+    = spawnStar (named Expression<withIn>)? FunctionBodyBlock -- noReact
+    | spawn (named Expression<withIn>)? FunctionBodyBlock     -- withReact
 
   DataspaceStatement
     = ground dataspace identifier? FunctionBodyBlock -- ground
@@ -38,7 +38,7 @@ Syndicate <: ES5 {
     | stop on FacetTransitionEventPattern #(sc)                               -- stopOnNoCont
     | dataflow FunctionBodyBlock                                              -- dataflow
     | during FacetPattern FunctionBodyBlock                                   -- during
-    | during FacetPattern actor (named Expression<withIn>)? FunctionBodyBlock -- duringActor
+    | during FacetPattern spawn (named Expression<withIn>)? FunctionBodyBlock -- duringSpawn
 
   AssertWhenClause = when "(" Expression<withIn> ")"
 
@@ -69,8 +69,8 @@ Syndicate <: ES5 {
   // we don't want to make them unavailable to programs as
   // identifiers.
 
-  actorStar = "actor*" ~identifierPart
-  actor = "actor" ~("*" | identifierPart)
+  spawnStar = "spawn*" ~identifierPart
+  spawn = "spawn" ~("*" | identifierPart)
   assert = "assert" ~identifierPart
   asserted = "asserted" ~identifierPart
   assertion = "assertion" ~identifierPart

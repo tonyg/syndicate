@@ -2,7 +2,7 @@ assertion type person(id, firstName, lastName, address, age);
 message type setSortColumn(number);
 
 function newRow(id, firstName, lastName, address, age) {
-  actor named ('model' + id) {
+  spawn named ('model' + id) {
     assert person(id, firstName, lastName, address, age);
   }
 }
@@ -16,7 +16,7 @@ function spawnModel() {
 }
 
 function spawnView() {
-  actor named 'view' {
+  spawn named 'view' {
     var ui = new Syndicate.UI.Anchor();
     field this.orderColumn = 2;
 
@@ -37,7 +37,7 @@ function spawnView() {
 }
 
 function spawnController() {
-  actor named 'controller' {
+  spawn named 'controller' {
     on message Syndicate.UI.globalEvent('table#the-table th', 'click', $e) {
       :: setSortColumn(JSON.parse(e.target.dataset.column));
     }

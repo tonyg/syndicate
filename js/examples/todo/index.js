@@ -24,7 +24,7 @@ assertion type show(completed);
 //////////////////////////////////////////////////////////////////////////
 
 function todoListItemModel(initialId, initialTitle, initialCompleted) {
-  actor {
+  spawn {
     field this.id = initialId;
     field this.title = initialTitle;
     field this.completed = initialCompleted;
@@ -54,7 +54,7 @@ function getTemplate(id) {
 }
 
 function todoListItemView(id) {
-  actor {
+  spawn {
     stop on retracted todo(id, _, _);
 
     this.ui = new Syndicate.UI.Anchor();
@@ -109,7 +109,7 @@ function todoListItemView(id) {
 ground dataspace G {
   Syndicate.UI.spawnUIDriver();
 
-  actor {
+  spawn {
     on message Syndicate.UI.globalEvent('.new-todo', 'change', $e) {
       var newTitle = e.target.value.trim();
       if (newTitle) :: createTodo(newTitle);
@@ -117,7 +117,7 @@ ground dataspace G {
     }
   }
 
-  actor {
+  spawn {
     this.ui = new Syndicate.UI.Anchor();
 
     during activeTodoCount($count) {
@@ -150,7 +150,7 @@ ground dataspace G {
     }
   }
 
-  actor {
+  spawn {
     field this.completedCount = 0;
     field this.activeCount = 0;
     on asserted  todo($id, _, $c) { if (c) this.completedCount++; else this.activeCount++; }
@@ -161,7 +161,7 @@ ground dataspace G {
     assert allCompleted() when (this.completedCount > 0 && this.activeCount === 0);
   }
 
-  actor {
+  spawn {
     during Syndicate.UI.locationHash($hash) {
       assert Syndicate.UI.uiAttribute('ul.filters > li > a[href="#'+hash+'"]',
                                       'class', 'selected');
@@ -179,7 +179,7 @@ ground dataspace G {
     }
   }
 
-  actor {
+  spawn {
     var db;
 
     if ('todos-syndicate' in localStorage) {

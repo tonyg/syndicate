@@ -2,7 +2,7 @@ ground dataspace G {
   Syndicate.UI.spawnUIDriver();
   Syndicate.Timer.spawnTimerDriver();
 
-  actor {
+  spawn {
     var ui = new Syndicate.UI.Anchor();
     field this.angle;
     field this.handX;

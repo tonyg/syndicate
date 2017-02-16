@@ -19,7 +19,7 @@ var Dataspace = Syndicate.Dataspace;
 assertion type foo(x, y);
 
 ground dataspace {
-  actor {
+  spawn {
     field this.x = 123;
 
     assert foo(this.x, 999);

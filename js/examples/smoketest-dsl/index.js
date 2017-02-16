@@ -3,7 +3,7 @@ assertion type beep(counter);
 ground dataspace {
   console.log('starting ground boot');
 
-  actor {
+  spawn {
     stop on asserted Syndicate.observe(beep(_)) {
       field this.counter = 0;
       react {
@@ -18,7 +18,7 @@ ground dataspace {
     }
   }
 
-  actor {
+  spawn {
     on message beep($counter) {
       console.log("beep!", counter);
     }

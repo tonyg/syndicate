@@ -6,7 +6,7 @@ assertion type account(balance);
 message type deposit(amount);
 
 ground dataspace {
-  actor {
+  spawn {
     field this.balance = 0;
     assert account(this.balance);
     dataflow {
@@ -17,13 +17,13 @@ ground dataspace {
     }
   }
 
-  actor {
+  spawn {
     on asserted account($balance) {
       console.log("Balance is now", balance);
     }
   }
 
-  actor {
+  spawn {
     on start {
       console.log("Waiting for account.");
     }

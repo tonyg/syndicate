@@ -59,7 +59,7 @@ assertion type show();
 assertion type view(str);
 
 ground dataspace {
-  actor {
+  spawn {
     field this.title = "first";
     assert todo(this.title);
     on message 3 {
@@ -67,11 +67,11 @@ ground dataspace {
     }
   }
 
-  actor {
+  spawn {
     assert show();
   }
 
-  actor {
+  spawn {
     field this.editing = false;
 
     during todo($title) {
@@ -95,14 +95,14 @@ ground dataspace {
     }
   }
 
-  actor {
+  spawn {
     on start { :: 0; }
     stop on message 0 {
       :: 1;
     }
   }
 
-  actor {
+  spawn {
     field this.count = 0;
     on retracted view($x) { console.log('VIEW--', x); }
     on asserted view($x) {

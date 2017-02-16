@@ -76,7 +76,7 @@ assertion type splitProposal(title, price, contribution, accepted);
 /// core library.
 ///
 function whileRelevantAssert(P) {
-  actor {
+  spawn {
     assert P;
     stop on retracted Syndicate.observe(P);
   }
@@ -85,7 +85,7 @@ function whileRelevantAssert(P) {
 /// ### Implementation: SELLER
 
 function seller() {
-  actor {
+  spawn {
 
 /// We give our actor two state variables: a dictionary recording our
 /// inventory of books (mapping title to price), and a counter
@@ -150,7 +150,7 @@ function seller() {
 /// ### Implementation: SPLIT-PROPOSER and book-quote-requestor
 
 function buyerA() {
-  actor* {
+  spawn* {
     var self = this;
 
 /// Our actor remembers which books remain on its shopping list, and
@@ -238,7 +238,7 @@ function buyerA() {
 /// ### Implementation: SPLIT-DISPOSER and BUYER
 
 function buyerB() {
-  actor {
+  spawn {
 
 /// This actor maintains a record of the amount of money it has left
 /// to spend.
@@ -276,7 +276,7 @@ function buyerB() {
                     remainingFunds+" remaining funds");
         this.funds = remainingFunds;
 
-        actor {
+        spawn {
 
 /// While waiting for order confirmation, take the opportunity to
 /// signal to our SPLIT-PROPOSER that we accepted their proposal.

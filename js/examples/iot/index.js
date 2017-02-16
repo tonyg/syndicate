@@ -9,7 +9,7 @@ assertion type componentPresent(name);
 // TV
 
 function spawnTV() {
-  actor {
+  spawn {
     var ui = new Syndicate.UI.Anchor();
     during tvAlert($text) {
       assert ui.context(text).html('#tv', Mustache.render($('#alert_template').html(), { text: text }));
@@ -21,7 +21,7 @@ function spawnTV() {
 // Remote control and listener
 
 function spawnRemoteControl() {
-  actor {
+  spawn {
     assert componentPresent('remote control');
     on message Syndicate.UI.globalEvent('#remote-control', 'click', _) {
       :: remoteClick();
@@ -30,7 +30,7 @@ function spawnRemoteControl() {
 }
 
 function spawnRemoteListener() {
-  actor {
+  spawn {
     this.stoveIsOn = false;
     // In principle, we should start up in "power undefined" state and
     // count clicks we get in that state; when we then learn the real
@@ -53,7 +53,7 @@ function spawnRemoteListener() {
 // Stove switch and power draw monitor
 
 function spawnStoveSwitch() {
-  actor {
+  spawn {
     field this.powerOn = false;
     this.ui = new Syndicate.UI.Anchor();
 
@@ -77,7 +77,7 @@ function spawnStoveSwitch() {
 }
 
 function spawnPowerDrawMonitor() {
-  actor {
+  spawn {
     field this.watts = 0;
     this.ui = new Syndicate.UI.Anchor();
 
@@ -99,7 +99,7 @@ function spawnPowerDrawMonitor() {
 // Timeout listener
 
 function spawnTimeoutListener() {
-  actor {
+  spawn {
     during powerDraw($watts) {
       on start {
         if (watts > 0) {
@@ -119,7 +119,7 @@ function spawnTimeoutListener() {
 }
 
 // function spawnTimeoutListener() {
-//   actor {
+//   spawn {
 //     on asserted powerDraw($watts) {
 //       if (watts > 0) {
 //         var powerOnTime = Date.now();
@@ -135,7 +135,7 @@ function spawnTimeoutListener() {
 // }
 
 // function spawnTimeoutListener() {
-//   actor {
+//   spawn {
 //     this.mostRecentTime = 0;
 //     this.powerOnTime = null;
 //     on asserted powerDraw($watts) {
@@ -153,7 +153,7 @@ function spawnTimeoutListener() {
 // Failure monitor
 
 function spawnFailureMonitor() {
-  actor {
+  spawn {
     on retracted componentPresent($who) {
       react {
         assert tvAlert('FAILURE: ' + who);
@@ -167,7 +167,7 @@ function spawnFailureMonitor() {
 // Chaos Monkey
 
 function spawnChaosMonkey() {
-  actor* {
+  spawn* {
     monitorComponent('power draw monitor',
                      '#spawn-power-draw-monitor',
                      '#kill-power-draw-monitor',

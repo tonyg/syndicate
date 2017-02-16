@@ -25,17 +25,17 @@ assertion type present(who);
 assertion type rendered(who, isPresent);
 
 ground dataspace {
-  actor {
+  spawn {
     assert user('one');
     assert present('one');
   }
 
-  actor {
+  spawn {
     assert user('two');
     // assert present('two');
   }
 
-  actor {
+  spawn {
     during user($who) {
       field this.isPresent = false;
       on asserted present(who) {
@@ -50,7 +50,7 @@ ground dataspace {
     }
   }
 
-  actor {
+  spawn {
     during rendered($who, $isPresent) {
       on start { console.log('+ render', who, isPresent); }
       on stop { console.log('- render', who, isPresent); }

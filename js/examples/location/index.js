@@ -10,7 +10,7 @@ ground dataspace G {
   Syndicate.Timer.spawnTimerDriver();
   Syndicate.Broker.spawnBrokerClientDriver();
 
-  actor {
+  spawn {
     var id = Syndicate.RandomID.randomId(4, true);
 
     var email_element = document.getElementById('my_email');

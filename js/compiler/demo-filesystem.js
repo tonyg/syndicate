@@ -22,7 +22,7 @@ ground dataspace {
   ///////////////////////////////////////////////////////////////////////////
   // The file system actor
 
-  actor {
+  spawn {
     this.files = {};
     during Syndicate.observe(file($name, _)) {
       on start {
@@ -44,7 +44,7 @@ ground dataspace {
   ///////////////////////////////////////////////////////////////////////////
   // A simple demo client of the file system
 
-  actor {
+  spawn {
     on asserted file("hello.txt", $content) {
       console.log("hello.txt has content", JSON.stringify(content));
     }
@@ -54,14 +54,14 @@ ground dataspace {
     }
   }
 
-  actor {
+  spawn {
     stop on asserted Syndicate.observe(saveFile(_, _)) {
       :: saveFile("hello.txt", "a");
       :: deleteFile("hello.txt");
       :: saveFile("hello.txt", "c");
       :: saveFile("hello.txt", "quit demo");
       :: saveFile("hello.txt", "final contents");
-      actor {
+      spawn {
         stop on asserted file("hello.txt", $content) {
           console.log("second observer sees that hello.txt content is",
                       JSON.stringify(content));

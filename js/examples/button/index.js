@@ -1,7 +1,7 @@
 ground dataspace {
   Syndicate.UI.spawnUIDriver();
 
-  actor {
+  spawn {
     var ui = new Syndicate.UI.Anchor();
     field this.counter = 0;
     assert ui.html('#button-label', '' + this.counter);

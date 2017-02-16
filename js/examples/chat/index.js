@@ -15,7 +15,7 @@ function spawnChatApp() {
   $("#nym_form").submit(function (e) { e.preventDefault(); return false; });
   if (!($("#nym").val())) { $("#nym").val("nym" + Math.floor(Math.random() * 65536)); }
 
-  actor {
+  spawn {
     var ui = new Syndicate.UI.Anchor();
     field this.nym;
     field this.status;
@@ -82,8 +82,8 @@ function outputUtterance(who, what) {
 assertion type inputValue(selector, value);
 
 function spawnInputChangeMonitor() {
-  actor {
-    during Syndicate.observe(inputValue($selector, _)) actor {
+  spawn {
+    during Syndicate.observe(inputValue($selector, _)) spawn {
       field this.value = $(selector).val();
       assert inputValue(selector, this.value);
       on message Syndicate.UI.globalEvent(selector, 'change', $e) {
