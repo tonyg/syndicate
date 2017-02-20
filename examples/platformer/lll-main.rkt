@@ -335,7 +335,7 @@
                                               p
                                               (?! (on-screen-display ? ? ?)))]))
 
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch? p)
               (let* ((s (update-window-size s p))
@@ -381,7 +381,7 @@
     (define i (text (format "Score: ~a" new-score) 24 "white"))
     (patch-seq (retract (outbound (on-screen-display ? ? ?)))
                (assert (outbound (on-screen-display -150 10 (seal i))))))
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(message (add-to-score delta))
               (define new-score (+ s delta))
@@ -603,7 +603,7 @@
          (play-sound-sequence 270318)
          ((update-piece g pos (v+ pos (vector 0 -1)) jump-vel) s)))
 
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch? p)
               (sequence-transitions (transition s '())
@@ -679,7 +679,7 @@
                   (patch-seq (retract (impulse player-id ?))
                              (assert (impulse player-id (vector h-impulse 0)))))))
 
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch? p)
               (sequence-transitions (transition s '())
@@ -720,7 +720,7 @@
   (match-define (vector w h) size)
   (define block-id (gensym 'ground-block))
   (define block-pict (rectangle w h "solid" color))
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [_ #f]))
          (void)
@@ -742,7 +742,7 @@
   (define i (icon key planetcute-scale 1/3 2/5 4/5))
   (define initial-top-left (focus->top-left i initial-focus-x initial-focus-y))
 
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch/added?) (transition s (message (outbound (level-completed))))]
              [_ #f]))
@@ -824,7 +824,7 @@
                (quit (list damage-actions (message (outbound (add-to-score 1))))))
         (transition s damage-actions)))
 
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch? p)
               (sequence-transitions (transition s '())
@@ -874,7 +874,7 @@
                              (patch-seq (retract (outbound* 2 (scroll-offset ?)))
                                         (assert (outbound* 2 (scroll-offset offset-pos))))))))))
 
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch? p)
               (sequence-transitions (transition s '())
@@ -893,7 +893,7 @@
 ;; kills the dataspace.
 
 (define (spawn-level-termination-monitor)
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
            (match e
              [(? patch/removed?)
               (log-info "Player died! Terminating level.")
@@ -914,7 +914,7 @@
 ;; LevelSpawner
 
 (define (spawn-standalone-assertions . patches)
-  (spawn (lambda (e s) #f)
+  (actor (lambda (e s) #f)
          (void)
          patches))
 
@@ -1005,7 +1005,7 @@
 (define (spawn-level-spawner starting-level)
   (struct level-spawner-state (current-level level-complete?) #:prefab)
 
-  (list (spawn (lambda (e s)
+  (list (actor (lambda (e s)
                  (match-define (level-spawner-state current-level level-complete?) s)
                  (match e
                    [(? patch/removed?)

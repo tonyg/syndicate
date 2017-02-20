@@ -29,8 +29,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (spawn-arp-driver)
-  (actor #:name 'arp-driver
-         (during/actor (arp-interface $interface-name)
+  (spawn #:name 'arp-driver
+         (during/spawn (arp-interface $interface-name)
                        #:name (list 'arp-interface interface-name)
                        (assert (arp-interface-up interface-name))
                        (on-start (define hwaddr (lookup-ethernet-hwaddr interface-name))

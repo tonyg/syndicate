@@ -47,7 +47,7 @@
     (log-info "Opened interface ~a, yielding handle ~v" interface-name h)
     (define control-ch (make-async-channel))
     (thread (lambda () (interface-packet-read-loop interface h control-ch)))
-    (spawn (lambda (e h)
+    (actor (lambda (e h)
 	     (match e
                [(scn g)
 		(if (trie-empty? g)

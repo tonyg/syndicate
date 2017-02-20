@@ -6,6 +6,6 @@
                     ))
 (require "actor.rkt")
 (require "hierarchy.rkt")
-(provide (all-from-out "lang.rkt")
+(provide (except-out (all-from-out "lang.rkt") actor)
          (all-from-out "actor.rkt")
          (all-from-out "hierarchy.rkt"))

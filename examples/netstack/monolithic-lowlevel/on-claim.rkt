@@ -10,14 +10,14 @@
 ;; -> Action
 ;; Spawns a process that observes the given projections. Any time the
 ;; environment's interests change in a relevant way, calls
-;; check-and-maybe-spawn-fn with the aggregate interests and the
-;; projection results. If check-and-maybe-spawn-fn returns #f,
+;; check-and-maybe-actor-fn with the aggregate interests and the
+;; projection results. If check-and-maybe-actor-fn returns #f,
 ;; continues to wait; otherwise, takes the action(s) returned, and
 ;; quits.
 (define (on-claim #:timeout-msec [timeout-msec #f]
                   #:on-timeout [timeout-handler (lambda () '())]
                   #:name [name #f]
-                  check-and-maybe-spawn-fn
+                  check-and-maybe-actor-fn
                   base-interests
                   . projections)
   (define timer-id (gensym 'on-claim))
@@ -27,18 +27,18 @@
        (define projection-results
          (map (lambda (p) (trie-project/set #:take (projection-arity p) new-aggregate p))
               projections))
-       (define maybe-spawn (apply check-and-maybe-spawn-fn
+       (define maybe-actor (apply check-and-maybe-actor-fn
                                   new-aggregate
                                   projection-results))
-       (if maybe-spawn
-           (quit maybe-spawn)
+       (if maybe-actor
+           (quit maybe-actor)
            #f)]
       [(message (timer-expired (== timer-id) _))
        (quit (timeout-handler))]
       [_ #f]))
   (list
    (when timeout-msec (message (set-timer timer-id timeout-msec 'relative)))
-   (spawn #:name name
+   (actor #:name name
           on-claim-handler
           (void)
           (scn/union base-interests

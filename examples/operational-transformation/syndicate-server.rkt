@@ -16,7 +16,7 @@
 (define cmdline-port (make-parameter 5888))
 (define cmdline-filename (make-parameter "info.rkt"))
 
-(actor (field [state (make-server (simple-document
+(spawn (field [state (make-server (simple-document
                                    (if (file-exists? (cmdline-filename))
                                        (begin (log-info "loading ~v" (cmdline-filename))
                                               (file->string (cmdline-filename)))
@@ -45,10 +45,10 @@
            (define sp (extract-operation (state)))
            (when sp (send! (accepted-op sp)))))
 
-(actor (define s (tcp-listener (cmdline-port)))
+(spawn (define s (tcp-listener (cmdline-port)))
        (on-start (log-info "listening on port ~v" (cmdline-port)))
        (assert (advertise (observe (tcp-channel _ s _))))
-       (during/actor (advertise (tcp-channel $c s _))
+       (during/spawn (advertise (tcp-channel $c s _))
                      (assert (advertise (tcp-channel s c _)))
                      (on-start (log-info "~a: connected" c))
                      (on-stop (log-info "~a: disconnected" c))

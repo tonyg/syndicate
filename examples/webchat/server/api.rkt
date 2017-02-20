@@ -9,7 +9,7 @@
 (require "protocol.rkt")
 (require "session-cookie.rkt")
 
-(actor #:name 'broker-listener
+(spawn #:name 'broker-listener
        (stop-when-reloaded)
        (on (web-request-get (id req) _ ("broker" ()))
            (when (web-request-header-websocket-upgrade? req)
@@ -31,7 +31,7 @@
                                                  (a ((href "/")) "Login"))))]))))
 
 (supervise
- (actor #:name 'reflect-trust
+ (spawn #:name 'reflect-trust
         (stop-when-reloaded)
         (during (session $who _)
           (during ($ p (permitted _ who _ _))
@@ -44,7 +44,7 @@
             (assert (api (session who _) c))))))
 
 (supervise
- (actor #:name 'reflect-grant-requests
+ (spawn #:name 'reflect-grant-requests
         (stop-when-reloaded)
         (during (permission-request $issuer $grantee $permission)
           (define r (permission-request issuer grantee permission))
@@ -54,7 +54,7 @@
                 (send! (delete-resource r)))))))
 
 (supervise
- (actor #:name 'take-trust-instructions
+ (spawn #:name 'take-trust-instructions
         (stop-when-reloaded)
 
         (on (message (api (session $grantor _) (create-resource (? grant? $g))))

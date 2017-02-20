@@ -18,11 +18,11 @@
 (define cmdline-port (make-parameter 5889))
 (define cmdline-filenames (make-parameter '()))
 
-(actor* (for [(filename (cmdline-filenames))]
+(spawn* (for [(filename (cmdline-filenames))]
           (run-one-server filename)))
 
 (define (run-one-server filename)
-  (actor (field [state (make-server (simple-document
+  (spawn (field [state (make-server (simple-document
                                      (if (file-exists? filename)
                                          (begin (log-info "loading ~v" filename)
                                                 (file->string filename))
@@ -51,10 +51,10 @@
              (define sp (extract-operation (state)))
              (when sp (send! (accepted-op filename sp))))))
 
-(actor (define s (tcp-listener (cmdline-port)))
+(spawn (define s (tcp-listener (cmdline-port)))
        (on-start (log-info "listening on port ~v" (cmdline-port)))
        (assert (advertise (observe (tcp-channel _ s _))))
-       (during/actor (advertise (tcp-channel $c s _))
+       (during/spawn (advertise (tcp-channel $c s _))
                      (assert (advertise (tcp-channel s c _)))
                      (on-start (log-info "~a: connected" c))
                      (on-stop (log-info "~a: disconnected" c))

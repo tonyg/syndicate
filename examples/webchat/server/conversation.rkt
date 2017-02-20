@@ -15,7 +15,7 @@
   (immediate-query [query-value #f (in-conversation cid who) #t]))
 
 (supervise
- (actor #:name 'take-conversation-instructions
+ (spawn #:name 'take-conversation-instructions
         (stop-when-reloaded)
 
         (on (message (api (session $creator _) (create-resource (? conversation? $c))))
@@ -55,7 +55,7 @@
               (send! (delete-resource p))))))
 
 (supervise
- (actor #:name 'relay-conversation-state
+ (spawn #:name 'relay-conversation-state
         (stop-when-reloaded)
 
         (during (invitation $cid $inviter $invitee)
@@ -74,10 +74,10 @@
             (assert (api (session who _) p))))))
 
 (supervise
- (actor #:name 'conversation-factory
+ (spawn #:name 'conversation-factory
         (stop-when-reloaded)
         (on (message (create-resource ($ c0 (conversation $cid $title0 $creator $blurb0))))
-            (actor #:name c0
+            (spawn #:name c0
                    (field [title title0]
                           [blurb blurb0])
                    (define/dataflow c (conversation cid (title) creator (blurb)))
@@ -91,10 +91,10 @@
                        (blurb newblurb))))))
 
 (supervise
- (actor #:name 'in-conversation-factory
+ (spawn #:name 'in-conversation-factory
         (stop-when-reloaded)
         (on (message (create-resource ($ i (in-conversation $cid $who))))
-            (actor #:name i
+            (spawn #:name i
                    (on-start (log-info "~s joins conversation ~a" who cid))
                    (on-stop (log-info "~s leaves conversation ~a" who cid))
                    (assert i)
@@ -103,10 +103,10 @@
                    (stop-when (message (delete-resource (conversation cid _ _ _))))))))
 
 (supervise
- (actor #:name 'invitation-factory
+ (spawn #:name 'invitation-factory
         (stop-when-reloaded)
         (on (message (create-resource ($ i (invitation $cid $inviter $invitee))))
-            (actor #:name i
+            (spawn #:name i
                    (on-start (log-info "~s invited to conversation ~a by ~s" invitee cid inviter))
                    (on-stop (log-info "invitation of ~s to conversation ~a by ~s retracted"
                                       invitee cid inviter))
@@ -117,11 +117,11 @@
                    (stop-when (asserted (in-conversation cid invitee)))))))
 
 (supervise
- (actor #:name 'post-factory
+ (spawn #:name 'post-factory
         (stop-when-reloaded)
         (on (message (create-resource
                       ($ p0 (post $pid $timestamp $cid $author $items0))))
-            (actor #:name p0
+            (spawn #:name p0
                    (field [items items0])
                    (define/dataflow p (post pid timestamp cid author (items)))
                    (assert (p))
@@ -132,7 +132,7 @@
                        (items newitems))))))
 
 (supervise
- (actor #:name 'conversation:questions
+ (spawn #:name 'conversation:questions
         (stop-when-reloaded)
         ;; TODO: CHECK THE FOLLOWING: When the `invitation` vanishes (due to satisfaction
         ;; or rejection), this should remove the question from all eligible answerers at once

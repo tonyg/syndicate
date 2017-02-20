@@ -43,7 +43,7 @@
     [#f #f]
     [pathstr
      (supervise #:name (list 'reloader-supervisor pathstr)
-                (actor #:name 'reloader
+                (spawn #:name 'reloader
                        (reloader-mixin** module-path pathstr)))
      #t]))
 

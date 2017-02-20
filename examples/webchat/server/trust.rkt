@@ -6,7 +6,7 @@
 (require "protocol.rkt")
 (require "duplicate.rkt")
 
-(actor #:name 'trust-inference
+(spawn #:name 'trust-inference
        (stop-when-reloaded)
 
        (during (grant $issuer $grantor $grantee $permission $delegable?)
@@ -15,11 +15,11 @@
          (during (permitted issuer grantor permission #t)
            (assert (permitted issuer grantee permission delegable?)))))
 
-(actor #:name 'grant-factory
+(spawn #:name 'grant-factory
        (stop-when-reloaded)
        (on (message (create-resource
                      ($ g (grant $issuer $grantor $grantee $permission $delegable?))))
-           (actor #:name g
+           (spawn #:name g
                   (on-start (log-info "~s grants ~s ~v~a"
                                       grantor grantee permission (if delegable? ", delegably" "")))
                   (on-stop (log-info "~s revokes~a grant of ~v to ~s"
@@ -33,10 +33,10 @@
                   (stop-when (message (delete-resource (account grantor))))
                   (stop-when (message (delete-resource (account grantee)))))))
 
-(actor #:name 'request-factory
+(spawn #:name 'request-factory
        (stop-when-reloaded)
        (on (message (create-resource ($ r (permission-request $the-issuer $grantee $permission))))
-           (actor #:name r
+           (spawn #:name r
                   (on-start (log-info "~s requests ~s from ~s" grantee permission the-issuer))
                   (assert r)
                   (stop-when-duplicate r)

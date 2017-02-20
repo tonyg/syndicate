@@ -57,15 +57,15 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (spawn-ip-driver)
-  (actor #:name 'ip-driver
-   (during/actor (host-route $my-address $netmask $interface-name)
+  (spawn #:name 'ip-driver
+   (during/spawn (host-route $my-address $netmask $interface-name)
                  (assert (route-up (host-route my-address netmask interface-name)))
                  (do-host-route my-address netmask interface-name))
-   (during/actor (gateway-route $network $netmask $gateway-addr $interface-name)
+   (during/spawn (gateway-route $network $netmask $gateway-addr $interface-name)
                  (assert (route-up
                           (gateway-route $network $netmask $gateway-addr $interface-name)))
                  (do-gateway-route network netmask gateway-addr interface-name))
-   (during/actor (net-route $network-addr $netmask $link)
+   (during/spawn (net-route $network-addr $netmask $link)
                  (assert (route-up (net-route network-addr netmask link)))
                  (do-net-route network-addr netmask link))))
 

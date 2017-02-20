@@ -29,8 +29,8 @@
 (log-info "Device names: ~a" interface-names)
 
 (define (spawn-ethernet-driver)
-  (actor #:name 'ethernet-driver
-   (during/actor
+  (spawn #:name 'ethernet-driver
+   (during/spawn
     (observe (ethernet-packet (ethernet-interface $interface-name _) #t _ _ _ _))
     #:name (list 'ethernet-interface interface-name)
 
@@ -46,7 +46,7 @@
 
     (on-start (flush!) ;; ensure all subscriptions are in place
               (async-channel-put control-ch 'unblock)
-              (actor #:name (list 'ethernet-interface-quit-monitor interface-name)
+              (spawn #:name (list 'ethernet-interface-quit-monitor interface-name)
                      (on (retracted interface)
                          (async-channel-put control-ch 'quit))))
 

@@ -59,7 +59,7 @@
 				(match-define (tcp-listener port) server-addr)
 				;; TODO: have listener shut down once user-level listener does
                                 (list
-                                 (spawn #:name (string->symbol
+                                 (actor #:name (string->symbol
                                                 (format "tcp-listener-port-reservation:~a" port))
                                         (lambda (e s) #f)
                                         (void)
@@ -122,7 +122,7 @@
   (define remote-peer-traffic (?! (advertise (tcp-channel remote-addr local-tcp-addr ?))))
   (list
    (message (set-timer timer-name relay-peer-wait-time-msec 'relative))
-   (spawn #:name (string->symbol (format "tcp-relay:~v:~v:~v"
+   (actor #:name (string->symbol (format "tcp-relay:~v:~v:~v"
                                          local-user-addr
                                          remote-addr
                                          local-tcp-addr))
@@ -294,7 +294,7 @@
     (transition s (message (ip-packet #f src-ip dst-ip PROTOCOL-TCP #""
                                       (ip-checksum 16 payload #:pseudo-header pseudo-header)))))
 
-  (spawn #:name 'kernel-tcp-driver
+  (actor #:name 'kernel-tcp-driver
          (lambda (e s)
 	   (match e
 	     [(scn g)
@@ -655,7 +655,7 @@
                              (current-inexact-milliseconds)
 			     #f
 			     #f)))
-     (spawn #:name
+     (actor #:name
             (string->symbol (format "tcp-state-vector:~a:~a:~a:~a"
                                     (ip-address->hostname src-ip)
                                     src-port

@@ -3,7 +3,7 @@
 ;; Vastly simplified compared to the available options in OTP
 
 (provide supervise
-         supervise/actor)
+         supervise/spawn)
 
 (require racket/exn)
 (require "core.rkt")
@@ -24,7 +24,7 @@
                    void
                    (lambda () expr ...)))]))
 
-(define-syntax (supervise/actor stx)
+(define-syntax (supervise/spawn stx)
   (syntax-parse stx
     [(_ (~or (~optional (~seq #:name name-expr) #:defaults ([name-expr #'#f])
                         #:name "#:name")

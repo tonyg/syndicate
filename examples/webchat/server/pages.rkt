@@ -114,7 +114,7 @@
                                         ;; for xexprs from Greg's Markdown package.
                                         (display-xexpr body-xexpr))))))
 
-(actor #:name 'index-page
+(spawn #:name 'index-page
        (stop-when-reloaded)
        (on (web-request-get (id req) _ ("" ()))
            (index-page id)))
@@ -179,7 +179,7 @@
 ;;      (logout-this-session! id)]
 ;;     [else (logout-this-session! id)]))
 
-(actor #:name 'logout-page
+(spawn #:name 'logout-page
        (stop-when-reloaded)
        (on (web-request-get (id req) _ ("logout" ()))
            (logout-page id)))
@@ -191,7 +191,7 @@
      (logout-this-session! id)]
     [else (logout-this-session! id)]))
 
-(actor #:name 'login-page
+(spawn #:name 'login-page
        (stop-when-reloaded)
        (define/query-value insecure #f (config _ (list 'insecure)) #t)
        (define/query-value baseurl #f (server-baseurl $b) b)
@@ -219,7 +219,7 @@
                                         (format "    ~a" validation-url))))))))
 
 (define (spawn-login-link email sid)
-  (actor #:name (list 'login-link email sid)
+  (spawn #:name (list 'login-link email sid)
          (on-start (log-info "Login link ~s for ~s activated." sid email))
          (on-stop (log-info "Login link ~s for ~s deactivated." sid email))
          (assert (login-link email sid))
@@ -242,7 +242,7 @@
                             "A login link should appear "
                             "in your inbox shortly."))))))
 
-(actor #:name 'login-link-page
+(spawn #:name 'login-link-page
        (stop-when-reloaded)
        ;; Can't handle the request within each login-link process, since we have to take
        ;; special action if there is no such login link, and we are not allowed to race,
@@ -264,10 +264,10 @@
                         "Please " (a ((href "/")) "return to the main page") ".")))))
 
 (supervise
- (actor #:name 'session-monitor-factory
+ (spawn #:name 'session-monitor-factory
         (stop-when-reloaded)
         (on (message (create-resource ($ s (session $email $sid))))
-            (actor #:name (list 'session-monitor email sid)
+            (spawn #:name (list 'session-monitor email sid)
                    (on-start (log-info "Session ~s for ~s started." sid email))
                    (on-stop (log-info "Session ~s for ~s stopped." sid email))
                    (assert s)

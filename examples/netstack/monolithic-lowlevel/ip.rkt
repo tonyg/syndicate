@@ -83,7 +83,7 @@
 			    network-addr
 			    netmask
 			    interface-name))
-   (spawn (lambda (e s)
+   (actor (lambda (e s)
 	    (match e
 	      [(scn (? trie-empty?)) (quit)]
 	      [(message (ip-packet _ peer-address _ _ _ body))
@@ -143,7 +143,7 @@
       (and (positive? msk)
 	   (ip-address-in-subnet? addr net msk))))
 
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
 	   (match e
 	     [(scn g)
 	      (define host-ips+netmasks (trie-project/set #:take 2 g host-route-projector))
@@ -202,7 +202,7 @@
 ;; Normal IP route
 
 (define (spawn-normal-ip-route the-route network netmask interface-name)
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
 	   (match e
 	     [(scn (? trie-empty?)) (quit)]
 	     [(message (ethernet-packet _ _ _ _ _ body))

@@ -14,7 +14,7 @@
 (struct port-allocator-state (used-ports local-ips) #:transparent)
 
 (define (spawn-port-allocator allocator-type observer-gestalt compute-used-ports)
-  (spawn #:name (string->symbol (format "port-allocator:~a" allocator-type))
+  (actor #:name (string->symbol (format "port-allocator:~a" allocator-type))
          (lambda (e s)
 	   (match e
 	     [(scn g)

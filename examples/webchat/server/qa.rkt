@@ -12,7 +12,7 @@
 (require "util.rkt")
 
 (supervise
- (actor #:name 'qa-relay
+ (spawn #:name 'qa-relay
         (stop-when-reloaded)
         (during ($ q (question _ _ _ _ _ _ _))
           (define qid (question-id q))

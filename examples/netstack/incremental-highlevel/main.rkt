@@ -19,7 +19,7 @@
   (struct present (who) #:prefab)
 
   (define (spawn-session them us)
-    (actor (define (send-to-remote fmt . vs)
+    (spawn (define (send-to-remote fmt . vs)
              (send! (outbound (tcp-channel us them (string->bytes/utf-8 (apply format fmt vs))))))
 
            (define (say who fmt . vs)
@@ -48,14 +48,14 @@
                           (spawn-session them us)))))
 
 (let ((dst (udp-listener 6667)))
-  (actor #:name 'udp-echo-program
+  (spawn #:name 'udp-echo-program
          (on (message (udp-packet $src dst $body))
              (log-info "Got packet from ~v: ~v" src body)
              (send! (udp-packet dst src (string->bytes/utf-8 (format "You said: ~a" body)))))))
 
 (let ()
   (dataspace #:name 'webserver-dataspace
-   (actor #:name 'webserver-counter
+   (spawn #:name 'webserver-counter
           (field [counter 0])
           (on (message 'bump)
               (send! `(counter ,(counter)))
@@ -63,7 +63,7 @@
 
    (forever (define us (tcp-listener 80))
             (assert (outbound (advertise (observe (tcp-channel _ us _)))))
-            (during/actor (inbound (advertise (tcp-channel ($ them (tcp-address _ _)) us _)))
+            (during/spawn (inbound (advertise (tcp-channel ($ them (tcp-address _ _)) us _)))
                           #:name (list 'webserver-session them)
                           (log-info "Got connection from ~v" them)
                           (field [done? #f])

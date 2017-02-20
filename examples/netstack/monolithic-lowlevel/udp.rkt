@@ -92,7 +92,7 @@
                            (subscription (udp-datagram ? ? ip local-port ?))
                            (advertisement (udp-datagram ip local-port ? ? ?)))))
 
-  (spawn (lambda (e local-ips)
+  (actor (lambda (e local-ips)
 	   (match e
 	     [(scn g)
 	      (define new-local-ips (gestalt->local-ip-addresses g))
@@ -124,7 +124,7 @@
 (define PROTOCOL-UDP 17)
 
 (define (spawn-kernel-udp-driver)
-  (spawn (lambda (e local-ips)
+  (actor (lambda (e local-ips)
 	   (match e
 	     [(scn g)
 	      (transition (gestalt->local-ip-addresses g) '())]

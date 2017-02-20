@@ -106,7 +106,7 @@
       Syndicate.Broker.spawnBrokerClientDriver();
       spawnInputChangeMonitor();
 
-      actor {
+      spawn {
         this.ui = new Syndicate.UI.Anchor();
         var mainpage_c = this.ui.context('mainpage');
 
@@ -472,7 +472,7 @@
                 var spawnItemFromDataURL = (function (ui) {
                   return function (dataURL) {
                     var timestamp = +(new Date());
-                    actor {
+                    spawn {
                       field this.ui = ui.context('draft-post', timestamp);
                       assert draftItem(timestamp, dataURL);
                       manifestPostItem(this.ui,
@@ -804,8 +804,8 @@ function spawnInputChangeMonitor() {
     return e ? (e.type === 'checkbox' ? e.checked : e.value) : null;
   }
 
-  actor {
-    during Syndicate.observe(inputValue($selector, _)) actor {
+  spawn {
+    during Syndicate.observe(inputValue($selector, _)) spawn {
       field this.value = valOf($(selector)[0]);
       assert inputValue(selector, this.value);
       on message Syndicate.UI.globalEvent(selector, 'change', $e) {

@@ -8,11 +8,11 @@
 (require/activate syndicate/drivers/filesystem)
 (require/activate syndicate/drivers/web)
 
-(actor #:name 'script-compiler
+(spawn #:name 'script-compiler
        (stop-when-reloaded)
        (define source-filename "../htdocs/webchat.syndicate.js")
        (define target-filename "webchat.js")
-       (during/actor (file-content source-filename file->bytes $bs)
+       (during/spawn (file-content source-filename file->bytes $bs)
          #:name (list 'compiled source-filename)
          (define compiled (with-output-to-bytes
                             (lambda () (system* "../../../js/bin/syndicatec" source-filename))))

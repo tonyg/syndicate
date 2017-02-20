@@ -34,7 +34,7 @@
     (define (say who fmt . vs)
       (unless (equal? who user) (send-to-remote "~a ~a\n" who (apply format fmt vs))))
     (list (send-to-remote "Welcome, ~a.\n" user)
-          (spawn
+          (actor
            (lambda (e peers)
              (match e
                [(message (inbound (tcp-channel _ _ bs)))
@@ -68,7 +68,7 @@
   )
 
 (let ()
-  (spawn (lambda (e s)
+  (actor (lambda (e s)
 	   (match e
 	     [(message (udp-packet src dst body))
 	      (log-info "Got packet from ~v: ~v" src body)
@@ -84,7 +84,7 @@
   (define (spawn-session them us)
     (list
      (message 'bump)
-     (spawn (lambda (e s)
+     (actor (lambda (e s)
 	      (match e
 		[(message `(counter ,counter))
 		 (define response
@@ -106,7 +106,7 @@
                        (advertisement (inbound (tcp-channel us them ?)))))))
 
   (spawn-dataspace
-   (spawn (lambda (e counter)
+   (actor (lambda (e counter)
 	    (match e
 	      [(message 'bump)
 	       (transition (+ counter 1) (message `(counter ,counter)))]

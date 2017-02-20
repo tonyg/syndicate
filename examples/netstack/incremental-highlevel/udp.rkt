@@ -50,18 +50,18 @@
 (define (spawn-udp-driver)
   (spawn-port-allocator 'udp (lambda () (query-set udp-ports (udp-port-allocation $p _) p)))
   (spawn-kernel-udp-driver)
-  (actor #:name 'udp-driver
+  (spawn #:name 'udp-driver
    (on (asserted (observe (udp-packet _ ($ h (udp-listener _)) _)))
        (spawn-udp-relay (udp-listener-port h) h))
    (on (asserted (observe (udp-packet _ ($ h (udp-handle _)) _)))
-       (actor #:name (list 'udp-transient h)
+       (spawn #:name (list 'udp-transient h)
               (on-start (spawn-udp-relay (allocate-port! 'udp) h))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Relaying
 
 (define (spawn-udp-relay local-port local-user-addr)
-  (actor #:name (list 'udp-relay local-port local-user-addr)
+  (spawn #:name (list 'udp-relay local-port local-user-addr)
          (on-start (log-info "Spawning UDP relay ~v / ~v" local-port local-user-addr))
 
          (define any-remote (udp-remote-address ? ?))
@@ -97,7 +97,7 @@
 (define PROTOCOL-UDP 17)
 
 (define (spawn-kernel-udp-driver)
-  (actor #:name 'kernel-udp-driver
+  (spawn #:name 'kernel-udp-driver
          (assert (advertise (ip-packet #f _ _ PROTOCOL-UDP _ _)))
 
          (define local-ips (query-local-ip-addresses))

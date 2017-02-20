@@ -13,7 +13,7 @@
 (struct present (email) #:prefab)
 
 (supervise
- (actor #:name 'reflect-presence
+ (spawn #:name 'reflect-presence
         (stop-when-reloaded)
         (during (api (session $who _) (online))
           (during (permitted who $grantee (p:follow who) _)
@@ -21,7 +21,7 @@
             (assert (api (session grantee _) (present who)))))))
 
 (supervise
- (actor #:name 'ensure-p:follow-symmetric
+ (spawn #:name 'ensure-p:follow-symmetric
         (stop-when-reloaded)
         (on (asserted (permitted $A $B (p:follow $maybe-A) _))
             (when (equal? A maybe-A)
@@ -36,7 +36,7 @@
                 (send! (delete-resource (permitted B A (p:follow B) ?))))))))
 
 (supervise
- (actor #:name 'contact-list-factory
+ (spawn #:name 'contact-list-factory
         (stop-when-reloaded)
         (during (permission-request $A $B (p:follow $maybe-A))
           (when (equal? A maybe-A)
@@ -49,7 +49,7 @@
                 (assert (contact-list-entry B A))))))))
 
 (supervise
- (actor #:name 'contact-list-change-log
+ (spawn #:name 'contact-list-change-log
         (stop-when-reloaded)
         (on (asserted (contact-list-entry $owner $member))
             (log-info "~s adds ~s to their contact list" owner member))
@@ -57,7 +57,7 @@
             (log-info "~s removes ~s from their contact list" owner member))))
 
 (supervise
- (actor #:name 'contacts:questions
+ (spawn #:name 'contacts:questions
         (stop-when-reloaded)
         ;; TODO: CHECK THE FOLLOWING: When the `permission-request` vanishes (due to
         ;; satisfaction or rejection), this should remove the question from all eligible

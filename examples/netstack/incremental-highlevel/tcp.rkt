@@ -52,8 +52,8 @@
 (define (spawn-tcp-driver)
   (spawn-port-allocator 'tcp (lambda () (query-set tcp-ports (tcp-port-allocation $p _) p)))
   (spawn-kernel-tcp-driver)
-  (actor #:name 'tcp-inbound-driver
-   (during/actor (advertise (observe (tcp-channel _ ($ server-addr (tcp-listener _)) _)))
+  (spawn #:name 'tcp-inbound-driver
+   (during/spawn (advertise (observe (tcp-channel _ ($ server-addr (tcp-listener _)) _)))
                  #:name (list 'tcp-listen server-addr)
                  (match-define (tcp-listener port) server-addr)
                  (assert (tcp-port-allocation port server-addr))
@@ -61,7 +61,7 @@
                                                        ($ local-addr (tcp-address _ port))
                                                        _)))
                      (spawn-relay server-addr remote-addr local-addr))))
-  (actor #:name 'tcp-outbound-driver
+  (spawn #:name 'tcp-outbound-driver
    (define local-ips (query-local-ip-addresses))
    (on (asserted (advertise (tcp-channel ($ local-addr (tcp-handle _))
                                          ($ remote-addr (tcp-address _ _))
@@ -92,7 +92,7 @@
 (define (spawn-relay local-user-addr remote-addr local-tcp-addr)
   (define timer-name (list 'spawn-relay local-tcp-addr remote-addr))
 
-  (actor #:name (list 'tcp-relay local-user-addr remote-addr local-tcp-addr)
+  (spawn #:name (list 'tcp-relay local-user-addr remote-addr local-tcp-addr)
    (assert (tcp-port-allocation (tcp-address-port local-tcp-addr) local-user-addr))
    (assert (advertise (tcp-channel remote-addr local-user-addr _)))
    (assert (advertise (tcp-channel local-tcp-addr remote-addr _)))
@@ -125,7 +125,7 @@
 (define PROTOCOL-TCP 6)
 
 (define (spawn-kernel-tcp-driver)
-  (actor #:name 'kernel-tcp-driver
+  (spawn #:name 'kernel-tcp-driver
    (define local-ips (query-local-ip-addresses))
 
    (define active-state-vectors
@@ -297,7 +297,7 @@
   (define dst (tcp-address (ip-address->hostname dst-ip) dst-port))
   (define (timer-name kind) (list 'tcp-timer kind src dst))
 
-  (actor
+  (spawn
    #:name (list 'tcp-state-vector
                 (ip-address->hostname src-ip)
                 src-port

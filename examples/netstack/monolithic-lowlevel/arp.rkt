@@ -215,7 +215,7 @@
                                            (cache-key-address q)))))))
 
   (list (set-wakeup-alarm)
-	(spawn (lambda (e s)
+	(actor (lambda (e s)
 		 ;; (log-info "ARP ~a ~a: ~v // ~v" interface-name (pretty-bytes hwaddr) e s)
 		 (match e
 		   [(scn g)

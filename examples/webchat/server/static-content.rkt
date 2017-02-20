@@ -17,7 +17,7 @@
   (define-runtime-path templates-path "../htdocs/templates")
   (define path->mime-type (make-path->mime-type "/etc/mime.types")))
 
-(actor #:name 'static-content-server
+(spawn #:name 'static-content-server
        (stop-when-reloaded)
        (define url->path (make-url->path htdocs-path))
        (on (web-request-get (id req) _ ,_)
@@ -28,7 +28,7 @@
                                  #:header (web-response-header #:mime-type (path->mime-type path))
                                  (file->bytes path)))))
 
-(actor #:name 'template-server
+(spawn #:name 'template-server
        (stop-when-reloaded)
        (define url->path (make-url->path templates-path))
        (during (api _ (observe (ui-template $name _)))

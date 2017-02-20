@@ -13,7 +13,7 @@
 (struct port-allocation-reply (reqid port) #:prefab)
 
 (define (spawn-port-allocator allocator-type query-used-ports)
-  (actor #:name (list 'port-allocator allocator-type)
+  (spawn #:name (list 'port-allocator allocator-type)
          (define local-ips (query-local-ip-addresses))
          (define used-ports (query-used-ports))
 

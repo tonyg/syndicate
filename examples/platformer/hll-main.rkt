@@ -302,7 +302,7 @@
 ;; SceneManager
 
 (define (spawn-scene-manager)
-  (actor #:name 'scene-manager
+  (spawn #:name 'scene-manager
          (define backdrop (rectangle 1 1 "solid" "white"))
 
          (define/query-value size (vector 0 0) (inbound (window $x $y)) (vector x y))
@@ -337,7 +337,7 @@
 ;; ScoreKeeper
 
 (define (spawn-score-keeper)
-  (actor #:name 'score-keeper
+  (spawn #:name 'score-keeper
          (field [score 0])
          (assert (current-score (score)))
          (assert (outbound
@@ -356,7 +356,7 @@
 (define gravity 0.004)
 
 (define (spawn-physics-engine)
-  (actor #:name 'physics-engine
+  (spawn #:name 'physics-engine
    (field [configs (hash)]
           [previous-positions (hash)]
           [previous-velocities (hash)]
@@ -535,7 +535,7 @@
 (define planetcute-scale 1/2)
 
 (define (spawn-player-avatar initial-focus-x initial-focus-y)
-  (actor #:name 'player-avatar
+  (spawn #:name 'player-avatar
    (define i (icon character-cat-girl planetcute-scale 2/6 3/10 13/16))
    (define initial-top-left (focus->top-left i initial-focus-x initial-focus-y))
 
@@ -567,7 +567,7 @@
 ;; Ground Block
 
 (define (spawn-ground-block top-left size #:color [color "purple"])
-  (actor #:name (list 'ground-block top-left size color)
+  (spawn #:name (list 'ground-block top-left size color)
          (match-define (vector x y) top-left)
          (match-define (vector w h) size)
          (define block-id (gensym 'ground-block))
@@ -589,7 +589,7 @@
   (define i (icon key planetcute-scale 1/3 2/5 4/5))
   (define initial-top-left (focus->top-left i initial-focus-x initial-focus-y))
 
-  (actor #:name (list 'goal-piece initial-focus-x initial-focus-y)
+  (spawn #:name (list 'goal-piece initial-focus-x initial-focus-y)
          (on (asserted (touching player-id goal-id _))
              (send! (outbound (level-completed))))
          (assert (game-piece-configuration goal-id
@@ -604,7 +604,7 @@
 (define (spawn-enemy initial-x initial-y range-lo range-hi
                      #:speed [speed 0.2]
                      #:facing [initial-facing 'right])
-  (actor #:name (list 'enemy initial-x initial-y initial-facing)
+  (spawn #:name (list 'enemy initial-x initial-y initial-facing)
    (define enemy-id (gensym 'enemy))
    (define i (icon enemy-bug planetcute-scale 9/10 1/3 5/6))
    (define i-flipped (struct-copy icon i [pict (flip-horizontal (icon-pict i))]))
@@ -647,7 +647,7 @@
 (define (spawn-display-controller level-size-vec)
   (match-define (vector level-width level-height) level-size-vec)
 
-  (actor #:name 'display-controller
+  (spawn #:name 'display-controller
    (field [offset-pos (vector 0 0)])
    (assert (outbound* 2 (scroll-offset (offset-pos))))
    (assert (level-size level-size-vec))
@@ -687,7 +687,7 @@
 ;; LevelSpawner
 
 (define (spawn-standalone-assertions . patches)
-  (actor #:name 'standalone-assertions
+  (spawn #:name 'standalone-assertions
          (on-start (patch! (patch-seq* patches)))))
 
 (define (spawn-background-image level-size scene)
@@ -778,7 +778,7 @@
                                         message))))))
 
 (define (spawn-level-spawner starting-level)
-  (actor #:name 'level-spawner
+  (spawn #:name 'level-spawner
          (field [current-level starting-level]
                 [level-complete? #f])
 
