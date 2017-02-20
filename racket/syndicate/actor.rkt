@@ -1180,9 +1180,14 @@
      (with-store [(current-pending-actions '())
                   (current-pending-patch patch-empty)
                   (current-action-transformer values)]
-       (define result (thunk))
-       (flush-pending-patch!)
-       (cons result (current-pending-actions))))))
+       (call-with-values thunk
+                         (lambda results
+                           (flush-pending-patch!)
+                           (when (> (length results) 1)
+                             (error 'capture-actor-actions
+                                    "~a values supplied in top-level Syndicate action; more than one is unacceptable"
+                                    (length results)))
+                           (cons results (current-pending-actions))))))))
 
 (module+ for-module-begin
   (provide capture-actor-actions))
