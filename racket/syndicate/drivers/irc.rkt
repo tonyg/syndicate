@@ -33,7 +33,7 @@
          (assert C))
 
        (during/spawn (irc-connection $host $port $nick)
-         #:spawn supervise/actor
+         #:spawn supervise/spawn
          #:name (list 'irc-connection host port nick)
          (define C (irc-connection host port nick))
          (define LH (tcp-handle (gensym 'irc)))
