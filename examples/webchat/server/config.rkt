@@ -46,4 +46,9 @@
          (reloader-mixin* module-path))
 
        (during (config _ (list 'smtp $h $u $p $m))
-         (assert (smtp-account-config 'smtp-service h #:user u #:password p #:ssl-mode m))))
+         (match h
+           [(regexp #px"(.*):(.*)" (list _ host port))
+            (assert (smtp-account-config 'smtp-service host #:port (string->number port)
+                                         #:user u #:password p #:ssl-mode m))]
+           [_
+            (assert (smtp-account-config 'smtp-service h #:user u #:password p #:ssl-mode m))])))
