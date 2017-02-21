@@ -225,7 +225,7 @@
          (stop-when (asserted (session _ sid))) ;; happy path
          (stop-when (message (end-session sid)))
          (stop-when (message (delete-resource (account email))))
-         (stop-when-timeout (* 10 1000)))) ;; 10 seconds
+         (stop-when-timeout (* (* 24 3600) 1000)))) ;; 24h = 1 day
 
 (define (login-link-emailed-page id maybe-insecure-validation-url)
   (web-respond/pretty-xexpr!
