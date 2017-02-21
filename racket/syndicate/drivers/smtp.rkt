@@ -64,9 +64,9 @@
          (during/spawn (smtp-account-config $id $host $port $user $password $ssl-mode)
            #:name (list 'smtp-account id)
            (on-start
-            (log-syndicate/drivers/smtp-info "~v starting: ~s ~s ~s" id host user ssl-mode))
+            (log-syndicate/drivers/smtp-info "~v starting: ~a:~a ~s ~s" id host port user ssl-mode))
            (on-stop
-            (log-syndicate/drivers/smtp-info "~v stopping: ~s ~s ~s" id host user ssl-mode))
+            (log-syndicate/drivers/smtp-info "~v stopping: ~a:~a ~s ~s" id host port user ssl-mode))
            (assert (smtp-account id))
            (on (message (smtp-delivery id $delivery-id $from $to $header $lines))
                (with-handlers [(exn:fail?
