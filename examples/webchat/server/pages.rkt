@@ -139,7 +139,6 @@
                                    (input ((type "email")
                                            (name "email")
                                            (id "email")
-                                           (value "tonyg@ccs.neu.edu") ;; TODO
                                            (placeholder "your-email@example.com"))))
                               " "
                               (button ((type "submit")
