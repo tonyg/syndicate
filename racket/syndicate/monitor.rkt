@@ -111,7 +111,6 @@ a complete trace is observed.
                                                    #:combiner (lambda (v1 v2) (trie-success v1)))
              #:attr re #'(re (seq t.re ...)))))
 
-;; Machine Patch (Bool -> ) -> Actor
 (define-syntax (trace-actor stx)
   (syntax-parse stx
     [(_ t:trace f:expr)
