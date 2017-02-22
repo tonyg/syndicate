@@ -18,6 +18,7 @@
                "auxiliary-macro-context"
                "sandbox-lib"
                "images-lib"
+               "automata"
 	       ))
 (define build-deps '("racket-doc"
                      "scribble-lib"
