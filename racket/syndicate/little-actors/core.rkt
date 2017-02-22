@@ -3,9 +3,12 @@
 (require syndicate/monolithic)
 (require syndicate/trie)
 (require racket/set)
-
-(module+ test
-  (require rackunit))
+(require syndicate/upside-down)
+(require syndicate/monitor)
+(require racket/async-channel)
+(require (for-syntax syntax/parse))
+(require rackunit)
+(require racket/engine)
 
 (define mt-scn (scn trie-empty))
 
@@ -262,9 +265,10 @@
     [`(actor ,facet)
      (define-values (_ as ft) (boot-facet facet Γ mt-σ))
      (define assertions (ft-assertions ft mt-σ))
-     (spawn actor-behavior
-            (actor-state trie-empty ft)
-            (cons (scn assertions) as))]
+     (spawn-upside-down
+      (actor actor-behavior
+             (actor-state trie-empty ft)
+             (cons (scn assertions) as)))]
     [`(dataspace ,as ...)
      (define boot-actions (for/list ([a (in-list as)])
                             (boot-actor a Γ)))
@@ -668,6 +672,51 @@
       (boot-actor boot mt-Γ)))
   (run-ground boot-actions))
 
+;; Actor AsyncChannel Program -> Boolean
+;; trace-actor is the first actor spawned inside the program's ground dataspace
+;; chan is a channel used by the trace-actor to signal a completed trace
+(define (run-with-tracing trace-actor chan p #:timeout [timeout never-evt])
+  (define boot-actions
+    (for/list ([boot (in-list p)])
+      (boot-actor boot mt-Γ)))
+  (define cust (make-custodian))
+  (define syndicate-thread
+    (thread (lambda ()
+              (engine-run timeout
+                          (engine (lambda (x) (run-ground (cons trace-actor boot-actions))))))))
+  (define result
+    (sync (handle-evt chan
+                      (lambda (val) #t))
+          (handle-evt syndicate-thread
+                      (lambda (val) #f))))
+  (kill-thread syndicate-thread)
+  result)
+
+(define-syntax (run-with-trace stx)
+  (define-splicing-syntax-class opt-timeout
+    #:attributes (timeout)
+    (pattern (~seq #:timeout to:expr)
+             #:attr timeout #'to)
+    (pattern (~seq)
+             #:attr timeout #'never-evt))
+  (syntax-parse stx
+    #:datum-literals (trace)
+    [(_ (trace item:expr ...)
+        program:expr
+        ot:opt-timeout)
+     #'(let ([chan (make-async-channel)])
+         (run-with-tracing (trace-actor (trace item ...)
+                                     (lambda () (async-channel-put chan #t)))
+                        chan
+                        program
+                        #:timeout ot.timeout))]))
+
+(define-syntax (test-trace stx)
+  (syntax-parse stx
+    [(_ any ...)
+     (syntax/loc stx
+       (check-true (run-with-trace any ...)))]))
+
 (define test-program
   `((actor (react (on-start (printf "hello,world\n"))))))
 
@@ -676,6 +725,11 @@
     (actor (react (on (asserted 5)
                       (printf "wat\n"))))
     (actor (react (assert 5)))))
+
+(test-trace (trace (assertion-added (observe 5))
+                   (assertion-added 5))
+            test-program2)
+
 
 (define ping-pong
   `(
@@ -686,6 +740,16 @@
                       (printf "pong\n")
                       (send! "ping"))
                   (on-start (send! "ping"))))))
+
+(test-trace (trace (message "ping")
+                   (message "pong")
+                   (message "ping")
+                   (message "pong")
+                   (message "ping")
+                   (message "pong")
+                   (message "ping")
+                   (message "pong"))
+            ping-pong)
 
 (define bank-account
   `(
@@ -704,11 +768,21 @@
                               (send! (list "deposit" +100))
                               (send! (list "deposit" -30)))))))
 
+(test-trace (trace (assertion-added '(list "account" 0))
+                   (and (assertion-added '(list "account" 100)) (assertion-removed '(list "account" 0)))
+                   (and (assertion-added '(list "account" 70)) (assertion-removed '(list "account" 100))))
+            bank-account
+            #:timeout 5000)
+
 (define multi-level-ex
   '(
     (actor (react (on (asserted "hello")
                       (printf "goodbye"))))
     (dataspace (actor (react (assert (outbound "hello")))))))
+
+;; this fails because upside-down doesn't handle relaying right
+#;(test-trace (trace (assertion-added "hello"))
+            multi-level-ex)
 
 (define ff
   '(
@@ -735,4 +809,17 @@
                   (on (message "hey")
                       (printf "oh.\n"))))))
 
-(run bank-account)
+(define competing-stop-whens
+  '(
+    (actor (react (stop-when (asserted "hello")
+                             (printf "hello\n"))
+                  (on (asserted "howdy")
+                      (printf "howdy-do\n"))
+                  (stop-when (asserted "howdy")
+                             (printf "howdy\n"))))
+
+    (actor (react (assert "hello")
+                  (assert "howdy")))
+    ))
+
+#;(run competing-stop-whens)
