@@ -54,7 +54,7 @@ this facility for testing.
     [(patch added removed)
      (patch (turn-trie-upside-down added)
             (turn-trie-upside-down removed))]
-    [(? actor? a) a]))
+    [(? actor? a) (spawn-upside-down a)]))
 
 ;; Event -> Event
 (define (turn-event-rightside-up e)
