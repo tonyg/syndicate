@@ -674,7 +674,8 @@
 
 ;; Actor AsyncChannel Program -> Boolean
 ;; trace-actor is the first actor spawned inside the program's ground dataspace
-;; chan is a channel used by the trace-actor to signal a completed trace
+;; chan is a channel used by the trace-actor to signal a completed trace, by
+;; sending a non-falsey value
 (define (run-with-tracing trace-actor chan p #:timeout [timeout never-evt])
   (define boot-actions
     (for/list ([boot (in-list p)])
@@ -688,7 +689,13 @@
     (sync (handle-evt chan
                       (lambda (val) #t))
           (handle-evt syndicate-thread
-                      (lambda (val) #f))))
+                      (lambda (val)
+                        ;; it's possible one of the final events in the
+                        ;; dataspace resulted in an accepting trace and the
+                        ;; thread ended at the same time, so the scheduler
+                        ;; picked this event. Double check the channel for this
+                        ;; case.
+                        (async-channel-try-get chan)))))
   (kill-thread syndicate-thread)
   result)
 
