@@ -32,7 +32,7 @@
 	    #f)]
     [_ #f]))
 
-(spawn-dataspace (actor r (void) sub-all-except-meta)
+(dataspace-actor (actor r (void) sub-all-except-meta)
                  (actor b 0 '()))
 
 (define (echoer e s)

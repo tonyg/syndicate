@@ -68,7 +68,7 @@
                    1
                    (patch-seq (sub (observe (set-timer ? ? ?)))
                               (sub (timer-expired 'tick ?))))
-	    (spawn-dataspace (actor r (void) sub-all-except-meta)
+	    (dataspace-actor (actor r (void) sub-all-except-meta)
                              (actor b 0 '()))
 	    (actor echoer
                    (void)

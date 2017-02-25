@@ -33,5 +33,5 @@
          (sub-to-alarm)))
 
 (printf "Type 'quit' or 'quit-dataspace'.\n")
-(spawn-dataspace (spawn-command-listener)
+(dataspace-actor (spawn-command-listener)
                  (spawn-ticker))

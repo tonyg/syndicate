@@ -942,7 +942,7 @@
                      #:level-size [level-size-vec (vector 4000 2000)]
                      #:scene [scene grassland-backdrop]
                      . actions)
-  (spawn-dataspace
+  (dataspace-actor
    (and scene (spawn-background-image level-size-vec scene))
    (spawn-display-controller level-size-vec)
    (spawn-physics-engine)
@@ -1045,5 +1045,5 @@
 ((2d-dataspace #:width 600 #:height 400)
  (spawn-keyboard-integrator)
  (spawn-scene-manager)
- (spawn-dataspace (spawn-score-keeper)
+ (dataspace-actor (spawn-score-keeper)
                   (spawn-level-spawner 0)))

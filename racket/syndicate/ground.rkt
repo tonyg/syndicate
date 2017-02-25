@@ -156,7 +156,7 @@
 ;; Action* -> Void
 ;; Runs a ground VM, booting the outermost Dataspace with the given Actions.
 (define (run-ground . boot-actions)
-  (run-ground* (spawn-dataspace #:name 'ground boot-actions)))
+  (run-ground* (dataspace-actor #:name 'ground boot-actions)))
 
 ;; actor -> Void
 (define (run-ground* s)

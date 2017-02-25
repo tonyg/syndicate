@@ -10,7 +10,7 @@
        (patch-seq (sub 'die)
                   (sub (observe 'die))))
 
-(spawn-dataspace
+(dataspace-actor
  (actor (lambda (e s)
           (match e
             [(message (inbound 'die)) (quit)]

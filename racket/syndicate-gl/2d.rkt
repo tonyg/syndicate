@@ -434,7 +434,7 @@
     (define current-coordinate-maps (hash))
 
     (define-values (proc pending-transition)
-      (actor->process+transition (spawn-dataspace boot-actions)))
+      (actor->process+transition (dataspace-actor boot-actions)))
     (define event-queue (make-queue))
 
     (define target-frame-rate 60)

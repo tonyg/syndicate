@@ -134,7 +134,7 @@
 
 (define-syntax-rule (big-bang-dataspace* boot-actions extra-clause ...)
   (let-values (((proc initial-transition)
-                (actor->process+transition (spawn-dataspace boot-actions))))
+                (actor->process+transition (dataspace-actor boot-actions))))
     (big-bang (interpret-actions (bb proc
                                      '()
                                      '()

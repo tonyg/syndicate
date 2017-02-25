@@ -3,8 +3,8 @@
 
 (provide (struct-out dataspace)
          make-dataspace
-         spawn-dataspace
-         make-spawn-dataspace
+         dataspace-actor
+         make-dataspace-actor
          dataspace-handle-event
          pretty-print-dataspace)
 
@@ -109,14 +109,14 @@
      (queue-append-list (dataspace-pending-action-queue w)
                         (for/list [(a actions)] (cons label a)))]))
 
-(define-syntax spawn-dataspace
+(define-syntax dataspace-actor
   (syntax-rules ()
-    [(spawn-dataspace #:name name-exp boot-action ...)
+    [(dataspace-actor #:name name-exp boot-action ...)
      (spawn-standard-relay
-      (make-spawn-dataspace #:name name-exp (lambda () (list boot-action ...))))]
-    [(spawn-dataspace boot-action ...)
+      (make-dataspace-actor #:name name-exp (lambda () (list boot-action ...))))]
+    [(dataspace-actor boot-action ...)
      (spawn-standard-relay
-      (make-spawn-dataspace (lambda () (list boot-action ...))))]))
+      (make-dataspace-actor (lambda () (list boot-action ...))))]))
 
 (define (make-dataspace boot-actions)
   (dataspace (mux)
@@ -124,7 +124,7 @@
              (set)
              (hash)))
 
-(define (make-spawn-dataspace #:name [name #f] boot-actions-thunk)
+(define (make-dataspace-actor #:name [name #f] boot-actions-thunk)
   (<actor> (lambda ()
              (list dataspace-handle-event
                    (transition (make-dataspace (boot-actions-thunk)) '())

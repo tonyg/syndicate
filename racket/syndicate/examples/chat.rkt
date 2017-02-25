@@ -40,7 +40,7 @@
           (pub (inbound (tcp-channel us them ?))) ;; we will write to remote client
           ))))
 
-(spawn-dataspace
+(dataspace-actor
  (spawn-demand-matcher (inbound (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?)))
                        (inbound (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?)))
 		       spawn-session))

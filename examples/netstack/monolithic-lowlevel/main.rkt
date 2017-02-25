@@ -61,7 +61,7 @@
             (advertisement (inbound (tcp-channel us them ?))) ;; we will write to remote client
             ))))
 
-  (spawn-dataspace
+  (dataspace-actor
    (spawn-demand-matcher (inbound (advertise (tcp-channel (?!) (?! (tcp-listener 5999)) ?)))
                          (inbound (observe (tcp-channel (?!) (?! (tcp-listener 5999)) ?)))
                          spawn-session))
@@ -105,7 +105,7 @@
                        (subscription (inbound (advertise (tcp-channel them us ?))))
                        (advertisement (inbound (tcp-channel us them ?)))))))
 
-  (spawn-dataspace
+  (dataspace-actor
    (actor (lambda (e counter)
 	    (match e
 	      [(message 'bump)

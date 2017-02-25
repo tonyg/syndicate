@@ -314,7 +314,7 @@
   (syntax-parse stx
     [(_ name:name script ...)
      (quasisyntax/loc stx
-       (let ((spawn-action (core:spawn-dataspace
+       (let ((spawn-action (core:dataspace-actor
                             #:name name.N
                             (actor-action script ...
                                           (schedule-action! (core:quit-dataspace))))))
