@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Syndicate: Mixin</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="../../dist/syndicate.min.js"></script>
+    <style>
+      #place {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: -1;
+        width: 100%;
+        height: 100%;
+        line-height: 0;
+      }
+      #instructions {
+        float: right;
+        background: rgba(255,255,255,0.5);
+        padding: 1rem;
+        max-width: 24rem;
+      }
+      #instructions h1, #instructions p {
+        margin: 0.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="instructions">
+      <h1>Mixin example</h1>
+      <p>Source code: <a href="index.js">index.js</a></p>
+      <p>Drag shapes. Click for rectangles. Shift-click to delete a rectangle.</p>
+    </div>
+    <div id="place"></div>
+    <script src="index.expanded.js"></script>
+  </body>
+</html>
