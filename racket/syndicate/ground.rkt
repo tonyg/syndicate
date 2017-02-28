@@ -99,66 +99,77 @@
 (define poll-handler
   (handle-evt always-evt (lambda _ #f)))
 
-;; Boolean Process AssertionSet Natural -> Void
+;; Boolean Process AssertionSet Natural -> AssertionSet
+;; Returns the final set of active assertions at groundmost level.
 (define (await-interrupt inert? proc interests background-activity-count)
   ;; (log-info "~a ~a GROUND INTERESTS:\n~a"
   ;;           inert?
   ;;           background-activity-count
   ;;           (trie->pretty-string interests))
-  (if (and inert? (zero? background-activity-count) (trie-empty? interests))
+  (define active-events (extract-active-events interests))
+  (if (and inert? (zero? background-activity-count) (null? active-events))
       (begin (log-syndicate/ground-debug "run-ground: Terminating because inert")
-             (void))
+             interests)
       (match (apply sync
                     (current-ground-event-async-channel)
                     (cond
                       [inert? never-evt]
                       [(zero? background-activity-count) idle-handler]
                       [else poll-handler])
-                    (extract-active-events interests))
+                    active-events)
         [(background-activity-signal delta)
          ;; (log-info "background-activity-count ~v" (+ background-activity-count delta))
          (await-interrupt inert? proc interests (+ background-activity-count delta))]
         [e
          (inject-event e proc interests background-activity-count)])))
 
-;; Event Process AssertionSet Natural -> Void
+;; Event Process AssertionSet Natural -> AssertionSet
+;; Returns the final set of active assertions at groundmost level.
 (define (inject-event e proc interests background-activity-count)
   (trace-event-consumed #f e)
   (trace-turn-begin #f proc)
   (define resulting-transition (clean-transition ((process-behavior proc) e (process-state proc))))
   (process-transition resulting-transition proc interests background-activity-count))
 
-;; Transition Process AssertionSet Natural -> Void
+;; (Listof Action) AssertionSet -> AssertionSet
+;; Incorporates patches into the given assertion set.
+(define (process-actions actions interests)
+  (match actions
+    ['() interests]
+    [(cons a actions)
+     (match a
+       [(? patch? p)
+        (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
+       [_
+        (log-syndicate/ground-warning "run-ground: ignoring useless meta-action ~v" a)
+        (process-actions actions interests)])]))
+
+;; Transition Process AssertionSet Natural -> AssertionSet
+;; Returns the final set of active assertions at groundmost level.
 (define (process-transition resulting-transition proc interests background-activity-count)
   (match resulting-transition
     [#f ;; inert
      (trace-turn-end #f proc)
      (await-interrupt #t proc interests background-activity-count)]
-    [(<quit> exn _)
+    [(<quit> exn actions)
      (trace-turn-end #f proc)
      (trace-actor-exit #f exn)
      (log-syndicate/ground-debug "run-ground: Terminating by request")
-     (void)]
+     (process-actions actions interests)]
     [(transition new-state actions)
      (trace-turn-end #f (process (process-name proc) (process-behavior proc) new-state))
-     (let ((proc (update-process-state proc new-state)))
-       (let process-actions ((actions actions) (interests interests))
-         (match actions
-           ['() (await-interrupt #f proc interests background-activity-count)]
-           [(cons a actions)
-            (match a
-              [(? patch? p)
-               (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
-              [_
-               (log-syndicate/ground-warning "run-ground: ignoring useless meta-action ~v" a)
-               (process-actions actions interests)])])))]))
+     (let ((proc (update-process-state proc new-state))
+           (new-interests (process-actions actions interests)))
+       (await-interrupt #f proc new-interests background-activity-count))]))
 
-;; Action* -> Void
+;; Action* -> AssertionSet
 ;; Runs a ground VM, booting the outermost Dataspace with the given Actions.
+;; Returns the final set of active assertions at groundmost level.
 (define (run-ground . boot-actions)
   (run-ground* (dataspace-actor #:name 'ground boot-actions)))
 
-;; actor -> Void
+;; actor -> AssertionSet
+;; Returns the final set of active assertions at groundmost level.
 (define (run-ground* s)
   (define-values (proc t) (actor->process+transition s))
   (process-transition t proc trie-empty 0))
