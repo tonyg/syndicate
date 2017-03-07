@@ -272,7 +272,10 @@
     [`(dataspace ,as ...)
      (define boot-actions (for/list ([a (in-list as)])
                             (boot-actor a Γ)))
-     (spawn-dataspace boot-actions)]))
+     ;; note the recursive upside-down wrapping of dataspaces--
+     ;; the upside-down-relay is needed for things to line up properly
+     (spawn-upside-down
+      (dataspace-actor (cons upside-down-relay boot-actions)))]))
 
 ;; eval-exp : exp Γ σ -> (Continue val)
 (define (eval-exp e Γ σ)
@@ -670,7 +673,7 @@
   (define boot-actions
     (for/list ([boot (in-list p)])
       (boot-actor boot mt-Γ)))
-  (run-ground boot-actions))
+  (run-ground (cons upside-down-relay boot-actions)))
 
 ;; Actor AsyncChannel Program -> Boolean
 ;; trace-actor is the first actor spawned inside the program's ground dataspace
@@ -684,7 +687,7 @@
   (define syndicate-thread
     (thread (lambda ()
               (engine-run timeout
-                          (engine (lambda (x) (run-ground (cons trace-actor boot-actions))))))))
+                          (engine (lambda (x) (run-ground (cons trace-actor (cons upside-down-relay boot-actions)))))))))
   (define result
     (sync (handle-evt chan
                       (lambda (val) #t))
@@ -724,72 +727,91 @@
      (syntax/loc stx
        (check-true (run-with-trace any ...)))]))
 
-(define test-program
-  `((actor (react (on-start (printf "hello,world\n"))))))
+(module+ test
 
-(define test-program2
-  `(
-    (actor (react (on (asserted 5)
-                      (printf "wat\n"))))
-    (actor (react (assert 5)))))
+  (define test-program
+    `((actor (react (on-start (printf "hello,world\n"))))))
 
-(test-trace (trace (assertion-added (observe 5))
-                   (assertion-added 5))
-            test-program2)
+  (define test-program2
+    `(
+      (actor (react (on (asserted 5)
+                        (printf "wat\n"))))
+      (actor (react (assert 5)))))
+
+  (test-trace (trace (assertion-added (observe 5))
+                     (assertion-added 5))
+              test-program2)
 
 
-(define ping-pong
-  `(
-    (actor (react (on (message "ping")
-                      (printf "ping\n")
-                      (send! "pong"))))
-    (actor (react (on (message "pong")
-                      (printf "pong\n")
-                      (send! "ping"))
-                  (on-start (send! "ping"))))))
+  (define ping-pong
+    `(
+      (actor (react (on (message "ping")
+                        (printf "ping\n")
+                        (send! "pong"))))
+      (actor (react (on (message "pong")
+                        (printf "pong\n")
+                        (send! "ping"))
+                    (on-start (send! "ping"))))))
 
-(test-trace (trace (message "ping")
-                   (message "pong")
-                   (message "ping")
-                   (message "pong")
-                   (message "ping")
-                   (message "pong")
-                   (message "ping")
-                   (message "pong"))
-            ping-pong)
+  (test-trace (trace (message "ping")
+                     (message "pong")
+                     (message "ping")
+                     (message "pong")
+                     (message "ping")
+                     (message "pong")
+                     (message "ping")
+                     (message "pong"))
+              ping-pong)
 
-(define bank-account
-  `(
-    (actor (react (field balance 0)
-                  (assert (list "account" (read balance)))
-                  (on (message (list "deposit" $amount))
-                      (set! balance (+ (read balance) amount)))))
+  (define bank-account
+    `(
+      (actor (react (field balance 0)
+                    (assert (list "account" (read balance)))
+                    (on (message (list "deposit" $amount))
+                        (set! balance (+ (read balance) amount)))))
 
-    (actor (react (on (asserted (list "account" $balance))
-                      (printf "Balance changed to ~a\n" balance))
-                  (stop-when (asserted (list "account" 70))
-                             (printf "bye\n"))
-                  (on-stop (printf "good.\n"))))
+      (actor (react (on (asserted (list "account" $balance))
+                        (printf "Balance changed to ~a\n" balance))
+                    (stop-when (asserted (list "account" 70))
+                               (printf "bye\n"))
+                    (on-stop (printf "good.\n"))))
 
-    (actor (react (stop-when (asserted (observe (list "deposit" _)))
-                              (send! (list "deposit" +100))
-                              (send! (list "deposit" -30)))))))
+      (actor (react (stop-when (asserted (observe (list "deposit" _)))
+                               (send! (list "deposit" +100))
+                               (send! (list "deposit" -30)))))))
 
-(test-trace (trace (assertion-added '(list "account" 0))
-                   (and (assertion-added '(list "account" 100)) (assertion-removed '(list "account" 0)))
-                   (and (assertion-added '(list "account" 70)) (assertion-removed '(list "account" 100))))
-            bank-account
-            #:timeout 5000)
+  (test-trace (trace (assertion-added '(list "account" 0))
+                     (and (assertion-added '(list "account" 100))
+                          (assertion-removed '(list "account" 0)))
+                     (and (assertion-added '(list "account" 70))
+                          (assertion-removed '(list "account" 100))))
+              bank-account
+              #:timeout 5000)
 
-(define multi-level-ex
-  '(
-    (actor (react (on (asserted "hello")
-                      (printf "goodbye"))))
-    (dataspace (actor (react (assert (outbound "hello")))))))
+  (define multi-level-ex
+    '(
+      (actor (react (on (asserted "hello")
+                        (printf "goodbye"))))
+      (dataspace (actor (react (assert (outbound "hello")))))))
 
-;; this fails because upside-down doesn't handle relaying right
-#;(test-trace (trace (assertion-added "hello"))
-            multi-level-ex)
+  (test-trace (trace (assertion-added "hello"))
+              multi-level-ex)
+
+  (define multi-level-message
+    '(
+      (actor (react (on (message "hello"))))
+      (dataspace (actor (react (on-start (send! (outbound "hello"))))))))
+
+  (test-trace (trace (message "hello"))
+              multi-level-message)
+  (define multi-level-other-way
+    '(
+      (dataspace (actor (react (on (asserted (inbound "gday"))
+                                   (send! (outbound "good things"))))))
+      (actor (react (assert "gday")))))
+
+  (test-trace (trace (message "good things"))
+              multi-level-other-way))
 
 (define ff
   '(
