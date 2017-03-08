@@ -12,6 +12,7 @@
 (require "trace/stderr.rkt")
 (require "tset.rkt")
 (require "protocol/standard-relay.rkt")
+(require "trie.rkt")
 
 (provide (struct-out external-event)
          current-ground-event-async-channel
@@ -107,7 +108,10 @@
   ;;           background-activity-count
   ;;           (trie->pretty-string interests))
   (define active-events (extract-active-events interests))
-  (if (and inert? (zero? background-activity-count) (null? active-events))
+  ;; use the presence of subscriptions to indicate whether the program is
+  ;; waiting on a driver
+  (define ground-subscriptions (trie-step interests observe-parenthesis))
+  (if (and inert? (zero? background-activity-count) (trie-empty? ground-subscriptions))
       (begin (log-syndicate/ground-debug "run-ground: Terminating because inert")
              interests)
       (match (apply sync
