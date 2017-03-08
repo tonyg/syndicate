@@ -42,6 +42,9 @@
   (define (emit-actor! a)
     (set! actors (cons a actors)))
 
+  (define (gensym/intern base)
+    (string->symbol (symbol->string (gensym base))))
+
   (define ($ v)
     (format-symbol "$~a" v))
 
@@ -51,9 +54,6 @@
                                               (lambda (v)
                                                 `(assert (rpc (list (list ',n ,@fvs) ,@vars)
                                                               ,v)))))))))
-
-  (define (gensym/intern base)
-    (string->symbol (symbol->string (gensym base))))
 
   (define (compile-term term k)
     (match term
