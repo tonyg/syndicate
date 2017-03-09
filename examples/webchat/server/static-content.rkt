@@ -15,15 +15,21 @@
 (begin-for-declarations
   (define-runtime-path htdocs-path "../htdocs")
   (define-runtime-path templates-path "../htdocs/templates")
+  (define-runtime-path syndicate-js-dist-path "../../../js/dist")
   (define path->mime-type (make-path->mime-type "/etc/mime.types")))
 
 (spawn #:name 'static-content-server
        (stop-when-reloaded)
-       (define url->path (make-url->path htdocs-path))
+       (define static-paths (list htdocs-path syndicate-js-dist-path))
+       (define url->path-fns (map make-url->path static-paths))
+       (define (url->existing-static-path u)
+         (for/or [(url->path (in-list url->path-fns))]
+           (define-values (path path-pieces) (url->path u))
+           (and (file-exists? path) path)))
        (on (web-request-get (id req) _ ,_)
-           (define-values (path path-pieces)
-             (url->path (resource->url (web-request-header-resource req))))
-           (when (file-exists? path)
+           (define path (url->existing-static-path
+                         (resource->url (web-request-header-resource req))))
+           (when path
              (web-respond/bytes! id
                                  #:header (web-response-header #:mime-type (path->mime-type path))
                                  (file->bytes path)))))
