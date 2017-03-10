@@ -268,7 +268,7 @@
   (match a
     [`(actor ,facet)
      (define-values (_ as ft) (boot-facet facet Γ mt-σ))
-     (define assertions (ft-assertions ft mt-σ))
+     (define assertions (ft-assertions ft mt-Γ mt-σ))
      (spawn-upside-down
       (actor actor-behavior
              (actor-state trie-empty ft)
@@ -651,13 +651,14 @@
                             new-parent-sto))
      (stop final-parent-sto (append as more-as))]))
 
-;; ft-assertions : FacetTree σ -> π
-(define (ft-assertions ft σ)
+;; ft-assertions : FacetTree Γ σ -> π
+(define (ft-assertions ft Γ σ)
   (match-define (facet-tree stx env sto children) ft)
   (define extended-sto (store-concat σ sto))
-  (for/fold ([π (facet-assertions stx env extended-sto)])
+  (define extended-env (append Γ env))
+  (for/fold ([π (facet-assertions stx extended-env extended-sto)])
             ([f (in-list children)])
-    (π-union π (ft-assertions f env extended-sto))))
+    (π-union π (ft-assertions f extended-env extended-sto))))
 
 ;; actor-behavior : ActorState Event -> Transition
 ;; leaf behavior function
@@ -668,7 +669,7 @@
        (match-define (actor-state π-old ft) s)
        (match (run-facets ft π-old mt-σ e)
          [(ok _ ft as)
-          (define assertions (ft-assertions ft mt-σ))
+          (define assertions (ft-assertions ft mt-Γ mt-σ))
           (define next-π (if (scn? e) (scn-trie e) π-old))
           (transition (actor-state next-π ft)
                       (cons (scn assertions) as))]
