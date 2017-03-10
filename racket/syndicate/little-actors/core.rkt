@@ -15,6 +15,8 @@
 ;; an `exp` is either
 ;; ('lambda (var ...) exp) or
 ;; (exp exp ...) or
+;; var or
+;; primop or
 ;; ('begin exp ...) or
 ;; ('let (var exp) exp) or
 ;; ('if exp exp exp) or
@@ -22,12 +24,12 @@
 ;; ('react O ...) or
 ;; ('actor ('react O ...)) or
 ;; ('dataspace actor ...) or
+;; ('observe exp) or
 ;; ('outbound exp) or
 ;; ('inbound exp) or
 ;; ('set! var exp) or
 ;; ('read var) or
 ;; ('list exp ...) or
-;; (primop exp ...) or
 ;; atom
 
 ;; a `val` is either
@@ -35,6 +37,7 @@
 ;; ('list val ...) or
 ;; (outbound val) or
 ;; (inbound val) or
+;; (observe val) or
 ;; (closure Γ ('lambda (var ...) exp))
 (struct closure (env fun) #:transparent)
 
@@ -50,16 +53,17 @@
 ;; ('on-stop exp ...)
 
 ;; a `facet` is ('react O ...)
+
 ;; an `actor` is
 ;; ('actor facet) or
 ;; ('dataspace actor ...)
 
-;; an E is either
+;; an `E` is either
 ;; ('asserted pat) or
 ;; ('retracted pat) or
 ;; (message pat)
 
-;; a pat is either
+;; a `pat` is either
 ;; $var or
 ;; _ or
 ;; exp or
@@ -78,7 +82,7 @@
 (struct store-concat (σ1 σ2) #:transparent)
 ;; σ1 is the "parent" to σ2 (local)
 
-;; a FacetTree is (facet-tree '(react O ...) Γ σ (Listof FacetTree))
+;; a FacetTree is (facet-tree facet Γ σ (Listof FacetTree))
 (struct facet-tree (stx env sto children) #:transparent)
 
 ;; an ActorState is (actor-state π FacetTree)
@@ -175,7 +179,7 @@
 ;; if not present throw an error
 (define (sto-fetch σ id)
   (let search ([σ σ]
-               [k (lambda () (error 'update-sto "unbound field: ~v" id))])
+               [k (lambda () (error 'sto-fetch "unbound field: ~v" id))])
     (match σ
       [(store-concat σ1 σ2)
        (search σ2 (lambda () (search σ1 k)))]
@@ -289,6 +293,9 @@
      (continue (void) σ (list spawn-action) (list))]
     [`(dataspace ,actors ...)
      (continue (void) σ (list (boot-actor e Γ)) (list))]
+    [`(observe ,exp)
+     (match-define (continue v new-sto as facets) (eval-exp exp Γ σ))
+     (continue (observe v) σ as facets)]
     [`(outbound ,exp)
      (match-define (continue v new-sto as facets) (eval-exp exp Γ σ))
      (continue (outbound v) σ as facets)]
@@ -613,6 +620,7 @@
 
 ;; an OK is (ok σ FacetTree (ListofAction))
 (struct ok (sto ft as) #:transparent)
+
 ;; run-facets : FacetTree π σ Event -> (U OK Stop)
 (define (run-facets ft π parent-sto e)
   (match-define (facet-tree stx env sto children) ft)
@@ -852,3 +860,35 @@
     ))
 
 #;(run competing-stop-whens)
+
+;; should this work?
+(define store-passing
+  '(
+    (actor (react (field x 10)
+                  (on (message "spawn")
+                      (actor (react (field y (+ 1 (read x)))
+                                    (on (message "read y")
+                                        (send! (list "y" (read y)))))))
+                  (on (message "read x")
+                      (send! (list "x" (read x))))))
+    (actor (react (on-start (send! "spawn"))
+                  (on (asserted (observe "read y"))
+                      (send! "read y")
+                      (send! "read x"))))
+    (actor (react (on (message (list "y" $y))
+                      (printf "y = ~v\n" y))
+                  (on (message (list "x" $x))
+                      (printf "x = ~v\n" x))))))
+
+(module+ test
+  (define stop-when-react
+    '(
+      (actor (react (stop-when (message "stop")
+                               (react (on (message "poodle")
+                                          (send! "success")
+                                          (printf "woohoo\n"))))))
+      (actor (react (on-start (send! "stop"))
+                    (on (asserted (observe "poodle"))
+                        (send! "poodle"))))))
+  (test-trace (trace (message "success"))
+              stop-when-react))
