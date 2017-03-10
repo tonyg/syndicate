@@ -631,8 +631,8 @@
      (define-values (final-sto final-as new-children)
        (for/fold ([sto new-sto]
                   [as as]
-                  [new-children (list)])
-                 ([ft (in-list (append children new-facets))])
+                  [new-children new-facets])
+                 ([ft (in-list children)])
          (match (run-facets ft π sto e)
            [(ok new-sto new-ft more-as)
             (values new-sto
@@ -893,3 +893,13 @@
                         (send! "poodle"))))))
   (test-trace (trace (message "success"))
               stop-when-react))
+
+(module+ test
+  (define do-new-facets-run-immediately
+    '(
+      (actor (react (on (message "hello")
+                        (react (on (message "hello")
+                                   (send! "I am here"))))))
+      (actor (react (on-start (send! "hello"))))))
+  (check-false (run-with-trace (trace (message "I am here"))
+                               do-new-facets-run-immediately)))
