@@ -634,10 +634,10 @@
                     var c = this.ui.context(mainpageVersion, 'post', timestamp, pid);
                     during inbound(uiTemplate("post-entry.html", $postEntryTemplate)) {
                       assert c.html('.posts', Mustache.render(postEntryTemplate, postInfo));
-                      during c.fragmentVersion(_) {
+                      during c.fragmentVersion($postEntryVersion) {
                         var itemCounter = 0;
                         items.forEach((function (itemURL) {
-                          manifestPostItem(c.context('item', itemCounter++),
+                          manifestPostItem(c.context('item', postEntryVersion, itemCounter++),
                                            '#post-' + pid + ' .post-item-container',
                                            postInfo,
                                            itemURL);
@@ -777,12 +777,12 @@
         if (entry && !this.entry) this.entry = entry;
       }
       assert uiContext.html(containerSelector, Mustache.render(postItemTemplate, itemInfo));
-      on asserted uiContext.fragmentVersion(_) {
-        var innerContext = uiContext.context('item-body');
+      on asserted uiContext.fragmentVersion($postItemVersion) {
+        var innerContext = uiContext.context('item-body', postItemVersion);
         assert innerContext.html('#' + itemId + ' .post-item-body-container',
                                  Mustache.render(this.entry, itemInfo)) when (this.entry);
         if (!postInfo.isDraft) {
-          on asserted innerContext.fragmentVersion(_) {
+          on asserted innerContext.fragmentVersion($innerContextVersion) {
             if ((this.latestPostTimestamp === postInfo.timestamp) &&
                 (this.latestPostId === postInfo.postId)) {
               setTimeout(function () { $("#post-" + postInfo.postId)[0].scrollIntoView(false); }, 1);
