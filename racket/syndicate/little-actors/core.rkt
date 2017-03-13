@@ -38,8 +38,7 @@
 ;; (outbound val) or
 ;; (inbound val) or
 ;; (observe val) or
-;; (closure Γ ('lambda (var ...) exp))
-(struct closure (env fun) #:transparent)
+;; σ Any ... -> Continue val
 
 ;; `primop` is one of
 ;; + * / - and or not equal? null? car cdr printf
@@ -319,8 +318,13 @@
      (let ([v (env-lookup Γ id)])
        (continue v σ (list) (list)))]
     [`(lambda (,vars ...) ,exp)
-     (define c (closure Γ e))
-     (continue c σ (list) (list))]
+     (define f
+       (lambda (new-σ . actuals)
+         (define extended-env (append (map binding vars actuals) Γ))
+         (unless (= (length vars) (length actuals))
+           (error 'eval-exp "wrong number of arguments; expected ~v, got ~v" (length vars) (length actuals)))
+         (eval-exp exp extended-env new-σ)))
+     (continue f σ (list) (list))]
     [`(begin ,es ...)
      (for-steps (void) σ (in-list es)
        (lambda (v σ e) (eval-exp e Γ σ)))]
@@ -360,14 +364,10 @@
     [`(,f-exp ,exps ...)
      (result-bind (eval-exp f-exp Γ σ)
                   (lambda (f-v new-sto)
-                    (unless (closure? f-v) (error 'eval-exp "tried to apply non-function ~v" f-v))
+                    (unless (procedure? f-v) (error 'eval-exp "tried to apply non-function ~v" f-v))
                     (result-bind (eval-exp* exps Γ σ)
                                  (lambda (arg-vs final-sto)
-                                   (match-define (closure clo-env `(lambda (,vars ...) ,body-exp)) f-v)
-                                   (unless (= (length arg-vs) (length vars))
-                                     (error 'eval-exp "wrong number of arguments; expected ~v, got ~v" (length vars) (length arg-vs)))
-                                   (define new-env (append (map binding vars arg-vs) clo-env))
-                                   (eval-exp body-exp new-env final-sto)))))]
+                                   (apply f-v final-sto arg-vs)))))]
     ;; TODO add a predicate
     ;; atom?
     [x (continue x σ (list) (list))]))
