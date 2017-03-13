@@ -27,8 +27,6 @@
 ;; ('observe exp) or
 ;; ('outbound exp) or
 ;; ('inbound exp) or
-;; ('set! var exp) or
-;; ('read var) or
 ;; ('list exp ...) or
 ;; atom
 
@@ -349,13 +347,6 @@
     [`(send! ,exp)
      (match-define (continue v new-sto as facets) (eval-exp exp Γ σ))
      (continue (void) new-sto (append as (list (message v))) facets)]
-    [`(set! ,id ,exp)
-     (match-define (continue v new-sto as facets) (eval-exp exp Γ σ))
-     (define result-sto (update-sto new-sto id v))
-     (continue (void) result-sto as facets)]
-    [`(read ,id)
-     (define v (sto-fetch σ id))
-     (continue v σ (list) (list))]
     [`(,primop ,exp ..1)
      #:when (primop? primop)
      (result-bind (eval-exp* exp Γ σ)
@@ -404,19 +395,24 @@
   (match-let ([(continue v s as f) (eval-exp '(send! 5) mt-Γ mt-σ)])
     (check-equal? as (list (message 5)))
     (check-true (void? v)))
-  ;; set!
-  (match-let ([(continue v s as f) (eval-exp '(set! x 12) mt-Γ (make-store '(x . "hello")))])
+  ;; field set
+  (match-let ([(continue v s as f) (eval-exp '(x 12)
+                                             (list (binding 'x (field-function 'x)))
+                                             (make-store '(x . "hello")))])
     (check-true (void? v))
     (check-equal? (hash-ref s 'x) 12))
-  (match-let ([(continue v s as f) (eval-exp '(begin (set! x (+ 1 (read x)))
-                                                     (set! x (+ 1 (read x)))
-                                                     (set! x (+ 1 (read x)))
-                                                     (set! x (+ 1 (read x)))
-                                                     (read x))
-                                             mt-Γ (make-store '(x . 0)))])
+  (match-let ([(continue v s as f) (eval-exp '(begin (x (+ 1 (x)))
+                                                     (x (+ 1 (x)))
+                                                     (x (+ 1 (x)))
+                                                     (x (+ 1 (x)))
+                                                     (x))
+                                             (list (binding 'x (field-function 'x)))
+                                             (make-store '(x . 0)))])
     (check-equal? v 4))
-  ;; store read
-  (match-let ([(continue v s as f) (eval-exp '(read x) mt-Γ (make-store '(y . 5) '(x . "hello")))])
+  ;; field read
+  (match-let ([(continue v s as f) (eval-exp '(x)
+                                             (list (binding 'x (field-function 'x)))
+                                             (make-store '(y . 5) '(x . "hello")))])
     (check-equal? v "hello"))
   (match-let ([(continue v s as f) (eval-exp '(+ (- 5 1) (/ 4 (if (not #t) 1 2))) mt-Γ mt-σ)])
     (check-equal? v 6))
@@ -469,24 +465,38 @@
 
 ;; boot-facet : facet Γ σ -> (Values σ (Listof Action) FacetTree)
 (define (boot-facet f Γ σ)
-  (define initial-sto (initial-store f Γ σ))
+  (define-values (initial-sto field-bindings) (initial-store f Γ σ))
+  (define extended-env (append field-bindings Γ))
   (match-define (continue _ (store-concat parent-sto facet-sto) as fs)
-    (eval-start-actions f Γ (store-concat σ initial-sto)))
-  (values parent-sto as (facet-tree f Γ facet-sto fs)))
+    (eval-start-actions f extended-env (store-concat σ initial-sto)))
+  (values parent-sto as (facet-tree f extended-env facet-sto fs)))
 
-;; initial-store : facet Γ σ -> σ
+;; initial-store : facet Γ σ -> (Values σ Γ)
+;; returns the new store and bindings for the field ids
 ;; only bad people would put effects here.
 (define (initial-store f Γ σ)
   (match-define `(react ,O ...) f)
-  (define locations
-    (for/fold ([locations (list)])
+  (define-values (locations bindings)
+    (for/fold ([locations (list)]
+               [bindings mt-Γ])
               ([o (in-list O)])
       (match o
         [`(field ,id ,exp)
          (match-define (continue v _ _ _) (eval-exp exp Γ σ))
-         (cons (cons id v) locations)]
-        [_ locations])))
-  (apply make-store locations))
+         (values (cons (cons id v) locations)
+                 (cons (binding id (field-function id))
+                       bindings))]
+        [_ (values locations bindings)])))
+  (values (apply make-store locations)
+          bindings))
+
+;; (case-> [σ -> (Continue val)]
+;;         [σ val -> (Continue val)]
+;; This is the function field identifiers are bound to
+;; read or update the store based on whether an argument (beyond the store)
+(define (field-function id)
+  (case-lambda [(σ) (inj-result (sto-fetch σ id) σ)]
+               [(σ v) (inj-result (void) (update-sto σ id v))]))
 
 ;; eval-start-actions : facet Γ σ -> (Continue #f)
 (define (eval-start-actions f Γ σ)
@@ -798,9 +808,9 @@
   (define bank-account
     `(
       (actor (react (field balance 0)
-                    (assert (list "account" (read balance)))
+                    (assert (list "account" (balance)))
                     (on (message (list "deposit" $amount))
-                        (set! balance (+ (read balance) amount)))))
+                        (balance (+ (balance) amount)))))
 
       (actor (react (on (asserted (list "account" $balance))
                         (printf "Balance changed to ~a\n" balance))
@@ -888,11 +898,11 @@
   '(
     (actor (react (field x 10)
                   (on (message "spawn")
-                      (actor (react (field y (+ 1 (read x)))
+                      (actor (react (field y (+ 1 (x)))
                                     (on (message "read y")
-                                        (send! (list "y" (read y)))))))
+                                        (send! (list "y" (y)))))))
                   (on (message "read x")
-                      (send! (list "x" (read x))))))
+                      (send! (list "x" (x))))))
     (actor (react (on-start (send! "spawn"))
                   (on (asserted (observe "read y"))
                       (send! "read y")
@@ -939,8 +949,8 @@
   (define escaping-field
     '((actor (react (field x #f)
                     (on-start (react (field y 10)
-                                     (on-start (set! x (lambda (v) (set! y v)))))
-                              ((read x) 5)
+                                     (on-start (x (lambda (v) (y v)))))
+                              ((x) 5)
                               (send! "success!"))))))
   (check-false (run-with-trace (trace (message "success!"))
                                escaping-field))
