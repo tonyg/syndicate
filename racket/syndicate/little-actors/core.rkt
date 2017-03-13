@@ -501,20 +501,23 @@
 
 ;; boot-actor : actor Γ -> Action
 (define (boot-actor a Γ)
-  (match a
-    [`(actor ,facet)
-     (define-values (_ as ft) (boot-facet facet Γ mt-σ))
-     (define assertions (ft-assertions ft mt-Γ mt-σ))
-     (spawn-upside-down
-      (actor actor-behavior
-             (actor-state trie-empty ft)
-             (cons (scn assertions) as)))]
-    [`(dataspace ,as ...)
-     (define boot-actions (for/list ([a (in-list as)]) (boot-actor a Γ)))
-     ;; note the recursive upside-down wrapping of dataspaces--
-     ;; the upside-down-relay is needed for things to line up properly
-     (spawn-upside-down
-      (dataspace-actor (cons upside-down-relay boot-actions)))]))
+  (with-handlers ([exn:fail? (lambda (e)
+                               (eprintf "booting actor died with: ~v\n" e)
+                               #f)])
+    (match a
+      [`(actor ,facet)
+       (define-values (_ as ft) (boot-facet facet Γ mt-σ))
+       (define assertions (ft-assertions ft mt-Γ mt-σ))
+       (spawn-upside-down
+        (actor actor-behavior
+               (actor-state trie-empty ft)
+               (cons (scn assertions) as)))]
+      [`(dataspace ,as ...)
+       (define boot-actions (for/list ([a (in-list as)]) (boot-actor a Γ)))
+       ;; note the recursive upside-down wrapping of dataspaces--
+       ;; the upside-down-relay is needed for things to line up properly
+       (spawn-upside-down
+        (dataspace-actor (cons upside-down-relay boot-actions)))])))
 
 ;; dollar-id? : any -> bool
 ;; test if the input is a symbol whose first character is $
@@ -932,8 +935,24 @@
       (actor (react (assert "hello"))))))
 
 (module+ test
+  ;; this should bring down the actor *but not* the entire program
   (define escaping-field
     '((actor (react (field x #f)
                     (on-start (react (field y 10)
                                      (on-start (set! x (lambda (v) (set! y v)))))
-                              ((read x) 5)))))))
+                              ((read x) 5)
+                              (send! "success!"))))))
+  (check-false (run-with-trace (trace (message "success!"))
+                               escaping-field))
+  (check-not-exn (lambda () (run escaping-field))))
+
+(module+ test
+  ;; starting exceptions
+  (define nested-spawn-exceptions
+    '(
+      (actor (react (on (message "go")
+                        (actor (react (on-start (/ 1 0))))
+                        (send! "lovely happiness"))))
+      (actor (react (on-start (send! "go"))))))
+  (test-trace (trace (message "lovely happiness"))
+                   nested-spawn-exceptions))
