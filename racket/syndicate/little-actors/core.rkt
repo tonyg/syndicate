@@ -22,7 +22,7 @@
 ;; ('if exp exp exp) or
 ;; ('send! exp) or
 ;; ('react O ...) or
-;; ('actor O ...) or
+;; ('spawn O ...) or
 ;; ('dataspace actor ...) or
 ;; ('observe exp) or
 ;; ('outbound exp) or
@@ -52,7 +52,7 @@
 ;; a `facet` is ('react O ...)
 
 ;; an `actor` is
-;; ('actor O ...) or
+;; ('spawn O ...) or
 ;; ('dataspace actor ...)
 
 ;; an `E` is either
@@ -297,7 +297,7 @@
     [`(react ,O ...)
      (define-values (new-sto as ft) (boot-facet e Γ σ))
      (continue (void) new-sto as (list ft))]
-    [`(actor ,O ...)
+    [`(spawn ,O ...)
      ;; don't pass in parent store
      (define spawn-action (boot-actor e Γ))
      (continue (void) σ (list spawn-action) (list))]
@@ -424,7 +424,7 @@
                                                   (let (z 4)
                                                     (f 3)))) mt-Γ mt-σ)])
     (check-equal? v 15))
-  (match-let ([(continue v s as f) (eval-exp '(let (f (lambda () (actor (assert 5))))
+  (match-let ([(continue v s as f) (eval-exp '(let (f (lambda () (spawn (assert 5))))
                                                 (f)) mt-Γ mt-σ)])
     (check-false (empty? as))))
 
@@ -519,7 +519,7 @@
                                (eprintf "booting actor died with: ~v\n" e)
                                #f)])
     (match a
-      [`(actor ,O ...)
+      [`(spawn ,O ...)
        (define facet (cons 'react O))
        (define-values (_ as ft) (boot-facet facet Γ mt-σ))
        (define assertions (ft-assertions ft mt-Γ mt-σ))
@@ -777,13 +777,13 @@
 (module+ test
 
   (define test-program
-    `((actor (on-start (printf "hello,world\n")))))
+    `((spawn (on-start (printf "hello,world\n")))))
 
   (define test-program2
     `(
-      (actor (on (asserted 5)
+      (spawn (on (asserted 5)
                  (printf "wat\n")))
-      (actor (assert 5))))
+      (spawn (assert 5))))
 
   (test-trace (trace (assertion-added (observe 5))
                      (assertion-added 5))
@@ -792,10 +792,10 @@
 
   (define ping-pong
     `(
-      (actor (on (message "ping")
+      (spawn (on (message "ping")
                  (printf "ping\n")
                  (send! "pong")))
-      (actor (on (message "pong")
+      (spawn (on (message "pong")
                  (printf "pong\n")
                  (send! "ping"))
              (on-start (send! "ping")))))
@@ -812,18 +812,18 @@
 
   (define bank-account
     `(
-      (actor (field [balance 0])
+      (spawn (field [balance 0])
              (assert (list "account" (balance)))
              (on (message (list "deposit" $amount))
                  (balance (+ (balance) amount))))
 
-      (actor (on (asserted (list "account" $balance))
+      (spawn (on (asserted (list "account" $balance))
                  (printf "Balance changed to ~a\n" balance))
              (stop-when (asserted (list "account" 70))
                         (printf "bye\n"))
              (on-stop (printf "good.\n")))
 
-      (actor (stop-when (asserted (observe (list "deposit" _)))
+      (spawn (stop-when (asserted (observe (list "deposit" _)))
                         (send! (list "deposit" +100))
                         (send! (list "deposit" -30))))))
 
@@ -837,82 +837,82 @@
 
   (define multi-level-ex
     '(
-      (actor (on (asserted "hello")
+      (spawn (on (asserted "hello")
                  (printf "goodbye")))
-      (dataspace (actor (assert (outbound "hello"))))))
+      (dataspace (spawn (assert (outbound "hello"))))))
 
   (test-trace (trace (assertion-added "hello"))
               multi-level-ex)
 
   (define multi-level-message
     '(
-      (actor (on (message "hello")))
-      (dataspace (actor (on-start (send! (outbound "hello")))))))
+      (spawn (on (message "hello")))
+      (dataspace (spawn (on-start (send! (outbound "hello")))))))
 
   (test-trace (trace (message "hello"))
               multi-level-message)
   (define multi-level-other-way
     '(
-      (dataspace (actor (on (asserted (inbound "gday"))
+      (dataspace (spawn (on (asserted (inbound "gday"))
                             (send! (outbound "good things")))))
-      (actor (assert "gday"))))
+      (spawn (assert "gday"))))
 
   (test-trace (trace (message "good things"))
               multi-level-other-way))
 
 (define ff
   '(
-    (actor (on (message 5)
+    (spawn (on (message 5)
                (printf "5\n"))
            (on (asserted (observe 12))
                (printf "12\n"))
            (on (asserted (observe 16))
                (printf "16\n")))
-    (actor (on (asserted 12))
+    (spawn (on (asserted 12))
            (on-start (send! 5))
            (on (asserted 16))
            (on-start (send! 5)))))
 
 (define stop-when-priority
   '(
-    (actor (on (message "hello")
+    (spawn (on (message "hello")
                (send! "hey")
                (printf "MHM.\n"))
            (stop-when (message "hello")
                       (printf "NO.\n")))
 
-    (actor (on-start (send! "hello"))
+    (spawn (on-start (send! "hello"))
            (on (message "hey")
                (printf "oh.\n")))))
 
 (define competing-stop-whens
   '(
-    (actor (stop-when (asserted "hello")
+    (spawn (stop-when (asserted "hello")
                       (printf "hello\n"))
            (on (asserted "howdy")
                (printf "howdy-do\n"))
            (stop-when (asserted "howdy")
                       (printf "howdy\n")))
 
-    (actor (assert "hello")
+    (spawn (assert "hello")
            (assert "howdy"))
     ))
 
 ;; should this work?
 (define store-passing
   '(
-    (actor (field [x 10])
+    (spawn (field [x 10])
            (on (message "spawn")
-               (actor (field [y (+ 1 (x))])
+               (spawn (field [y (+ 1 (x))])
                       (on (message "read y")
                           (send! (list "y" (y))))))
            (on (message "read x")
                (send! (list "x" (x)))))
-    (actor (on-start (send! "spawn"))
+    (spawn (on-start (send! "spawn"))
            (on (asserted (observe "read y"))
                (send! "read y")
                (send! "read x")))
-    (actor (on (message (list "y" $y))
+    (spawn (on (message (list "y" $y))
                (printf "y = ~v\n" y))
            (on (message (list "x" $x))
                (printf "x = ~v\n" x)))))
@@ -920,11 +920,11 @@
 (module+ test
   (define stop-when-react
     '(
-      (actor (stop-when (message "stop")
+      (spawn (stop-when (message "stop")
                         (react (on (message "poodle")
                                    (send! "success")
                                    (printf "woohoo\n")))))
-      (actor (on-start (send! "stop"))
+      (spawn (on-start (send! "stop"))
              (on (asserted (observe "poodle"))
                  (send! "poodle")))))
   (test-trace (trace (message "success"))
@@ -933,26 +933,26 @@
 (module+ test
   (define do-new-facets-run-immediately
     '(
-      (actor (on (message "hello")
+      (spawn (on (message "hello")
                  (react (on (message "hello")
                             (send! "I am here")))))
-      (actor (on-start (send! "hello")))))
+      (spawn (on-start (send! "hello")))))
   (check-false (run-with-trace (trace (message "I am here"))
                                do-new-facets-run-immediately)))
 
 (module+ test
   (define maintain-knowledge
     '(
-      (actor (on (asserted "hello")
+      (spawn (on (asserted "hello")
                  (react (on (asserted "hello")
                             (printf "do I run?\n")))))
 
-      (actor (assert "hello")))))
+      (spawn (assert "hello")))))
 
 (module+ test
   ;; this should bring down the actor *but not* the entire program
   (define escaping-field
-    '((actor (field [x #f])
+    '((spawn (field [x #f])
              (on-start (react (field [y 10])
                               (on-start (x (lambda (v) (y v)))))
                        ((x) 5)
@@ -965,9 +965,9 @@
   ;; starting exceptions
   (define nested-spawn-exceptions
     '(
-      (actor (on (message "go")
-                 (actor (on-start (/ 1 0)))
+      (spawn (on (message "go")
+                 (spawn (on-start (/ 1 0)))
                  (send! "lovely happiness")))
-      (actor (on-start (send! "go")))))
+      (spawn (on-start (send! "go")))))
   (test-trace (trace (message "lovely happiness"))
                    nested-spawn-exceptions))
