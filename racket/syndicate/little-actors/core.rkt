@@ -22,7 +22,7 @@
 ;; ('if exp exp exp) or
 ;; ('send! exp) or
 ;; ('react O ...) or
-;; ('actor ('react O ...)) or
+;; ('actor O ...) or
 ;; ('dataspace actor ...) or
 ;; ('observe exp) or
 ;; ('outbound exp) or
@@ -52,7 +52,7 @@
 ;; a `facet` is ('react O ...)
 
 ;; an `actor` is
-;; ('actor facet) or
+;; ('actor O ...) or
 ;; ('dataspace actor ...)
 
 ;; an `E` is either
@@ -297,7 +297,7 @@
     [`(react ,O ...)
      (define-values (new-sto as ft) (boot-facet e Γ σ))
      (continue (void) new-sto as (list ft))]
-    [`(actor ,_)
+    [`(actor ,O ...)
      ;; don't pass in parent store
      (define spawn-action (boot-actor e Γ))
      (continue (void) σ (list spawn-action) (list))]
@@ -424,7 +424,7 @@
                                                   (let (z 4)
                                                     (f 3)))) mt-Γ mt-σ)])
     (check-equal? v 15))
-  (match-let ([(continue v s as f) (eval-exp '(let (f (lambda () (actor (react (assert 5)))))
+  (match-let ([(continue v s as f) (eval-exp '(let (f (lambda () (actor (assert 5))))
                                                 (f)) mt-Γ mt-σ)])
     (check-false (empty? as))))
 
@@ -519,7 +519,8 @@
                                (eprintf "booting actor died with: ~v\n" e)
                                #f)])
     (match a
-      [`(actor ,facet)
+      [`(actor ,O ...)
+       (define facet (cons 'react O))
        (define-values (_ as ft) (boot-facet facet Γ mt-σ))
        (define assertions (ft-assertions ft mt-Γ mt-σ))
        (spawn-upside-down
@@ -776,13 +777,13 @@
 (module+ test
 
   (define test-program
-    `((actor (react (on-start (printf "hello,world\n"))))))
+    `((actor (on-start (printf "hello,world\n")))))
 
   (define test-program2
     `(
-      (actor (react (on (asserted 5)
-                        (printf "wat\n"))))
-      (actor (react (assert 5)))))
+      (actor (on (asserted 5)
+                 (printf "wat\n")))
+      (actor (assert 5))))
 
   (test-trace (trace (assertion-added (observe 5))
                      (assertion-added 5))
@@ -791,13 +792,13 @@
 
   (define ping-pong
     `(
-      (actor (react (on (message "ping")
-                        (printf "ping\n")
-                        (send! "pong"))))
-      (actor (react (on (message "pong")
-                        (printf "pong\n")
-                        (send! "ping"))
-                    (on-start (send! "ping"))))))
+      (actor (on (message "ping")
+                 (printf "ping\n")
+                 (send! "pong")))
+      (actor (on (message "pong")
+                 (printf "pong\n")
+                 (send! "ping"))
+             (on-start (send! "ping")))))
 
   (test-trace (trace (message "ping")
                      (message "pong")
@@ -811,20 +812,20 @@
 
   (define bank-account
     `(
-      (actor (react (field [balance 0])
-                    (assert (list "account" (balance)))
-                    (on (message (list "deposit" $amount))
-                        (balance (+ (balance) amount)))))
+      (actor (field [balance 0])
+             (assert (list "account" (balance)))
+             (on (message (list "deposit" $amount))
+                 (balance (+ (balance) amount))))
 
-      (actor (react (on (asserted (list "account" $balance))
-                        (printf "Balance changed to ~a\n" balance))
-                    (stop-when (asserted (list "account" 70))
-                               (printf "bye\n"))
-                    (on-stop (printf "good.\n"))))
+      (actor (on (asserted (list "account" $balance))
+                 (printf "Balance changed to ~a\n" balance))
+             (stop-when (asserted (list "account" 70))
+                        (printf "bye\n"))
+             (on-stop (printf "good.\n")))
 
-      (actor (react (stop-when (asserted (observe (list "deposit" _)))
-                               (send! (list "deposit" +100))
-                               (send! (list "deposit" -30)))))))
+      (actor (stop-when (asserted (observe (list "deposit" _)))
+                        (send! (list "deposit" +100))
+                        (send! (list "deposit" -30))))))
 
   (test-trace (trace (assertion-added '(list "account" 0))
                      (and (assertion-added '(list "account" 100))
@@ -836,126 +837,126 @@
 
   (define multi-level-ex
     '(
-      (actor (react (on (asserted "hello")
-                        (printf "goodbye"))))
-      (dataspace (actor (react (assert (outbound "hello")))))))
+      (actor (on (asserted "hello")
+                 (printf "goodbye")))
+      (dataspace (actor (assert (outbound "hello"))))))
 
   (test-trace (trace (assertion-added "hello"))
               multi-level-ex)
 
   (define multi-level-message
     '(
-      (actor (react (on (message "hello"))))
-      (dataspace (actor (react (on-start (send! (outbound "hello"))))))))
+      (actor (on (message "hello")))
+      (dataspace (actor (on-start (send! (outbound "hello")))))))
 
   (test-trace (trace (message "hello"))
               multi-level-message)
   (define multi-level-other-way
     '(
-      (dataspace (actor (react (on (asserted (inbound "gday"))
-                                   (send! (outbound "good things"))))))
-      (actor (react (assert "gday")))))
+      (dataspace (actor (on (asserted (inbound "gday"))
+                            (send! (outbound "good things")))))
+      (actor (assert "gday"))))
 
   (test-trace (trace (message "good things"))
               multi-level-other-way))
 
 (define ff
   '(
-    (actor (react (on (message 5)
-                      (printf "5\n"))
-                  (on (asserted (observe 12))
-                      (printf "12\n"))
-                  (on (asserted (observe 16))
-                      (printf "16\n"))))
-    (actor (react (on (asserted 12))
-                  (on-start (send! 5))
-                  (on (asserted 16))
-                  (on-start (send! 5))))))
+    (actor (on (message 5)
+               (printf "5\n"))
+           (on (asserted (observe 12))
+               (printf "12\n"))
+           (on (asserted (observe 16))
+               (printf "16\n")))
+    (actor (on (asserted 12))
+           (on-start (send! 5))
+           (on (asserted 16))
+           (on-start (send! 5)))))
 
 (define stop-when-priority
   '(
-    (actor (react (on (message "hello")
-                      (send! "hey")
-                      (printf "MHM.\n"))
+    (actor (on (message "hello")
+               (send! "hey")
+               (printf "MHM.\n"))
            (stop-when (message "hello")
-                      (printf "NO.\n"))))
+                      (printf "NO.\n")))
 
-    (actor (react (on-start (send! "hello"))
-                  (on (message "hey")
-                      (printf "oh.\n"))))))
+    (actor (on-start (send! "hello"))
+           (on (message "hey")
+               (printf "oh.\n")))))
 
 (define competing-stop-whens
   '(
-    (actor (react (stop-when (asserted "hello")
-                             (printf "hello\n"))
-                  (on (asserted "howdy")
-                      (printf "howdy-do\n"))
-                  (stop-when (asserted "howdy")
-                             (printf "howdy\n"))))
+    (actor (stop-when (asserted "hello")
+                      (printf "hello\n"))
+           (on (asserted "howdy")
+               (printf "howdy-do\n"))
+           (stop-when (asserted "howdy")
+                      (printf "howdy\n")))
 
-    (actor (react (assert "hello")
-                  (assert "howdy")))
+    (actor (assert "hello")
+           (assert "howdy"))
     ))
 
 ;; should this work?
 (define store-passing
   '(
-    (actor (react (field [x 10])
-                  (on (message "spawn")
-                      (actor (react (field [y (+ 1 (x))])
-                                    (on (message "read y")
-                                        (send! (list "y" (y)))))))
-                  (on (message "read x")
-                      (send! (list "x" (x))))))
-    (actor (react (on-start (send! "spawn"))
-                  (on (asserted (observe "read y"))
-                      (send! "read y")
-                      (send! "read x"))))
-    (actor (react (on (message (list "y" $y))
-                      (printf "y = ~v\n" y))
-                  (on (message (list "x" $x))
-                      (printf "x = ~v\n" x))))))
+    (actor (field [x 10])
+           (on (message "spawn")
+               (actor (field [y (+ 1 (x))])
+                      (on (message "read y")
+                          (send! (list "y" (y))))))
+           (on (message "read x")
+               (send! (list "x" (x)))))
+    (actor (on-start (send! "spawn"))
+           (on (asserted (observe "read y"))
+               (send! "read y")
+               (send! "read x")))
+    (actor (on (message (list "y" $y))
+               (printf "y = ~v\n" y))
+           (on (message (list "x" $x))
+               (printf "x = ~v\n" x)))))
 
 (module+ test
   (define stop-when-react
     '(
-      (actor (react (stop-when (message "stop")
-                               (react (on (message "poodle")
-                                          (send! "success")
-                                          (printf "woohoo\n"))))))
-      (actor (react (on-start (send! "stop"))
-                    (on (asserted (observe "poodle"))
-                        (send! "poodle"))))))
+      (actor (stop-when (message "stop")
+                        (react (on (message "poodle")
+                                   (send! "success")
+                                   (printf "woohoo\n")))))
+      (actor (on-start (send! "stop"))
+             (on (asserted (observe "poodle"))
+                 (send! "poodle")))))
   (test-trace (trace (message "success"))
               stop-when-react))
 
 (module+ test
   (define do-new-facets-run-immediately
     '(
-      (actor (react (on (message "hello")
-                        (react (on (message "hello")
-                                   (send! "I am here"))))))
-      (actor (react (on-start (send! "hello"))))))
+      (actor (on (message "hello")
+                 (react (on (message "hello")
+                            (send! "I am here")))))
+      (actor (on-start (send! "hello")))))
   (check-false (run-with-trace (trace (message "I am here"))
                                do-new-facets-run-immediately)))
 
 (module+ test
   (define maintain-knowledge
     '(
-      (actor (react (on (asserted "hello")
-                        (react (on (asserted "hello")
-                                   (printf "do I run?\n"))))))
+      (actor (on (asserted "hello")
+                 (react (on (asserted "hello")
+                            (printf "do I run?\n")))))
 
-      (actor (react (assert "hello"))))))
+      (actor (assert "hello")))))
 
 (module+ test
   ;; this should bring down the actor *but not* the entire program
   (define escaping-field
-    '((actor (react (field [x #f])
-                    (on-start (react (field [y 10])
-                                     (on-start (x (lambda (v) (y v)))))
-                              ((x) 5)
-                              (send! "success!"))))))
+    '((actor (field [x #f])
+             (on-start (react (field [y 10])
+                              (on-start (x (lambda (v) (y v)))))
+                       ((x) 5)
+                       (send! "success!")))))
   (check-false (run-with-trace (trace (message "success!"))
                                escaping-field))
   (check-not-exn (lambda () (run escaping-field))))
@@ -964,9 +965,9 @@
   ;; starting exceptions
   (define nested-spawn-exceptions
     '(
-      (actor (react (on (message "go")
-                        (actor (react (on-start (/ 1 0))))
-                        (send! "lovely happiness"))))
-      (actor (react (on-start (send! "go"))))))
+      (actor (on (message "go")
+                 (actor (on-start (/ 1 0)))
+                 (send! "lovely happiness")))
+      (actor (on-start (send! "go")))))
   (test-trace (trace (message "lovely happiness"))
                    nested-spawn-exceptions))
