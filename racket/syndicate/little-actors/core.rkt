@@ -42,7 +42,7 @@
 ;; + * / - and or not equal? null? car cdr printf
 
 ;; an `O` (endpoint) is either
-;; ('field var exp) or
+;; ('field [var exp] ...) or
 ;; ('assert exp) or
 ;; ('on E exp ...) or
 ;; ('stop-when E exp ...) or
@@ -180,7 +180,7 @@
 (define (run-endpoint O π-old σ Γ e)
   (match O
     ;; event-insensitive endpoints
-    [`(field ,_ ,_)
+    [`(field ,_)
      (inj-result #f σ)]
     [`(on-start ,exp ...)
      (inj-result #f σ)]
@@ -216,7 +216,7 @@
 ;; IGNORE effects from such expressions (yadda yadda evil yadda yadda)
 (define (endpoint-assertions O Γ σ)
   (match O
-    [`(field ,_ ,_)
+    [`(field ,_)
      trie-empty]
     [`(on-start ,exp ...)
      trie-empty]
@@ -481,11 +481,15 @@
                [bindings mt-Γ])
               ([o (in-list O)])
       (match o
-        [`(field ,id ,exp)
-         (match-define (continue v _ _ _) (eval-exp exp Γ σ))
-         (values (cons (cons id v) locations)
-                 (cons (binding id (field-function id))
-                       bindings))]
+        [`(field (,ids ,exps) ...)
+         (for/fold ([locations locations]
+                    [bindings bindings])
+                   ([id (in-list ids)]
+                    [exp (in-list exps)])
+           (match-define (continue v _ _ _) (eval-exp exp Γ σ))
+           (values (cons (cons id v) locations)
+                   (cons (binding id (field-function id))
+                         bindings)))]
         [_ (values locations bindings)])))
   (values (apply make-store locations)
           bindings))
@@ -807,7 +811,7 @@
 
   (define bank-account
     `(
-      (actor (react (field balance 0)
+      (actor (react (field [balance 0])
                     (assert (list "account" (balance)))
                     (on (message (list "deposit" $amount))
                         (balance (+ (balance) amount)))))
@@ -896,9 +900,9 @@
 ;; should this work?
 (define store-passing
   '(
-    (actor (react (field x 10)
+    (actor (react (field [x 10])
                   (on (message "spawn")
-                      (actor (react (field y (+ 1 (x)))
+                      (actor (react (field [y (+ 1 (x))])
                                     (on (message "read y")
                                         (send! (list "y" (y)))))))
                   (on (message "read x")
@@ -947,8 +951,8 @@
 (module+ test
   ;; this should bring down the actor *but not* the entire program
   (define escaping-field
-    '((actor (react (field x #f)
-                    (on-start (react (field y 10)
+    '((actor (react (field [x #f])
+                    (on-start (react (field [y 10])
                                      (on-start (x (lambda (v) (y v)))))
                               ((x) 5)
                               (send! "success!"))))))
