@@ -61,7 +61,7 @@
 ;; an `E` is either
 ;; ('asserted pat) or
 ;; ('retracted pat) or
-;; (message pat)
+;; ('message pat)
 
 ;; a `pat` is either
 ;; $var or
@@ -202,7 +202,7 @@
 (define (result-bind r f . extra-args)
   (match r
     [(continue v σ as fs)
-     (match (apply f (cons v (cons σ extra-args)))
+     (match (apply f v σ extra-args)
        [(continue next-v next-σ more-as more-fs)
         (continue next-v next-σ (append as more-as) (append fs more-fs))]
        [s s])]
@@ -274,8 +274,7 @@
              (actor-state trie-empty ft)
              (cons (scn assertions) as)))]
     [`(dataspace ,as ...)
-     (define boot-actions (for/list ([a (in-list as)])
-                            (boot-actor a Γ)))
+     (define boot-actions (for/list ([a (in-list as)]) (boot-actor a Γ)))
      ;; note the recursive upside-down wrapping of dataspaces--
      ;; the upside-down-relay is needed for things to line up properly
      (spawn-upside-down
@@ -355,6 +354,8 @@
                                      (error 'eval-exp "wrong number of arguments; expected ~v, got ~v" (length vars) (length arg-vs)))
                                    (define new-env (append (map binding vars arg-vs) clo-env))
                                    (eval-exp body-exp new-env final-sto)))))]
+    ;; TODO add a predicate
+    ;; atom?
     [x (continue x σ (list) (list))]))
 
 (module+ test
@@ -621,8 +622,8 @@
 ;; an OK is (ok σ FacetTree (ListofAction))
 (struct ok (sto ft as) #:transparent)
 
-;; run-facets : FacetTree π σ Event -> (U OK Stop)
-(define (run-facets ft π parent-sto e)
+;; run-all-facets : FacetTree π σ Event -> (U OK Stop)
+(define (run-all-facets ft π parent-sto e)
   (match-define (facet-tree stx env sto children) ft)
   (define facet-sto (store-concat parent-sto sto))
   ;; I'm really not confident about the way the stores are being handled here
@@ -633,7 +634,7 @@
                   [as as]
                   [new-children new-facets])
                  ([ft (in-list children)])
-         (match (run-facets ft π sto e)
+         (match (run-all-facets ft π sto e)
            [(ok new-sto new-ft more-as)
             (values new-sto
                     (append as more-as)
@@ -646,6 +647,7 @@
      (match-define (store-concat new-parent-sto new-facet-sto) final-sto)
      (ok new-parent-sto (facet-tree stx env new-facet-sto new-children) final-as)]
     [(stop (store-concat new-parent-sto new-facet-sto) as)
+     ;; BUG lose facets created during on-stop
      (match-define (stop final-parent-sto more-as)
        (shutdown-facet-tree (facet-tree stx env new-facet-sto children)
                             new-parent-sto))
@@ -660,22 +662,20 @@
             ([f (in-list children)])
     (π-union π (ft-assertions f extended-env extended-sto))))
 
-;; actor-behavior : ActorState Event -> Transition
+;; actor-behavior : Event ActorState -> Transition
 ;; leaf behavior function
 (define (actor-behavior e s)
-  (cond
-    [e
-     (with-handlers ([exn:fail? (lambda (e) (eprintf "exception: ~v\n" e) (quit #:exception e (list)))])
-       (match-define (actor-state π-old ft) s)
-       (match (run-facets ft π-old mt-σ e)
-         [(ok _ ft as)
-          (define assertions (ft-assertions ft mt-Γ mt-σ))
-          (define next-π (if (scn? e) (scn-trie e) π-old))
-          (transition (actor-state next-π ft)
-                      (cons (scn assertions) as))]
-         [(stop _ as)
-          (quit as)]))]
-    [else #f]))
+  (when e
+    (with-handlers ([exn:fail? (lambda (e) (eprintf "exception: ~v\n" e) (quit #:exception e (list)))])
+      (match-define (actor-state π-old ft) s)
+      (match (run-all-facets ft π-old mt-σ e)
+        [(ok _ ft as)
+         (define assertions (ft-assertions ft mt-Γ mt-σ))
+         (define next-π (if (scn? e) (scn-trie e) π-old))
+         (transition (actor-state next-π ft)
+                     (cons (scn assertions) as))]
+        [(stop _ as)
+         (quit as)]))))
 
 ;; run : Program -> Syndicate
 (define (run p)
@@ -860,8 +860,6 @@
                   (assert "howdy")))
     ))
 
-#;(run competing-stop-whens)
-
 ;; should this work?
 (define store-passing
   '(
@@ -903,3 +901,19 @@
       (actor (react (on-start (send! "hello"))))))
   (check-false (run-with-trace (trace (message "I am here"))
                                do-new-facets-run-immediately)))
+
+(module+ test
+  (define maintain-knowledge
+    '(
+      (actor (react (on (asserted "hello")
+                        (react (on (asserted "hello")
+                                   (printf "do I run?\n"))))))
+
+      (actor (react (assert "hello"))))))
+
+(module+ test
+  (define escaping-field
+    '((actor (react (field x #f)
+                    (on-start (react (field y 10)
+                                     (on-start (set! x (lambda (v) (set! y v)))))
+                              ((read x) 5)))))))
