@@ -93,104 +93,9 @@
 
 ;; a Program is a (Listof actor)
 
-(define mt-Γ (list))
-(define mt-σ (hash))
-
-;; env-lookup : Γ var -> val
-;; or throws an error for unbound variables
-(define (env-lookup Γ id)
-  (match Γ
-    ['() (error 'env-lookup "unbound variable: ~v" id)]
-    [(cons (binding x v) rest)
-     (if (equal? id x)
-         v
-         (env-lookup rest id))]))
-
-;; extend-env : Γ var val -> Γ
-(define (extend-env Γ id v)
-  (cons (binding id v) Γ))
-
-;; update-sto : σ var val -> σ
-;; update the value of var in the store, if present.
-;; otherwise throw an error
-(define (update-sto σ id v)
-  (let search ([σ σ]
-               [k-succ identity]
-               [k-fail (lambda () (error 'update-sto "unbound field: ~v" id))])
-    (match σ
-      [(store-concat σ1 σ2)
-       (search σ2
-               (lambda (new-σ2) (k-succ (store-concat σ1 new-σ2)))
-               (lambda () (search σ1
-                                  (lambda (new-σ1) (k-succ (store-concat new-σ1 σ2)))
-                                  k-fail)))]
-      [_
-       (if (hash-has-key? σ id)
-           (k-succ (hash-set σ id v))
-           (k-fail))])))
-
-(module+ test
-  (let* ([s1 (make-store '(balance . 100))]
-         [s2 (store-concat mt-σ s1)]
-         [s3 (store-concat s1 mt-σ)])
-    (check-equal? (update-sto s2 'balance 50)
-                  (store-concat mt-σ (make-store '(balance . 50))))
-    (check-equal? (update-sto s3 'balance 50)
-                  (store-concat (make-store '(balance . 50)) mt-σ))))
-
-(define (primop? x)
-  (member x '(+ - * / - and or not equal? null? car cdr printf)))
-
-;; apply-primop : primop (Listof val) -> val
-(define (apply-primop op args)
-  (match* (op args)
-    [('+ `(,v1 ,v2))
-     (+ v1 v2)]
-    [('- `(,v1 ,v2))
-     (- v1 v2)]
-    [('* `(,v1 ,v2))
-     (* v1 v2)]
-    [('/ `(,v1 ,v2))
-     (/ v1 v2)]
-    [('and `(,v1 ,v2))
-     (and v1 v2)]
-    [('or `(,v1 ,v2))
-     (and v1 v2)]
-    [('equal? `(,v1 ,v2))
-     (equal? v1 v2)]
-    [('not `(,v))
-     (not v)]
-    [('null? '(list))
-     #t]
-    [('null? _)
-     #f]
-    [('car `(list ,e ,es ...))
-     e]
-    [('cdr `(list ,e ,es ...))
-     es]
-    [('printf args)
-     (apply printf args)]
-    [(_ _)
-     (error 'apply-primop "invalid primitive application: ~v ~v" op args)]))
-    
-
-;; sto-fetch : σ var -> val
-;; retrieve the value of field var.
-;; if not present throw an error
-(define (sto-fetch σ id)
-  (let search ([σ σ]
-               [k (lambda () (error 'sto-fetch "unbound field: ~v" id))])
-    (match σ
-      [(store-concat σ1 σ2)
-       (search σ2 (lambda () (search σ1 k)))]
-      [_
-       (if (hash-has-key? σ id)
-           (hash-ref σ id)
-           (k))])))
-
-;; make-store : (Listof (cons var val)) -> σ
-(define (make-store . vs)
-  (make-immutable-hash vs))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Data Structures for Accumulating Effects
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; A (Continue A) is (continue A σ (Listof Action) (Listof FacetTree))
 (struct continue (v sto as fs) #:transparent)
@@ -231,54 +136,163 @@
             ([x seq])
     (result-bind r f x)))
 
-;; boot-facet : facet Γ σ -> (Values σ (Listof Action) FacetTree)
-(define (boot-facet f Γ σ)
-  (define initial-sto (initial-store f Γ σ))
-  (match-define (continue _ (store-concat parent-sto facet-sto) as fs)
-    (eval-start-actions f Γ (store-concat σ initial-sto)))
-  (values parent-sto as (facet-tree f Γ facet-sto fs)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Facets and Endpoints
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; initial-store : facet Γ σ -> σ
-;; only bad people would put effects here.
-(define (initial-store f Γ σ)
-  (match-define `(react ,O ...) f)
-  (define locations
-    (for/fold ([locations (list)])
-              ([o (in-list O)])
-      (match o
-        [`(field ,id ,exp)
-         (match-define (continue v _ _ _) (eval-exp exp Γ σ))
-         (cons (cons id v) locations)]
-        [_ locations])))
-  (apply make-store locations))
+;; run-all-facets : FacetTree π σ Event -> (Result #f)
+(define (run-all-facets ft π parent-sto e)
+  (match-define (facet-tree stx env sto children) ft)
+  (define facet-sto (store-concat parent-sto sto))
+  ;; I'm really not confident about the way the stores are being handled here
+  (match (run-facet stx π facet-sto env e)
+    [(continue _ new-sto as new-facets)
+     (define-values (final-sto final-as new-children)
+       (for/fold ([sto new-sto]
+                  [as as]
+                  [new-children new-facets])
+                 ([ft (in-list children)])
+         (match (run-all-facets ft π sto e)
+           [(continue _ new-sto new-ft more-as)
+            (values new-sto
+                    (append as more-as)
+                    ;; n^2 but let's keep the order the same
+                    (append new-children (list new-ft)))]
+           [(stop new-sto more-as)
+            (values new-sto
+                    (append as more-as)
+                    new-children)])))
+     (match-define (store-concat new-parent-sto new-facet-sto) final-sto)
+     (continue #f new-parent-sto (facet-tree stx env new-facet-sto new-children) final-as)]
+    [(stop (store-concat new-parent-sto new-facet-sto) as)
+     ;; BUG lose facets created during on-stop
+     (match-define (stop final-parent-sto more-as)
+       (shutdown-facet-tree (facet-tree stx env new-facet-sto children)
+                            new-parent-sto))
+     (stop final-parent-sto (append as more-as))]))
 
-;; eval-start-actions : facet Γ σ -> (Continue #f)
-(define (eval-start-actions f Γ σ)
+;; run-facet : facet π σ Γ Event -> Result
+(define (run-facet f π-old σ Γ e)
   (match-define `(react ,O ...) f)
   (for-steps #f σ (in-list O)
     (lambda (_ σ o)
-      (match o
-        [`(on-start ,exp ...)
-         (eval-exp* exp Γ σ)]
-        [_
-         (inj-result #f σ)]))))
+      (run-endpoint o π-old σ Γ e))))      
 
-;; boot-actor : actor Γ -> Action
-(define (boot-actor a Γ)
-  (match a
-    [`(actor ,facet)
-     (define-values (_ as ft) (boot-facet facet Γ mt-σ))
-     (define assertions (ft-assertions ft mt-Γ mt-σ))
-     (spawn-upside-down
-      (actor actor-behavior
-             (actor-state trie-empty ft)
-             (cons (scn assertions) as)))]
-    [`(dataspace ,as ...)
-     (define boot-actions (for/list ([a (in-list as)]) (boot-actor a Γ)))
-     ;; note the recursive upside-down wrapping of dataspaces--
-     ;; the upside-down-relay is needed for things to line up properly
-     (spawn-upside-down
-      (dataspace-actor (cons upside-down-relay boot-actions)))]))
+;; run-endpoint : O π σ Γ Event -> Result
+;; determine the effects of an endpoint in response to an event
+(define (run-endpoint O π-old σ Γ e)
+  (match O
+    ;; event-insensitive endpoints
+    [`(field ,_ ,_)
+     (inj-result #f σ)]
+    [`(on-start ,exp ...)
+     (inj-result #f σ)]
+    [`(on-stop ,exp ...)
+     (inj-result #f σ)]
+    [`(assert ,exp)
+     (inj-result #f σ)]
+    ;; event sensitive
+    [`(stop-when ,E ,exps ...)
+     (define bindings (occurrences E e π-old Γ σ))
+     (cond
+       [(empty? bindings)
+        (inj-result #f σ)]
+       [else
+        (match-define (continue _ sto as _)
+          (for-steps #f σ (in-list bindings)
+            (lambda (_ σ captures)
+              (define extended-env (append captures Γ))
+              (eval-exp* exps extended-env σ))))
+        (stop sto as)])]
+    [`(on ,E ,exps ...)
+     (define bindings (occurrences E e π-old Γ σ))
+     (cond
+       [(empty? bindings)
+        (inj-result #f σ)]
+       [else
+        (for-steps #f σ (in-list bindings)
+          (lambda (_ sto captures)
+            (define extended-env (append captures Γ))
+            (eval-exp* exps extended-env sto)))])]))
+
+;; endpoint-assertions : O Γ σ -> π
+;; IGNORE effects from such expressions (yadda yadda evil yadda yadda)
+(define (endpoint-assertions O Γ σ)
+  (match O
+    [`(field ,_ ,_)
+     trie-empty]
+    [`(on-start ,exp ...)
+     trie-empty]
+    [`(on-stop ,exp ...)
+     trie-empty]
+    [`(assert ,exp)
+     (match-define (continue v _ _ _) (eval-exp exp Γ σ))
+     (assertion v)]
+    [`(stop-when ,E ,exps ...)
+     (subscription E Γ σ)]
+    [`(on ,E ,exps ...)
+     (subscription E Γ σ)]))
+
+;; facet-assertions : facet Γ σ -> π
+(define (facet-assertions f Γ σ)
+  (match-define `(react ,O ...) f)
+  (for/fold ([π trie-empty])
+            ([o (in-list O)])
+    (π-union π (endpoint-assertions o Γ σ))))
+
+;; shutdown-facet : facet σ -> Stop
+;; run each on-stop endpoint of a facet
+(define (shutdown-facet f Γ σ)
+  (match-define `(react ,O ...) f)
+  (for/fold ([s (stop σ (list))])
+            ([o (in-list O)])
+    (match-define (stop σ as) s)
+    (match o
+      [`(on-stop ,exps ...)
+       (match-define (continue _ next-sto more-as _) (eval-exp* exps Γ σ))
+       (stop next-sto (append as more-as))]
+      [_ s])))
+             
+;; shutdown-facet-tree : FacetTree σ -> Stop
+(define (shutdown-facet-tree ft parent-sto)
+  (match-define (facet-tree stx Γ sto children) ft)
+  (define facet-sto (store-concat parent-sto sto))
+  (match-define (stop (store-concat new-parent-sto _) as)
+    (for/fold ([s (shutdown-facet stx Γ facet-sto)])
+              ([f (in-list children)])
+      (match-define (stop σ as) s)
+      (match-define (stop next-sto more-as) (shutdown-facet-tree f σ))
+      (stop next-sto (append as more-as))))
+  (stop new-parent-sto as))
+
+;; ft-assertions : FacetTree Γ σ -> π
+(define (ft-assertions ft Γ σ)
+  (match-define (facet-tree stx env sto children) ft)
+  (define extended-sto (store-concat σ sto))
+  (define extended-env (append Γ env))
+  (for/fold ([π (facet-assertions stx extended-env extended-sto)])
+            ([f (in-list children)])
+    (π-union π (ft-assertions f extended-env extended-sto))))
+
+;; actor-behavior : Event ActorState -> Transition
+;; leaf behavior function
+(define (actor-behavior e s)
+  (when e
+    (with-handlers ([exn:fail? (lambda (e) (eprintf "exception: ~v\n" e) (quit #:exception e (list)))])
+      (match-define (actor-state π-old ft) s)
+      (match (run-all-facets ft π-old mt-σ e)
+        [(continue _ _ ft as)
+         (define assertions (ft-assertions ft mt-Γ mt-σ))
+         (define next-π (if (scn? e) (scn-trie e) π-old))
+         (transition (actor-state next-π ft)
+                     (cons (scn assertions) as))]
+        [(stop _ as)
+         (quit as)]))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Evaluating Expressions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; eval-exp : exp Γ σ -> (Continue val)
 (define (eval-exp e Γ σ)
@@ -358,6 +372,14 @@
     ;; atom?
     [x (continue x σ (list) (list))]))
 
+;; eval-exp* : (Listof exp) Γ σ -> (Result (Listof Values))
+;; evaluate a sequence of expressions
+(define (eval-exp* exps Γ σ)
+  (for-steps (list) σ (in-list exps)
+    (lambda (vs σ e)
+      (result-map (lambda (v) (append vs (list v)))
+                  (eval-exp e Γ σ)))))
+
 (module+ test
   ;; sequencing result
   (match-let ([(continue v s as f) (eval-exp `(begin 1 2 3) mt-Γ mt-σ)])
@@ -409,6 +431,90 @@
   (match-let ([(continue v s as f) (eval-exp '(let (f (lambda () (actor (react (assert 5)))))
                                                 (f)) mt-Γ mt-σ)])
     (check-false (empty? as))))
+
+(define (primop? x)
+  (member x '(+ - * / - and or not equal? null? car cdr printf)))
+
+;; apply-primop : primop (Listof val) -> val
+(define (apply-primop op args)
+  (match* (op args)
+    [('+ `(,v1 ,v2))
+     (+ v1 v2)]
+    [('- `(,v1 ,v2))
+     (- v1 v2)]
+    [('* `(,v1 ,v2))
+     (* v1 v2)]
+    [('/ `(,v1 ,v2))
+     (/ v1 v2)]
+    [('and `(,v1 ,v2))
+     (and v1 v2)]
+    [('or `(,v1 ,v2))
+     (and v1 v2)]
+    [('equal? `(,v1 ,v2))
+     (equal? v1 v2)]
+    [('not `(,v))
+     (not v)]
+    [('null? '(list))
+     #t]
+    [('null? _)
+     #f]
+    [('car `(list ,e ,es ...))
+     e]
+    [('cdr `(list ,e ,es ...))
+     es]
+    [('printf args)
+     (apply printf args)]
+    [(_ _)
+     (error 'apply-primop "invalid primitive application: ~v ~v" op args)]))
+
+;; boot-facet : facet Γ σ -> (Values σ (Listof Action) FacetTree)
+(define (boot-facet f Γ σ)
+  (define initial-sto (initial-store f Γ σ))
+  (match-define (continue _ (store-concat parent-sto facet-sto) as fs)
+    (eval-start-actions f Γ (store-concat σ initial-sto)))
+  (values parent-sto as (facet-tree f Γ facet-sto fs)))
+
+;; initial-store : facet Γ σ -> σ
+;; only bad people would put effects here.
+(define (initial-store f Γ σ)
+  (match-define `(react ,O ...) f)
+  (define locations
+    (for/fold ([locations (list)])
+              ([o (in-list O)])
+      (match o
+        [`(field ,id ,exp)
+         (match-define (continue v _ _ _) (eval-exp exp Γ σ))
+         (cons (cons id v) locations)]
+        [_ locations])))
+  (apply make-store locations))
+
+;; eval-start-actions : facet Γ σ -> (Continue #f)
+(define (eval-start-actions f Γ σ)
+  (match-define `(react ,O ...) f)
+  (for-steps #f σ (in-list O)
+    (lambda (_ σ o)
+      (match o
+        [`(on-start ,exp ...)
+         (eval-exp* exp Γ σ)]
+        [_
+         (inj-result #f σ)]))))
+
+;; boot-actor : actor Γ -> Action
+(define (boot-actor a Γ)
+  (match a
+    [`(actor ,facet)
+     (define-values (_ as ft) (boot-facet facet Γ mt-σ))
+     (define assertions (ft-assertions ft mt-Γ mt-σ))
+     (spawn-upside-down
+      (actor actor-behavior
+             (actor-state trie-empty ft)
+             (cons (scn assertions) as)))]
+    [`(dataspace ,as ...)
+     (define boot-actions (for/list ([a (in-list as)]) (boot-actor a Γ)))
+     ;; note the recursive upside-down wrapping of dataspaces--
+     ;; the upside-down-relay is needed for things to line up properly
+     (spawn-upside-down
+      (dataspace-actor (cons upside-down-relay boot-actions)))]))
 
 ;; dollar-id? : any -> bool
 ;; test if the input is a symbol whose first character is $
@@ -516,166 +622,76 @@
   ;; projection->pattern to convert captures to wildcards
   (assertion (projection->pattern (observe (eval-pat (E-pat E) Γ σ)))))
 
-;; eval-exp* : (Listof exp) Γ σ -> (Result (Listof Values))
-;; evaluate a sequence of expressions
-(define (eval-exp* exps Γ σ)
-  (for-steps (list) σ (in-list exps)
-    (lambda (vs σ e)
-      (result-map (lambda (v) (append vs (list v)))
-                  (eval-exp e Γ σ)))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Environments and Store Management
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; run-facet : facet π σ Γ Event -> Result
-(define (run-facet f π-old σ Γ e)
-  (match-define `(react ,O ...) f)
-  (for-steps #f σ (in-list O)
-    (lambda (_ σ o)
-      (run-endpoint o π-old σ Γ e))))      
+(define mt-Γ (list))
+(define mt-σ (hash))
 
-;; run-endpoint : O π σ Γ Event -> Result
-;; determine the effects of an endpoint in response to an event
-(define (run-endpoint O π-old σ Γ e)
-  (match O
-    ;; event-insensitive endpoints
-    [`(field ,_ ,_)
-     (inj-result #f σ)]
-    [`(on-start ,exp ...)
-     (inj-result #f σ)]
-    [`(on-stop ,exp ...)
-     (inj-result #f σ)]
-    [`(assert ,exp)
-     (inj-result #f σ)]
-    ;; event sensitive
-    [`(stop-when ,E ,exps ...)
-     (define bindings (occurrences E e π-old Γ σ))
-     (cond
-       [(empty? bindings)
-        (inj-result #f σ)]
-       [else
-        (match-define (continue _ sto as _)
-          (for-steps #f σ (in-list bindings)
-            (lambda (_ σ captures)
-              (define extended-env (append captures Γ))
-              (eval-exp* exps extended-env σ))))
-        (stop sto as)])]
-    [`(on ,E ,exps ...)
-     (define bindings (occurrences E e π-old Γ σ))
-     (cond
-       [(empty? bindings)
-        (inj-result #f σ)]
-       [else
-        (for-steps #f σ (in-list bindings)
-          (lambda (_ sto captures)
-            (define extended-env (append captures Γ))
-            (eval-exp* exps extended-env sto)))])]))
+;; env-lookup : Γ var -> val
+;; or throws an error for unbound variables
+(define (env-lookup Γ id)
+  (match Γ
+    ['() (error 'env-lookup "unbound variable: ~v" id)]
+    [(cons (binding x v) rest)
+     (if (equal? id x)
+         v
+         (env-lookup rest id))]))
 
-;; endpoint-assertions : O Γ σ -> π
-;; IGNORE effects from such expressions (yadda yadda evil yadda yadda)
-(define (endpoint-assertions O Γ σ)
-  (match O
-    [`(field ,_ ,_)
-     trie-empty]
-    [`(on-start ,exp ...)
-     trie-empty]
-    [`(on-stop ,exp ...)
-     trie-empty]
-    [`(assert ,exp)
-     (match-define (continue v _ _ _) (eval-exp exp Γ σ))
-     (assertion v)]
-    [`(stop-when ,E ,exps ...)
-     (subscription E Γ σ)]
-    [`(on ,E ,exps ...)
-     (subscription E Γ σ)]))
+;; extend-env : Γ var val -> Γ
+(define (extend-env Γ id v)
+  (cons (binding id v) Γ))
 
-;; facet-assertions : facet Γ σ -> π
-(define (facet-assertions f Γ σ)
-  (match-define `(react ,O ...) f)
-  (for/fold ([π trie-empty])
-            ([o (in-list O)])
-    (π-union π (endpoint-assertions o Γ σ))))
+;; make-store : (Listof (cons var val)) -> σ
+(define (make-store . vs)
+  (make-immutable-hash vs))
 
-;; shutdown-facet : facet σ -> Stop
-;; run each on-stop endpoint of a facet
-(define (shutdown-facet f Γ σ)
-  (match-define `(react ,O ...) f)
-  (for/fold ([s (stop σ (list))])
-            ([o (in-list O)])
-    (match-define (stop σ as) s)
-    (match o
-      [`(on-stop ,exps ...)
-       (match-define (continue _ next-sto more-as _) (eval-exp* exps Γ σ))
-       (stop next-sto (append as more-as))]
-      [_ s])))
-             
-;; shutdown-facet-tree : FacetTree σ -> Stop
-(define (shutdown-facet-tree ft parent-sto)
-  (match-define (facet-tree stx Γ sto children) ft)
-  (define facet-sto (store-concat parent-sto sto))
-  (match-define (stop (store-concat new-parent-sto _) as)
-    (for/fold ([s (shutdown-facet stx Γ facet-sto)])
-              ([f (in-list children)])
-      (match-define (stop σ as) s)
-      (match-define (stop next-sto more-as) (shutdown-facet-tree f σ))
-      (stop next-sto (append as more-as))))
-  (stop new-parent-sto as))
+;; update-sto : σ var val -> σ
+;; update the value of var in the store, if present.
+;; otherwise throw an error
+(define (update-sto σ id v)
+  (let search ([σ σ]
+               [k-succ identity]
+               [k-fail (lambda () (error 'update-sto "unbound field: ~v" id))])
+    (match σ
+      [(store-concat σ1 σ2)
+       (search σ2
+               (lambda (new-σ2) (k-succ (store-concat σ1 new-σ2)))
+               (lambda () (search σ1
+                                  (lambda (new-σ1) (k-succ (store-concat new-σ1 σ2)))
+                                  k-fail)))]
+      [_
+       (if (hash-has-key? σ id)
+           (k-succ (hash-set σ id v))
+           (k-fail))])))
 
+;; sto-fetch : σ var -> val
+;; retrieve the value of field var.
+;; if not present throw an error
+(define (sto-fetch σ id)
+  (let search ([σ σ]
+               [k (lambda () (error 'sto-fetch "unbound field: ~v" id))])
+    (match σ
+      [(store-concat σ1 σ2)
+       (search σ2 (lambda () (search σ1 k)))]
+      [_
+       (if (hash-has-key? σ id)
+           (hash-ref σ id)
+           (k))])))
 
-;; an OK is (ok σ FacetTree (ListofAction))
-(struct ok (sto ft as) #:transparent)
+(module+ test
+  (let* ([s1 (make-store '(balance . 100))]
+         [s2 (store-concat mt-σ s1)]
+         [s3 (store-concat s1 mt-σ)])
+    (check-equal? (update-sto s2 'balance 50)
+                  (store-concat mt-σ (make-store '(balance . 50))))
+    (check-equal? (update-sto s3 'balance 50)
+                  (store-concat (make-store '(balance . 50)) mt-σ))))
 
-;; run-all-facets : FacetTree π σ Event -> (U OK Stop)
-(define (run-all-facets ft π parent-sto e)
-  (match-define (facet-tree stx env sto children) ft)
-  (define facet-sto (store-concat parent-sto sto))
-  ;; I'm really not confident about the way the stores are being handled here
-  (match (run-facet stx π facet-sto env e)
-    [(continue _ new-sto as new-facets)
-     (define-values (final-sto final-as new-children)
-       (for/fold ([sto new-sto]
-                  [as as]
-                  [new-children new-facets])
-                 ([ft (in-list children)])
-         (match (run-all-facets ft π sto e)
-           [(ok new-sto new-ft more-as)
-            (values new-sto
-                    (append as more-as)
-                    ;; n^2 but let's keep the order the same
-                    (append new-children (list new-ft)))]
-           [(stop new-sto more-as)
-            (values new-sto
-                    (append as more-as)
-                    new-children)])))
-     (match-define (store-concat new-parent-sto new-facet-sto) final-sto)
-     (ok new-parent-sto (facet-tree stx env new-facet-sto new-children) final-as)]
-    [(stop (store-concat new-parent-sto new-facet-sto) as)
-     ;; BUG lose facets created during on-stop
-     (match-define (stop final-parent-sto more-as)
-       (shutdown-facet-tree (facet-tree stx env new-facet-sto children)
-                            new-parent-sto))
-     (stop final-parent-sto (append as more-as))]))
-
-;; ft-assertions : FacetTree Γ σ -> π
-(define (ft-assertions ft Γ σ)
-  (match-define (facet-tree stx env sto children) ft)
-  (define extended-sto (store-concat σ sto))
-  (define extended-env (append Γ env))
-  (for/fold ([π (facet-assertions stx extended-env extended-sto)])
-            ([f (in-list children)])
-    (π-union π (ft-assertions f extended-env extended-sto))))
-
-;; actor-behavior : Event ActorState -> Transition
-;; leaf behavior function
-(define (actor-behavior e s)
-  (when e
-    (with-handlers ([exn:fail? (lambda (e) (eprintf "exception: ~v\n" e) (quit #:exception e (list)))])
-      (match-define (actor-state π-old ft) s)
-      (match (run-all-facets ft π-old mt-σ e)
-        [(ok _ ft as)
-         (define assertions (ft-assertions ft mt-Γ mt-σ))
-         (define next-π (if (scn? e) (scn-trie e) π-old))
-         (transition (actor-state next-π ft)
-                     (cons (scn assertions) as))]
-        [(stop _ as)
-         (quit as)]))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Whole Programs
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; run : Program -> Syndicate
 (define (run p)
@@ -735,6 +751,10 @@
     [(_ any ...)
      (syntax/loc stx
        (check-true (run-with-trace any ...)))]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Tests
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
 
