@@ -35,13 +35,12 @@
 (spawn #:name 'chat-server
  (during/spawn (tcp-connection $id (tcp-listener 5999))
    (assert (tcp-accepted id))
-   (define me (gensym 'user))  ;; a random user name
-   (assert (present me))
+   (let ((me (gensym 'user)))
+     (assert (present me))
+     (on (message (tcp-in id $line))
+         (send! (speak me line))))
    (during (present $user)
      (on-start (send! (tcp-out id (~a user " arrived"))))
-     (on-stop  (send! (tcp-out id (~a user " left")))))
-   (on (message (speak $user $text))
-       (send! (tcp-out id (~a user " says '" text "'"))))
-   (on (message (tcp-in id $line))
-       (send! (speak me line)))))
-
+     (on-stop  (send! (tcp-out id (~a user " left"))))
+     (on (message (speak user $text))
+         (send! (tcp-out id (~a user " says '" text "'")))))))
