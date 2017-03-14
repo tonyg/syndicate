@@ -9,31 +9,6 @@
 (struct tcp-incoming-data (id bytes) #:prefab)
 (struct tcp-outgoing-data (id bytes) #:prefab)
 
-(struct says (who what) #:prefab)
-(struct present (who) #:prefab)
-
-(define (spawn-session id)
-  (spawn (define (send-to-remote fmt . vs)
-           (send! (tcp-outgoing-data id (string->bytes/utf-8 (apply format fmt vs)))))
-
-         (define (say who fmt . vs)
-           (unless (equal? who user)
-             (send-to-remote "~a ~a\n" who (apply format fmt vs))))
-
-         (define user (gensym 'user))
-         (on-start (send-to-remote "Welcome, ~a.\n" user))
-
-         (stop-when (retracted (tcp-remote-open id)))
-         (assert (tcp-local-open id))
-         (assert (present user))
-
-         (on (asserted (present $who)) (say who "arrived."))
-         (on (retracted (present $who)) (say who "departed."))
-         (on (message (says $who $what)) (say who "says: ~a" what))
-
-         (on (message (tcp-incoming-data id $bs))
-             (send! (says user (string-trim (bytes->string/utf-8 bs)))))))
-
 (define us (tcp-listener 5999))
 (spawn (assert (advertise (observe (tcp-channel _ us _))))
        (on (asserted (advertise (tcp-channel $them us _)))
@@ -46,5 +21,23 @@
                   (on (message (tcp-outgoing-data id $bs))
                       (send! (tcp-channel us them bs))))))
 
-(spawn (on (asserted (tcp-remote-open $id))
-           (spawn-session id)))
+(struct says (who what) #:prefab)
+(struct present (who) #:prefab)
+
+(spawn (during/spawn (tcp-remote-open $id)
+         (assert (tcp-local-open id))
+
+         (define (send-to-remote fmt . vs)
+           (send! (tcp-outgoing-data id (string->bytes/utf-8 (apply format fmt vs)))))
+
+         (define user (gensym 'user))
+         (on-start (send-to-remote "Welcome, ~a.\n" user))
+         (assert (present user))
+         (on (message (tcp-incoming-data id $bs))
+             (send! (says user (string-trim (bytes->string/utf-8 bs)))))
+
+         (during (present $who)
+           (unless (equal? who user)
+             (on-start (send-to-remote "~a arrived.\n" who))
+             (on-stop (send-to-remote "~a departed.\n" who))
+             (on (message (says who $what)) (send-to-remote "~a says: ~a\n" who what))))))
