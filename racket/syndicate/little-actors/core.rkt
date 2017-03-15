@@ -139,28 +139,34 @@
 
 ;; run-all-facets : FacetTree π σ Event -> (Result #f)
 (define (run-all-facets ft π parent-sto e)
+  ;; π σ Event (Listof FacetTree) -> (Values σ (Listof Action) (Listof FacetTree))
+  (define (iterate-over-children π-old σ e children)
+    (for/fold ([σ σ]
+               [as '()]
+               [new-children '()])
+              ([ft (in-list children)])
+      (match (run-all-facets ft π-old σ e)
+        [(continue _ new-sto new-ft more-as)
+         (values new-sto
+                 (append as more-as)
+                 ;; n^2 but let's keep the order the same
+                 (append new-children (list new-ft)))]
+        [(stop new-sto more-as)
+         (values new-sto
+                 (append as more-as)
+                 new-children)])))
   (match-define (facet-tree stx env sto children) ft)
   (define facet-sto (store-concat parent-sto sto))
   ;; I'm really not confident about the way the stores are being handled here
   (match (run-facet stx π facet-sto env e)
-    [(continue _ new-sto as new-facets)
-     (define-values (final-sto final-as new-children)
-       (for/fold ([sto new-sto]
-                  [as as]
-                  [new-children new-facets])
-                 ([ft (in-list children)])
-         (match (run-all-facets ft π sto e)
-           [(continue _ new-sto new-ft more-as)
-            (values new-sto
-                    (append as more-as)
-                    ;; n^2 but let's keep the order the same
-                    (append new-children (list new-ft)))]
-           [(stop new-sto more-as)
-            (values new-sto
-                    (append as more-as)
-                    new-children)])))
+    [(continue _ facet-sto2 as new-facets)
+     (define-values (facet-sto3 more-as new-children)
+       (iterate-over-children π facet-sto2 e children))
+     (define facet-knowledge-scn (if (scn? e) e (scn π)))
+     (define-values (final-sto final-as boot-children)
+       (iterate-over-children trie-empty facet-sto3 facet-knowledge-scn new-facets))
      (match-define (store-concat new-parent-sto new-facet-sto) final-sto)
-     (continue #f new-parent-sto (facet-tree stx env new-facet-sto new-children) final-as)]
+     (continue #f new-parent-sto (facet-tree stx env new-facet-sto (append new-children boot-children)) (append as more-as final-as))]
     [(stop (store-concat new-parent-sto new-facet-sto) as)
      ;; BUG lose facets created during on-stop
      (match-define (stop final-parent-sto more-as)
@@ -918,6 +924,7 @@
                (printf "x = ~v\n" x)))))
 
 (module+ test
+  ;; test that terminating facets can create new facets (at the parent level)
   (define stop-when-react
     '(
       (spawn (stop-when (message "stop")
@@ -941,13 +948,29 @@
                                do-new-facets-run-immediately)))
 
 (module+ test
-  (define maintain-knowledge
+  (define use-current-knowledge-with-new-facet
     '(
       (spawn (on (asserted "hello")
                  (react (on (asserted "hello")
-                            (printf "do I run?\n")))))
+                            (printf "do I run?\n")
+                            (send! "yes indeed")))))
 
-      (spawn (assert "hello")))))
+      (spawn (assert "hello"))))
+  (test-trace (trace (message "yes indeed"))
+              use-current-knowledge-with-new-facet)
+  
+  (define maintain-knowledge-across-events
+    '(
+      (spawn (on (asserted "outer")
+                 (react (on (message "bam")
+                            (react (on (asserted "outer")
+                                       (send! "icu")
+                                       (printf "icu\n")))))))
+      (spawn (assert "outer")
+             (on (asserted (observe "bam"))
+                 (send! "bam")))))
+  (test-trace (trace (message "icu"))
+              maintain-knowledge-across-events))
 
 (module+ test
   ;; this should bring down the actor *but not* the entire program
