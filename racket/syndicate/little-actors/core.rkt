@@ -82,8 +82,8 @@
 ;; a FacetTree is (facet-tree facet Γ σ (Listof FacetTree))
 (struct facet-tree (stx env sto children) #:transparent)
 
-;; an ActorState is (actor-state π FacetTree)
-(struct actor-state (π ft) #:transparent)
+;; an ActorState is (actor-state π (Listof FacetTree))
+(struct actor-state (π fs) #:transparent)
 
 ;; a π is a trie
 (define π-union assertion-set-union)
@@ -96,8 +96,8 @@
 
 ;; A (Continue A) is (continue A σ (Listof Action) (Listof FacetTree))
 (struct continue (v sto as fs) #:transparent)
-;; A Stop is (stop σ (Listof Action))
-(struct stop (sto as) #:transparent)
+;; A Stop is (stop σ (Listof Action) (Listof FacetTree))
+(struct stop (sto as fs) #:transparent)
 ;; A (Result A) is a Stop or (Continue A)
 
 ;; result-bind : Result (Any σ Any ... -> Result) Any ... -> Result
@@ -151,10 +151,13 @@
                  (append as more-as)
                  ;; n^2 but let's keep the order the same
                  (append new-children (list new-ft)))]
-        [(stop new-sto more-as)
-         (values new-sto
-                 (append as more-as)
-                 new-children)])))
+        [(stop new-sto more-as more-fs)
+         (define facet-knowledge-scn (if (scn? e) e (scn π-old)))
+         (define-values (final-sto final-as boot-children)
+           (iterate-over-children trie-empty new-sto facet-knowledge-scn more-fs))
+         (values final-sto
+                 (append as more-as final-as)
+                 (append new-children boot-children))])))
   (match-define (facet-tree stx env sto children) ft)
   (define facet-sto (store-concat parent-sto sto))
   ;; I'm really not confident about the way the stores are being handled here
@@ -167,12 +170,12 @@
        (iterate-over-children trie-empty facet-sto3 facet-knowledge-scn new-facets))
      (match-define (store-concat new-parent-sto new-facet-sto) final-sto)
      (continue #f new-parent-sto (facet-tree stx env new-facet-sto (append new-children boot-children)) (append as more-as final-as))]
-    [(stop (store-concat new-parent-sto new-facet-sto) as)
+    [(stop (store-concat new-parent-sto new-facet-sto) as fs)
      ;; BUG lose facets created during on-stop
-     (match-define (stop final-parent-sto more-as)
+     (match-define (stop final-parent-sto more-as more-fs)
        (shutdown-facet-tree (facet-tree stx env new-facet-sto children)
                             new-parent-sto))
-     (stop final-parent-sto (append as more-as))]))
+     (stop final-parent-sto (append as more-as) (append fs more-fs))]))
 
 ;; run-facet : facet π σ Γ Event -> Result
 (define (run-facet f π-old σ Γ e)
@@ -201,12 +204,12 @@
        [(empty? bindings)
         (inj-result #f σ)]
        [else
-        (match-define (continue _ sto as _)
+        (match-define (continue _ sto as fs)
           (for-steps #f σ (in-list bindings)
             (lambda (_ σ captures)
               (define extended-env (append captures Γ))
               (eval-exp* exps extended-env σ))))
-        (stop sto as)])]
+        (stop sto as fs)])]
     [`(on ,E ,exps ...)
      (define bindings (occurrences E e π-old Γ σ))
      (cond
@@ -247,26 +250,27 @@
 ;; run each on-stop endpoint of a facet
 (define (shutdown-facet f Γ σ)
   (match-define `(react ,O ...) f)
-  (for/fold ([s (stop σ (list))])
+  (for/fold ([s (stop σ (list) (list))])
             ([o (in-list O)])
-    (match-define (stop σ as) s)
+    (match-define (stop σ as fs) s)
     (match o
       [`(on-stop ,exps ...)
-       (match-define (continue _ next-sto more-as _) (eval-exp* exps Γ σ))
-       (stop next-sto (append as more-as))]
+       (match-define (continue _ next-sto more-as more-fs) (eval-exp* exps Γ σ))
+       (stop next-sto (append as more-as) (append fs more-fs))]
       [_ s])))
              
 ;; shutdown-facet-tree : FacetTree σ -> Stop
 (define (shutdown-facet-tree ft parent-sto)
   (match-define (facet-tree stx Γ sto children) ft)
   (define facet-sto (store-concat parent-sto sto))
-  (match-define (stop (store-concat new-parent-sto _) as)
+  (match-define (stop (store-concat new-parent-sto _) as fs)
     (for/fold ([s (shutdown-facet stx Γ facet-sto)])
               ([f (in-list children)])
-      (match-define (stop σ as) s)
-      (match-define (stop next-sto more-as) (shutdown-facet-tree f σ))
-      (stop next-sto (append as more-as))))
-  (stop new-parent-sto as))
+      (match-define (stop σ as fs) s)
+      ;; DECISION: bubble up new facets from nested facets
+      (match-define (stop next-sto more-as more-fs) (shutdown-facet-tree f σ))
+      (stop next-sto (append as more-as) (append fs more-fs))))
+  (stop new-parent-sto as fs))
 
 ;; ft-assertions : FacetTree Γ σ -> π
 (define (ft-assertions ft Γ σ)
@@ -282,15 +286,30 @@
 (define (actor-behavior e s)
   (when e
     (with-handlers ([exn:fail? (lambda (e) (eprintf "exception: ~v\n" e) (quit #:exception e (list)))])
-      (match-define (actor-state π-old ft) s)
-      (match (run-all-facets ft π-old mt-σ e)
-        [(continue _ _ ft as)
-         (define assertions (ft-assertions ft mt-Γ mt-σ))
+      (match-define (actor-state π-old fts) s)
+      (define-values (actions next-fts)
+        (for/fold ([as '()]
+                   [new-fts '()])
+                  ([ft (in-list fts)])
+          (match (run-all-facets ft π-old mt-σ e)
+            [(continue _ _ ft more-as)
+             (values (append as more-as)
+                     ;; reverses the order
+                     (cons ft new-fts))]
+            [(stop _ more-as fs)
+             (values (append as more-as)
+                     (append new-fts fs))])))
+      (cond
+        [(empty? next-fts)
+         (quit actions)]
+        [else
+         (define assertions
+           (for/fold ([t trie-empty])
+                     ([ft (in-list next-fts)])
+             (trie-union t (ft-assertions ft mt-Γ mt-σ))))
          (define next-π (if (scn? e) (scn-trie e) π-old))
-         (transition (actor-state next-π ft)
-                     (cons (scn assertions) as))]
-        [(stop _ as)
-         (quit as)]))))
+         (transition (actor-state next-π next-fts)
+                     (cons (scn assertions) actions))]))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -531,7 +550,7 @@
        (define assertions (ft-assertions ft mt-Γ mt-σ))
        (spawn-upside-down
         (actor actor-behavior
-               (actor-state trie-empty ft)
+               (actor-state trie-empty (list ft))
                (cons (scn assertions) as)))]
       [`(dataspace ,as ...)
        (define boot-actions (for/list ([a (in-list as)]) (boot-actor a Γ)))
@@ -935,7 +954,29 @@
              (on (asserted (observe "poodle"))
                  (send! "poodle")))))
   (test-trace (trace (message "success"))
-              stop-when-react))
+              stop-when-react)
+  ;; Reflects the current behavior, but quite possibly *not* what should happen
+  (define create-new-facet-inside-on-stop
+    '(
+      (spawn
+       (on-stop (react (assert (outbound "here"))))
+       (stop-when (message "stop")))
+
+      (spawn (on-start (send! "stop")))))
+  (test-trace (trace (assertion-added (outbound "here")))
+              create-new-facet-inside-on-stop)
+  ;; Similarly dubious; create new facets from more nested facets
+  (define facet-creation-during-stop-from-grandchild
+    '(
+      (spawn (on-start
+              (react (on-stop
+                      (react (assert (outbound "inner"))))))
+             (stop-when (message "stop")
+                        (react (assert (outbound "outer")))))
+
+      (spawn (on-start (send! "stop")))))
+  (test-trace (trace (assertion-added (outbound "inner")))
+              facet-creation-during-stop-from-grandchild))
 
 (module+ test
   (define do-new-facets-run-immediately
