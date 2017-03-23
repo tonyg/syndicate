@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Crazy Mike's</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="style.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/2.2.1/mustache.min.js"></script>
+    <script src="../../../third-party/jquery-2.2.0.min.js"></script>
+    <script src="../../../dist/syndicatecompiler.js"></script>
+    <script src="../../../dist/syndicate.js"></script>
+    <script type="text/syndicate-js" src="index.js"></script>
+  </head>
+  <body>
+    <div class="app-wrapper">
+      <div class="hero-image"></div>
+      <div class="nav-bar" id="nav-bar">
+        <template id="nav-bar-btn">
+          <div id="nav-btn-{{order}}" class="nav-btn">{{name}}</div>
+        </template>
+      </div>
+      <div id="page-contents">
+        <template id="home-contents">
+          <p>
+            Located on the scenic Pulaski Highway in East Baltimore,
+            Crazy Mike's has the region's best selection of used electronics,
+            and our prices are INSANE!
+          </p>
+          <p>
+            Hours: Tue-Sat 2pm-4am
+          </p>
+          <p>
+            Contact: (410) 768-7000, Ask for Mike
+          </p>
+        </template>
+        <template id="computers-contents">
+          <p>Need to compute things? We can help.</p>
+          <div class="computer pic"></div>
+          <p>
+            One of our many fine products, this War Operations Plan Response
+            supercomputer was repossessed from the US Dept. of Defense in 1984.
+            Comes with classic games such as chess, checkers, backgammon, poker,
+            tic-tac-toe, and Global Thermonuclear War, though it has been known
+            not to play. Open box, comes as-is. Strict no return policy.
+          </p>
+        </template>
+        <template id="televisions-contents">
+          <p>This is where the TVs live - get you one!</p>
+          <div class="tv pic"></div>
+          <p>
+            Forget the internet, this baby is the real series of tubes. Perfect
+            for your LaserDisc collection.
+          </p>
+        </template>
+        <template id="stereos-contents">
+          <p>The hottest audio equipment in town!</p>
+          <div class="radio pic"></div>
+          <p>
+            New stock arriving daily, priced to move.
+          </p>
+        </template>
+      </div>
+    </div>
+
+    <hr>
+    <div>
+      <pre id="ds-state"></pre>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,78 @@
+.app-wrapper {
+  display: flex;
+  flex-direction: column;
+  /* position: absolute; */
+  align-self: center;
+  width: 432px;
+  height: 768px;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.hero-image {
+  height: 300px;
+  background-image: url(http://i.imgur.com/L8suaDZ.jpg);
+  background-size: cover;
+}
+
+.nav-bar {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 50px;
+  align-items: center;
+}
+
+.nav-btn {
+  flex: 1;
+  text-align: center;
+  background: #404040;
+  line-height: 50px;
+  color: #fff;
+  user-select: none;
+  cursor: pointer;
+}
+
+.main-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 20px;
+  background: ;
+}
+
+.main-page h1 {
+  margin: 10px 0px;
+  font-size: 26px;
+}
+
+.main-page p {
+  margin: 5px 25px;
+  font-size: 16px;
+  text-align: center;
+}
+
+.pic {
+  margin: 20px 0px;
+}
+
+.computer {
+  height: 150px;
+  width: 320px;
+  background: url(http://i.imgur.com/2EbQYGA.jpg) center no-repeat;
+  background-size: cover;
+}
+
+.tv {
+  height: 250px;
+  width: 320px;
+  background: url(http://i.imgur.com/0kD08WU.jpg) center no-repeat;
+  background-size: cover;
+}
+
+.radio {
+  height: 250px;
+  width: 320px;
+  background: url(http://i.imgur.com/rs1NW31.jpg) center no-repeat;
+  background-size: cover;
+}
