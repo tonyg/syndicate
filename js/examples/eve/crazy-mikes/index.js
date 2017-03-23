@@ -6,8 +6,10 @@ function spawnNavBar(defaultPage) {
     field this.currentPage = defaultPage;
     assert currentPage(this.currentPage);
     on message Syndicate.UI.globalEvent('.nav-btn', 'click', $e) {
-      // INVARIANT: the text content of each nav bar button is the page name
-      this.currentPage = e.originalTarget.textContent;
+      // INVARIANT: the id of each nav bar button is of the form 'nav-btn-Name',
+      // where Name is the name of the page associated with that button
+      var newPage = e.target.id.match(/nav-btn-(.*)/)[1];
+      this.currentPage = newPage;
     }
   }
 }
