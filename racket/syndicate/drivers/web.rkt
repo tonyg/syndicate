@@ -95,7 +95,7 @@
   (dict-ref (web-request-header-headers req) 'content-type #f))
 
 (define (web-request-header-websocket-upgrade? req)
-  (equal? (string-downcase (dict-ref (web-request-header-headers req) 'upgrade #f)) "websocket"))
+  (equal? (string-downcase (dict-ref (web-request-header-headers req) 'upgrade "")) "websocket"))
 
 (begin-for-declarations
   (define-struct-defaults make-web-response-header web-response-header
