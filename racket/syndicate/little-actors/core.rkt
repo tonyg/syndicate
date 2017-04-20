@@ -1,5 +1,9 @@
 #lang racket
 
+(provide run
+         run-with
+         run-with-trace)
+
 (require syndicate/monolithic)
 (require syndicate/trie)
 (require racket/set)
@@ -356,7 +360,7 @@
                    (lambda (rev-vs σ e)
                      (result-map (lambda (v) (cons v rev-vs))
                                  (eval-exp e Γ σ)))))
-     (result-map (lambda (rev-vs) (cons 'list (reverse rev-vs)))
+     (result-map (lambda (rev-vs) (reverse rev-vs))
                  res)]
     [`(let (,x ,exp) ,body-exp)
      (result-bind (eval-exp exp Γ σ)
@@ -575,9 +579,8 @@
 (define (eval-pat pat Γ σ)
   (match pat
     [`(list ,pats ...)
-     (cons 'list
-           (for/list ([p (in-list pats)])
-             (eval-pat p Γ σ)))]
+     (for/list ([p (in-list pats)])
+       (eval-pat p Γ σ))]
     [`(observe ,pat)
      (observe (eval-pat pat Γ σ))]
     [`(inbound ,pat)
@@ -649,14 +652,14 @@
   (check-equal? (occurrences `(asserted 5) (message 5) trie-empty mt-Γ mt-σ)
                 (list))
   (check-equal? (occurrences `(asserted (list "price" $x))
-                             (scn (assertion '(list "price" 12)))
-                             (assertion '(list "price" 5))
+                             (scn (assertion '("price" 12)))
+                             (assertion '("price" 5))
                              mt-Γ mt-σ)
                 (list (list (binding 'x 12))))
   (check-equal? (list->set
                  (occurrences `(asserted (list "price" $x))
-                              (scn (π-union (assertion '(list "price" 12)) (assertion '(list "price" 16))))
-                              (assertion '(list "price" 5))
+                              (scn (π-union (assertion '("price" 12)) (assertion '("price" 16))))
+                              (assertion '("price" 5))
                               mt-Γ mt-σ))
                 (set (list (binding 'x 12)) (list (binding 'x 16)))))
 
@@ -743,6 +746,14 @@
       (boot-actor boot mt-Γ)))
   (run-ground (cons upside-down-relay boot-actions)))
 
+;; Actor Program -> Syndicate
+(define (run-with regular-actor p)
+  (define boot-actions
+    (for/list ([boot (in-list p)])
+      (boot-actor boot mt-Γ)))
+  (run-ground regular-actor boot-actions))
+  
+
 ;; Actor AsyncChannel Program -> Boolean
 ;; trace-actor is the first actor spawned inside the program's ground dataspace
 ;; chan is a channel used by the trace-actor to signal a completed trace, by
@@ -798,92 +809,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(module+ test
-
-  (define test-program
-    `((spawn (on-start (printf "hello,world\n")))))
-
-  (define test-program2
-    `(
-      (spawn (on (asserted 5)
-                 (printf "wat\n")))
-      (spawn (assert 5))))
-
-  (test-trace (trace (assertion-added (observe 5))
-                     (assertion-added 5))
-              test-program2)
-
-
-  (define ping-pong
-    `(
-      (spawn (on (message "ping")
-                 (printf "ping\n")
-                 (send! "pong")))
-      (spawn (on (message "pong")
-                 (printf "pong\n")
-                 (send! "ping"))
-             (on-start (send! "ping")))))
-
-  (test-trace (trace (message "ping")
-                     (message "pong")
-                     (message "ping")
-                     (message "pong")
-                     (message "ping")
-                     (message "pong")
-                     (message "ping")
-                     (message "pong"))
-              ping-pong)
-
-  (define bank-account
-    `(
-      (spawn (field [balance 0])
-             (assert (list "account" (balance)))
-             (on (message (list "deposit" $amount))
-                 (balance (+ (balance) amount))))
-
-      (spawn (on (asserted (list "account" $balance))
-                 (printf "Balance changed to ~a\n" balance))
-             (stop-when (asserted (list "account" 70))
-                        (printf "bye\n"))
-             (on-stop (printf "good.\n")))
-
-      (spawn (stop-when (asserted (observe (list "deposit" _)))
-                        (send! (list "deposit" +100))
-                        (send! (list "deposit" -30))))))
-
-  (test-trace (trace (assertion-added '(list "account" 0))
-                     (and (assertion-added '(list "account" 100))
-                          (assertion-removed '(list "account" 0)))
-                     (and (assertion-added '(list "account" 70))
-                          (assertion-removed '(list "account" 100))))
-              bank-account
-              #:timeout 5000)
-
-  (define multi-level-ex
-    '(
-      (spawn (on (asserted "hello")
-                 (printf "goodbye")))
-      (dataspace (spawn (assert (outbound "hello"))))))
-
-  (test-trace (trace (assertion-added "hello"))
-              multi-level-ex)
-
-  (define multi-level-message
-    '(
-      (spawn (on (message "hello")))
-      (dataspace (spawn (on-start (send! (outbound "hello")))))))
-
-  (test-trace (trace (message "hello"))
-              multi-level-message)
-  (define multi-level-other-way
-    '(
-      (dataspace (spawn (on (asserted (inbound "gday"))
-                            (send! (outbound "good things")))))
-      (spawn (assert "gday"))))
-
-  (test-trace (trace (message "good things"))
-              multi-level-other-way))
 
 (define ff
   '(
@@ -942,41 +867,6 @@
            (on (message (list "x" $x))
                (printf "x = ~v\n" x)))))
 
-(module+ test
-  ;; test that terminating facets can create new facets (at the parent level)
-  (define stop-when-react
-    '(
-      (spawn (stop-when (message "stop")
-                        (react (on (message "poodle")
-                                   (send! "success")
-                                   (printf "woohoo\n")))))
-      (spawn (on-start (send! "stop"))
-             (on (asserted (observe "poodle"))
-                 (send! "poodle")))))
-  (test-trace (trace (message "success"))
-              stop-when-react)
-  ;; Reflects the current behavior, but quite possibly *not* what should happen
-  (define create-new-facet-inside-on-stop
-    '(
-      (spawn
-       (on-stop (react (assert (outbound "here"))))
-       (stop-when (message "stop")))
-
-      (spawn (on-start (send! "stop")))))
-  (test-trace (trace (assertion-added (outbound "here")))
-              create-new-facet-inside-on-stop)
-  ;; Similarly dubious; create new facets from more nested facets
-  (define facet-creation-during-stop-from-grandchild
-    '(
-      (spawn (on-start
-              (react (on-stop
-                      (react (assert (outbound "inner"))))))
-             (stop-when (message "stop")
-                        (react (assert (outbound "outer")))))
-
-      (spawn (on-start (send! "stop")))))
-  (test-trace (trace (assertion-added (outbound "inner")))
-              facet-creation-during-stop-from-grandchild))
 
 (module+ test
   (define do-new-facets-run-immediately
@@ -989,31 +879,6 @@
                                do-new-facets-run-immediately)))
 
 (module+ test
-  (define use-current-knowledge-with-new-facet
-    '(
-      (spawn (on (asserted "hello")
-                 (react (on (asserted "hello")
-                            (printf "do I run?\n")
-                            (send! "yes indeed")))))
-
-      (spawn (assert "hello"))))
-  (test-trace (trace (message "yes indeed"))
-              use-current-knowledge-with-new-facet)
-  
-  (define maintain-knowledge-across-events
-    '(
-      (spawn (on (asserted "outer")
-                 (react (on (message "bam")
-                            (react (on (asserted "outer")
-                                       (send! "icu")
-                                       (printf "icu\n")))))))
-      (spawn (assert "outer")
-             (on (asserted (observe "bam"))
-                 (send! "bam")))))
-  (test-trace (trace (message "icu"))
-              maintain-knowledge-across-events))
-
-(module+ test
   ;; this should bring down the actor *but not* the entire program
   (define escaping-field
     '((spawn (field [x #f])
@@ -1024,14 +889,3 @@
   (check-false (run-with-trace (trace (message "success!"))
                                escaping-field))
   (check-not-exn (lambda () (run escaping-field))))
-
-(module+ test
-  ;; starting exceptions
-  (define nested-spawn-exceptions
-    '(
-      (spawn (on (message "go")
-                 (spawn (on-start (/ 1 0)))
-                 (send! "lovely happiness")))
-      (spawn (on-start (send! "go")))))
-  (test-trace (trace (message "lovely happiness"))
-                   nested-spawn-exceptions))

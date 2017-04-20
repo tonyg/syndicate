@@ -12,7 +12,8 @@
 (provide trace-actor
          spawn-monitor
          assertion-added
-         assertion-removed)
+         assertion-removed
+         (for-syntax trace))
 
 (module+ test
   (require rackunit))
