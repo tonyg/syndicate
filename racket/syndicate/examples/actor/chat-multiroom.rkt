@@ -1,5 +1,6 @@
 #lang syndicate/actor
 ;; Evolution of chat-simplified-internals2.rkt to support multiple rooms.
+;; Uses the approach of modifying the protocol to include a room name.
 
 (require syndicate/protocol/advertise)
 (require/activate syndicate/drivers/tcp)
