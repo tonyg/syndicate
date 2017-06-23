@@ -9,13 +9,8 @@
          patch-non-empty?
          patch/added?
          patch/removed?
-         strip-interests
-         label-interests
-         strip-patch
          label-patch
          limit-patch
-         limit-patch/routing-table
-         patch-pruned-by
          patch-step
          patch-step*
          compute-aggregate-patch
@@ -79,15 +74,8 @@
 (define (patch/added? p) (and (patch? p) (trie-non-empty? (patch-added p))))
 (define (patch/removed? p) (and (patch? p) (trie-non-empty? (patch-removed p))))
 
-(define (strip-interests g)
-  (trie-relabel g (lambda (v) '<strip-interests>)))
-
 (define (label-interests g label)
   (trie-relabel g (lambda (v) label)))
-
-(define (strip-patch p)
-  (patch (strip-interests (patch-added p))
-         (strip-interests (patch-removed p))))
 
 (define (label-patch p label)
   (patch (label-interests (patch-added p) label)
@@ -117,11 +105,11 @@
          (trie-intersect out bound
 			 #:combiner (lambda (v1 v2) (empty-tset-guard (tset-intersect v1 v2))))))
 
-;; Completely ignores success-values in t.
-(define (patch-pruned-by p t)
-  (match-define (patch added removed) p)
-  (patch (trie-subtract #:combiner (lambda (v1 v2) trie-empty) added t)
-         (trie-subtract #:combiner (lambda (v1 v2) trie-empty) removed t)))
+;; ;; Completely ignores success-values in t.
+;; (define (patch-pruned-by p t)
+;;   (match-define (patch added removed) p)
+;;   (patch (trie-subtract #:combiner (lambda (v1 v2) trie-empty) added t)
+;;          (trie-subtract #:combiner (lambda (v1 v2) trie-empty) removed t)))
 
 ;; Steps both added and removes sets
 (define (patch-step p key)
@@ -276,6 +264,13 @@
     (trie-intersect R
 		    (pattern->trie label-set ?)
 		    #:combiner (lambda (v1 v2) (empty-tset-guard (tset-intersect v1 v2)))))
+
+  (define (strip-interests g)
+    (trie-relabel g (lambda (v) '<strip-interests>)))
+
+  (define (strip-patch p)
+    (patch (strip-interests (patch-added p))
+           (strip-interests (patch-removed p))))
 
   (define tset datum-tset)
 

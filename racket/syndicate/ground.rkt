@@ -143,7 +143,7 @@
     [(cons a actions)
      (match a
        [(? patch? p)
-        (process-actions actions (apply-patch interests (label-patch p (datum-tset 'root))))]
+        (process-actions actions (update-interests interests p))]
        [_
         (log-syndicate/ground-warning "run-ground: ignoring useless meta-action ~v" a)
         (process-actions actions interests)])]))
