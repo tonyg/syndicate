@@ -9,9 +9,11 @@
          until
          forever
 
+         current-facet-id
          field
          field/c
          assert
+         stop-facet
          stop-when
          on-start
          on-stop
@@ -96,7 +98,10 @@
 ;; A FieldTable is a WEAK hash table: (FieldDescriptor |-> Any)
 
 ;; (field-descriptor Symbol UniqueNatural)
-(struct field-descriptor (name id))
+(struct field-descriptor (name id)
+  #:methods gen:custom-write
+  [(define (write-proc d p mode)
+     (fprintf p "#<field-descriptor:~a>" (field-descriptor-name d)))])
 
 ;; (field-handle FieldDescriptor)
 (struct field-handle (desc)
@@ -165,6 +170,11 @@
                                     f
                                     '(expected: "a field"))]))))))
 
+;; A FID is a (Listof UniqueNatural).
+;;
+;; The (unique) ID of the specific facet is the car; the parent's
+;; unique ID is the cadr; and so on.
+
 (struct actor-state (mux ;; Mux
                      facets ;; (Hash FID Facet)
                      previous-knowledge ;; AssertionSet
@@ -177,10 +187,10 @@
   [(define (syndicate-pretty-print a [p (current-output-port)])
      (pretty-print-actor-state a p))])
 
-(struct facet (endpoints ;; (Hash EID Endpoint)
+(struct facet (id ;; FID; this includes parent IDs etc
+               endpoints ;; (Hash EID Endpoint)
                stop-scripts ;; (Listof Script) -- IN REVERSE ORDER
                children ;; (Setof FID)
-               parent ;; (Option FID)
                ) #:prefab)
 
 (struct endpoint (id patch-fn handler-fn) #:prefab)
@@ -224,7 +234,7 @@
 (define current-actor-state (make-store))
 
 ;; Parameterof FID
-(define current-facet-id (make-parameter #f))
+(define current-facet-id (make-parameter '()))
 
 ;; Storeof Patch
 (define current-pending-patch (make-store))
@@ -363,7 +373,7 @@
     [(_ [id:id init maybe-contract ...] ...)
      (quasisyntax/loc stx
        (begin
-         (when (and (in-script?) (current-facet-id))
+         (when (and (in-script?) (pair? (current-facet-id)))
            (error 'field
                   "~a: Cannot declare fields in a script; are you missing a (react ...)?"
                   #,(source-location->string stx)))
@@ -384,21 +394,36 @@
                                 patch-stx)))
                       void))]))
 
+(define (fid-ancestor? fid maybe-ancestor)
+  (and (pair? fid) ;; empty fid lists obviously no ancestors at all!
+       (or (equal? fid maybe-ancestor)
+           (fid-ancestor? (cdr fid) maybe-ancestor))))
+
+(define-syntax (stop-facet stx)
+  (syntax-parse stx
+    [(_ fid-expr script ...)
+     (quasisyntax/loc stx
+       (let ((fid fid-expr))
+         (when (not (fid-ancestor? (current-facet-id) fid))
+           (error 'stop-facet "Attempt to stop non-ancestor facet ~a" fid))
+         (terminate-facet! fid)
+         (parameterize ((current-facet-id (cdr fid))) ;; run in parent context wrt terminating facet
+           (schedule-script! (lambda () (begin/void-default script ...))))))]))
+
 (define-syntax (stop-when stx)
   (syntax-parse stx
     [(_ w:when-pred E prio:priority script ...)
      (analyze-event stx
                     #'w.Pred
                     #'E
-                    #t
-                    (syntax/loc stx (begin/void-default script ...))
+                    (syntax/loc stx (stop-facet (current-facet-id) script ...))
                     #'prio.level)]))
 
 (define-syntax (on-start stx)
   (syntax-parse stx
     [(_ script ...)
      (quasisyntax/loc stx
-       (schedule-script! #f (lambda () (begin/void-default script ...))))]))
+       (schedule-script! (lambda () (begin/void-default script ...))))]))
 
 (define-syntax (on-stop stx)
   (syntax-parse stx
@@ -420,7 +445,7 @@
   (add-endpoint! where
                  (lambda () patch-empty)
                  (lambda (e _current-interests _synthetic?)
-                   (schedule-script! #:priority priority #f (lambda () (proc e))))))
+                   (schedule-script! #:priority priority (lambda () (proc e))))))
 
 (define-syntax (on stx)
   (syntax-parse stx
@@ -428,7 +453,6 @@
      (analyze-event stx
                     #'w.Pred
                     #'E
-                    #f
                     (syntax/loc stx (begin/void-default script ...))
                     #'prio.level)]))
 
@@ -493,7 +517,6 @@
                           (define subject-id (current-dataflow-subject-id))
                           (schedule-script!
                            #:priority prio.level
-                           #f
                            (lambda ()
                              (parameterize ((current-dataflow-subject-id subject-id))
                                expr ...)))
@@ -545,7 +568,6 @@
     (if maybe-expr-stx
         (quasisyntax/loc maybe-expr-stx
           ((schedule-script! #:priority *query-handler-priority*
-                             #f
                              (lambda () #,maybe-expr-stx))))
         #'())))
 
@@ -699,7 +721,6 @@
 (define-for-syntax (analyze-asserted/retracted outer-expr-stx
                                                when-pred-stx
                                                event-stx
-                                               terminal?
                                                script-stx
                                                asserted?
                                                P-stx
@@ -729,29 +750,14 @@
                                    "Wildcard interest discovered while projecting by ~v at ~a"
                                    proj
                                    #,(source-location->string P-stx)))
-                          #,(let ((entry-handler-stx
-                                   (quasisyntax/loc script-stx
-                                     (let ((instantiated (instantiate-projection proj entry)))
-                                       (and (#,change-detector-stx instantiated synthetic?)
-                                            (schedule-script!
-                                             #:priority #,priority-stx
-                                             #,(if terminal? #'#t #'#f)
-                                             (lambda ()
-                                               (match-define (list #,@bindings) entry)
-                                               #,script-stx)))))))
-                              (if terminal?
-                                  #`(let ((entry-count (set-count entry-set)))
-                                      (cond
-                                        [(zero? entry-count)]
-                                        [(= entry-count 1)
-                                         (let ((entry (set-first entry-set)))
-                                           #,entry-handler-stx)]
-                                        [else
-                                         (error 'asserted
-                                                "Multiple assertions triggered stop-when at ~a"
-                                                #,(source-location->string P-stx))]))
-                                  #`(for [(entry (in-set entry-set))]
-                                      #,entry-handler-stx)))]))))))
+                          (for [(entry (in-set entry-set))]
+                            (let ((instantiated (instantiate-projection proj entry)))
+                              (and (#,change-detector-stx instantiated synthetic?)
+                                   (schedule-script!
+                                    #:priority #,priority-stx
+                                    (lambda ()
+                                      (match-define (list #,@bindings) entry)
+                                      #,script-stx)))))]))))))
 
 (define-for-syntax orig-insp
   (variable-reference->module-declaration-inspector (#%variable-reference)))
@@ -759,7 +765,6 @@
 (define-for-syntax (analyze-event outer-expr-stx
                                   when-pred-stx
                                   armed-event-stx
-                                  terminal?
                                   script-stx
                                   priority-stx)
   (define event-stx (syntax-disarm armed-event-stx orig-insp))
@@ -773,7 +778,6 @@
         (analyze-event outer-expr-stx
                        when-pred-stx
                        (syntax-rearm result event-stx)
-                       terminal?
                        script-stx
                        priority-stx)))]
     [(core:message P)
@@ -795,15 +799,14 @@
                              (and capture-vals
                                   (schedule-script!
                                    #:priority #,priority-stx
-                                   #,(if terminal? #'#t #'#f)
                                    (lambda ()
                                      (apply (lambda #,bindings #,script-stx)
                                             capture-vals))))])))))]
     [(asserted P)
-     (analyze-asserted/retracted outer-expr-stx when-pred-stx event-stx terminal? script-stx
+     (analyze-asserted/retracted outer-expr-stx when-pred-stx event-stx script-stx
                                  #t #'P priority-stx)]
     [(retracted P)
-     (analyze-asserted/retracted outer-expr-stx when-pred-stx event-stx terminal? script-stx
+     (analyze-asserted/retracted outer-expr-stx when-pred-stx event-stx script-stx
                                  #f #'P priority-stx)]
     [(rising-edge Pred)
      (define field-name
@@ -822,7 +825,6 @@
                               (#,field-name new-val)
                               (when new-val
                                 (schedule-script! #:priority #,priority-stx
-                                                  #,(if terminal? #'#t #'#f)
                                                   (lambda () #,script-stx)))))
                           patch-empty)
                         void)))]))
@@ -839,7 +841,6 @@
 
 (define field-counter 0)
 (define (make-field name initial-value)
-  (define fid (current-facet-id))
   (define desc (field-descriptor name field-counter))
   (set! field-counter (+ field-counter 1))
   (hash-set! (actor-state-field-table (current-actor-state))
@@ -898,14 +899,8 @@
         (call-with-syndicate-effects
          (lambda () (apply proc args)))))))
 
-(define (schedule-script! #:priority [priority *normal-priority*] terminal? thunk)
-  (if terminal?
-      (let ((f (terminate-facet! (current-facet-id))))
-        (when f ;; only want to run a terminal script if we genuinely terminated
-          (push-script! priority
-                        (parameterize ((current-facet-id (facet-parent f)))
-                          (capture-facet-context thunk)))))
-      (push-script! priority (capture-facet-context thunk))))
+(define (schedule-script! #:priority [priority *normal-priority*] thunk)
+  (push-script! priority (capture-facet-context thunk)))
 
 (define (push-script! priority thunk-with-context)
   (define v (current-pending-scripts))
@@ -946,7 +941,8 @@
       (define new-eid (mux-next-pid (actor-state-mux a)))
       (define-values (new-mux _new-eid _delta delta-aggregate)
         (mux-add-stream (actor-state-mux a)
-                        (parameterize ((current-dataflow-subject-id (list (current-facet-id) new-eid)))
+                        (parameterize ((current-dataflow-subject-id
+                                        (list (current-facet-id) new-eid)))
                           (patch-fn))))
       (current-actor-state (struct-copy actor-state (current-actor-state) [mux new-mux]))
       (values new-eid delta-aggregate)))
@@ -963,16 +959,17 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Facet Lifecycle
 
-(define next-fid 0)
+(define next-fid-uid 0)
 (define (add-facet! where setup-proc)
   (when (not (in-script?))
     (error 'add-facet!
            "~a: Cannot add facet outside script; are you missing an (on ...)?"
            where))
   (define parent-fid (current-facet-id))
-  (define fid next-fid)
-  (set! next-fid (+ next-fid 1))
-  (update-facet! fid (lambda (_f) (facet (hasheqv) '() (seteqv) parent-fid)))
+  (define fid-uid next-fid-uid)
+  (define fid (cons fid-uid parent-fid))
+  (set! next-fid-uid (+ next-fid-uid 1))
+  (update-facet! fid (lambda (_f) (facet fid (hasheqv) '() (set))))
   (update-facet! parent-fid
                  (lambda (pf)
                    (and pf (struct-copy facet pf
@@ -982,43 +979,39 @@
                        (lookup-facet fid)
                        (patch (actor-state-knowledge (current-actor-state)) trie-empty)
                        #t)
-  (when (and (facet-live? fid) parent-fid (not (facet-live? parent-fid)))
+  (when (and (facet-live? fid) (pair? parent-fid) (not (facet-live? parent-fid)))
     (terminate-facet! fid)))
 
-;; If the named facet is live, terminate it and return its facet
-;; record; otherwise, return #f.
+;; If the named facet is live, terminate it.
 (define (terminate-facet! fid)
   (define f (lookup-facet fid))
-  (and f
-       (begin
-         (for [((eid ep) (in-hash (facet-endpoints f)))]
-           (define a (current-actor-state))
-           (dataflow-forget-subject! (actor-state-field-dataflow a) (list fid eid))
-           (define-values (new-mux _eid _delta delta-aggregate)
-             (mux-remove-stream (actor-state-mux a) eid))
-           (current-actor-state (struct-copy actor-state a [mux new-mux]))
-           (schedule-action! delta-aggregate))
+  (when f
+    (for [((eid ep) (in-hash (facet-endpoints f)))]
+      (define a (current-actor-state))
+      (dataflow-forget-subject! (actor-state-field-dataflow a) (list fid eid))
+      (define-values (new-mux _eid _delta delta-aggregate)
+        (mux-remove-stream (actor-state-mux a) eid))
+      (current-actor-state (struct-copy actor-state a [mux new-mux]))
+      (schedule-action! delta-aggregate))
 
-         (let ((parent-fid (facet-parent f)))
-           (when parent-fid
-             (update-facet! parent-fid
-                            (lambda (f)
-                              (and f
-                                   (struct-copy facet f
-                                                [children (set-remove (facet-children f)
-                                                                      fid)]))))))
-         (store-facet! fid #f)
+    (let ((parent-fid (cdr fid)))
+      (when (pair? parent-fid)
+        (update-facet! parent-fid
+                       (lambda (f)
+                         (and f
+                              (struct-copy facet f
+                                [children (set-remove (facet-children f)
+                                                      fid)]))))))
+    (store-facet! fid #f)
 
-         (for [(child-fid (in-set (facet-children f)))]
-           (terminate-facet! child-fid))
+    (for [(child-fid (in-set (facet-children f)))]
+      (terminate-facet! child-fid))
 
-         ;; Run stop-scripts after terminating children. This means that
-         ;; children's stop-scripts run before ours.
-         (with-current-facet fid #t
-           (for [(script (in-list (reverse (facet-stop-scripts f))))]
-             (call-with-syndicate-effects script)))
-
-         f)))
+    ;; Run stop-scripts after terminating children. This means that
+    ;; children's stop-scripts run before ours.
+    (with-current-facet fid #t
+      (for [(script (in-list (reverse (facet-stop-scripts f))))]
+        (call-with-syndicate-effects script)))))
 
 (define (add-stop-script! script-proc)
   (update-facet! (current-facet-id)
@@ -1033,7 +1026,7 @@
 (define (boot-actor script-proc)
   (with-store [(current-actor-state
                 (actor-state (mux)
-                             (hasheqv)
+                             (hash)
                              trie-empty
                              trie-empty
                              (make-weak-hasheq)
@@ -1042,8 +1035,8 @@
                (current-pending-actions '())
                (current-pending-scripts (make-empty-pending-scripts))
                (current-action-transformer values)]
-    (with-current-facet #f #f
-      (schedule-script! #f script-proc)
+    (with-current-facet '() #f
+      (schedule-script! script-proc)
       (run-scripts!))))
 
 (define (pop-next-script!)
@@ -1243,8 +1236,8 @@
   (fprintf p " - Knowledge:\n   ~a" (trie->pretty-string knowledge #:indent 3))
   (fprintf p " - Facets:\n")
   (for ([(fid f) (in-hash facets)])
-    (match-define (facet endpoints _ children parent) f)
-    (fprintf p "    ---- facet ~a, parent=~a, children=~a" fid parent (set->list children))
+    (match-define (facet _fid endpoints _ children) f)
+    (fprintf p "    ---- facet ~a, children=~a" fid (set->list children))
     (when (not (hash-empty? endpoints))
       (fprintf p ", endpoints=~a" (hash-keys endpoints)))
     (newline p))
