@@ -47,9 +47,7 @@
                                  'inbound
                                  (web-request-header 'get (web-resource vh `("slow" ())) _ _)
                                  _))
-           (react (field [done? #f])
-                  (stop-when (rising-edge (done?)))
-                  (assert (web-response-chunked id
+           (react (assert (web-response-chunked id
                                                 (web-response-header #:message #"Slowly"
                                                                      #:mime-type #"text/plain")))
                   (on (asserted (observe (web-response-chunk id _)))
@@ -67,7 +65,7 @@
                       (sleep 2)
                       (send! (web-response-chunk id #"third\n"))
                       (sleep 2)
-                      (done? #t))))
+                      (stop-current-facet))))
 
        (on (message (web-request $id
                                  'inbound

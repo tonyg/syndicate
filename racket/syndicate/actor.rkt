@@ -16,6 +16,7 @@
          stop-facet
          stop-current-facet
          stop-when
+         stop-when-true
          on-start
          on-stop
          on-event
@@ -422,6 +423,11 @@
                     #'E
                     (syntax/loc stx (stop-facet (current-facet-id) script ...))
                     #'prio.level)]))
+
+(define-syntax-rule (stop-when-true condition script ...)
+  (begin/dataflow
+    (when condition
+      (stop-facet (current-facet-id) script ...))))
 
 (define-syntax (on-start stx)
   (syntax-parse stx

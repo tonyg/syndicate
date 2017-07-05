@@ -550,7 +550,7 @@
 
    (field [hit-points 1])
    (assert (health player-id (hit-points)))
-   (stop-when (rising-edge (<= (hit-points) 0)))
+   (stop-when-true (<= (hit-points) 0))
    (on (message (damage player-id $amount))
        (hit-points (- (hit-points) amount)))
 
@@ -624,9 +624,9 @@
                               [(> (+ left width) range-hi) 'left]
                               [else (facing)]))))
 
-   (stop-when (rising-edge (and (current-level-size)
-                                (> (vector-ref (pos) 1)
-                                   (vector-ref (current-level-size) 1)))))
+   (stop-when-true (and (current-level-size)
+                        (> (vector-ref (pos) 1)
+                           (vector-ref (current-level-size) 1))))
 
    (field [facing initial-facing])
    (assert (outbound* game-level

@@ -304,6 +304,8 @@
                 (ip-address->hostname dst-ip)
                 dst-port)
 
+   (define root-facet (current-facet-id))
+
    (define initial-outbound-seqn
      ;; Yuck
      (inexact->exact (truncate (* #x100000000 (random)))))
@@ -317,7 +319,7 @@
           ;; ^ when the index of the first outbound unacknowledged byte changed
           [most-recent-time (current-inexact-milliseconds)]
           ;; ^ updated by timer expiry; a field, to trigger quit checks
-          [quit-because-reset? #f])
+          )
 
    (let ()
      (local-require (submod syndicate/actor priorities))
@@ -445,7 +447,7 @@
                   dst-port
                   (ip-address->hostname src-ip)
                   src-port)
-     (quit-because-reset? #t)
+     (stop-facet root-facet)
      (send! (tcp-packet #f dst-ip dst-port src-ip src-port
                         seqn
                         ackn
@@ -463,24 +465,20 @@
    (assert #:when (and (syn-acked?) (not (buffer-finished? (inbound))))
            (advertise (tcp-channel src dst _)))
 
-   (stop-when
-    (rising-edge
-     (and (buffer-finished? (outbound))
-          (buffer-finished? (inbound))
-          (all-output-acknowledged?)
-          (not (heard-from-peer-within-msec? (* 2 1000 maximum-segment-lifetime-sec)))))
+   (stop-when-true
+    (and (buffer-finished? (outbound))
+         (buffer-finished? (inbound))
+         (all-output-acknowledged?)
+         (not (heard-from-peer-within-msec? (* 2 1000 maximum-segment-lifetime-sec))))
     ;; Everything is cleanly shut down, and we just need to wait a while for unexpected
     ;; packets before we release the state vector.
     )
 
-   (stop-when
-    (rising-edge (user-timeout-expired?))
+   (stop-when-true (user-timeout-expired?)
     ;; We've been plaintively retransmitting for user-timeout-msec without hearing anything
     ;; back; this is a crude approximation of the real condition for TCP_USER_TIMEOUT, but
     ;; it will do for now? TODO
     (log-info "TCP_USER_TIMEOUT fired."))
-
-   (stop-when (rising-edge (quit-because-reset?)))
 
    (define/query-value local-peer-seen? #f (observe (tcp-channel src dst _)) #t
      #:on-remove (begin
@@ -500,7 +498,7 @@
        (define is-syn? (set-member? flags 'syn))
        (define is-fin? (set-member? flags 'fin))
        (cond
-         [(set-member? flags 'rst) (quit-because-reset? #t)]
+         [(set-member? flags 'rst) (stop-facet root-facet)]
          [(and (not expected) ;; no syn yet
                (or (not is-syn?) ;; and this isn't it
                    (and (not (listener-listening?)) ;; or it is, but no listener...

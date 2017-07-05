@@ -66,8 +66,6 @@
             (during/spawn (inbound (advertise (tcp-channel ($ them (tcp-address _ _)) us _)))
                           #:name (list 'webserver-session them)
                           (log-info "Got connection from ~v" them)
-                          (field [done? #f])
-                          (stop-when (rising-edge (done?)))
                           (assert (outbound (advertise (tcp-channel us them _))))
                           (on (message (inbound (tcp-channel them us _)))) ;; ignore input
 
@@ -84,4 +82,4 @@
                                           "<p>There have been ~a requests prior to this one.</p>\n")
                                          counter)))
                               (send! (outbound (tcp-channel us them response)))
-                              (done? #t))))))
+                              (stop-facet (current-facet-id)))))))

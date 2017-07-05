@@ -55,7 +55,7 @@
   (spawn (field [status 'starting])
          (assert (philosopher-status name (status)))
 
-         (stop-when (rising-edge (eq? (status) 'inspired)))
+         (stop-when-true (eq? (status) 'inspired))
 
          (on-start
           (let loop ()

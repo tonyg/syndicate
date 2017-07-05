@@ -6,8 +6,8 @@
 
 (spawn (field [current-value 0])
        (assert (box-state (current-value)))
-       (stop-when (rising-edge (= (current-value) 10))
-                  (log-info "box: terminating"))
+       (stop-when-true (= (current-value) 10)
+                       (log-info "box: terminating"))
        (on (message (set-box $new-value))
            (log-info "box: taking on new-value ~v" new-value)
            (current-value new-value)))

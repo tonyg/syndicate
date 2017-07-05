@@ -54,8 +54,7 @@
    (react
     (linkage-thunk) ;; may contain e.g. linkage instructions from during/spawn
 
-    (field [done? #f])
-    (stop-when (rising-edge (done?)))
+    (define root-supervisor-facet (current-facet-id))
 
     (field [supervisee-name 'unknown])
 
@@ -117,7 +116,7 @@
                     (perform-actions! acs)
                     ;; N.B. TODO: what to do with the exception
                     ;; carried in the quit struct?
-                    (done? #t)]
+                    (stop-facet root-supervisor-facet)]
                    [(transition st acs)
                     (perform-actions! acs)
                     (proc (update-process-state (proc) st))]))
