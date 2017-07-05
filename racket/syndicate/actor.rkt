@@ -14,6 +14,7 @@
          field/c
          assert
          stop-facet
+         stop-current-facet
          stop-when
          on-start
          on-stop
@@ -409,6 +410,9 @@
          (terminate-facet! fid)
          (parameterize ((current-facet-id (cdr fid))) ;; run in parent context wrt terminating facet
            (schedule-script! (lambda () (begin/void-default script ...))))))]))
+
+(define-syntax-rule (stop-current-facet)
+  (stop-facet (current-facet-id)))
 
 (define-syntax (stop-when stx)
   (syntax-parse stx
