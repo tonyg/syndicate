@@ -411,7 +411,9 @@
          (parameterize ((current-facet-id (cdr fid))) ;; run in parent context wrt terminating facet
            (schedule-script! (lambda ()
                                (terminate-facet! fid)
-                               (begin/void-default script ...))))))]))
+                               (schedule-script!
+                                (lambda ()
+                                  (begin/void-default script ...))))))))]))
 
 (define-syntax-rule (stop-current-facet)
   (stop-facet (current-facet-id)))
