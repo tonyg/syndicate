@@ -886,6 +886,12 @@
 (define (lookup-facet fid)
   (hash-ref (actor-state-facets (current-actor-state)) fid #f))
 
+(define (facet-live-but-inert? fid)
+  (define f (lookup-facet fid))
+  (and f
+       (hash-empty? (facet-endpoints f))
+       (set-empty? (facet-children f))))
+
 (define (update-facet! fid proc)
   (define old-facet (lookup-facet fid))
   (define new-facet (proc old-facet))
@@ -987,28 +993,33 @@
                  (lambda (pf)
                    (and pf (struct-copy facet pf
                                         [children (set-add (facet-children pf) fid)]))))
-  (with-current-facet fid #f (setup-proc))
+  (with-current-facet fid #f
+    (setup-proc)
+    (schedule-script!
+     (lambda ()
+       (when (and (facet-live? fid)
+                  (or (and (pair? parent-fid) (not (facet-live? parent-fid)))
+                      (facet-live-but-inert? fid)))
+         (terminate-facet! fid)))))
   (facet-handle-event! fid
                        (lookup-facet fid)
                        (patch (actor-state-knowledge (current-actor-state)) trie-empty)
-                       #t)
-  (when (and (facet-live? fid)
-             (or (and (pair? parent-fid) (not (facet-live? parent-fid)))
-                 (hash-empty? (facet-endpoints (lookup-facet fid)))))
-    (terminate-facet! fid)))
+                       #t))
 
 ;; If the named facet is live, terminate it.
 (define (terminate-facet! fid)
   (define f (lookup-facet fid))
   (when f
-    (let ((parent-fid (cdr fid)))
-      (when (pair? parent-fid)
-        (update-facet! parent-fid
-                       (lambda (f)
-                         (and f
-                              (struct-copy facet f
-                                [children (set-remove (facet-children f)
-                                                      fid)]))))))
+    (define parent-fid (cdr fid))
+
+    (when (pair? parent-fid)
+      (update-facet! parent-fid
+                     (lambda (f)
+                       (and f
+                            (struct-copy facet f
+                              [children (set-remove (facet-children f)
+                                                    fid)])))))
+
     (store-facet! fid #f)
 
     (for [(child-fid (in-set (facet-children f)))]
@@ -1027,7 +1038,10 @@
          (define-values (new-mux _eid _delta delta-aggregate)
            (mux-remove-stream (actor-state-mux a) eid))
          (current-actor-state (struct-copy actor-state a [mux new-mux]))
-         (schedule-action! delta-aggregate))))))
+         (schedule-action! delta-aggregate))))
+
+    (when (facet-live-but-inert? parent-fid)
+      (terminate-facet! parent-fid))))
 
 (define (add-stop-script! script-proc)
   (update-facet! (current-facet-id)
