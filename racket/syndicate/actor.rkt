@@ -224,7 +224,6 @@
     *query-handler-priority*
     *normal-priority*
     *idle-priority*
-    *gc-priority*
     #:count priority-count))
 
 (require (submod "." priorities))
