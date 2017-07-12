@@ -408,9 +408,10 @@
        (let ((fid fid-expr))
          (when (not (fid-ancestor? (current-facet-id) fid))
            (error 'stop-facet "Attempt to stop non-ancestor facet ~a" fid))
-         (terminate-facet! fid)
          (parameterize ((current-facet-id (cdr fid))) ;; run in parent context wrt terminating facet
-           (schedule-script! (lambda () (begin/void-default script ...))))))]))
+           (schedule-script! (lambda ()
+                               (terminate-facet! fid)
+                               (begin/void-default script ...))))))]))
 
 (define-syntax-rule (stop-current-facet)
   (stop-facet (current-facet-id)))
@@ -996,14 +997,6 @@
 (define (terminate-facet! fid)
   (define f (lookup-facet fid))
   (when f
-    (for [((eid ep) (in-hash (facet-endpoints f)))]
-      (define a (current-actor-state))
-      (dataflow-forget-subject! (actor-state-field-dataflow a) (list fid eid))
-      (define-values (new-mux _eid _delta delta-aggregate)
-        (mux-remove-stream (actor-state-mux a) eid))
-      (current-actor-state (struct-copy actor-state a [mux new-mux]))
-      (schedule-action! delta-aggregate))
-
     (let ((parent-fid (cdr fid)))
       (when (pair? parent-fid)
         (update-facet! parent-fid
@@ -1020,8 +1013,17 @@
     ;; Run stop-scripts after terminating children. This means that
     ;; children's stop-scripts run before ours.
     (with-current-facet fid #t
-      (for [(script (in-list (reverse (facet-stop-scripts f))))]
-        (call-with-syndicate-effects script)))))
+      (map schedule-script! (reverse (facet-stop-scripts f))))
+
+    (schedule-script!
+     (lambda ()
+       (for [((eid ep) (in-hash (facet-endpoints f)))]
+         (define a (current-actor-state))
+         (dataflow-forget-subject! (actor-state-field-dataflow a) (list fid eid))
+         (define-values (new-mux _eid _delta delta-aggregate)
+           (mux-remove-stream (actor-state-mux a) eid))
+         (current-actor-state (struct-copy actor-state a [mux new-mux]))
+         (schedule-action! delta-aggregate))))))
 
 (define (add-stop-script! script-proc)
   (update-facet! (current-facet-id)
