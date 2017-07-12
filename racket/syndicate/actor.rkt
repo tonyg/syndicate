@@ -990,7 +990,9 @@
                        (lookup-facet fid)
                        (patch (actor-state-knowledge (current-actor-state)) trie-empty)
                        #t)
-  (when (and (facet-live? fid) (pair? parent-fid) (not (facet-live? parent-fid)))
+  (when (and (facet-live? fid)
+             (or (and (pair? parent-fid) (not (facet-live? parent-fid)))
+                 (hash-empty? (facet-endpoints (lookup-facet fid)))))
     (terminate-facet! fid)))
 
 ;; If the named facet is live, terminate it.
