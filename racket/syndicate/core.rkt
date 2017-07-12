@@ -69,6 +69,7 @@
 (require "trie.rkt")
 (require "patch.rkt")
 (require "mux.rkt")
+(require "pretty.rkt")
 
 ;; Events = Patches ∪ Messages
 (struct message (body) #:prefab)
@@ -97,7 +98,10 @@
 (struct quit (exn actions) #:prefab)
 
 ;; A Process is per-process data: (process Any Behavior Any)
-(struct process (name behavior state) #:transparent)
+(struct process (name behavior state) #:transparent
+  #:methods gen:syndicate-pretty-printable
+  [(define (syndicate-pretty-print proc [p (current-output-port)])
+     (pretty-print-process proc p))])
 
 ;; A PID is a Nat.
 ;; A Label is a PID or 'meta.
@@ -235,6 +239,17 @@
        [#f (sequence-transitions0* state0 rest)]
        [(? quit? q) q]
        [(? transition? t) (sequence-transitions* t rest)])]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (pretty-print-process proc p)
+  (match-define (process name behavior state) proc)
+  (fprintf p "PROCESS:\n")
+  (fprintf p " - Name: ~v\n" name)
+  (fprintf p " - Behavior: ~v\n" behavior)
+  (fprintf p " - ")
+  (display (indented-port-output 3 (lambda (p) (syndicate-pretty-print state p)) #:first-line? #f) p)
+  (newline p))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
