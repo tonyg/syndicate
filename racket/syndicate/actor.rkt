@@ -1139,6 +1139,7 @@
 (module+ implementation-details
   (provide actor-behavior
            boot-actor
+           make-field
            (struct-out field-descriptor)
            (struct-out field-handle)
            (struct-out actor-state)
