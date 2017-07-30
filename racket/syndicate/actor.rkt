@@ -618,11 +618,15 @@
      (quasisyntax/loc stx
        (let ((F field-name))
          (on (asserted P) #:priority *query-priority*
-             #,@(schedule-query-handler-stxs (attribute on-add.expr))
-             (F (set-add (F) expr)))
+             (let ((V expr))
+               (when (not (set-member? (F) V))
+                 #,@(schedule-query-handler-stxs (attribute on-add.expr))
+                 (F (set-add (F) V)))))
          (on (retracted P) #:priority *query-priority-high*
-             #,@(schedule-query-handler-stxs (attribute on-remove.expr))
-             (F (set-remove (F) expr)))
+             (let ((V expr))
+               (when (set-member? (F) V)
+                 #,@(schedule-query-handler-stxs (attribute on-remove.expr))
+                 (F (set-remove (F) V)))))
          F))]))
 
 (define-syntax (query-hash stx)
@@ -666,11 +670,15 @@
      (quasisyntax/loc stx
        (let ((F field-name))
          (on (asserted P) #:priority *query-priority*
-             #,@(schedule-query-handler-stxs (attribute on-add.expr))
-             (F (hashset-add (F) key-expr value-expr)))
+             (let ((K key-expr) (V value-expr))
+               (when (not (hashset-member? (F) K V))
+                 #,@(schedule-query-handler-stxs (attribute on-add.expr))
+                 (F (hashset-add (F) K V)))))
          (on (retracted P) #:priority *query-priority-high*
-             #,@(schedule-query-handler-stxs (attribute on-remove.expr))
-             (F (hashset-remove (F) key-expr value-expr)))
+             (let ((K key-expr) (V value-expr))
+               (when (hashset-member? (F) K V)
+                 #,@(schedule-query-handler-stxs (attribute on-remove.expr))
+                 (F (hashset-remove (F) K V)))))
          F))]))
 
 (define-syntax-rule (define/query-value id ae P x ...) (define id (query-value id ae P x ...)))
