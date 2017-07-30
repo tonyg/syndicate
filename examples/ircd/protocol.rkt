@@ -8,7 +8,9 @@
          (struct-out ircd-channel-topic)
 
          (struct-out ircd-action)
-         (struct-out ircd-event))
+         (struct-out ircd-event)
+
+         lookup-nick)
 
 ;; A Connection is a TcpAddress
 
@@ -21,3 +23,8 @@
 
 (struct ircd-action (conn message) #:prefab) ;; message
 (struct ircd-event (conn message) #:prefab) ;; message
+
+;;---------------------------------------------------------------------------
+
+(define (lookup-nick conn)
+  (immediate-query [query-value #f (ircd-connection-info conn $N _) N]))

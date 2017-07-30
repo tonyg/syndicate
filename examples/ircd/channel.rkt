@@ -5,9 +5,6 @@
 
 (require/activate syndicate/reload)
 
-(define (lookup-nick conn)
-  (immediate-query [query-value #f (ircd-connection-info conn $N _) N]))
-
 (spawn #:name 'channel-factory
        (stop-when-reloaded)
        (during/spawn (ircd-channel-member $Ch _)
