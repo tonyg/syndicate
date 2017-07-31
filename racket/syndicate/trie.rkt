@@ -53,6 +53,7 @@
          ;; trie-prune-branch
          trie-step
          trie-step*
+         trie-step-wild
 
          projection->pattern
          instantiate-projection
@@ -677,6 +678,29 @@
 ;; Trie (Listof (U OpenParenthesis Sigma)) -> Trie
 (define (trie-step* t keys)
   (foldl (lambda (key t) (trie-step t key)) t keys))
+
+;; Trie -> Trie
+(define (trie-step-wild t)
+  ;; Trie Natural -> Trie
+  (define (walk t n)
+    (match* (t n)
+      [(_ 0) t]
+      [((branch os w rs) _)
+       (define n-1 (sub1 n))
+       (define w-k (walk w n-1))
+       (define o-ks
+         (for/fold ([acc w-k])
+                   ([entry (treap-to-alist os)])
+           (match-define (cons (open-parenthesis arity _) k) entry)
+           (trie-union acc (walk (walk k arity) n-1))))
+       (for/fold ([acc o-ks])
+                 ([entry (treap-to-alist rs)])
+         (match-define (cons _ k) entry)
+         (trie-union acc (walk k n-1)))]
+      [(_ _)
+       trie-empty]))
+
+  (walk t 1))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Projection
