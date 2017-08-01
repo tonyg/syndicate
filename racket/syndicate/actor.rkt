@@ -38,14 +38,17 @@
          query-set
          query-hash
          query-hash-set
+         query-count
          query-value*
          query-set*
          query-hash*
          query-hash-set*
+         query-count*
          define/query-value
          define/query-set
          define/query-hash
          define/query-hash-set
+         define/query-count
          immediate-query
 
          send!
@@ -681,10 +684,38 @@
                  (F (hashset-remove (F) K V)))))
          F))]))
 
+(define-syntax (query-count stx)
+  (syntax-parse stx
+    [(_ field-name args ...)
+     (quasisyntax/loc stx
+       (let ()
+         (field [field-name (hash)])
+         (query-count* field-name args ...)))]))
+
+(define-syntax (query-count* stx)
+  (syntax-parse stx
+    [(_ field-name P expr on-add:on-add on-remove:on-remove)
+     (quasisyntax/loc stx
+       (let ((F field-name))
+         (on (asserted P) #:priority *query-priority*
+             (let ((E expr))
+               #,@(schedule-query-handler-stxs (attribute on-add.expr))
+               (F (hash-set (F) E (+ 1 (hash-ref (F) E 0))))))
+         (on (retracted P) #:priority *query-priority-high*
+             (let ((E expr))
+               #,@(schedule-query-handler-stxs (attribute on-remove.expr))
+               (let ((F0 (F)))
+                 (F (match (hash-ref F0 E 0)
+                      [0 F0] ;; huh
+                      [1 (hash-remove F0 E)]
+                      [n (hash-set F0 E (- n 1))])))))
+         F))]))
+
 (define-syntax-rule (define/query-value id ae P x ...) (define id (query-value id ae P x ...)))
 (define-syntax-rule (define/query-set id P x ...) (define id (query-set id P x ...)))
 (define-syntax-rule (define/query-hash id P x ...) (define id (query-hash id P x ...)))
 (define-syntax-rule (define/query-hash-set id P x ...) (define id (query-hash-set id P x ...)))
+(define-syntax-rule (define/query-count id P x ...) (define id (query-count id P x ...)))
 
 (define-syntax (immediate-query stx)
   (syntax-case stx ()
