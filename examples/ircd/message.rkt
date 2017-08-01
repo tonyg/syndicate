@@ -3,8 +3,16 @@
 (provide (struct-out irc-message)
          (struct-out irc-user)
          (struct-out irc-privmsg)
+
+         (struct-out irc-source-servername)
+         (struct-out irc-source-nick)
+
          parse-irc-message
-         render-irc-message)
+         render-irc-message
+
+         ;; TODO make these assertions in the dataspace:
+         server-name
+         server-prefix)
 
 (require racket/string)
 (require racket/match)
@@ -42,8 +50,11 @@
 ;;                   (0xd), and LF (0xa)>
 
 (struct irc-message (prefix command params trailing) #:prefab)
-(struct irc-user (username hostname servername realname) #:prefab)
+(struct irc-user (username hostname realname) #:prefab)
 (struct irc-privmsg (source target text) #:prefab)
+
+(struct irc-source-servername (servername) #:prefab)
+(struct irc-source-nick (nick user) #:prefab)
 
 (define (parse-irc-message line0)
   (match (string-trim #:left? #f line0 #px"[\r\n]")
@@ -57,9 +68,26 @@
                (string-split (or params ""))
                rest))
 
+;; libpurple's irc protocol support crashes (!) (SIGSEGV) if you send
+;; a prefix on a JOIN event from the server as just "nick" rather than
+;; "nick!user@host" - specifically, it will crash if "!" doesn't
+;; appear in the prefix.
+;;
 (define (render-irc-message m)
   (match-define (irc-message prefix command params trailing) m)
-  (string-append (if prefix (string-append ":" prefix " ") "")
+  (string-append (render-prefix prefix)
                  (~a command)
                  (if (pair? params) (string-append " " (string-join (map ~a params))) "")
                  (if trailing (string-append " :" trailing) "")))
+
+(define (render-prefix p)
+  (match p
+    [#f
+     ""]
+    [(irc-source-servername servername)
+     (format ":~a " servername)]
+    [(irc-source-nick nick (irc-user username hostname _))
+     (format ":~a!~a@~a " nick username hostname)]))
+
+(define server-name "syndicate-ircd")
+(define server-prefix (irc-source-servername "syndicate-ircd.example"))

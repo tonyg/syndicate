@@ -13,11 +13,12 @@
          (assert (ircd-channel-topic Ch (topic)))
 
          (on (message (ircd-action $who (irc-message _ "MODE" (list Ch "b") _)))
-             (send! (ircd-event who (irc-message #f 368 (list (lookup-nick who) Ch)
+             (send! (ircd-event who (irc-message server-prefix 368 (list (lookup-nick who) Ch)
                                                  "End of Channel Ban List"))))
 
          (on (message (ircd-action $who (irc-message _ "MODE" (list Ch) _)))
-             (send! (ircd-event who (irc-message #f 324 (list (lookup-nick who) Ch "+") #f))))
+             (send! (ircd-event who (irc-message server-prefix 324
+                                                 (list (lookup-nick who) Ch "+") #f))))
 
          (on (message (ircd-action _ (irc-message _ "TOPIC" _ $new-topic)))
              (topic new-topic))))
