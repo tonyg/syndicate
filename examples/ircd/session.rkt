@@ -51,23 +51,17 @@
         (irc-source-nick N U))
       (on-stop (when (current-other-source) (send* #:source (current-other-source) "PART" Ch)))
       (begin/dataflow
-        (when (and (next-other-source)
-                   ;; ^ Becomes #f when other-conn disconnects,
-                   ;; apparently by retraction of ircd-connection-info
-                   ;; but before the retraction of ircd-channel-member
-                   ;; is processed for some reason. TODO investigate
-                   ;; this more closely. Should event-handlers that
-                   ;; stop a facet prevent execution of contained
-                   ;; event-handlers in the same turn?
-                   (not (equal? (current-other-source) (next-other-source))))
-          (if (initial-names-sent?)
-              (if (current-other-source)
-                  (when (not (equal? this-conn other-conn)) ;; avoid dups for our own connection
-                    (send* #:source (current-other-source) "NICK"
-                           (irc-source-nick-nick (next-other-source))))
-                  (send* #:source (next-other-source) "JOIN" Ch))
-              (initial-member-nicks (set-add (initial-member-nicks)
-                                             (irc-source-nick-nick (next-other-source)))))
+        (when (not (equal? (current-other-source) (next-other-source)))
+          (if (next-other-source) ;; not disconnecting, IOW
+              (if (initial-names-sent?)
+                  (if (current-other-source)
+                      (when (not (equal? this-conn other-conn)) ;; avoid dups for our own connection
+                        (send* #:source (current-other-source) "NICK"
+                               (irc-source-nick-nick (next-other-source))))
+                      (send* #:source (next-other-source) "JOIN" Ch))
+                  (initial-member-nicks (set-add (initial-member-nicks)
+                                                 (irc-source-nick-nick (next-other-source)))))
+              (send* #:source (current-other-source) "QUIT"))
           (current-other-source (next-other-source)))))
     (on (asserted (ircd-channel-topic Ch $topic))
         (if topic
