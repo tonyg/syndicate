@@ -52,16 +52,18 @@
       (on-stop (when (current-other-source) (send* #:source (current-other-source) "PART" Ch)))
       (begin/dataflow
         (when (not (equal? (current-other-source) (next-other-source)))
-          (if (next-other-source) ;; not disconnecting, IOW
-              (if (initial-names-sent?)
-                  (if (current-other-source)
-                      (when (not (equal? this-conn other-conn)) ;; avoid dups for our own connection
-                        (send* #:source (current-other-source) "NICK"
-                               (irc-source-nick-nick (next-other-source))))
-                      (send* #:source (next-other-source) "JOIN" Ch))
-                  (initial-member-nicks (set-add (initial-member-nicks)
-                                                 (irc-source-nick-nick (next-other-source)))))
-              (send* #:source (current-other-source) "QUIT"))
+          (cond
+            [(not (next-other-source)) ;; other-conn is disconnecting
+             (send* #:source (current-other-source) "QUIT")]
+            [(not (initial-names-sent?)) ;; still gathering data for 353/366 below
+             (initial-member-nicks (set-add (initial-member-nicks)
+                                            (irc-source-nick-nick (next-other-source))))]
+            [(not (current-other-source)) ;; other-conn is joining
+             (send* #:source (next-other-source) "JOIN" Ch)]
+            [else ;; it's a nick change
+             (when (not (equal? this-conn other-conn)) ;; avoid dups for our own connection
+               (send* #:source (current-other-source) "NICK"
+                      (irc-source-nick-nick (next-other-source))))])
           (current-other-source (next-other-source)))))
     (on (asserted (ircd-channel-topic Ch $topic))
         (if topic
