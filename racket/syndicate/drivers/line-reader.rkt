@@ -15,6 +15,7 @@
           [else (loop (+ i 1))])))
 
 (spawn (during/spawn (observe (tcp-channel-line $src $dst _))
+         #:name `(line-reader ,src ,dst)
          (field [buffer #""])
          (on (message (tcp-channel src dst $bs))
              (buffer (bytes-append (buffer) bs)))
