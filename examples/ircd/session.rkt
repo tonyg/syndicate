@@ -10,6 +10,7 @@
 (require/activate syndicate/drivers/tcp)
 (require/activate syndicate/drivers/line-reader)
 (require syndicate/protocol/advertise)
+(require syndicate/support/hash)
 
 (define (ircd-connection-facet this-conn server-handle)
   (define (send-to-remote #:newline [with-newline #t] fmt . vs)
@@ -41,29 +42,42 @@
           (for [(line motd-lines)] (send* 372 (nick) #:trailing (format "- ~a" line)))
           (send* 376 (nick) #:trailing (format "End of /MOTD command"))))))
 
+  (field [peer-common-channels (hash)]
+         [peer-names (hash)])
+
   (during (ircd-channel-member $Ch this-conn)
     (field [initial-names-sent? #f]
            [initial-member-nicks (set)])
     (during (ircd-channel-member Ch $other-conn)
+      (on-start (peer-common-channels (hashset-add (peer-common-channels) other-conn Ch)))
+      (on-stop (peer-common-channels (hashset-remove (peer-common-channels) other-conn Ch)))
       (field [current-other-source #f])
       (define/query-value next-other-source #f
         (ircd-connection-info other-conn $N $U)
         (irc-source-nick N U))
-      (on-stop (when (current-other-source) (send* #:source (current-other-source) "PART" Ch)))
+      (on-stop
+       (when (current-other-source) (send* #:source (current-other-source) "PART" Ch))
+       (when (not (hash-has-key? (peer-common-channels) other-conn))
+         (peer-names (hash-remove (peer-names) other-conn))))
       (begin/dataflow
         (when (not (equal? (current-other-source) (next-other-source)))
-          (cond
-            [(not (next-other-source)) ;; other-conn is disconnecting
-             (send* #:source (current-other-source) "QUIT")]
-            [(not (initial-names-sent?)) ;; still gathering data for 353/366 below
-             (initial-member-nicks (set-add (initial-member-nicks)
-                                            (irc-source-nick-nick (next-other-source))))]
-            [(not (current-other-source)) ;; other-conn is joining
-             (send* #:source (next-other-source) "JOIN" Ch)]
-            [else ;; it's a nick change
-             (when (not (equal? this-conn other-conn)) ;; avoid dups for our own connection
-               (send* #:source (current-other-source) "NICK"
-                      (irc-source-nick-nick (next-other-source))))])
+          (if (not (next-other-source)) ;; other-conn is disconnecting
+              (when (hash-ref (peer-names) other-conn #f)
+                (send* #:source (current-other-source) "QUIT")
+                (peer-names (hash-remove (peer-names) other-conn)))
+              (begin
+                (cond
+                  [(not (initial-names-sent?)) ;; still gathering data for 353/366 below
+                   (initial-member-nicks (set-add (initial-member-nicks)
+                                                  (irc-source-nick-nick (next-other-source))))]
+                  [(not (current-other-source)) ;; other-conn is joining
+                   (send* #:source (next-other-source) "JOIN" Ch)]
+                  [else ;; it's a nick change
+                   (when (not (equal? this-conn other-conn)) ;; avoid dups for our own connection
+                     (when (not (equal? (next-other-source) (hash-ref (peer-names) other-conn #f)))
+                       (send* #:source (current-other-source) "NICK"
+                              (irc-source-nick-nick (next-other-source)))))])
+                (peer-names (hash-set (peer-names) other-conn (next-other-source)))))
           (current-other-source (next-other-source)))))
     (on (asserted (ircd-channel-topic Ch $topic))
         (if topic
