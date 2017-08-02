@@ -48,6 +48,16 @@
   (during (ircd-channel-member $Ch this-conn)
     (field [initial-names-sent? #f]
            [initial-member-nicks (set)])
+
+    (on-start (send* #:source (irc-source-nick (nick) (user)) "JOIN" Ch)
+              (flush!)
+              (flush!)
+              (define nicks (initial-member-nicks))
+              (initial-names-sent? #t)
+              (initial-member-nicks 'no-longer-valid)
+              (send* 353 (nick) "@" Ch #:trailing (string-join (set->list nicks)))
+              (send* 366 (nick) Ch #:trailing "End of /NAMES list"))
+
     (during (ircd-channel-member Ch $other-conn)
       (on-start (peer-common-channels (hashset-add (peer-common-channels) other-conn Ch)))
       (on-stop (peer-common-channels (hashset-remove (peer-common-channels) other-conn Ch)))
@@ -79,6 +89,7 @@
                               (irc-source-nick-nick (next-other-source)))))])
                 (peer-names (hash-set (peer-names) other-conn (next-other-source)))))
           (current-other-source (next-other-source)))))
+
     (on (asserted (ircd-channel-topic Ch $topic))
         (if topic
             (send* 332 (nick) Ch #:trailing topic)
@@ -98,16 +109,7 @@
 
     (on (message (ircd-action $other-conn (irc-privmsg $source Ch $text)))
         (when (not (equal? other-conn this-conn))
-          (send* #:source source "PRIVMSG" Ch #:trailing text)))
-
-    (on-start (send* #:source (irc-source-nick (nick) (user)) "JOIN" Ch)
-              (flush!)
-              (flush!)
-              (define nicks (initial-member-nicks))
-              (initial-names-sent? #t)
-              (initial-member-nicks 'no-longer-valid)
-              (send* 353 (nick) "@" Ch #:trailing (string-join (set->list nicks)))
-              (send* 366 (nick) Ch #:trailing "End of /NAMES list")))
+          (send* #:source source "PRIVMSG" Ch #:trailing text))))
 
   (on (message (ircd-event this-conn $m))
       (send-irc-message m))
