@@ -65,10 +65,10 @@
       (define/query-value next-other-source #f
         (ircd-connection-info other-conn $N $U)
         (irc-source-nick N U))
-      (on-stop
-       (when (current-other-source) (send* #:source (current-other-source) "PART" Ch))
-       (when (not (hash-has-key? (peer-common-channels) other-conn))
-         (peer-names (hash-remove (peer-names) other-conn))))
+      (on (retracted (ircd-channel-member Ch other-conn))
+          (when (current-other-source) (send* #:source (current-other-source) "PART" Ch)))
+      (on-stop (when (not (hash-has-key? (peer-common-channels) other-conn))
+                 (peer-names (hash-remove (peer-names) other-conn))))
       (begin/dataflow
         (when (not (equal? (current-other-source) (next-other-source)))
           (if (not (next-other-source)) ;; other-conn is disconnecting
