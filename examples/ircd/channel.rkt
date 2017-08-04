@@ -20,5 +20,5 @@
              (send! (ircd-event who (irc-message server-prefix 324
                                                  (list (lookup-nick who) Ch "+") #f))))
 
-         (on (message (ircd-action _ (irc-message _ "TOPIC" _ $new-topic)))
+         (on (message (ircd-action _ (irc-message _ "TOPIC" (list Ch) $new-topic)))
              (topic new-topic))))
