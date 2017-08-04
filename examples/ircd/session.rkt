@@ -32,15 +32,16 @@
   (define/dataflow conn-info (ircd-connection-info this-conn (nick) (user)))
   (assert (conn-info))
 
-  (during (ircd-motd $motd-lines)
-    (field [motd-sent? #f])
-    (begin/dataflow
-      (unless (motd-sent?)
-        (when (and (nick) (user))
-          (motd-sent? #t)
-          (send* 375 (nick) #:trailing (format "- ~a Message of the day - " server-name))
-          (for [(line motd-lines)] (send* 372 (nick) #:trailing (format "- ~a" line)))
-          (send* 376 (nick) #:trailing (format "End of /MOTD command"))))))
+  (on-start
+   (react
+    (stop-when (asserted (ircd-motd $motd-lines))
+      (react
+       (begin/dataflow
+         (when (and (nick) (user))
+           (send* 375 (nick) #:trailing (format "- ~a Message of the day - " server-name))
+           (for [(line motd-lines)] (send* 372 (nick) #:trailing (format "- ~a" line)))
+           (send* 376 (nick) #:trailing (format "End of /MOTD command"))
+           (stop-current-facet)))))))
 
   (field [peer-common-channels (hash)]
          [peer-names (hash)])
