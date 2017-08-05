@@ -4,7 +4,7 @@
          run-with
          run-with-trace)
 
-(require syndicate/monolithic)
+(require (except-in syndicate/monolithic subscription))
 (require syndicate/trie)
 (require racket/set)
 (require syndicate/upside-down)
