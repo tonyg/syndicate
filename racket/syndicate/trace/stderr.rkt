@@ -156,7 +156,7 @@
      (when show-actions?
        (output "~a performs a patch:\n~a\n"
                (format-pids process-names source)
-               (patch->pretty-string p)))]
+               (patch->pretty-string (label-patch p #t))))]
     [('action (message body))
      (when show-actions?
        (output "~a broadcasts a message:\n~a\n"
@@ -172,7 +172,7 @@
        (with-color YELLOW
          (output "~a receives an event:\n~a\n"
                  (format-pids process-names sink)
-                 (patch->pretty-string p))))]
+                 (patch->pretty-string (label-patch p #t)))))]
     [('event (message body))
      (when show-events?
        (with-color YELLOW
