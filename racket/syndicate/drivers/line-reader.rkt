@@ -14,7 +14,8 @@
           [(eqv? (bytes-ref bs i) b) i]
           [else (loop (+ i 1))])))
 
-(spawn (during/spawn (observe (tcp-channel-line $src $dst _))
+(spawn #:name 'line-reader-factory
+       (during/spawn (observe (tcp-channel-line $src $dst _))
          #:name `(line-reader ,src ,dst)
          (field [buffer #""])
          (on (message (tcp-channel src dst $bs))
