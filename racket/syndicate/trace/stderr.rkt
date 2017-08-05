@@ -30,6 +30,7 @@
 (define flags (set))
 (define show-exceptions? #f)
 (define show-turns? #f)
+(define show-turns/state? #f)
 (define show-lifecycle? #f)
 (define show-actions? #f)
 (define show-events? #f)
@@ -48,6 +49,7 @@
                        (set-member? flags 'symbol))))
   (set-flag! x show-exceptions?)
   (set-flag! t show-turns?)
+  (set-flag! T show-turns/state?)
   (set-flag! p show-lifecycle?)
   (set-flag! a show-actions?)
   (set-flag! e show-events?)
@@ -122,16 +124,17 @@
   (match* (type detail)
     [('turn-begin (process name _beh state))
      (ensure-process-named! process-names sink name)
-     (when show-turns?
+     (when (or show-turns? show-turns/state?)
        (with-color BLUE
          (output "~a turn begins\n" (format-pids process-names sink))))]
     [('turn-end (process name _beh state))
      (ensure-process-named! process-names sink name)
      (when (null? sink) (set-box! ground-state-box state))
-     (when show-turns?
+     (when (or show-turns? show-turns/state?)
        (with-color BLUE
          (output "~a turn ends\n" (format-pids process-names sink))
-         (syndicate-pretty-print state (current-error-port))))]
+         (when show-turns/state?
+           (syndicate-pretty-print state (current-error-port)))))]
     [('spawn (list parent (process name _beh state)))
      (name-process! process-names sink name)
      (when show-lifecycle?
