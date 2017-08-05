@@ -433,8 +433,8 @@
     (define current-touching #f)
     (define current-coordinate-maps (hash))
 
-    (define-values (proc pending-transition)
-      (actor->process+transition (dataspace-actor boot-actions)))
+    (define-values (proc pending-transition _initial-assertions-always-empty)
+      (actor->process+transition/assertions (dataspace-actor boot-actions)))
     (define event-queue (make-queue))
 
     (define target-frame-rate 60)

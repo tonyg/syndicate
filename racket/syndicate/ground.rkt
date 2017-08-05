@@ -175,5 +175,5 @@
 ;; actor -> AssertionSet
 ;; Returns the final set of active assertions at groundmost level.
 (define (run-ground* s)
-  (define-values (proc t) (actor->process+transition s))
-  (process-transition t proc trie-empty 0))
+  (define-values (proc t initial-assertions) (actor->process+transition/assertions s))
+  (process-transition t proc initial-assertions 0))

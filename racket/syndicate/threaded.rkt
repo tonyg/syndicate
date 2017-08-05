@@ -10,6 +10,7 @@
 
 (require (except-in syndicate dataspace))
 (require (only-in syndicate/actor spawn spawn* dataspace schedule-action!))
+(require (only-in (submod syndicate/actor implementation-details) capture-actor-actions))
 (require syndicate/hierarchy)
 (require syndicate/store)
 
@@ -29,9 +30,11 @@
      #f]))
 
 (define (spawn-threaded-actor spawn-action-thunk)
+  (match-define (list (<actor> boot-proc initial-assertions))
+    (clean-actions (capture-actor-actions spawn-action-thunk)))
   (make-actor (lambda ()
                 (define path (current-actor-path))
-                (define thd (thread (lambda () (run-thread path spawn-action-thunk))))
+                (define thd (thread (lambda () (run-thread path boot-proc))))
                 (thread (lambda ()
                           (sync (thread-dead-evt thd))
                           (send-ground-message (thread-quit #f '()) #:path path)
@@ -39,9 +42,10 @@
                 (signal-background-activity! #t)
                 (list proxy-behaviour
                       (transition (proxy-state thd) '())
-                      'threaded-proxy))))
+                      'threaded-proxy))
+              initial-assertions))
 
-(define (run-thread actor-path spawn-action-thunk)
+(define (run-thread actor-path boot-proc)
   (define actor-path-rev (reverse actor-path))
 
   (define (process-transition proc t)
@@ -65,7 +69,7 @@
     (signal-background-activity! #f)
     (deliver-event (thread-receive) proc))
 
-  (call-with-values (lambda () (actor->process+transition (spawn-action-thunk)))
+  (call-with-values (lambda () (boot->process+transition boot-proc))
                     process-transition))
 
 (define-syntax spawn/thread

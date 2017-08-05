@@ -9,8 +9,8 @@
 ;;
 ;; Correct output:
 ;; x=123 v=999
-;; finally for x=124 v=999
 ;; x=124 v=999
+;; finally for x=124 v=999
 ;;
 ;; Should eventually be turned into some kind of test case.
 

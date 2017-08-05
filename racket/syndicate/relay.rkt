@@ -91,7 +91,8 @@
                      inbound-parenthesis
                      inner-spawn)
   (make-actor (lambda ()
-                (define-values (proc initial-transition) (actor->process+transition inner-spawn))
+                (define-values (proc initial-transition)
+                  (boot->process+transition (actor-boot inner-spawn)))
                 (define initial-relay-state (relay outbound?
                                                    outbound-assertion
                                                    outbound-parenthesis
@@ -103,7 +104,8 @@
                        (transition-bind (inject-relay-subscription initial-relay-state)
                                         initial-transition)
                        initial-relay-state)
-                      (process-name proc)))))
+                      (process-name proc)))
+              (actor-initial-assertions inner-spawn)))
 
 (define (pretty-print-relay r p)
   (fprintf p "RELAY ~a/~a\n"

@@ -62,7 +62,8 @@
          clean-transition
 
          update-process-state
-         actor->process+transition)
+         boot->process+transition
+         actor->process+transition/assertions)
 
 (require racket/match)
 (require (only-in racket/list flatten))
@@ -71,11 +72,16 @@
 (require "mux.rkt")
 (require "pretty.rkt")
 
+(require (for-syntax racket/base))
+(require (for-syntax syntax/parse))
+(require (for-syntax syntax/srcloc))
+(require "syntax-classes.rkt")
+
 ;; Events = Patches ∪ Messages
 (struct message (body) #:prefab)
 
 ;; Actions ⊃ Events
-(struct actor (boot) #:prefab)
+(struct actor (boot initial-assertions) #:prefab)
 (struct quit-dataspace () #:prefab) ;; NB. An action. Compare (quit), a Transition.
 
 ;; A Behavior is a ((Option Event) Any -> Transition): a function
@@ -160,14 +166,18 @@
 (define (update-process-state i new-state)
   (struct-copy process i [state new-state]))
 
-(define (actor->process+transition s)
-  (match-define (list beh t name) ((actor-boot s)))
+(define (boot->process+transition boot-proc)
+  (match-define (list beh t name) (boot-proc))
   (values (process name beh 'undefined-initial-state) t))
+
+(define (actor->process+transition/assertions s)
+  (define-values (proc t) (boot->process+transition (actor-boot s)))
+  (values proc t (actor-initial-assertions s)))
 
 (define (make-quit #:exception [exn #f] . actions)
   (quit exn actions))
 
-(define (make-actor actor-producing-thunk)
+(define (make-actor actor-producing-thunk initial-assertions)
   (actor (let ((parameterization (current-parameterization)))
            (lambda ()
              (call-with-parameterization
@@ -179,32 +189,26 @@
                            (call-with-parameterization parameterization (lambda () (raw-beh e s))))
                          txn
                          name)]
-                  [other other]))))))) ;; punt on error checking to dataspace boot code
+                  [other other]))))) ;; punt on error checking to dataspace boot code
+         initial-assertions))
 
-(define-syntax boot-process
-  (syntax-rules ()
-    [(_ #:name name-exp behavior-exp initial-state-exp initial-action-tree-exp)
-     (make-actor (lambda ()
-                   (list behavior-exp
-                         (transition initial-state-exp initial-action-tree-exp)
-                         name-exp)))]
-    [(_ behavior-exp initial-state-exp initial-action-tree-exp)
-     (make-actor (lambda ()
-                   (list behavior-exp
-                         (transition initial-state-exp initial-action-tree-exp)
-                         #f)))]))
+(define-syntax (boot-process stx)
+  (syntax-parse stx
+    [(_ name:name assertions:assertions behavior-exp initial-state-exp initial-action-tree-exp)
+     #'(make-actor (lambda ()
+                     (list behavior-exp
+                           (transition initial-state-exp initial-action-tree-exp)
+                           name.N))
+                   assertions.P)]))
 
-(define-syntax actor/stateless
-  (syntax-rules ()
-    [(_ #:name name-exp behavior-exp initial-action-tree-exp)
-     (boot-process #:name name-exp
-                    (stateless-behavior-wrap behavior-exp)
-                    (void)
-                    initial-action-tree-exp)]
-    [(_ behavior-exp initial-action-tree-exp)
-     (boot-process (stateless-behavior-wrap behavior-exp)
-                    (void)
-                    initial-action-tree-exp)]))
+(define-syntax (actor/stateless stx)
+  (syntax-parse stx
+    [(_ name:name assertions:assertions behavior-exp initial-action-tree-exp)
+     #'(boot-process #:name name.N
+                     #:assertions* assertions.P
+                     (stateless-behavior-wrap behavior-exp)
+                     (void)
+                     initial-action-tree-exp)]))
 
 (define ((stateless-behavior-wrap b) e state)
   (match (b e)

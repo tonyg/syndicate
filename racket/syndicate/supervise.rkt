@@ -124,10 +124,11 @@
                (on-start
                 (catch-exns
                  (lambda ()
-                   (define-values (initial-proc initial-transition)
-                     (actor->process+transition supervisee-spawn-action))
+                   (define-values (initial-proc initial-transition initial-assertions)
+                     (actor->process+transition/assertions supervisee-spawn-action))
                    (proc initial-proc)
                    (supervisee-name (process-name initial-proc))
+                   (patch! (patch initial-assertions trie-empty))
                    initial-transition)
                  handle-transition!))
 

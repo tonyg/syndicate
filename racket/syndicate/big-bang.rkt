@@ -133,8 +133,8 @@
              (assert (active-window active-id))))
 
 (define-syntax-rule (big-bang-dataspace* boot-actions extra-clause ...)
-  (let-values (((proc initial-transition)
-                (actor->process+transition (dataspace-actor boot-actions))))
+  (let-values (((proc initial-transition _initial-assertions-always-empty)
+                (actor->process+transition/assertions (dataspace-actor boot-actions))))
     (big-bang (interpret-actions (bb proc
                                      '()
                                      '()

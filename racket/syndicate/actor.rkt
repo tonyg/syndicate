@@ -83,6 +83,7 @@
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))
 (require (for-syntax syntax/srcloc))
+(require "syntax-classes.rkt")
 
 (require (prefix-in core: "core.rkt"))
 (require (prefix-in core: "dataspace.rkt"))
@@ -272,10 +273,6 @@
     (pattern (~seq #:let clauses))
     (pattern (~seq) #:attr clauses #'()))
 
-  (define-splicing-syntax-class name
-    (pattern (~seq #:name N))
-    (pattern (~seq) #:attr N #'#f))
-
   (define-splicing-syntax-class when-pred
     (pattern (~seq #:when Pred))
     (pattern (~seq) #:attr Pred #'#t))
@@ -289,33 +286,53 @@
 
 (define-syntax (actor-action stx)
   (syntax-parse stx
-    [(_ name:name script ...)
+    [(_ name:name assertions:assertions script ...)
      (quasisyntax/loc stx
        (core:make-actor
         (lambda ()
           (list actor-behavior
                 (boot-actor (lambda () (begin/void-default script ...)))
-                name.N))))]))
+                name.N))
+        assertions.P))]))
 
 (define-syntax (spawn stx)
   (syntax-parse stx
     [(_ (~or (~optional (~seq #:name name-expr) #:defaults ([name-expr #'#f])
                         #:name "#:name")
+             (~optional (~seq #:assertions assertions-expr)
+                        #:name "#:assertions")
+             (~optional (~seq #:assertions* assertions*-expr)
+                        #:name "#:assertions*")
              (~optional (~seq #:linkage [linkage-expr ...]) #:defaults ([(linkage-expr 1) '()])
                         #:name "#:linkage"))
         ...
         O ...)
      (quasisyntax/loc stx
-       (let ((spawn-action (actor-action #:name name-expr (react linkage-expr ... O ...))))
+       (let ((spawn-action (actor-action
+                            #:name name-expr
+                            #:assertions*
+                            #,(cond
+                                [(attribute assertions-expr)
+                                 (when (attribute assertions*-expr)
+                                   (raise-syntax-error
+                                    'spawn
+                                    "Both #:assertions and #:assertions* supplied"
+                                    stx))
+                                 #'(pattern->trie '<initial-spawn-assertions> assertions-expr)]
+                                [(attribute assertions*-expr)
+                                 #'assertions*-expr]
+                                [else
+                                 #'trie-empty])
+                            (react linkage-expr ... O ...))))
          (if (syndicate-effects-available?)
              (schedule-action! spawn-action)
              spawn-action)))]))
 
 (define-syntax (spawn* stx)
   (syntax-parse stx
-    [(_ name:name script ...)
+    [(_ name:name assertions:assertions script ...)
      (quasisyntax/loc stx
-       (let ((spawn-action (actor-action #:name name.N script ...)))
+       (let ((spawn-action (actor-action #:name name.N #:assertions* assertions.P script ...)))
          (if (syndicate-effects-available?)
              (schedule-action! spawn-action)
              spawn-action)))]))
@@ -485,7 +502,9 @@
 
 (define-syntax (during/spawn stx)
   (syntax-parse stx
-    [(_ P w:actor-wrapper name:name parent-let:let-option oncrash:on-crash-option O ...)
+    [(_ P w:actor-wrapper name:name assertions:assertions parent-let:let-option
+        oncrash:on-crash-option
+        O ...)
      (define E-stx (syntax/loc #'P (asserted P)))
      (define-values (_proj _pat _bindings instantiated)
        (analyze-pattern E-stx #'P))
@@ -520,6 +539,7 @@
                (w.wrapper #:linkage [(assert inst)
                                      (stop-when (retracted (observe inst)))]
                           #:name name.N
+                          #:assertions* assertions.P
                           O ...)))))]))
 
 (define-syntax (begin/dataflow stx)
@@ -1104,6 +1124,11 @@
                (current-pending-scripts (make-empty-pending-scripts))
                (current-action-transformer values)]
     (with-current-facet '() #f
+      (schedule-action! (core:retract ?))
+      ;; Retract any initial-assertions we might have been given. We
+      ;; must ensure that we explicitly maintain them: retracting them
+      ;; here prevents us from accidentally relying on their
+      ;; persistence from our creation.
       (schedule-script! script-proc)
       (run-scripts!))))
 
@@ -1186,7 +1211,9 @@
            (struct-out endpoint)
 
            suspend-script
-           suspend-script*))
+           suspend-script*
+
+           capture-actor-actions))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Script suspend-and-resume.

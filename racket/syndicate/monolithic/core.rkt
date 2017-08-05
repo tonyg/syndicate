@@ -21,6 +21,11 @@
 (require racket/match)
 (require (only-in racket/list flatten))
 
+(require (for-syntax racket/base))
+(require (for-syntax syntax/parse))
+(require (for-syntax syntax/srcloc))
+(require "../syntax-classes.rkt")
+
 (require "scn.rkt")
 (require "../trie.rkt")
 (require (except-in "../core.rkt"
@@ -120,32 +125,24 @@
                                             [state new-underlying-state])
                                monolithic-actions)])))
 
-(define-syntax actor-monolithic
-  (syntax-rules ()
-    [(_ #:name name-exp behavior-exp initial-state-exp initial-action-tree-exp)
-     (make-actor (lambda ()
-                   (list (wrap-monolithic-behaviour behavior-exp)
-                         (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
-                                                 (clean-actions initial-action-tree-exp))
-                         name-exp)))]
-    [(_ behavior-exp initial-state-exp initial-action-tree-exp)
-     (make-actor (lambda ()
-                   (list (wrap-monolithic-behaviour behavior-exp)
-                         (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
-                                                 (clean-actions initial-action-tree-exp))
-                         #f)))]))
+(define-syntax (actor-monolithic stx)
+  (syntax-parse stx
+    [(_ name:name assertions:assertions behavior-exp initial-state-exp initial-action-tree-exp)
+     #'(make-actor (lambda ()
+                     (list (wrap-monolithic-behaviour behavior-exp)
+                           (differentiate-outgoing (wrap-monolithic-state initial-state-exp)
+                                                   (clean-actions initial-action-tree-exp))
+                           name.N))
+                   assertions.P)]))
 
-(define-syntax actor-monolithic/stateless
-  (syntax-rules ()
-    [(_ #:name name-exp behavior-exp initial-action-tree-exp)
-     (actor-monolithic #:name name-exp
-                       (stateless-behavior-wrap behavior-exp)
-                       (void)
-                       initial-action-tree-exp)]
-    [(_ behavior-exp initial-action-tree-exp)
-     (actor-monolithic (stateless-behavior-wrap behavior-exp)
-                       (void)
-                       initial-action-tree-exp)]))
+(define-syntax (actor-monolithic/stateless stx)
+  (syntax-parse stx
+    [(_ name:name assertions:assertions behavior-exp initial-action-tree-exp)
+     #'(actor-monolithic #:name name.N
+                         #:assertions* assertions.P
+                         (stateless-behavior-wrap behavior-exp)
+                         (void)
+                         initial-action-tree-exp)]))
 
 (define ((stateless-behavior-wrap b) e state)
   (match (b e)

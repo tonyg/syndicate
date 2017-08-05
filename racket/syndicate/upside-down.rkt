@@ -46,10 +46,11 @@ this facility for testing.
 (define (spawn-upside-down inner-spawn)
   (make-actor (lambda ()
                 (define-values (proc initial-transition)
-                  (actor->process+transition inner-spawn))
+                  (boot->process+transition (actor-boot inner-spawn)))
                 (list (upside-down-behavior (process-behavior proc))
                       (upside-down-transition initial-transition)
-                      (process-name proc)))))
+                      (process-name proc)))
+              (actor-initial-assertions inner-spawn)))
 
 ;; Transition -> Transition
 (define (upside-down-transition t)

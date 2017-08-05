@@ -50,10 +50,12 @@
 
 (define (spawn-firewall limit inner-spawn)
   (make-actor (lambda ()
-                (define-values (proc initial-transition) (actor->process+transition inner-spawn))
+                (define-values (proc initial-transition)
+                  (boot->process+transition (actor-boot inner-spawn)))
                 (list firewall-handle-event
                       (firewall-transition initial-transition (firewall limit proc))
-                      (process-name proc)))))
+                      (process-name proc)))
+              (limit-trie limit (actor-initial-assertions inner-spawn))))
 
 (define (firewall-transition t f)
   (match t

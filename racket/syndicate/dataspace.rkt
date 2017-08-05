@@ -20,6 +20,11 @@
 (require "core.rkt")
 (require "protocol/standard-relay.rkt")
 
+(require (for-syntax racket/base))
+(require (for-syntax syntax/parse))
+(require (for-syntax syntax/srcloc))
+(require "syntax-classes.rkt")
+
 ;; Sentinel
 (define missing-process (process #f #f #f))
 
@@ -109,14 +114,11 @@
      (queue-append-list (dataspace-pending-action-queue w)
                         (for/list [(a actions)] (cons label a)))]))
 
-(define-syntax dataspace-actor
-  (syntax-rules ()
-    [(dataspace-actor #:name name-exp boot-action ...)
-     (spawn-standard-relay
-      (make-dataspace-actor #:name name-exp (lambda () (list boot-action ...))))]
-    [(dataspace-actor boot-action ...)
-     (spawn-standard-relay
-      (make-dataspace-actor (lambda () (list boot-action ...))))]))
+(define-syntax (dataspace-actor stx)
+  (syntax-parse stx
+    [(dataspace-actor name:name boot-action ...)
+     #'(spawn-standard-relay
+        (make-dataspace-actor #:name name.N (lambda () (list boot-action ...))))]))
 
 (define (make-dataspace boot-actions)
   (dataspace (mux)
@@ -128,7 +130,8 @@
   (<actor> (lambda ()
              (list dataspace-handle-event
                    (transition (make-dataspace (boot-actions-thunk)) '())
-                   name))))
+                   name))
+           trie-empty))
 
 (define (inert? w)
   (and (queue-empty? (dataspace-pending-action-queue w))
@@ -156,7 +159,7 @@
 
 (define ((perform-action label a) w)
   (match a
-    [(<actor> boot)
+    [(<actor> boot initial-assertions)
      (invoke-process (mux-next-pid (dataspace-mux w)) ;; anticipate pid allocation
                      (lambda ()
                        (match (boot)
@@ -168,7 +171,7 @@
                                  other)]))
                      (lambda (results)
                        (match-define (list behavior initial-transition name) results)
-                       (create-process label w behavior initial-transition name))
+                       (create-process label w behavior initial-transition initial-assertions name))
                      (lambda (exn)
                        (log-error "Spawned process in dataspace ~a died with exception:\n~a"
                                   (current-actor-path)
@@ -198,40 +201,40 @@
     [(targeted-event (cons pid remaining-path) e)
      (transition (send-event/guard label (target-event remaining-path e) pid w) '())]))
 
-(define (create-process parent-label w behavior initial-transition name)
-  (if (not initial-transition)
-      (transition w '()) ;; Uh, ok
-      (let ()
-        (define-values (postprocess initial-state initial-actions)
-          (match (clean-transition initial-transition)
-            [(and q (<quit> exn initial-actions0))
-             (values (lambda (w pid)
-                       (trace-actor-spawn parent-label pid (process name behavior (void)))
-                       (trace-actor-exit pid exn)
-                       (disable-process pid exn w))
-                     #f
-                     (append initial-actions0 (list 'quit)))]
-            [(and t (transition initial-state initial-actions0))
-             (values (lambda (w pid)
-                       (trace-actor-spawn parent-label pid (process name behavior initial-state))
-                       (mark-pid-runnable w pid))
-                     initial-state
-                     initial-actions0)]))
-        (define-values (initial-patch remaining-initial-actions)
-          (match initial-actions
-            [(cons (? patch? p) rest) (values p rest)]
-            [other (values patch-empty other)]))
-        (define-values (new-mux new-pid delta delta-aggregate)
-          (mux-add-stream (dataspace-mux w) initial-patch))
-        (let* ((w (struct-copy dataspace w
-                               [process-table (hash-set (dataspace-process-table w)
-                                                        new-pid
-                                                        (process name
-                                                                 behavior
-                                                                 initial-state))]))
-               (w (enqueue-actions (postprocess w new-pid) new-pid remaining-initial-actions)))
-          (trace-action-produced new-pid initial-patch)
-          (deliver-patches w new-mux new-pid delta delta-aggregate)))))
+(define (create-process parent-label w behavior initial-transition initial-assertions name)
+  (define-values (postprocess initial-state initial-actions)
+    (match (clean-transition initial-transition)
+      [#f
+       (values (lambda (w pid)
+                 (trace-actor-spawn parent-label pid (process name behavior (void)))
+                 w)
+               #f
+               '())]
+      [(and q (<quit> exn initial-actions0))
+       (values (lambda (w pid)
+                 (trace-actor-spawn parent-label pid (process name behavior (void)))
+                 (trace-actor-exit pid exn)
+                 (disable-process pid exn w))
+               #f
+               (append initial-actions0 (list 'quit)))]
+      [(and t (transition initial-state initial-actions0))
+       (values (lambda (w pid)
+                 (trace-actor-spawn parent-label pid (process name behavior initial-state))
+                 (mark-pid-runnable w pid))
+               initial-state
+               initial-actions0)]))
+  (define initial-patch (patch initial-assertions trie-empty))
+  (define-values (new-mux new-pid delta delta-aggregate)
+    (mux-add-stream (dataspace-mux w) initial-patch))
+  (let* ((w (struct-copy dataspace w
+              [process-table (hash-set (dataspace-process-table w)
+                                       new-pid
+                                       (process name
+                                                behavior
+                                                initial-state))]))
+         (w (enqueue-actions (postprocess w new-pid) new-pid initial-actions)))
+    (trace-action-produced new-pid initial-patch)
+    (deliver-patches w new-mux new-pid delta delta-aggregate)))
 
 (define (deliver-patches w new-mux acting-label delta delta-aggregate)
   (define-values (patches meta-action)

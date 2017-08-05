@@ -14,9 +14,9 @@
 ;;
 ;; +outer "first"
 ;; +show
+;; +outer "second"
 ;; -show
 ;; -outer "first"
-;; +outer "second"
 ;; +show
 ;;
 ;; Should eventually be turned into some kind of test case.

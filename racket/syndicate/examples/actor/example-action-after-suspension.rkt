@@ -5,6 +5,11 @@
 ;;
 ;; Expected output:
 ;;     flag: 'clear
+;;     flag: 'set
+;;     - '(saw ping)
+;;
+;; Previously expected output:
+;;     flag: 'clear
 ;;     - 'first
 ;;     flag: 'set
 ;;     - '(saw ping)
