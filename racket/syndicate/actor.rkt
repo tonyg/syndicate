@@ -227,6 +227,7 @@
     *query-priority*
     *query-handler-priority*
     *normal-priority*
+    *gc-priority*
     *idle-priority*
     #:count priority-count))
 
@@ -1098,8 +1099,12 @@
          (current-actor-state (struct-copy actor-state a [mux new-mux]))
          (schedule-action! delta-aggregate))))
 
-    (when (facet-live-but-inert? parent-fid)
-      (terminate-facet! parent-fid))))
+    (schedule-script!
+     #:priority *gc-priority*
+     (lambda ()
+       (when (facet-live-but-inert? parent-fid)
+         (log-info "terminating ~v because it's dead and child ~v terminated" parent-fid fid)
+         (terminate-facet! parent-fid))))))
 
 (define (add-stop-script! script-proc)
   (update-facet! (current-facet-id)
