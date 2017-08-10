@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrates glitch preservation in during/spawn.
 ;;
 ;; Previously, `spawn` was expanded in place into the new actor's

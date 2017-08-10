@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (require 2htdp/image)
 (require 2htdp/planetcute)

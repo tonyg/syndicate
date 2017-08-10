@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrates a bug: rising-edge of a predicate that starts off true
 ;; yields a crash.
 ;;

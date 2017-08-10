@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; ARP protocol, http://tools.ietf.org/html/rfc826
 ;; Only does ARP-over-ethernet.
 

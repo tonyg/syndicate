@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrate FRP-like "glitching"
 ;;
 ;; Based on an example from the FRP survey of Bainomugisha et al.

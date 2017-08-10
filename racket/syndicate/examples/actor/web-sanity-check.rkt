@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Simple demo of web driver. See web-demo.rkt for a more realistic example.
 
 (require/activate syndicate/drivers/timer)

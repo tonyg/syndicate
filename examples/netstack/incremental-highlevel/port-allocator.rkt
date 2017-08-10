@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; UDP/TCP port allocator
 
 (provide spawn-port-allocator

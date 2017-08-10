@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Multiple animated sprites.
 ;;
 ;; 2016-12-12 With the current implementations of (a) Syndicate's

@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Shows that the checks enforcing single-use suspension-resumption are working.
 
 (spawn #:name 'shouldnt-work

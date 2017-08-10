@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrates that facets with no endpoints don't outlive their `add-facet!` call.
 
 ;; This actor will have two facets briefly, before dropping to one:

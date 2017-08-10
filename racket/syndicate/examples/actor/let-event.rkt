@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrate let-event.
 ;; Should print "Complete.".
 

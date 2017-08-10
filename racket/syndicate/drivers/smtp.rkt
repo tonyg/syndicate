@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (provide (struct-out/defaults [make-smtp-account-config smtp-account-config])
          (rename-out [smtp-account-config <smtp-account-config>])

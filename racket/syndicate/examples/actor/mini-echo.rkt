@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (struct echo-req (body) #:prefab)
 (struct echo-resp (body) #:prefab)

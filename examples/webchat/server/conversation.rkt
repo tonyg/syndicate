@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (require racket/port)
 (require markdown)

@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; A toy spreadsheet model.
 
 (require racket/set)

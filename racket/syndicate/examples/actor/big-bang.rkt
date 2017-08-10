@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (require syndicate/big-bang)
 (require racket/math)

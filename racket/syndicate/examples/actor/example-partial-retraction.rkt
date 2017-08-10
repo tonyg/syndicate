@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Illustrates the response of asserted / retracted / during to
 ;; observation of assertions discarding some of their dimensions.
 

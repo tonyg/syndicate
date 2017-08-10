@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; After the Fahrenheit-to-Celsius converter example in "Fabrik - A
 ;; Visual Programming Environment", Ingalls, Wallace, Chow, Ludolph
 ;; and Doyle, OOPSLA 1988.

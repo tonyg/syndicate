@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Illustrates a (now fixed) bug where creating a facet interested in something
 ;; already known didn't properly trigger the assertion-handler.
 ;;

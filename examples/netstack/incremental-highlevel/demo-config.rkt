@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstration stack configuration for various hosts.
 
 (require racket/match)

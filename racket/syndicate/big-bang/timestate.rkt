@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Big-bang specific timestate implementation with compatible protocol.
 
 (provide (struct-out later-than)

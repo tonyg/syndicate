@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Crude steps toward reloadable Syndicate modules
 
 (provide (except-out (struct-out reload-pending) reload-pending)

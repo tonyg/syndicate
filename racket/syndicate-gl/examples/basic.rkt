@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (require racket/set)
 (require 2htdp/image)

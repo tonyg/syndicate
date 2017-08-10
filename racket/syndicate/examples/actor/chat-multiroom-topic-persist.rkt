@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Evolution of chat-multiroom-topic.rkt to support persistent room topics.
 
 (require syndicate/protocol/advertise)

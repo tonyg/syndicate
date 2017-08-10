@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Simple "shell" or REPL, used by the file-system demos.
 
 (require (only-in racket/port read-bytes-line-evt))

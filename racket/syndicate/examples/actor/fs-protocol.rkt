@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; File System Demo protocol
 
 (provide (struct-out file)

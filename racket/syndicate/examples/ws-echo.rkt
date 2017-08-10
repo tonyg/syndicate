@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Websocket server that echoes all it receives
 
 (require syndicate/protocol/advertise)

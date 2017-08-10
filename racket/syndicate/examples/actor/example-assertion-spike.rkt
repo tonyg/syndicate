@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;;
 ;; Test case for a problem written up on 25 Oct 2016 in my research
 ;; journal.

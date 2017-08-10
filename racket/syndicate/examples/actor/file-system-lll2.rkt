@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Toy file system, based on the example in the ESOP2016 submission.
 ;; Low-level implementation, without subconversation.
 

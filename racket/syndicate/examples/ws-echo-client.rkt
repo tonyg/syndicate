@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Websocket echo client
 ;; racket ws-echo-client.rkt ws://localhost:8081/
 ;; racket ws-echo-client.rkt wss://localhost:8084/

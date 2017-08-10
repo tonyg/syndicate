@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (provide (struct-out udp-remote-address)
 	 (struct-out udp-handle)

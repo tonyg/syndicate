@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrate use of parameters with actors.
 ;;
 ;; Per https://github.com/tonyg/syndicate/issues/10, "Parameters don't

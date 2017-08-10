@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Hello-worldish "bank account" example.
 
 (struct account (balance) #:prefab)

@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; After Figure 1 in "Logic and lattices for distributed programming",
 ;; Conway et. al, UCB tech report, 2012
 ;;

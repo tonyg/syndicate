@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrates debouncer-like functionality.
 
 (require syndicate/big-bang)

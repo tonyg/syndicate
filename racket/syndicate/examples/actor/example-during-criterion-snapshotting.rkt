@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Illustrates a (now fixed) bug where mutation altering a
 ;; subscription caused the `retracted` half of a during instance to be
 ;; lost.

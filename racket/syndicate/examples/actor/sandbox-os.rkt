@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Explore use of sandboxes etc for being an "operating system"
 
 (require racket/match)

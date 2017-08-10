@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Filesystem change monitor driver
 
 (provide (struct-out file-content)

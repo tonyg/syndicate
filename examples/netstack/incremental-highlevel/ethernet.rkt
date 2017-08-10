@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Ethernet driver
 
 (provide (struct-out ethernet-packet)

@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Counting-semaphore-like mutex, and dining philosophers.
 
 (require racket/set)

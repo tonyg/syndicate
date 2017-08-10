@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; An extended two-buyer book-purchase protocol, based loosely on that
 ;; given in Honda/Yoshida/Carbone 2008, "Multiparty Asynchronous
 ;; Session Types".

@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (provide (struct-out ircd-listener)
          (struct-out ircd-motd)

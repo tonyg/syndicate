@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrates that fields at actor scope are visible to facets.
 
 (spawn* (field [x 123])

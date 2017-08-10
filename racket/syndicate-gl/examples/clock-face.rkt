@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Compare to "ezd" clock-face example from: J. F. Bartlett, “Don’t
 ;; Fidget with Widgets, Draw!,” Palo Alto, California, DEC WRL
 ;; Research Report 91/6, May 1991.

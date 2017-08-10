@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (provide (struct-out tcp-address)
 	 (struct-out tcp-handle)

@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrates responsibility transfer.
 ;;
 ;; Previously, `spawn` was expanded in place into the new actor's

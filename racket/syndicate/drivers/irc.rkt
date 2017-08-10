@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Dreadfully simplified IRC client driver.
 
 (provide (struct-out irc-connection)

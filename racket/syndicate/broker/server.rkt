@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Generic relay for WebSockets/TCP/etc-based participation in a network.
 
 (provide spawn-broker-server

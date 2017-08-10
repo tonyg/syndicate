@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrate handling of facet termination.
 
 (require racket/pretty)

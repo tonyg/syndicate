@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Test case for a bug relating to use of parameters to accumulate
 ;; actions across react/suspend when an intermediate parameterization
 ;; for current-dataflow-subject-id has taken place.

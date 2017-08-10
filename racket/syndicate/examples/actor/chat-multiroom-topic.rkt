@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Evolution of chat-multiroom.rkt to support room topics.
 
 (require syndicate/protocol/advertise)

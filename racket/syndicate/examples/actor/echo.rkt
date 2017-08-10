@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 
 (require syndicate/protocol/advertise)
 (require/activate syndicate/drivers/tcp)

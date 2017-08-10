@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrates a (fixed) bug in define/query-value scoping.
 ;;
 ;; Buggy output:

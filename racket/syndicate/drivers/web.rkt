@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; More general web driver: supports normal HTTP as well as websockets.
 
 (provide (struct-out web-virtual-host)

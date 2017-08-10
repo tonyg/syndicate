@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Driver for Racket's GUI.
 
 (require racket/class)

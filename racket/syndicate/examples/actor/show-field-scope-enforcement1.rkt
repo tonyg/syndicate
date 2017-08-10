@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrates that fields may not be passed between actors.
 
 (spawn #:name 'reading-actor

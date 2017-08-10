@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; A Queue with no flow control.
 
 (require racket/set)

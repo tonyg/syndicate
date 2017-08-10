@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Minimal syndicate/actor variation on examples/forward-chaining.rkt.
 
 (spawn (assert `(parent john douglas)))

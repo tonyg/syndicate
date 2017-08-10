@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Demonstrate handling of facet termination.
 ;;
 ;; Prior to early November, 2016, only a *single* stop-when was able

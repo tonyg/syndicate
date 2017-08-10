@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Small test program for the gui.rkt driver
 
 (require/activate syndicate/drivers/gui)

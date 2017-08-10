@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Extremely simple single-actor supervision
 ;; Vastly simplified compared to the available options in OTP
 

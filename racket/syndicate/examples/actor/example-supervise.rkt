@@ -1,4 +1,4 @@
-#lang syndicate/actor
+#lang syndicate
 ;; Shows the difference between a supervised exit and a supervised crash.
 
 (require/activate syndicate/supervise)
