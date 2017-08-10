@@ -11,17 +11,17 @@
        (on (message (set-temperature 'C $new-temp))
            (temp new-temp))
        (on (asserted (temperature 'F $other-temp))
-           (temp (exact->inexact (* (- other-temp 32) 5/9)))))
+           (temp (* (- other-temp 32) 5/9))))
 
 (spawn (field [temp 32])
        (assert (temperature 'F (temp)))
        (on (message (set-temperature 'F $new-temp))
            (temp new-temp))
        (on (asserted (temperature 'C $other-temp))
-           (temp (exact->inexact (+ (* other-temp 9/5) 32)))))
+           (temp (+ (* other-temp 9/5) 32))))
 
 (spawn (on (asserted (temperature $unit $value))
-           (printf "Temperature in ~a is ~a\n" unit value)))
+           (printf "Temperature in ~a is ~a\n" unit (exact->inexact value))))
 
 (spawn (on (asserted (observe (set-temperature _ _)))
            ;; (send! (set-temperature 'C 20))

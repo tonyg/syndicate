@@ -41,15 +41,15 @@
 
 (spawn (versioned-field [C 0] [F 32])
        (begin/dataflow
-         (F (exact->inexact (+ (* (C) 9/5) 32)) C)
-         (C (exact->inexact (* (- (F) 32) 5/9)) F))
+         (F (+ (* (C) 9/5) 32) C)
+         (C (* (- (F) 32) 5/9) F))
        (assert (temperature 'C (C)))
        (assert (temperature 'F (F)))
        (on (message (set-temperature 'C $v)) (C v))
        (on (message (set-temperature 'F $v)) (F v)))
 
 (spawn (on (asserted (temperature $unit $value))
-           (printf "Temperature in ~a is ~a\n" unit value)))
+           (printf "Temperature in ~a is ~a\n" unit (exact->inexact value))))
 
 (spawn (on (asserted (observe (set-temperature _ _)))
            (send! (set-temperature 'C 20))
