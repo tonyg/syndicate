@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; Check that nested-world assertions are properly retracted.
 ;; Should print two "Got SCN:" patches - one adding, and one removing (observe 'die).
 

@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 
 (require racket/exn)
 (require (prefix-in tcp: racket/tcp))

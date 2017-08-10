@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; Test case for a historical bug in Syndicate.
 ;;
 ;; When the bug existed, this program received four SCN events in

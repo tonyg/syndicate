@@ -3,7 +3,7 @@
 (module reader syntax/module-reader
   syndicate/monolithic)
 
-(require (except-in "lang.rkt"
+(require (except-in "core-lang.rkt"
                     event?
                     action?
                     clean-transition
@@ -11,6 +11,6 @@
                     actor/stateless))
 (require "monolithic/scn.rkt")
 (require "monolithic/core.rkt")
-(provide (all-from-out "lang.rkt")
+(provide (all-from-out "core-lang.rkt")
          (all-from-out "monolithic/scn.rkt")
          (all-from-out "monolithic/core.rkt"))

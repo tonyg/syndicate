@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; Analogous to nc-incremental-meta-drop.rkt in the Redex model.
 ;; Demonstrates (hopefully) correct processing of meta-interests when dropping a patch.
 

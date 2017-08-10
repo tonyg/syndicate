@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; run-ground-vm is being modified to return the set of assertions
 ;; remaining at the end of its execution. This example demonstrates a
 ;; non-empty such set.

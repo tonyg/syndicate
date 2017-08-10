@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 
 (provide (struct-out websocket-remote-client)
 	 (struct-out websocket-local-server)

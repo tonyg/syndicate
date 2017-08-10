@@ -65,6 +65,9 @@
          boot->process+transition
          actor->process+transition/assertions)
 
+(module reader syntax/module-reader
+  syndicate/core-lang)
+
 (require racket/match)
 (require (only-in racket/list flatten))
 (require "trie.rkt")

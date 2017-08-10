@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; Demonstrate almost-wildcard assertions.
 ;; One actor subscribes to everything except inbound assertions - and so initially sees itself.
 ;; The other advertises everything except subscriptions and inbound/outbound assertions.

@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; Timer driver.
 
 ;; Uses mutable state internally, but because the scope of the

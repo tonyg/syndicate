@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; The actor should receive a single event adding an (inbound 'x) assertion.
 
 (require syndicate/pretty)

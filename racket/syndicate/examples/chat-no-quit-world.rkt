@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 
 (require syndicate/protocol/advertise)
 (require (only-in racket/string string-trim))

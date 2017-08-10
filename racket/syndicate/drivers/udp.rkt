@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 
 (require (prefix-in udp: racket/udp))
 (require syndicate/demand-matcher)

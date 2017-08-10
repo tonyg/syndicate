@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 
 (require "../big-bang.rkt")
 (require racket/math)

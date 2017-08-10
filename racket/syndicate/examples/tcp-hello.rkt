@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 
 (require syndicate/protocol/advertise)
 (require/activate "../drivers/tcp.rkt")

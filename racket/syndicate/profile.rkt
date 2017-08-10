@@ -3,7 +3,7 @@
 (provide profile-dataspace!
          profile-lambda)
 
-(require syndicate/lang)
+(require syndicate/core-lang)
 (require profile)
 
 (define profile-lambda

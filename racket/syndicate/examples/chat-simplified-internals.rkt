@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; The chat server, using a proxy abstracting over details of the TCP
 ;; driver's protocol.
 

@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; Analogous to nc-incremental-swap-int-and-claim.rkt in the Redex model.
 ;; Demonstrates (hopefully) correct processing of feedback at interest switches.
 

@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 
 (require (only-in racket/port read-line-evt))
 (require/activate "../drivers/timer.rkt")

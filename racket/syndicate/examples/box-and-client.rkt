@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; Simple mutable box and count-to-infinity box client.
 
 (struct set-box (new-value) #:transparent)

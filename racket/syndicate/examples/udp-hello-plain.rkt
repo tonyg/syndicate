@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 
 (require/activate syndicate/drivers/udp)
 

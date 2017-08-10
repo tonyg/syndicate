@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; Demonstrates quit-dataspace.
 
 (require (only-in racket/port read-bytes-line-evt))

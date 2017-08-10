@@ -1,4 +1,4 @@
-#lang syndicate
+#lang syndicate/core
 ;; Demonstrate wildcard assertions.
 ;; One actor asserts everything except inbound/outbound assertions (which break
 ;; the ground VM). It therefore *subscribes* to everything too.
