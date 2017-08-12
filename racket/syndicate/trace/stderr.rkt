@@ -152,17 +152,30 @@
          (output "~a raises an exception:\n~a\n"
                  (format-pids process-names sink)
                  (exn->string exn))))]
-    [('action (? patch? p))
+    [('actions-produced actions)
+     ;; (when show-actions?
+     ;;   (for [(a actions)]
+     ;;     (match a
+     ;;       [(? patch? p)
+     ;;        (output "~a enqueues a patch\n" (format-pids process-names source))]
+     ;;       [(message body)
+     ;;        (output "~a enqueues a message\n" (format-pids process-names source))]
+     ;;       ['quit
+     ;;        (output "~a schedules a cleanup\n")]
+     ;;       [(? actor? _)
+     ;;        (output "~a enqueues a spawn\n" (format-pids process-names source))])))
+     (void)]
+    [('action-interpreted (? patch? p))
      (when show-actions?
        (output "~a performs a patch:\n~a\n"
                (format-pids process-names source)
                (patch->pretty-string (label-patch p #t))))]
-    [('action (message body))
+    [('action-interpreted (message body))
      (when show-actions?
        (output "~a broadcasts a message:\n~a\n"
                (format-pids process-names source)
                (pretty-format body)))]
-    [('action 'quit)
+    [('action-interpreted 'quit)
      (when show-lifecycle?
        (with-color BRIGHT-RED
          (output "~a exits\n" (format-pids process-names source))))

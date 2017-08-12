@@ -109,6 +109,7 @@
   (struct-copy dataspace w [runnable-pids (set-add (dataspace-runnable-pids w) pid)]))
 
 (define (enqueue-actions w label actions)
+  (trace-actions-produced label actions)
   (struct-copy dataspace w
     [pending-action-queue
      (queue-append-list (dataspace-pending-action-queue w)
@@ -153,7 +154,7 @@
       ((entry (in-list (queue->list (dataspace-pending-action-queue w)))))
     #:break (quit? wt) ;; TODO: should a quit action be delayed until the end of the turn?
     (match-define [cons label a] entry)
-    (when (or (event? a) (eq? a 'quit)) (trace-action-produced label a))
+    (when (or (event? a) (eq? a 'quit)) (trace-action-interpreted label a))
     (define wt1 (transition-bind (perform-action label a) wt))
     wt1))
 
@@ -202,17 +203,21 @@
      (transition (send-event/guard label (target-event remaining-path e) pid w) '())]))
 
 (define (create-process parent-label w behavior initial-transition initial-assertions name)
+  (define initial-assertions? (not (trie-empty? initial-assertions)))
+  (define initial-patch (patch initial-assertions trie-empty))
   (define-values (postprocess initial-state initial-actions)
     (match (clean-transition initial-transition)
       [#f
        (values (lambda (w pid)
                  (trace-actor-spawn parent-label pid (process name behavior (void)))
+                 (when initial-assertions? (trace-actions-produced pid (list initial-patch)))
                  w)
                #f
                '())]
       [(and q (<quit> exn initial-actions0))
        (values (lambda (w pid)
                  (trace-actor-spawn parent-label pid (process name behavior (void)))
+                 (when initial-assertions? (trace-actions-produced pid (list initial-patch)))
                  (trace-actor-exit pid exn)
                  (disable-process pid exn w))
                #f
@@ -220,10 +225,10 @@
       [(and t (transition initial-state initial-actions0))
        (values (lambda (w pid)
                  (trace-actor-spawn parent-label pid (process name behavior initial-state))
+                 (when initial-assertions? (trace-actions-produced pid (list initial-patch)))
                  (mark-pid-runnable w pid))
                initial-state
                initial-actions0)]))
-  (define initial-patch (patch initial-assertions trie-empty))
   (define-values (new-mux new-pid delta delta-aggregate)
     (mux-add-stream (dataspace-mux w) initial-patch))
   (let* ((w (struct-copy dataspace w
@@ -233,7 +238,7 @@
                                                 behavior
                                                 initial-state))]))
          (w (enqueue-actions (postprocess w new-pid) new-pid initial-actions)))
-    (trace-action-produced new-pid initial-patch)
+    (when initial-assertions? (trace-action-interpreted new-pid initial-patch))
     (deliver-patches w new-mux new-pid delta delta-aggregate)))
 
 (define (deliver-patches w new-mux acting-label delta delta-aggregate)

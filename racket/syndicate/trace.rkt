@@ -5,7 +5,8 @@
          trace-turn-end
          trace-actor-spawn
          trace-actor-exit
-         trace-action-produced
+         trace-action-interpreted
+         trace-actions-produced
          trace-event-consumed
          trace-causal-influence
 
@@ -20,7 +21,8 @@
 ;; -- 'turn-end
 ;; -- 'spawn
 ;; -- 'exit
-;; -- 'action
+;; -- 'action-interpreted
+;; -- 'actions-produced
 ;; -- 'event
 ;; -- 'influence
 ;;
@@ -29,7 +31,8 @@
 ;; -- 'turn-begin and 'turn-end --> Process
 ;; -- 'spawn --> (list PID Process), the parent's PID and the process' initial state
 ;; -- 'exit --> Option Exception
-;; -- 'action --> (U Event 'quit) (notably, spawns are handled otherwise)
+;; -- 'action-interpreted --> (U Event 'quit) (notably, spawns are handled otherwise)
+;; -- 'actions-produced --> (Listof (U Action 'quit)) (spawns included!)
 ;; -- 'event --> Event
 ;; -- 'influence --> Event
 ;;
@@ -39,7 +42,8 @@
 ;; -- 'turn-end --> source is dataspace; sink the process whose turn it was
 ;; -- 'spawn --> source is dataspace; sink the new process
 ;; -- 'exit --> source is dataspace; sink the exiting process
-;; -- 'action --> source is acting process; sink is dataspace (NB: Flipped!)
+;; -- 'action-interpreted --> source is acting process; sink is dataspace (NB: Flipped!)
+;; -- 'actions-produced --> source is acting process; sink is dataspace (NB: Flipped!)
 ;; -- 'event --> source is dataspace; sink is receiving process
 ;; -- 'influence --> source is acting process; sink is receiving process
 ;;
@@ -82,8 +86,12 @@
   (notify! (current-actor-path-rev) (cons-pid pid) 'exit maybe-exn))
 
 ;; PID Event
-(define (trace-action-produced pid e)
-  (notify! (cons-pid pid) (current-actor-path-rev) 'action e))
+(define (trace-action-interpreted pid e)
+  (notify! (cons-pid pid) (current-actor-path-rev) 'action-interpreted e))
+
+;; PID (Listof Event)
+(define (trace-actions-produced pid es)
+  (notify! (cons-pid pid) (current-actor-path-rev) 'actions-produced es))
 
 ;; PID Event
 (define (trace-event-consumed pid e)
