@@ -6,24 +6,11 @@
 (require racket/set)
 (require racket/match)
 (require racket/pretty)
-(require racket/exn)
 (require (only-in racket/string string-join string-split))
+(require "util.rkt")
 (require "../core.rkt")
-(require "../dataspace.rkt")
-(require "../hierarchy.rkt")
 (require "../trace.rkt")
-(require "../mux.rkt")
 (require "../pretty.rkt")
-(require "../trie.rkt")
-(require "../tset.rkt")
-
-(define (env-aref varname default alist)
-  (define key (or (getenv varname) default))
-  (cond [(assoc key alist) => cadr]
-	[else (error 'env-aref
-		     "Expected environment variable ~a to contain one of ~v; got ~v"
-		     (map car alist)
-		     key)]))
 
 (define colored-output? (env-aref "SYNDICATE_COLOR" "true" '(("true" #t) ("false" #f))))
 
@@ -79,16 +66,6 @@
 (define BRIGHT-BLUE ";1;34")
 (define NORMAL "")
 
-(define (format-pids process-names pids)
-  (define pidstr
-    (match pids
-      ['() "ground"]
-      [(cons 'meta rest) (format "context of ~a" (format-pids process-names rest))]
-      [_ (string-join (map number->string (reverse pids)) ":")]))
-  (match (hash-ref process-names pids #f)
-    [#f pidstr]
-    [name (format "~a a.k.a ~v" pidstr name)]))
-
 (define (output fmt . args)
   (apply fprintf (current-error-port) fmt args))
 
@@ -99,10 +76,6 @@
   (begin (set-color! c)
 	 (begin0 (begin expr ...)
 	   (reset-color!))))
-
-(define (extract-leaf-pids sink p)
-  (for/list [(pid (in-set (extract-patch-pids p)))]
-    (cons pid (cdr sink))))
 
 (define (ensure-process-named! process-names pids expected-name)
   (define current-name (hash-ref process-names pids #f))
