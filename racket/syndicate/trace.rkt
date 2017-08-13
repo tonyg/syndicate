@@ -8,8 +8,9 @@
          trace-action-interpreted
          trace-actions-produced
          trace-event-consumed
-         trace-causal-influence
 
+         trace-timestamp!
+         (struct-out spacetime)
          (struct-out trace-notification))
 
 (require "hierarchy.rkt")
@@ -24,79 +25,89 @@
 ;; -- 'action-interpreted
 ;; -- 'actions-produced
 ;; -- 'event
-;; -- 'influence
+
+;; A Moment is a Natural representing an abstract increasing counter,
+;; unique for a Racket VM instance. It names a specific moment in the
+;; interpretation of a Syndicate configuration.
+
+;; A SpaceTime is either a (spacetime ActorPath Moment) or #f. When
+;; non-#f, it names a specific point in the actor hierarchy ("space")
+;; along with a point in time ("time"). When #f, it signifies
+;; "unknown".
+(struct spacetime (space time) #:prefab)
+
+;; A TraceNotification is a (trace-notification SpaceTime SpaceTime NotificationType TraceDetail).
+;; It represents an event in a Syndicate hierarchy.
+(struct trace-notification (source sink type detail) #:prefab)
 ;;
-;; The trace-notification-detail field is used differently for each
-;; NotificationType:
+;; A TraceDetail represents information about a specific
+;; NotificationType, and so depends on the particular NotificationType
+;; being used:
 ;; -- 'turn-begin and 'turn-end --> Process
-;; -- 'spawn --> (list PID Process), the parent's PID and the process' initial state
+;; -- 'spawn --> Process, the new process' initial state
 ;; -- 'exit --> Option Exception
 ;; -- 'action-interpreted --> (U Event 'quit) (notably, spawns are handled otherwise)
 ;; -- 'actions-produced --> (Listof (U Action 'quit)) (spawns included!)
-;; -- 'event --> Event
-;; -- 'influence --> Event
+;; -- 'event --> (list SpaceTime Event) ;; point describes action that led to this event,
+;;                                      ;; thus capturing the information of the former
+;;                                      ;; "causal influence" NotificationType.
 ;;
-;; The source and sink fields both hold values of type ActorPath. They
+;; The source and sink fields both hold values of type SpaceTime. They
 ;; are, again, used differently for each NotificationType:
 ;; -- 'turn-begin --> source is dataspace; sink the process whose turn it is
 ;; -- 'turn-end --> source is dataspace; sink the process whose turn it was
-;; -- 'spawn --> source is dataspace; sink the new process
+;; -- 'spawn --> source is parent process; sink the new process
 ;; -- 'exit --> source is dataspace; sink the exiting process
 ;; -- 'action-interpreted --> source is acting process; sink is dataspace (NB: Flipped!)
-;; -- 'actions-produced --> source is acting process; sink is dataspace (NB: Flipped!)
+;; -- 'actions-produced --> source and sink are both acting process; source = turn-end or spawn
 ;; -- 'event --> source is dataspace; sink is receiving process
-;; -- 'influence --> source is acting process; sink is receiving process
-;;
-;; For 'influence, when the detail event is a patch, the source field
-;; is not always the true influencing party. In the case where a
-;; process adds new observe assertions to a dataspace where matching
-;; assertions already exist, it will appear to "influence itself".
-;; Really, with patches, it's the PIDs at the leaves of each patch's
-;; tries that are the influencers.
-
-(struct trace-notification (source sink type detail) #:prefab)
 
 (define current-trace-procedures (make-store #:default-box (box '())))
 
-(define-syntax-rule (notify! src snk typ det)
+(define *current-moment* 0)
+(define (moment!)
+  (local-require ffi/unsafe/atomic)
+  (call-as-atomic (lambda ()
+                    (begin0 *current-moment*
+                      (set! *current-moment* (+ *current-moment* 1))))))
+
+(define (trace-timestamp! actor-path)
+  (spacetime actor-path (moment!)))
+
+(define-syntax-rule (notify! SRC SNK TYP DET)
   (let ((trace-procedures (current-trace-procedures)))
-    (when (pair? trace-procedures)
-      (define n (trace-notification src snk typ det))
-      (for-each (lambda (procedure) (procedure n)) trace-procedures))))
+    (cond [(pair? trace-procedures)
+           (define snk SNK)
+           (define n (trace-notification SRC snk TYP DET))
+           (for-each (lambda (procedure) (procedure n)) trace-procedures)
+           snk]
+          [else 'trace-collection-disabled])))
 
 (define (cons-pid pid)
   (if pid
       (cons pid (current-actor-path-rev))
       (current-actor-path-rev)))
 
-;; PID Process
-(define (trace-turn-begin pid p)
-  (notify! (current-actor-path-rev) (cons-pid pid) 'turn-begin p))
+(define (trace-turn-begin source pid p)
+  (notify! source (trace-timestamp! (cons-pid pid)) 'turn-begin p))
 
-;; PID Process
-(define (trace-turn-end pid p)
-  (notify! (current-actor-path-rev) (cons-pid pid) 'turn-end p))
+(define (trace-turn-end source pid p)
+  (notify! source (trace-timestamp! (cons-pid pid)) 'turn-end p))
 
-;; PID PID Process
-(define (trace-actor-spawn parent-pid pid p)
-  (notify! (current-actor-path-rev) (cons-pid pid) 'spawn (list (cons-pid parent-pid) p)))
+(define (trace-actor-spawn source pid p)
+  (notify! source (trace-timestamp! (cons-pid pid)) 'spawn p))
 
-;; PID (Option Exception)
-(define (trace-actor-exit pid maybe-exn)
-  (notify! (current-actor-path-rev) (cons-pid pid) 'exit maybe-exn))
+(define (trace-actor-exit source pid maybe-exn)
+  (notify! source (trace-timestamp! (cons-pid pid)) 'exit maybe-exn))
 
-;; PID Event
-(define (trace-action-interpreted pid e)
-  (notify! (cons-pid pid) (current-actor-path-rev) 'action-interpreted e))
+(define (trace-action-interpreted source _pid e)
+  (notify! source (trace-timestamp! (current-actor-path-rev)) 'action-interpreted e))
 
-;; PID (Listof Event)
-(define (trace-actions-produced pid es)
-  (notify! (cons-pid pid) (current-actor-path-rev) 'actions-produced es))
+(define (trace-actions-produced source pid es)
+  (notify! source (trace-timestamp! (cons-pid pid)) 'actions-produced es))
 
-;; PID Event
-(define (trace-event-consumed pid e)
-  (notify! (current-actor-path-rev) (cons-pid pid) 'event e))
-
-;; PID PID Event
-(define (trace-causal-influence src-pid snk-pid e)
-  (notify! (cons-pid src-pid) (cons-pid snk-pid) 'influence e))
+(define (trace-event-consumed interpreted-point ;; direct cause
+                              produced-point    ;; one-step indirect cause
+                              pid               ;; recipient
+                              e)
+  (notify! interpreted-point (trace-timestamp! (cons-pid pid)) 'event (list produced-point e)))

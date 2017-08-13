@@ -21,7 +21,7 @@
 (define show-lifecycle? #f)
 (define show-actions? #f)
 (define show-events? #f)
-(define show-influence? #f)
+(define show-events/polls? #f)
 
 (define (set-stderr-trace-flags! flags+module-string)
   (define-values (flags-string module-string)
@@ -29,7 +29,7 @@
       [(regexp #px"^([^:]*):(.*)$" (list _ fs m)) (values fs m)]
       [_ (values flags+module-string "")]))
 
-  (define A-flags (set 'x 'i 'p))
+  (define A-flags (set 'x 'e 'p))
   (set! flags (for/set [(c flags-string)] (string->symbol (string c))))
   (define-syntax-rule (set-flag! symbol variable)
     (set! variable (or (and (set-member? flags 'A) (set-member? A-flags 'symbol))
@@ -40,7 +40,7 @@
   (set-flag! p show-lifecycle?)
   (set-flag! a show-actions?)
   (set-flag! e show-events?)
-  (set-flag! i show-influence?)
+  (set-flag! E show-events/polls?)
 
   (let ((port (open-input-string module-string)))
     (let loop ()
@@ -77,7 +77,8 @@
 	 (begin0 (begin expr ...)
 	   (reset-color!))))
 
-(define (ensure-process-named! process-names pids expected-name)
+(define (ensure-process-named! process-names point expected-name)
+  (define pids (spacetime-space point))
   (define current-name (hash-ref process-names pids #f))
   (when (not (equal? current-name expected-name))
     (with-color WHITE-ON-RED
@@ -86,103 +87,101 @@
               expected-name
               current-name))))
 
-(define (name-process! process-names pids name)
-  (hash-set! process-names pids name))
+(define (name-process! process-names point name)
+  (hash-set! process-names (spacetime-space point) name))
 
-(define (forget-process! process-names pids)
-  (hash-remove! process-names pids))
+(define (forget-process! process-names point)
+  (hash-remove! process-names (spacetime-space point)))
 
 (define (display-notification the-notification process-names ground-state-box)
   (match-define (trace-notification source sink type detail) the-notification)
+  ;; (with-color NORMAL (output "~a\n" the-notification))
   (match* (type detail)
     [('turn-begin (process name _beh state))
      (ensure-process-named! process-names sink name)
      (when (or show-turns? show-turns/state?)
        (with-color BLUE
-         (output "~a turn begins\n" (format-pids process-names sink))))]
+         (output "~a turn begins\n" (format-point process-names sink))))]
     [('turn-end (process name _beh state))
      (ensure-process-named! process-names sink name)
-     (when (null? sink) (set-box! ground-state-box state))
+     (when (null? (spacetime-space sink)) (set-box! ground-state-box state))
      (when (or show-turns? show-turns/state?)
        (with-color BLUE
-         (output "~a turn ends\n" (format-pids process-names sink))
+         (output "~a turn ends\n" (format-point process-names sink))
          (when show-turns/state?
            (syndicate-pretty-print state (current-error-port)))))]
-    [('spawn (list parent (process name _beh state)))
+    [('spawn (process name _beh state))
      (name-process! process-names sink name)
      (when show-lifecycle?
        (with-color BRIGHT-GREEN
          (output "~a spawned by ~a\n"
-                 (format-pids process-names sink)
-                 (format-pids process-names parent))))]
+                 (format-point process-names sink)
+                 (format-point process-names source))))]
     [('exit #f)
      (when show-lifecycle?
        (with-color BRIGHT-RED
-         (output "~a schedules an exit\n" (format-pids process-names sink))))]
+         (output "~a schedules an exit\n" (format-point process-names sink))))]
     [('exit exn)
      (when (or show-lifecycle? show-exceptions?)
        (with-color WHITE-ON-RED
          (output "~a raises an exception:\n~a\n"
-                 (format-pids process-names sink)
+                 (format-point process-names sink)
                  (exn->string exn))))]
     [('actions-produced actions)
-     ;; (when show-actions?
-     ;;   (for [(a actions)]
-     ;;     (match a
-     ;;       [(? patch? p)
-     ;;        (output "~a enqueues a patch\n" (format-pids process-names source))]
-     ;;       [(message body)
-     ;;        (output "~a enqueues a message\n" (format-pids process-names source))]
-     ;;       ['quit
-     ;;        (output "~a schedules a cleanup\n")]
-     ;;       [(? actor? _)
-     ;;        (output "~a enqueues a spawn\n" (format-pids process-names source))])))
-     (void)]
+     (when (or show-events? show-actions?)
+       (when (positive? (length actions))
+         (output "~a enqueues ~a actions as a result of ~a.\n"
+                 (format-point process-names sink)
+                 (length actions)
+                 (format-point process-names source))))]
     [('action-interpreted (? patch? p))
-     (when show-actions?
-       (output "~a performs a patch:\n~a\n"
-               (format-pids process-names source)
-               (patch->pretty-string (label-patch p #t))))]
+     (cond
+       [show-actions?
+        (output "~a interprets patch from ~a:\n~a\n"
+                (format-point process-names sink)
+                (format-point process-names source)
+                (patch->pretty-string (label-patch p #t)))]
+       [show-events?
+        (output "~a interprets patch from ~a.\n"
+                (format-point process-names sink)
+                (format-point process-names source))]
+       [else (void)])]
     [('action-interpreted (message body))
-     (when show-actions?
-       (output "~a broadcasts a message:\n~a\n"
-               (format-pids process-names source)
-               (pretty-format body)))]
+     (cond
+       [show-actions?
+        (output "~a delivers broadcast message from ~a:\n~a\n"
+                (format-point process-names sink)
+                (format-point process-names source)
+                (pretty-format body))]
+       [show-events?
+        (output "~a delivers broadcast message from ~a.\n"
+                (format-point process-names sink)
+                (format-point process-names source))])]
     [('action-interpreted 'quit)
      (when show-lifecycle?
        (with-color BRIGHT-RED
-         (output "~a exits\n" (format-pids process-names source))))
+         (output "~a exits\n" (format-point process-names source))))
      (forget-process! process-names source)]
-    [('event (? patch? p))
+    [('event (list cause (? patch? p)))
      (when show-events?
        (with-color YELLOW
-         (output "~a receives an event:\n~a\n"
-                 (format-pids process-names sink)
-                 (patch->pretty-string (label-patch p #t)))))]
-    [('event (message body))
+         (output "~a receives a patch event (direct cause ~a, indirect cause ~a):\n~a\n"
+                 (format-point process-names sink)
+                 (format-point process-names source)
+                 (format-point process-names cause)
+                 (format-patch process-names (cdr (spacetime-space sink)) p))))]
+    [('event (list cause (message body)))
      (when show-events?
        (with-color YELLOW
-         (output "~a receives a message:\n~a\n"
-                 (format-pids process-names sink)
+         (output "~a receives a message event (direct cause ~a, indirect cause ~a):\n~a\n"
+                 (format-point process-names sink)
+                 (format-point process-names source)
+                 (format-point process-names cause)
                  (pretty-format body))))]
-    [('event #f)
-     (when show-events?
+    [('event (list _cause #f)) ;; cause will be #f
+     (when show-events/polls?
        (with-color YELLOW
-         (output "~a is polled\n" (format-pids process-names sink))))]
-    [('influence (? patch? p))
-     (when show-influence?
-       (output "~a influenced by ~a via a patch:\n~a\n"
-               (format-pids process-names sink)
-               (string-join (map (lambda (p) (format-pids process-names p))
-                                 (extract-leaf-pids sink p))
-                            ", ")
-               (patch->pretty-string p)))]
-    [('influence (message body))
-     (when show-influence?
-       (output "~a influences ~a with a message:\n~a\n"
-               (format-pids process-names source)
-               (format-pids process-names sink)
-               (pretty-format body)))]))
+         (output "~a is polled\n" (format-point process-names sink))))]))
 
 (define (summarise-ground-state state)
   (syndicate-pretty-print state (current-error-port)))
@@ -208,7 +207,7 @@
   (define receiver (make-log-receiver logger 'info))
   (define process-names (make-hash))
   (define ground-state-box (box #f))
-  (name-process! process-names '() 'ground) ;; by convention
+  (name-process! process-names (spacetime '() #f) 'ground) ;; by convention
   (define next-signal-evt (check-for-unix-signals-support!))
   (parameterize ((pretty-print-columns 100))
     (let loop ()

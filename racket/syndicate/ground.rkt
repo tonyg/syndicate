@@ -10,6 +10,7 @@
 (require "hierarchy.rkt")
 (require "trace.rkt")
 (require "trace/stderr.rkt")
+(require "trace/msd.rkt")
 (require "tset.rkt")
 (require "protocol/standard-relay.rkt")
 (require "trie.rkt")
@@ -130,10 +131,10 @@
 ;; Event Process AssertionSet Natural -> AssertionSet
 ;; Returns the final set of active assertions at groundmost level.
 (define (inject-event e proc interests background-activity-count)
-  (trace-event-consumed #f e)
-  (trace-turn-begin #f proc)
+  (define cause (trace-timestamp! '()))
+  (define begin-point (trace-turn-begin (trace-event-consumed cause cause #f e) #f proc))
   (define resulting-transition (clean-transition ((process-behavior proc) e (process-state proc))))
-  (process-transition resulting-transition proc interests background-activity-count))
+  (process-transition begin-point resulting-transition proc interests background-activity-count))
 
 ;; (Listof Action) AssertionSet -> AssertionSet
 ;; Incorporates patches into the given assertion set.
@@ -148,20 +149,23 @@
         (log-syndicate/ground-warning "run-ground: ignoring useless meta-action ~v" a)
         (process-actions actions interests)])]))
 
-;; Transition Process AssertionSet Natural -> AssertionSet
+;; SpaceTime Transition Process AssertionSet Natural -> AssertionSet
 ;; Returns the final set of active assertions at groundmost level.
-(define (process-transition resulting-transition proc interests background-activity-count)
+(define (process-transition begin-point
+                            resulting-transition
+                            proc
+                            interests
+                            background-activity-count)
   (match resulting-transition
     [#f ;; inert
-     (trace-turn-end #f proc)
+     (trace-turn-end begin-point #f proc)
      (await-interrupt #t proc interests background-activity-count)]
     [(<quit> exn actions)
-     (trace-turn-end #f proc)
-     (trace-actor-exit #f exn)
+     (trace-actor-exit (trace-turn-end begin-point #f proc) #f exn)
      (log-syndicate/ground-debug "run-ground: Terminating by request")
      (process-actions actions interests)]
     [(transition new-state actions)
-     (trace-turn-end #f (process (process-name proc) (process-behavior proc) new-state))
+     (trace-turn-end begin-point #f (process (process-name proc) (process-behavior proc) new-state))
      (let ((proc (update-process-state proc new-state))
            (new-interests (process-actions actions interests)))
        (await-interrupt #f proc new-interests background-activity-count))]))
@@ -176,4 +180,4 @@
 ;; Returns the final set of active assertions at groundmost level.
 (define (run-ground* s)
   (define-values (proc t initial-assertions) (actor->process+transition/assertions s))
-  (process-transition t proc initial-assertions 0))
+  (process-transition #f t proc initial-assertions 0))

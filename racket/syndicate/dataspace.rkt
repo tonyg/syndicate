@@ -5,7 +5,6 @@
          make-dataspace
          dataspace-actor
          make-dataspace-actor
-         dataspace-handle-event
          pretty-print-dataspace)
 
 (require racket/set)
@@ -30,7 +29,7 @@
 
 ;; VM private states
 (struct dataspace (mux ;; Multiplexer
-                   pending-action-queue ;; (Queueof (Cons Label (U Action 'quit)))
+                   pending-action-queue ;; (Queueof (Vector Label (U Action 'quit) SpaceTime))
                    runnable-pids ;; (Setof PID)
                    process-table ;; (HashTable PID Process)
                    )
@@ -41,35 +40,46 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (send-event origin-pid e pid w)
+(define (send-event interpreted-point produced-point e pid w)
   (match-define (and the-process (process process-name behavior old-state))
     (hash-ref (dataspace-process-table w) pid missing-process))
   (if (not behavior)
       w
-      (begin
-        (when origin-pid (trace-causal-influence origin-pid pid e))
-        (trace-event-consumed pid e)
-        (trace-turn-begin pid the-process)
+      (let ((turn-begin-point (trace-turn-begin (trace-event-consumed interpreted-point
+                                                                      produced-point
+                                                                      pid
+                                                                      e)
+                                                pid
+                                                the-process)))
         (invoke-process pid
                         (lambda () (clean-transition (ensure-transition (behavior e old-state))))
                         (match-lambda
                           [#f
-                           (trace-turn-end pid the-process)
+                           (trace-turn-end turn-begin-point pid the-process)
                            w]
                           [(and q (<quit> exn final-actions))
-                           (trace-turn-end pid the-process)
-                           (trace-actor-exit pid exn)
-                           (enqueue-actions (disable-process pid exn w) pid (append final-actions
-                                                                                    (list 'quit)))]
+                           (define turn-end-point (trace-turn-end turn-begin-point pid the-process))
+                           (trace-actor-exit turn-end-point pid exn)
+                           (enqueue-actions turn-end-point
+                                            (disable-process pid exn w)
+                                            pid
+                                            (append final-actions (list 'quit)))]
                           [(and t (transition new-state new-actions))
-                           (trace-turn-end pid (process process-name behavior new-state))
-                           (enqueue-actions (mark-pid-runnable (update-state w pid new-state) pid)
+                           (enqueue-actions (trace-turn-end turn-begin-point
+                                                            pid
+                                                            (process process-name
+                                                                     behavior
+                                                                     new-state))
+                                            (mark-pid-runnable (update-state w pid new-state) pid)
                                             pid
                                             new-actions)])
                         (lambda (exn)
-                          (trace-turn-end pid the-process)
-                          (trace-actor-exit pid exn)
-                          (enqueue-actions (disable-process pid exn w) pid (list 'quit)))))))
+                          (define turn-end-point (trace-turn-end turn-begin-point pid the-process))
+                          (trace-actor-exit turn-end-point pid exn)
+                          (enqueue-actions turn-end-point
+                                           (disable-process pid exn w)
+                                           pid
+                                           (list 'quit)))))))
 
 (define (update-process-entry w pid f)
   (define old-pt (dataspace-process-table w))
@@ -80,10 +90,10 @@
 (define (update-state w pid s)
   (update-process-entry w pid (lambda (p) (update-process-state p s))))
 
-(define (send-event/guard origin-pid e pid w)
+(define (send-event/guard interpreted-point produced-point e pid w)
   (if (patch-empty? e)
       w
-      (send-event origin-pid e pid w)))
+      (send-event interpreted-point produced-point e pid w)))
 
 (define (disable-process pid exn w)
   (when exn
@@ -108,12 +118,12 @@
 (define (mark-pid-runnable w pid)
   (struct-copy dataspace w [runnable-pids (set-add (dataspace-runnable-pids w) pid)]))
 
-(define (enqueue-actions w label actions)
-  (trace-actions-produced label actions)
+(define (enqueue-actions turn-end-point w label actions)
+  (define produced-point (trace-actions-produced turn-end-point label actions))
   (struct-copy dataspace w
     [pending-action-queue
      (queue-append-list (dataspace-pending-action-queue w)
-                        (for/list [(a actions)] (cons label a)))]))
+                        (for/list [(a actions)] (vector label a produced-point)))]))
 
 (define-syntax (dataspace-actor stx)
   (syntax-parse stx
@@ -123,7 +133,8 @@
 
 (define (make-dataspace boot-actions)
   (dataspace (mux)
-             (list->queue (for/list ((a (in-list (clean-actions boot-actions)))) (cons 'meta a)))
+             (list->queue (for/list ((a (in-list (clean-actions boot-actions))))
+                            (vector 'meta a #f)))
              (set)
              (hash)))
 
@@ -147,18 +158,21 @@
       (step-children w)))
 
 (define ((inject-event e) w)
-  (transition (if (not e) w (enqueue-actions w 'meta (list e))) '()))
+  ;; TODO: What is the best way of getting something sensible to
+  ;; supply to `enqueue-actions` as `turn-end-point`? Similar applies
+  ;; to use of #f in `make-dataspace` for the boot actions and to
+  ;; relaying of `targeted-event`s.
+  (transition (if (not e) w (enqueue-actions #f w 'meta (list e))) '()))
 
 (define (perform-actions w)
   (for/fold ([wt (transition (struct-copy dataspace w [pending-action-queue (make-queue)]) '())])
       ((entry (in-list (queue->list (dataspace-pending-action-queue w)))))
     #:break (quit? wt) ;; TODO: should a quit action be delayed until the end of the turn?
-    (match-define [cons label a] entry)
-    (when (or (event? a) (eq? a 'quit)) (trace-action-interpreted label a))
-    (define wt1 (transition-bind (perform-action label a) wt))
+    (match-define (vector label a produced-point) entry)
+    (define wt1 (transition-bind (perform-action produced-point label a) wt))
     wt1))
 
-(define ((perform-action label a) w)
+(define ((perform-action produced-point label a) w)
   (match a
     [(<actor> boot initial-assertions)
      (invoke-process (mux-next-pid (dataspace-mux w)) ;; anticipate pid allocation
@@ -172,82 +186,109 @@
                                  other)]))
                      (lambda (results)
                        (match-define (list behavior initial-transition name) results)
-                       (create-process label w behavior initial-transition initial-assertions name))
+                       (create-process produced-point
+                                       w
+                                       behavior
+                                       initial-transition
+                                       initial-assertions
+                                       name))
                      (lambda (exn)
                        (log-error "Spawned process in dataspace ~a died with exception:\n~a"
                                   (current-actor-path)
                                   (exn->string exn))
                        (transition w '())))]
     ['quit
+     (define interpreted-point (trace-action-interpreted produced-point label a))
      (define-values (new-mux _label delta delta-aggregate)
        (mux-remove-stream (dataspace-mux w) label))
      ;; Clean up the "tombstone" left for us by disable-process
      (let ((w (struct-copy dataspace w
                            [process-table (hash-remove (dataspace-process-table w) label)])))
-       (deliver-patches w new-mux label delta delta-aggregate))]
+       (deliver-patches interpreted-point produced-point w new-mux label delta delta-aggregate))]
     [(quit-dataspace)
      (quit)]
     [(? patch? delta-orig)
      (define-values (new-mux _label delta delta-aggregate)
        (mux-update-stream (dataspace-mux w) label delta-orig))
-     (deliver-patches w new-mux label delta delta-aggregate)]
+     (define interpreted-point (trace-action-interpreted produced-point label delta))
+     (deliver-patches interpreted-point produced-point w new-mux label delta delta-aggregate)]
     [(and m (message body))
+     (define interpreted-point (trace-action-interpreted produced-point label a))
      (when (observe? body)
        (log-warning "Stream ~a sent message containing query ~v"
                     (append (current-actor-path) (list label))
                     body))
      (define-values (affected-pids meta-affected?) (mux-route-message (dataspace-mux w) body))
-     (transition (for/fold [(w w)] [(pid (in-list affected-pids))] (send-event label m pid w))
+     (transition (for/fold [(w w)] [(pid (in-list affected-pids))]
+                   (send-event interpreted-point produced-point m pid w))
                  (and meta-affected? m))]
     [(targeted-event (cons pid remaining-path) e)
-     (transition (send-event/guard label (target-event remaining-path e) pid w) '())]))
+     (transition (send-event/guard #f #f (target-event remaining-path e) pid w) '())]))
 
-(define (create-process parent-label w behavior initial-transition initial-assertions name)
+(define (create-process produced-point w behavior initial-transition initial-assertions name)
   (define initial-assertions? (not (trie-empty? initial-assertions)))
   (define initial-patch (patch initial-assertions trie-empty))
+  (define (trace-spawn/initial-patch pid state0)
+    (define spawn-point (trace-actor-spawn produced-point pid (process name behavior state0)))
+    (cons spawn-point
+          (and initial-assertions? (trace-actions-produced spawn-point pid (list initial-patch)))))
   (define-values (postprocess initial-state initial-actions)
     (match (clean-transition initial-transition)
       [#f
        (values (lambda (w pid)
-                 (trace-actor-spawn parent-label pid (process name behavior (void)))
-                 (when initial-assertions? (trace-actions-produced pid (list initial-patch)))
-                 w)
+                 (values (trace-spawn/initial-patch pid (void))
+                         w))
                #f
                '())]
       [(and q (<quit> exn initial-actions0))
        (values (lambda (w pid)
-                 (trace-actor-spawn parent-label pid (process name behavior (void)))
-                 (when initial-assertions? (trace-actions-produced pid (list initial-patch)))
-                 (trace-actor-exit pid exn)
-                 (disable-process pid exn w))
+                 (define points (trace-spawn/initial-patch pid (void)))
+                 (match-define (cons spawn-point _) points)
+                 (trace-actor-exit spawn-point pid exn)
+                 (values points (disable-process pid exn w)))
                #f
                (append initial-actions0 (list 'quit)))]
       [(and t (transition initial-state initial-actions0))
        (values (lambda (w pid)
-                 (trace-actor-spawn parent-label pid (process name behavior initial-state))
-                 (when initial-assertions? (trace-actions-produced pid (list initial-patch)))
-                 (mark-pid-runnable w pid))
+                 (values (trace-spawn/initial-patch pid initial-state)
+                         (mark-pid-runnable w pid)))
                initial-state
                initial-actions0)]))
   (define-values (new-mux new-pid delta delta-aggregate)
     (mux-add-stream (dataspace-mux w) initial-patch))
-  (let* ((w (struct-copy dataspace w
-              [process-table (hash-set (dataspace-process-table w)
-                                       new-pid
-                                       (process name
-                                                behavior
-                                                initial-state))]))
-         (w (enqueue-actions (postprocess w new-pid) new-pid initial-actions)))
-    (when initial-assertions? (trace-action-interpreted new-pid initial-patch))
-    (deliver-patches w new-mux new-pid delta delta-aggregate)))
+  (let ((w (struct-copy dataspace w
+             [process-table (hash-set (dataspace-process-table w)
+                                      new-pid
+                                      (process name
+                                               behavior
+                                               initial-state))])))
+    (let-values (((points w) (postprocess w new-pid)))
+      (match-define (cons spawn-point initial-patch-produced-point) points)
+      (let ((w (enqueue-actions spawn-point w new-pid initial-actions)))
+        (deliver-patches (and initial-assertions?
+                              (trace-action-interpreted initial-patch-produced-point
+                                                        new-pid
+                                                        delta))
+                         initial-patch-produced-point
+                         w
+                         new-mux
+                         new-pid
+                         delta
+                         delta-aggregate)))))
 
-(define (deliver-patches w new-mux acting-label delta delta-aggregate)
+(define (deliver-patches interpreted-point
+                         produced-point
+                         w
+                         new-mux
+                         acting-label
+                         delta
+                         delta-aggregate)
   (define-values (patches meta-action)
     (compute-patches (dataspace-mux w) new-mux acting-label delta delta-aggregate))
   (transition (for/fold [(w (struct-copy dataspace w [mux new-mux]))]
                         [(entry (in-list patches))]
                 (match-define (cons label event) entry)
-                (send-event/guard acting-label event label w))
+                (send-event/guard interpreted-point produced-point event label w))
               (and (patch-non-empty? meta-action) meta-action)))
 
 (define (step-children w)
@@ -256,7 +297,7 @@
       #f ;; dataspace is inert.
       (transition (for/fold [(w (struct-copy dataspace w [runnable-pids (set)]))]
                             [(pid (in-set runnable-pids))]
-                    (send-event #f #f pid w))
+                    (send-event #f #f #f pid w))
 		  '())))
 
 (define (pretty-print-dataspace w [p (current-output-port)])

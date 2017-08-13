@@ -10,6 +10,7 @@
          patch/added?
          patch/removed?
          label-patch
+         patch-relabel
          limit-patch
          patch-step
          patch-step*
@@ -80,6 +81,10 @@
 (define (label-patch p label)
   (patch (label-interests (patch-added p) label)
          (label-interests (patch-removed p) label)))
+
+(define (patch-relabel p f)
+  (patch (trie-relabel (patch-added p) f)
+         (trie-relabel (patch-removed p) f)))
 
 ;; When given a set-labelled p and bound, assumes that the label sets
 ;; only ever contain one element, thereby acting as if given a
