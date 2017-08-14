@@ -95,7 +95,6 @@
 
 (define (display-notification the-notification process-names ground-state-box)
   (match-define (trace-notification source sink type detail) the-notification)
-  ;; (with-color NORMAL (output "~a\n" the-notification))
   (match* (type detail)
     [('turn-begin (process name _beh state))
      (ensure-process-named! process-names sink name)
