@@ -51,13 +51,20 @@
           [('action-interpreted 'quit)
            (write-event! source sink 'quit)]
           [('event (list cause (? patch? p)))
-           (write-event! source sink 'event
-                         'patch
-                         (format-patch '#hash() (cdr (spacetime-space sink)) p)
-                         cause
-                         (set-map (extract-patch-pids p)
-                                  (lambda (local-pid)
-                                    (cons local-pid (cdr (spacetime-space sink))))))]
+           (match (spacetime-space sink)
+             ['()
+              (write-event! source sink 'event
+                            'patch
+                            (patch->pretty-string p)
+                            cause
+                            (list (spacetime-space cause)))]
+             [(cons _ context-path)
+              (write-event! source sink 'event
+                            'patch
+                            (format-patch '#hash() context-path p)
+                            cause
+                            (set-map (extract-patch-pids p)
+                                     (lambda (local-pid) (cons local-pid context-path))))])]
           [('event (list cause (message body)))
            (write-event! source sink 'event
                          'message
