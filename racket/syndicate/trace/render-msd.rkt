@@ -177,9 +177,9 @@
     [(annotate-swimlane pos color annotation)
      (update-statemap statemaps pos (list color annotation))]))
 
-(define WIDTH 50)
-(define HEIGHT 20)
-(define GAP 20)
+(define WIDTH (make-parameter 50))
+(define HEIGHT (make-parameter 20))
+(define GAP (make-parameter 20))
 (define ACTIVE-WIDTH 10)
 
 (define ACTION-COLOR "white")
@@ -187,7 +187,7 @@
 (define LABEL-COLOR "palegreen")
 
 (define (fill-out height p)
-  (ct-superimpose (blank WIDTH height)
+  (ct-superimpose (blank (WIDTH) height)
                   (if p
                       (inset p (* -1/2 (pict-width p)) 0)
                       (blank 0))))
@@ -224,7 +224,7 @@
 
 (define (render-overlay max-lane current-row)
   (for/list [(lane (+ max-lane 1))]
-    (fill-out HEIGHT
+    (fill-out (HEIGHT)
               (match (hash-ref current-row lane #f)
                 [(labelled-cell s color u)
                  (define para (apply vl-append 0
@@ -263,7 +263,7 @@
     (map (match-lambda
            [(list row-number prev-row current-row next-row)
             (define overlay (render-overlay max-lane current-row))
-            (define height (+ GAP (apply max (map pict-height overlay))))
+            (define height (+ (GAP) (apply max (map pict-height overlay))))
             (define underlay (render-underlay max-lane prev-row current-row next-row height))
             (list row-number underlay overlay)])
          row-triples))
@@ -327,6 +327,12 @@
       (set! *scale* (string->number scale))]
      [("-t" "--target") target "Choose target: screen, png, png@2x, svg, eps, pdf"
       (set! *target* (string->symbol target))]
+     [("--width") width "Width of swimlane cells (default: 50)"
+      (WIDTH (string->number width))]
+     [("--height") height "Minimum height of rows (default: 20)"
+      (HEIGHT (string->number height))]
+     [("--gap") gap "Extra space between rows (default: 20)"
+      (GAP (string->number gap))]
      #:args (filename)
      filename))
   (render (scale (msd->pict (if (equal? filename "-")
