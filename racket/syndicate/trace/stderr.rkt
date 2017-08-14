@@ -169,7 +169,11 @@
                  (format-point process-names sink)
                  (format-point process-names source)
                  (format-point process-names cause)
-                 (format-patch process-names (cdr (spacetime-space sink)) p))))]
+                 (match (spacetime-space sink)
+                   ['() ;; events from the outside world
+                    (patch->pretty-string p)]
+                   [(cons _ context-path)
+                    (format-patch process-names context-path p)]))))]
     [('event (list cause (message body)))
      (when show-events?
        (with-color YELLOW
