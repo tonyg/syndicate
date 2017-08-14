@@ -41,7 +41,7 @@
            (hash-set! names (spacetime-space sink) name)
            (write-event! source sink 'spawn (format "~a" name))]
           [('exit exn-or-false)
-           (write-event! source sink 'exit exn-or-false)]
+           (write-event! source sink 'exit (format "~a" exn-or-false))]
           [('actions-produced actions)
            (when (positive? (length actions))
              (write-event! source sink 'actions-produced (length actions)))]
