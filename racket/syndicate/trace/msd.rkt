@@ -19,10 +19,6 @@
 (let ((output-filename (getenv "SYNDICATE_MSD")))
   (when output-filename
     (let ((fh (open-output-file output-filename #:exists 'replace)))
-      ;; (fprintf fh "digraph Syndicate {\n")
-      ;; (plumber-add-flush! (current-plumber) (lambda (_handle)
-      ;;                                         (fprintf fh "}\n")
-      ;;                                         (close-output-port fh)))
       (define (write-event! . pieces)
         (write pieces fh)
         (newline fh))
