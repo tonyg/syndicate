@@ -198,13 +198,14 @@
                                   (exn->string exn))
                        (transition w '())))]
     ['quit
-     (define interpreted-point (trace-action-interpreted produced-point label a))
      (define-values (new-mux _label delta delta-aggregate)
        (mux-remove-stream (dataspace-mux w) label))
+     (define interpreted-point (trace-action-interpreted produced-point label delta))
      ;; Clean up the "tombstone" left for us by disable-process
      (let ((w (struct-copy dataspace w
                            [process-table (hash-remove (dataspace-process-table w) label)])))
-       (deliver-patches interpreted-point produced-point w new-mux label delta delta-aggregate))]
+       (begin0 (deliver-patches interpreted-point produced-point w new-mux label delta delta-aggregate)
+         (trace-action-interpreted produced-point label a)))]
     [(quit-dataspace)
      (quit)]
     [(? patch? delta-orig)
