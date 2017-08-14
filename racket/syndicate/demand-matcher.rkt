@@ -182,7 +182,7 @@
                          on-task-exit
                          actions))
       (values (hash-set/remove supervision-states captures new-supervision-state)
-              (cons actions new-actions))))
+              new-actions)))
 
   (transition (struct-copy demand-matcher d
                            [current-demand
