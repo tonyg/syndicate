@@ -3,6 +3,7 @@
 (require pict)
 (require pict/color)
 (require file/convertible)
+(require (only-in "util.rkt" format-pids))
 
 (struct spacetime (space time) #:prefab)
 
@@ -28,78 +29,94 @@
 (define (read-msd port)
   (define max-lane -1)
   (define swimlane-map (make-hash))
+  (define name-summary (hash))
+  (define events-rev '())
 
-  (define (find-lane*! actor-path)
-    (hash-ref! swimlane-map
-               (match actor-path
-                 [(list* 'meta p) p]
-                 [_ actor-path])
-               (lambda ()
-                 (define lane (find-unused-lane swimlane-map))
-                 (when (> lane max-lane) (set! max-lane lane))
-                 lane)))
+  (define (emit-events . es)
+    (set! events-rev (foldl cons events-rev (filter values es))))
 
-  (define (find-lane! point)
-    (find-lane*! (spacetime-space point)))
+  (define (strip-meta actor-path0)
+    (match actor-path0 [(list* 'meta p) p] [p p]))
+
+  (define (translate*! actor-path0 moment)
+    (define actor-path (strip-meta actor-path0))
+    (diagram-position (hash-ref! swimlane-map
+                                 actor-path
+                                 (lambda ()
+                                   (define lane (find-unused-lane swimlane-map))
+                                   (when (> lane max-lane) (set! max-lane lane))
+                                   (match (hash-ref name-summary actor-path #f)
+                                     [#f (void)]
+                                     [n (emit-events
+                                         (begin-swimlane (diagram-position lane (- moment 1/2))
+                                                         (format "~a =\n~a"
+                                                                 (format-pids '#hash() actor-path)
+                                                                 n)))])
+                                   lane))
+                      moment))
+
+  (define (vacate-lane! point)
+    (define actor-path (strip-meta (spacetime-space point)))
+    (hash-remove! swimlane-map
+                  (match actor-path
+                    [(list* 'meta p) p]
+                    [_ actor-path])))
 
   (define (translate! point)
-    (diagram-position (find-lane! point)
-                      (spacetime-time point)))
+    (translate*! (spacetime-space point) (spacetime-time point)))
 
   (define (connection* source sink)
     (and source (connection (translate! source) (translate! sink))))
 
-  (let loop ((events-rev
-              (reverse
-               (list ;; (begin-swimlane (translate! (spacetime '(meta) -2)) "External")
-                     (begin-swimlane (translate! (spacetime '() -1)) "Ground VM")))))
-
-    (define (emit-events . es)
-      (loop (foldl cons events-rev (filter values es))))
-
+  (let loop ()
     (match (read port)
       [(? eof-object?) (msd max-lane (reverse events-rev))]
-      [(list source sink 'turn-begin)
-       (emit-events (activate-swimlane (translate! sink)))]
-      [(list source sink 'turn-end)
-       (emit-events (deactivate-swimlane (translate! sink)))]
-      [(list source sink 'spawn name)
-       (emit-events (begin-swimlane (translate! sink)
-                                    (format "~a =\n~a"
-                                            (spacetime-space sink)
-                                            name))
-                    (connection* source sink))]
-      [(list source sink 'exit _exn-or-false)
-       (emit-events (schedule-end-swimlane (translate! sink)))]
-      [(list source sink 'actions-produced count)
-       (emit-events (annotate-swimlane (translate! sink)
-                                       ACTION-COLOR
-                                       (match count
-                                         [1 "1 action"]
-                                         [n (format "~a actions" n)])))]
-      [(list source sink 'action-interpreted _ desc)
-       (define shifted-sink
-         (if source
-             (spacetime (spacetime-space source) (spacetime-time sink))
-             sink))
-       (emit-events (annotate-swimlane (translate! shifted-sink) ACTION-COLOR desc)
-                    (connection* source shifted-sink))]
-      [(list source sink 'quit)
-       (define shifted-sink
-         (if source
-             (spacetime (spacetime-space source) (spacetime-time sink))
-             sink))
-       (emit-events (end-swimlane (translate! shifted-sink)))]
-      [(list direct-cause recipient 'event _ desc indirect-cause doubly-indirect-paths)
-       (apply emit-events
-              (annotate-swimlane (translate! recipient) EVENT-COLOR desc)
-              ;; (connection* direct-cause recipient)
-              ;; (connection* indirect-cause recipient)
-              (map (lambda (doubly-indirect-path)
-                     (connection (diagram-position (find-lane*! doubly-indirect-path)
-                                                   (spacetime-time direct-cause))
-                                 (translate! recipient)))
-                   doubly-indirect-paths))])))
+      [input
+       (match input
+         [(list _ _ 'name-summary names-alist)
+          (set! name-summary (make-immutable-hash names-alist))]
+         [(list source sink 'turn-begin)
+          (emit-events (activate-swimlane (translate! sink)))]
+         [(list source sink 'turn-end)
+          (emit-events (deactivate-swimlane (translate! sink)))]
+         [(list source sink 'spawn name)
+          (emit-events (begin-swimlane (translate! sink)
+                                       (format "~a =\n~a"
+                                               (format-pids '#hash() (spacetime-space sink))
+                                               name))
+                       (connection* source sink))]
+         [(list source sink 'exit _exn-or-false)
+          (emit-events (schedule-end-swimlane (translate! sink)))]
+         [(list source sink 'actions-produced count)
+          (emit-events (annotate-swimlane (translate! sink)
+                                          ACTION-COLOR
+                                          (match count
+                                            [1 "1 action"]
+                                            [n (format "~a actions" n)])))]
+         [(list source sink 'action-interpreted _ desc)
+          (define shifted-sink
+            (if source
+                (spacetime (spacetime-space source) (spacetime-time sink))
+                sink))
+          (emit-events (annotate-swimlane (translate! shifted-sink) ACTION-COLOR desc)
+                       (connection* source shifted-sink))]
+         [(list source sink 'quit)
+          (define shifted-sink
+            (if source
+                (spacetime (spacetime-space source) (spacetime-time sink))
+                sink))
+          (emit-events (begin0 (end-swimlane (translate! shifted-sink))
+                         (when source (vacate-lane! shifted-sink))))]
+         [(list direct-cause recipient 'event _ desc indirect-cause doubly-indirect-paths)
+          (apply emit-events
+                 (annotate-swimlane (translate! recipient) EVENT-COLOR desc)
+                 ;; (connection* direct-cause recipient)
+                 ;; (connection* indirect-cause recipient)
+                 (map (lambda (doubly-indirect-path)
+                        (connection (translate*! doubly-indirect-path (spacetime-time direct-cause))
+                                    (translate! recipient)))
+                      doubly-indirect-paths))])
+       (loop)])))
 
 ;;---------------------------------------------------------------------------
 
@@ -228,7 +245,12 @@
               (match (hash-ref current-row lane #f)
                 [(labelled-cell s color u)
                  (define para (apply vl-append 0
-                                     (map (lambda (s) (text s 'modern))
+                                     (map (lambda (s)
+                                            (define limit 200)
+                                            (text (if (> (string-length s) limit)
+                                                      (string-append (substring s 0 limit) "...")
+                                                      s)
+                                                  'modern))
                                           (string-split s "\n"))))
                  (vc-append
                   (disk 4)

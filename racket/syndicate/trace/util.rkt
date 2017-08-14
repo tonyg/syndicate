@@ -3,7 +3,8 @@
 (provide env-aref
          format-pids
          format-point
-         format-patch)
+         format-patch
+         check-for-unix-signals-support!)
 
 (require racket/set)
 (require racket/match)
@@ -44,3 +45,19 @@
    (patch-relabel p
                   (lambda (local-pids)
                     (string-join (set-map (treap-keys local-pids) format-pid) ", ")))))
+
+(define (check-for-unix-signals-support!)
+  (define capture-signal!
+    (with-handlers [(void
+                     (lambda (e)
+                       (log-error "Error signalled during unix-signals check:\n~v\n" e)
+                       #f))]
+      (dynamic-require 'unix-signals 'capture-signal!)))
+  (when (not capture-signal!)
+    (log-warning "Cannot load Racket unix-signals package. Signals not available."))
+  (and capture-signal!
+       (begin (capture-signal! 'SIGUSR1)
+              (capture-signal! 'SIGUSR2)
+              (let ((lookup-signal-name (dynamic-require 'unix-signals 'lookup-signal-name)))
+                (handle-evt (dynamic-require 'unix-signals 'next-signal-evt)
+                            lookup-signal-name)))))

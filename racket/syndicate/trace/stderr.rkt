@@ -196,16 +196,6 @@
   (current-trace-procedures (cons trace-via-logger (current-trace-procedures)))
   logger)
 
-(define (check-for-unix-signals-support!)
-  (define capture-signal! (with-handlers [(void (lambda _ #f))]
-                            (dynamic-require 'unix-signals 'capture-signal!)))
-  (and capture-signal!
-       (begin (capture-signal! 'SIGUSR1)
-              (capture-signal! 'SIGUSR2)
-              (let ((lookup-signal-name (dynamic-require 'unix-signals 'lookup-signal-name)))
-                (handle-evt (dynamic-require 'unix-signals 'next-signal-evt)
-                            lookup-signal-name)))))
-
 (define ((display-trace logger))
   (define receiver (make-log-receiver logger 'info))
   (define process-names (make-hash))

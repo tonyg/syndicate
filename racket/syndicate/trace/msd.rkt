@@ -10,18 +10,26 @@
 (require "../trace.rkt")
 (require "util.rkt")
 
-(define (escape-string x)
-  (let* ((s (format "~a" x))
-         (s (string-replace s "\\" "\\\\"))
-         (s (string-replace s "\"" "\\\"")))
-    (string-append "\"" s "\"")))
+(define-logger syndicate/trace/msd)
 
 (let ((output-filename (getenv "SYNDICATE_MSD")))
   (when output-filename
-    (let ((fh (open-output-file output-filename #:exists 'replace)))
+    (define names (make-hash (list (cons '() "'ground"))))
+    (define (open-output cause)
+      (log-syndicate/trace/msd-warning "~a: opening trace file ~a" cause output-filename)
+      (define fh (open-output-file output-filename #:exists 'replace))
+      (write (list #f #f 'name-summary
+                   (for/list [((actor-path name) (in-hash names))]
+                     (cons actor-path (format "~a" name))))
+             fh)
+      (newline fh)
+      fh)
+    (let ((fh (open-output "Startup")))
       (define (write-event! . pieces)
-        (write pieces fh)
-        (newline fh))
+        (let ((fh fh)) ;; avoid non-atomic access; see thread below
+          (when fh
+            (write pieces fh)
+            (newline fh))))
       (define (msd-trace n)
         (match-define (trace-notification source sink type detail) n)
         (match* (type detail)
@@ -30,6 +38,7 @@
           [('turn-end _process)
            (write-event! source sink 'turn-end)]
           [('spawn (process name _beh _state))
+           (hash-set! names (spacetime-space sink) name)
            (write-event! source sink 'spawn (format "~a" name))]
           [('exit exn-or-false)
            (write-event! source sink 'exit exn-or-false)]
@@ -45,6 +54,7 @@
                          'message
                          (pretty-format body))]
           [('action-interpreted 'quit)
+           (hash-remove! names (spacetime-space source))
            (write-event! source sink 'quit)]
           [('event (list cause (? patch? p)))
            (match (spacetime-space sink)
@@ -69,4 +79,28 @@
                          (list (spacetime-space cause)))]
           [('event (list _cause #f)) ;; cause will be #f
            (void)]))
+      (define ch (make-channel))
+      ;; ^ ?!?!?!! Why do I have to do this to avoid problems loading
+      ;; the unix-signals package??? Is there a Racket-level race in
+      ;; namespace-management code???
+      (thread (lambda ()
+                (define next-signal-evt (check-for-unix-signals-support!))
+                (channel-put ch (void))
+                (when next-signal-evt
+                  (log-syndicate/trace/msd-info "SIGUSR1 toggles/resets trace file ~a"
+                                                output-filename)
+                  (let loop ()
+                    (match (sync next-signal-evt)
+                      ['SIGUSR1
+                       (set! fh (cond
+                                  [fh
+                                   (log-syndicate/trace/msd-warning "SIGUSR1: closing trace file ~a"
+                                                                    output-filename)
+                                   (close-output-port fh)
+                                   #f]
+                                  [else
+                                   (open-output "SIGUSR1")]))]
+                      [_ (void)])
+                    (loop)))))
+      (channel-get ch)
       (current-trace-procedures (cons msd-trace (current-trace-procedures))))))
