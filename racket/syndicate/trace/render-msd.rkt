@@ -194,9 +194,9 @@
     [(annotate-swimlane pos color annotation)
      (update-statemap statemaps pos (list color annotation))]))
 
-(define WIDTH (make-parameter 50))
-(define HEIGHT (make-parameter 20))
-(define GAP (make-parameter 20))
+(define WIDTH (make-parameter 100))
+(define HEIGHT (make-parameter 4))
+(define GAP (make-parameter 4))
 (define ACTIVE-WIDTH 10)
 
 (define ACTION-COLOR "white")
@@ -349,11 +349,11 @@
       (set! *scale* (string->number scale))]
      [("-t" "--target") target "Choose target: screen, png, png@2x, svg, eps, pdf"
       (set! *target* (string->symbol target))]
-     [("--width") width "Width of swimlane cells (default: 50)"
+     [("--width") width ((format "Width of swimlane cells (default: ~a)" (WIDTH)))
       (WIDTH (string->number width))]
-     [("--height") height "Minimum height of rows (default: 20)"
+     [("--height") height ((format "Minimum height of rows (default: ~a)" (HEIGHT)))
       (HEIGHT (string->number height))]
-     [("--gap") gap "Extra space between rows (default: 20)"
+     [("--gap") gap ((format "Extra space between rows (default: ~a)" (GAP)))
       (GAP (string->number gap))]
      #:args (filename)
      filename))
