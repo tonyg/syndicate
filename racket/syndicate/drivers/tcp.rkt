@@ -94,13 +94,16 @@
   (define control-ch (make-channel))
   (thread (lambda () (tcp-listener-thread control-ch listener server-addr)))
   (actor #:name (list 'drivers/tcp:listen port)
+         #:assertions*
+         (patch->initial-assertions
+          (patch-seq
+           (sub (advertise (observe (tcp-channel ? server-addr ?)))) ;; monitor peer
+           (pub (advertise (tcp-channel ? server-addr ?))) ;; declare we might make connections
+           (sub (inbound (tcp-accepted ? server-addr ? ?))) ;; events from driver thread
+           ))
          tcp-listener-behavior
 	 (listener-state control-ch server-addr)
-         (patch-seq
-          (sub (advertise (observe (tcp-channel ? server-addr ?)))) ;; monitor peer
-          (pub (advertise (tcp-channel ? server-addr ?))) ;; declare we might make connections
-          (sub (inbound (tcp-accepted ? server-addr ? ?))) ;; events from driver thread
-          )))
+         (void)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Outbound Connection

@@ -43,6 +43,7 @@
          retract
          sub
          unsub
+         patch->initial-assertions
 
          (rename-out [make-quit quit])
          make-actor
@@ -144,6 +145,11 @@
   (patch (pattern->trie '<sub> (observe pattern)) trie-empty))
 (define (unsub pattern)
   (patch trie-empty (pattern->trie '<unsub> (observe pattern))))
+
+(define (patch->initial-assertions p)
+  (when (not (trie-empty? (patch-removed p)))
+    (error 'patch->initial-assertions "Non-empty removed set in initial assertion patch: ~v" p))
+  (patch-added p))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
