@@ -1,10 +1,12 @@
 #lang syndicate/actor
-;; Example showing an interesting design flaw (?) (bug?) in the
-;; old-school LLL demand-matcher when demand changes too quickly. The
-;; port 6000 server is started, but by the time it starts monitoring
-;; demand for its services, the demand is already gone, replaced with
-;; demand for port 5999. This causes connections to be accepted on
-;; port 6000 going nowhere.
+;; Example showing the consequences of not honouring the requirement
+;; of the current LLL demand-matcher that supply tasks must *reliably*
+;; terminate when their demand is not present. In this case, demand
+;; changes too quickly: it exists for long enough to start the task,
+;; but is withdrawn before the task itself has a chance to detect it.
+;; Because the task (as currently implemented) does not use the "learn
+;; negative knowledge" pattern to detect the *absence* of some
+;; assertion, it does not terminate as it is supposed to.
 ;;
 ;; Demonstrates that the fix in commit 2a0197b isn't in general
 ;; sufficient.
