@@ -214,6 +214,8 @@
 
 (define (render-underlay max-lane prev-row current-row next-row height)
   (for/list [(lane (+ max-lane 1))]
+    (define prev-state (hash-ref prev-row lane #f))
+    (define next-state (hash-ref next-row lane #f))
     (fill-out height
               (match (match (hash-ref current-row lane #f)
                        [(labelled-cell s _ u) u]
@@ -223,12 +225,13 @@
                                              (/ ACTIVE-WIDTH 2)
                                              height)]
                 ['active
-                 (define prev-state (hash-ref prev-row lane #f))
-                 (define next-state (hash-ref next-row lane #f))
                  (define (trunk height)
                    (hb-append 0
                               (vline 1 height)
-                              (blank (- ACTIVE-WIDTH 2) height)
+                              (filled-rectangle #:color "white"
+                                                #:draw-border? #f
+                                                (- ACTIVE-WIDTH 2)
+                                                height)
                               (vline 1 height)))
                  (define bar (hline (- ACTIVE-WIDTH 1) 1))
                  (match* (prev-state next-state)
@@ -236,7 +239,11 @@
                    [('active _) (vl-append 0 (trunk (- height 1)) bar)]
                    [(_ 'active) (vl-append 0 bar (trunk (- height 1)))]
                    [(_ _) (vl-append 0 bar (trunk (- height 2)) bar)])]
-                ['terminating (vline 1 height #:segment 2)]
+                ['terminating
+                 (match next-state
+                   [#f (vc-append (vline 1 height #:segment 2)
+                                  (hline (* ACTIVE-WIDTH 2) 1))]
+                   [_ (vline 1 height #:segment 2)])]
                 [#f (blank 0)]))))
 
 (define (render-overlay max-lane current-row)
