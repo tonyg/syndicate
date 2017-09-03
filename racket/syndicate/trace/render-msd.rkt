@@ -212,6 +212,9 @@
 (define (transpose xs)
   (apply map list xs))
 
+(define (FR color w h)
+  (filled-rectangle #:color color #:draw-border? #f w h))
+
 (define (render-underlay max-lane prev-row current-row next-row height)
   (for/list [(lane (+ max-lane 1))]
     (define prev-state (hash-ref prev-row lane #f))
@@ -220,20 +223,14 @@
               (match (match (hash-ref current-row lane #f)
                        [(labelled-cell s _ u) u]
                        [u u])
-                ['inactive (filled-rectangle #:color "gray"
-                                             #:draw-border? #f
-                                             (/ ACTIVE-WIDTH 2)
-                                             height)]
+                ['inactive (FR "gray" (/ ACTIVE-WIDTH 2) height)]
                 ['active
                  (define (trunk height)
                    (hb-append 0
-                              (vline 1 height)
-                              (filled-rectangle #:color "white"
-                                                #:draw-border? #f
-                                                (- ACTIVE-WIDTH 2)
-                                                height)
-                              (vline 1 height)))
-                 (define bar (hline (- ACTIVE-WIDTH 1) 1))
+                              (FR "black" 1 height)
+                              (FR "white" (- ACTIVE-WIDTH 2) height)
+                              (FR "black" 1 height)))
+                 (define bar (FR "black" ACTIVE-WIDTH 1))
                  (match* (prev-state next-state)
                    [('active 'active) (trunk height)]
                    [('active _) (vl-append 0 (trunk (- height 1)) bar)]
@@ -241,8 +238,8 @@
                    [(_ _) (vl-append 0 bar (trunk (- height 2)) bar)])]
                 ['terminating
                  (match next-state
-                   [#f (vc-append (vline 1 height #:segment 2)
-                                  (hline (* ACTIVE-WIDTH 2) 1))]
+                   [#f (vc-append (vline 1 (- height 1) #:segment 2)
+                                  (hline (- (* ACTIVE-WIDTH 2) 1) 1))]
                    [_ (vline 1 height #:segment 2)])]
                 [#f (blank 0)]))))
 
@@ -263,10 +260,7 @@
                   (disk 4)
                   (frame
                    (cc-superimpose
-                    (filled-rectangle #:color color
-                                      #:draw-border? #f
-                                      (+ (pict-width para) 8)
-                                      (+ (pict-height para) 8))
+                    (FR color (+ (pict-width para) 8) (+ (pict-height para) 8))
                     para)))]
                 [_ #f]))))
 
