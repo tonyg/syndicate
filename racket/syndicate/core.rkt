@@ -11,6 +11,9 @@
 
          (struct-out process)
 
+         assertion-struct
+         message-struct
+
          (struct-out seal)
          sealof
 
@@ -115,6 +118,12 @@
 
 ;; A PID is a Nat.
 ;; A Label is a PID or 'meta.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Thin veneers over `struct` for declaring intent.
+
+(define-syntax-rule (assertion-struct item ...) (struct item ... #:prefab))
+(define-syntax-rule (message-struct item ...) (struct item ... #:prefab))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Seals are used by protocols to prevent the routing tries from

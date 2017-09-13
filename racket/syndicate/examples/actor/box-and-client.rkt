@@ -1,8 +1,8 @@
 #lang syndicate
 ;; Simple mutable box and count-to-infinity box client.
 
-(struct set-box (new-value) #:transparent)
-(struct box-state (value) #:transparent)
+(message-struct set-box (new-value))
+(assertion-struct box-state (value))
 
 (spawn (field [current-value 0])
        (assert (box-state (current-value)))
