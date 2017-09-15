@@ -4,8 +4,14 @@
 
 (assertion-struct active ())
 (message-struct toggle ())
+(message-struct stdout-message (body))
 
-(spawn* (define (active-state)
+(spawn #:name 'printer
+       (on (message (stdout-message $body))
+           (displayln body)))
+
+(spawn* #:name 'flip-flop
+        (define (active-state)
           (react (assert (active))
                  (stop-when (message (toggle))
                     (inactive-state))))
@@ -14,8 +20,8 @@
                     (active-state))))
         (inactive-state))
 
-(spawn (on (asserted (active)) (printf "Flip-flop is active\n"))
-       (on (retracted (active)) (printf "Flip-flop is inactive\n"))
+(spawn (on (asserted (active)) (send! (stdout-message "Flip-flop is active")))
+       (on (retracted (active)) (send! (stdout-message "Flip-flop is inactive")))
 
        (field [next-toggle-time (current-inexact-milliseconds)])
        (on (asserted (later-than (next-toggle-time)))
