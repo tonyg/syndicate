@@ -48,6 +48,6 @@ module.exports.Actor = require("./actor.js");
 // module.exports.Spy = require("./spy.js").Spy;
 // module.exports.WakeDetector = require("./wake-detector.js").WakeDetector;
 
-// var Worker = require("./worker.js");
-// module.exports.Worker = Worker.Worker;
-// module.exports.WorkerGround = Worker.WorkerGround;
+var Worker = require("./worker.js");
+module.exports.Worker = Worker.Worker;
+module.exports.WorkerGround = Worker.WorkerGround;

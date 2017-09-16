@@ -1,11 +1,10 @@
 var randomId;
 
-if ((typeof window !== 'undefined') &&
-    (typeof window.crypto !== 'undefined') &&
-    (typeof window.crypto.getRandomValues !== 'undefined')) {
+function browserCryptoObject(crypto) {
+  if (typeof crypto.getRandomValues === 'undefined') return false;
   randomId = function (byteCount, hexOutput) {
     var buf = new Uint8Array(byteCount);
-    window.crypto.getRandomValues(buf);
+    crypto.getRandomValues(buf);
     if (hexOutput) {
       var encoded = [];
       for (var i = 0; i < buf.length; i++) {
@@ -17,7 +16,24 @@ if ((typeof window !== 'undefined') &&
       return btoa(String.fromCharCode.apply(null, buf)).replace(/=/g,'');
     }
   };
+  return true;
+}
+
+if ((typeof window !== 'undefined') &&
+    (typeof window.crypto !== 'undefined') &&
+    browserCryptoObject(window.crypto)) {
+  // We are in the main page, and window.crypto is available, and
+  // browserCryptoObject has installed a suitable randomId. Do
+  // nothing.
+} else if ((typeof self !== 'undefined') &&
+           (typeof self.crypto !== 'undefined') &&
+           browserCryptoObject(self.crypto)) {
+  // We are in a web worker, and self.crypto is available, and
+  // browserCryptoObject has installed a suitable randomId. Do
+  // nothing.
 } else {
+  // See if we're in node.js.
+
   var crypto;
   try {
     crypto = require('crypto');
