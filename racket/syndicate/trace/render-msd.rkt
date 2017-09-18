@@ -21,10 +21,16 @@
 
 ;;---------------------------------------------------------------------------
 
+(define OMIT-EMPTY-PATCHES? (make-parameter #f))
+
 (define (find-unused-lane swimlane-map)
   (let ((used-lanes (list->set (hash-values swimlane-map))))
     (do ((i 0 (+ i 1)))
         ((not (set-member? used-lanes i)) i))))
+
+(define (empty-patch-description? desc)
+  ;; Ewww.
+  (equal? desc "- ::: nothing\n+ ::: nothing\n"))
 
 (define (read-msd port)
   (define max-lane -1)
@@ -94,12 +100,13 @@
                                             [1 "1 action"]
                                             [n (format "~a actions" n)])))]
          [(list source sink 'action-interpreted _ desc)
-          (define shifted-sink
-            (if source
-                (spacetime (spacetime-space source) (spacetime-time sink))
-                sink))
-          (emit-events (annotate-swimlane (translate! shifted-sink) ACTION-COLOR desc)
-                       (connection* source shifted-sink))]
+          (when (not (and (OMIT-EMPTY-PATCHES?) (empty-patch-description? desc)))
+            (define shifted-sink
+              (if source
+                  (spacetime (spacetime-space source) (spacetime-time sink))
+                  sink))
+            (emit-events (annotate-swimlane (translate! shifted-sink) ACTION-COLOR desc)
+                         (connection* source shifted-sink)))]
          [(list source sink 'quit)
           (define shifted-sink
             (if source
@@ -108,14 +115,15 @@
           (emit-events (begin0 (end-swimlane (translate! shifted-sink))
                          (when source (vacate-lane! shifted-sink))))]
          [(list direct-cause recipient 'event _ desc indirect-cause doubly-indirect-paths)
-          (apply emit-events
-                 (annotate-swimlane (translate! recipient) EVENT-COLOR desc)
-                 ;; (connection* direct-cause recipient)
-                 ;; (connection* indirect-cause recipient)
-                 (map (lambda (doubly-indirect-path)
-                        (connection (translate*! doubly-indirect-path (spacetime-time direct-cause))
-                                    (translate! recipient)))
-                      doubly-indirect-paths))])
+          (when (not (and (OMIT-EMPTY-PATCHES?) (empty-patch-description? desc)))
+            (apply emit-events
+                   (annotate-swimlane (translate! recipient) EVENT-COLOR desc)
+                   ;; (connection* direct-cause recipient)
+                   ;; (connection* indirect-cause recipient)
+                   (map (lambda (doubly-indirect-path)
+                          (connection (translate*! doubly-indirect-path (spacetime-time direct-cause))
+                                      (translate! recipient)))
+                        doubly-indirect-paths)))])
        (loop)])))
 
 ;;---------------------------------------------------------------------------
@@ -346,6 +354,10 @@
   (define filename
     (command-line
      #:once-each
+     [("--omit-empty-patches") "Omits empty patches from display"
+      (OMIT-EMPTY-PATCHES? #t)]
+     [("--no-omit-empty-patches") "Includes empty patches in display"
+      (OMIT-EMPTY-PATCHES? #f)]
      [("-s" "--scale") scale "Rescales output; 1 = 100%"
       (set! *scale* (string->number scale))]
      [("-t" "--target") target "Choose target: screen, png, png@2x, svg, eps, pdf"
