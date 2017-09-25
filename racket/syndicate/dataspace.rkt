@@ -177,6 +177,10 @@
     [(<actor> boot initial-assertions)
      (invoke-process (mux-next-pid (dataspace-mux w)) ;; anticipate pid allocation
                      (lambda ()
+                       (when (not (trie? initial-assertions))
+                         (error 'actor
+                                "actor initial assertions must be trie; was ~v"
+                                initial-assertions))
                        (match (boot)
                          [(and results (list (? procedure?) (? general-transition?) _))
                           results]

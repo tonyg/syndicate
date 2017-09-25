@@ -29,12 +29,13 @@
   (dataspace (define id (symbol->string (gensym 'app)))
              (printf "Starting app ~a\n" id)
              (schedule-action! (program-boot-actions 'syndicate/examples/actor/bank-account))
-             (forever
+             (spawn
               (assert (outbound (running-app id)))
-              (stop-when (message (inbound (kill-app id)))
-                         (printf "Received signal for app ~a\n" id))
+              (on (message (inbound (kill-app id)))
+                  (printf "Received signal for app ~a\n" id)
+                  (quit-dataspace!))
               (during (account $balance)
-                      (assert (outbound (named-account name balance)))))))
+                (assert (outbound (named-account name balance)))))))
 
 (run-bank-account 'a)
 (run-bank-account 'b)

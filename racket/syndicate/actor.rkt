@@ -57,6 +57,7 @@
          patch!
          perform-actions!
          flush!
+         quit-dataspace!
 
          syndicate-effects-available?
 
@@ -342,10 +343,7 @@
   (syntax-parse stx
     [(_ name:name script ...)
      (quasisyntax/loc stx
-       (let ((spawn-action (core:dataspace-actor
-                            #:name name.N
-                            (actor-action script ...
-                                          (schedule-action! (core:quit-dataspace))))))
+       (let ((spawn-action (core:dataspace-actor #:name name.N (actor-action script ...))))
          (if (syndicate-effects-available?)
              (schedule-action! spawn-action)
              spawn-action)))]))
@@ -1321,6 +1319,10 @@
   (define ack (gensym 'flush!))
   (until (core:message ack)
          (on-start (send! ack))))
+
+(define (quit-dataspace!)
+  (ensure-in-script! 'quit-dataspace!)
+  (schedule-action! (core:quit-dataspace)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

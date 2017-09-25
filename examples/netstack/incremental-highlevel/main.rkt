@@ -41,11 +41,12 @@
            (on (message (inbound (tcp-channel them us $bs)))
                (send! (says user (string-trim (bytes->string/utf-8 bs)))))))
 
+  (define us (tcp-listener 5999))
   (dataspace #:name 'chat-dataspace
-             (define us (tcp-listener 5999))
-             (forever (assert (outbound (advertise (observe (tcp-channel _ us _)))))
-                      (on (asserted (inbound (advertise (tcp-channel $them us _))))
-                          (spawn-session them us)))))
+             (spawn #:name 'chat-server
+                    (assert (outbound (advertise (observe (tcp-channel _ us _)))))
+                    (on (asserted (inbound (advertise (tcp-channel $them us _))))
+                        (spawn-session them us)))))
 
 (let ((dst (udp-listener 6667)))
   (spawn #:name 'udp-echo-program
@@ -61,25 +62,25 @@
               (send! `(counter ,(counter)))
               (counter (+ (counter) 1))))
 
-   (forever (define us (tcp-listener 80))
-            (assert (outbound (advertise (observe (tcp-channel _ us _)))))
-            (during/spawn (inbound (advertise (tcp-channel ($ them (tcp-address _ _)) us _)))
-                          #:name (list 'webserver-session them)
-                          (log-info "Got connection from ~v" them)
-                          (assert (outbound (advertise (tcp-channel us them _))))
-                          (on (message (inbound (tcp-channel them us _)))) ;; ignore input
+   (define us (tcp-listener 80))
+   (spawn (assert (outbound (advertise (observe (tcp-channel _ us _)))))
+          (during/spawn (inbound (advertise (tcp-channel ($ them (tcp-address _ _)) us _)))
+            #:name (list 'webserver-session them)
+            (log-info "Got connection from ~v" them)
+            (assert (outbound (advertise (tcp-channel us them _))))
+            (on (message (inbound (tcp-channel them us _)))) ;; ignore input
 
-                          (on-start (send! 'bump))
-                          (on (message `(counter ,$counter))
-                              (define response
-                                (string->bytes/utf-8
-                                 (format (string-append
-                                          "HTTP/1.0 200 OK\r\n\r\n"
-                                          "<h1>Hello world from syndicate-netstack!</h1>\n"
-                                          "<p>This is running on syndicate's own\n"
-                                          "<a href='https://github.com/tonyg/syndicate/'>\n"
-                                          "TCP/IP stack</a>.</p>\n"
-                                          "<p>There have been ~a requests prior to this one.</p>\n")
-                                         counter)))
-                              (send! (outbound (tcp-channel us them response)))
-                              (stop-facet (current-facet-id)))))))
+            (on-start (send! 'bump))
+            (on (message `(counter ,$counter))
+                (define response
+                  (string->bytes/utf-8
+                   (format (string-append
+                            "HTTP/1.0 200 OK\r\n\r\n"
+                            "<h1>Hello world from syndicate-netstack!</h1>\n"
+                            "<p>This is running on syndicate's own\n"
+                            "<a href='https://github.com/tonyg/syndicate/'>\n"
+                            "TCP/IP stack</a>.</p>\n"
+                            "<p>There have been ~a requests prior to this one.</p>\n")
+                           counter)))
+                (send! (outbound (tcp-channel us them response)))
+                (stop-facet (current-facet-id)))))))

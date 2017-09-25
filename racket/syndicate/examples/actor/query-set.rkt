@@ -65,5 +65,4 @@
                     (on-start (log-info "observer-in-ds: STARTING"))
                     (define/query-set items (inbound* LEVEL `(item ,$a ,$b)) (list a b))
                     (on (message (inbound* LEVEL 'dump))
-                        (log-info "observer-in-ds: ~v" (items))))
-             (forever)))
+                        (log-info "observer-in-ds: ~v" (items))))))

@@ -671,17 +671,17 @@
 ;; kills the dataspace.
 
 (define (wait-for-level-termination)
-  (react/suspend (done)
-                 (assert (outbound (level-running)))
-                 (stop-when (retracted (game-piece-configuration player-id _ _ _))
-                            (log-info "Player died! Terminating level.")
-                            (play-sound-sequence 270328)
-                            (done))
-                 (stop-when (message (inbound (level-completed)))
-                            (log-info "Level completed! Terminating level.")
-                            (play-sound-sequence 270330)
-                            (send! (outbound (add-to-score 100)))
-                            (done))))
+  (spawn
+   (assert (outbound (level-running)))
+   (on (retracted (game-piece-configuration player-id _ _ _))
+       (log-info "Player died! Terminating level.")
+       (play-sound-sequence 270328)
+       (quit-dataspace!))
+   (on (message (inbound (level-completed)))
+       (log-info "Level completed! Terminating level.")
+       (play-sound-sequence 270330)
+       (send! (outbound (add-to-score 100)))
+       (quit-dataspace!))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LevelSpawner
@@ -816,5 +816,4 @@
 (spawn-keyboard-integrator)
 (spawn-scene-manager)
 (dataspace (spawn-score-keeper)
-           (spawn-level-spawner 0)
-           (forever))
+           (spawn-level-spawner 0))

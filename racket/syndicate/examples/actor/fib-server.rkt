@@ -50,4 +50,5 @@
  (until (rising-edge (= (counter) 2)))
  (log-info "Quitting main")
  (until (message (inbound (timer-expired 'wait _)))
-        (on-start (send! (outbound (set-timer 'wait 100 'relative))))))
+        (on-start (send! (outbound (set-timer 'wait 100 'relative)))))
+ (quit-dataspace!))
