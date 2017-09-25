@@ -192,7 +192,6 @@
                (when spawn-needed?
                  (active-state-vectors (set-add (active-state-vectors) statevec))
                  (spawn-state-vector src-ip src-port dst-ip dst-port))
-               ;; TODO: get packet to the new state-vector process somehow
                (send! packet)))
             (else #f))))
        (else #f)))
@@ -303,6 +302,13 @@
                 src-port
                 (ip-address->hostname dst-ip)
                 dst-port)
+   ;; Spawn with initial assertions so we are guaranteed to be sent
+   ;; the packet that led to our creation (in the case of an accepted
+   ;; server connection), and so that we at the same moment gain
+   ;; knowledge of whether we were created on a listening port:
+   #:assertions* (patch-added
+                  (patch-seq (sub (tcp-packet #t src-ip src-port dst-ip dst-port ? ? ? ? ? ?))
+                             (sub (observe (advertise (tcp-channel ? (tcp-listener dst-port) ?))))))
 
    (define root-facet (current-facet-id))
 
