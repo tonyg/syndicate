@@ -11,10 +11,9 @@
 (spawn #:name 'drivers/timestate
        (during (observe (later-than $msecs))
          (define timer-id (gensym 'timestate))
-         (field [expired? #f])
          (on-start (send! (set-timer timer-id msecs 'absolute)))
-         (on (message (timer-expired timer-id _)) (expired? #t))
-         (assert #:when (expired?) (later-than msecs))))
+         (on (message (timer-expired timer-id _))
+             (react (assert (later-than msecs))))))
 
 (define-syntax-rule (stop-when-timeout relative-msecs body ...)
   (let ((timer-id (gensym 'timeout)))
