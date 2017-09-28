@@ -21,3 +21,8 @@
            (printf "Tick ~v\n" (counter))
            (counter (+ (counter) 1))
            (deadline (+ (deadline) 1000))))
+
+(spawn* #:name 'demo-sleep
+        (for [(counter (in-range 10))]
+          (printf "Sleeping tick ~v\n" counter)
+          (sleep 1.0)))
