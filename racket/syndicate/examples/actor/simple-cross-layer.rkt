@@ -2,10 +2,11 @@
 
 (assertion-struct greeting (text))
 
-(spawn (assert (greeting "Hello from an outer dataspace actor!")))
-(spawn (on (asserted (greeting $t))
-           (printf "Outer dataspace: ~a\n" t)))
+(spawn #:name "A" (assert (greeting "Hi from outer space!")))
+(spawn #:name "B" (on (asserted (greeting $t))
+                      (printf "Outer dataspace: ~a\n" t)))
 
-(dataspace (spawn (assert (outbound (greeting "Hello from an inner dataspace actor!"))))
-           (spawn (on (asserted (inbound (greeting $t)))
-                      (printf "Inner dataspace: ~a\n" t))))
+(dataspace #:name "C"
+  (spawn #:name "D" (assert (outbound (greeting "Hi from inner!"))))
+  (spawn #:name "E" (on (asserted (inbound (greeting $t)))
+                        (printf "Inner dataspace: ~a\n" t))))
