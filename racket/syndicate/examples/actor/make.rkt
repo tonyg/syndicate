@@ -13,12 +13,11 @@
          (when (not (string-suffix? name ".c"))
            (define name.c (string-append name ".c"))
            (on-start (printf "Tracking ~a, to see if we can use it to build ~a\n" name.c name))
-           (during (file-content name.c file->sha1 $hash) ;; nb. $hash, not _
-             (on-start
-              (if hash
-                  (begin (printf "~a has changed hash to ~a, recompiling\n" name.c hash)
-                         (system* (find-executable-path "cc") "-o" name name.c))
-                  (printf "~a doesn't exist.\n" name.c)))))))
+           (on (asserted (file-content name.c file->sha1 $hash)) ;; nb. $hash, not _
+               (if hash
+                   (begin (printf "~a has changed hash to ~a, recompiling\n" name.c hash)
+                          (system* (find-executable-path "cc") "-o" name name.c))
+                   (printf "~a doesn't exist.\n" name.c))))))
 
 (spawn (on (asserted (file-content "." directory-list $files))
            (for [(name-path (in-list files))]
