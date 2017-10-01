@@ -100,7 +100,9 @@
                 (names-acc (set))]
 
                [(regexp #px#"^:([^!]+)![^ ]* PART ([^ ]+)\r$" (list _ src tgt))
-                (retract! (irc-presence C (bytes->string/utf-8 src) (bytes->string/utf-8 tgt)))]
+                (retract! (irc-presence C (bytes->string/utf-8 src) (bytes->string/utf-8 tgt)))
+                (when (equal? (bytes->string/utf-8 src) nick)
+                  (retract! (irc-presence C ? (bytes->string/utf-8 tgt))))]
 
                [(regexp #px#"^:([^!]+)![^ ]* QUIT :(.*)\r$" (list _ src _quitmsg))
                 (retract! (irc-presence C (bytes->string/utf-8 src) ?))]
