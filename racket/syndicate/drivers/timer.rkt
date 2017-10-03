@@ -116,7 +116,6 @@
 	    '()))))
 
 (define (install-timer! heap label deadline)
-  (define now (current-inexact-milliseconds))
   (heap-add! heap (pending-timer deadline label)))
 
 ;; Racket's alarm-evt is almost the right design for timeouts: its
