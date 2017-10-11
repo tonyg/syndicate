@@ -171,7 +171,9 @@
       [(message (inbound (tcp-channel remote-addr local-addr (? bytes? bs))))
        (transition state (message (tcp-channel remote-addr local-addr bs)))]
       [(message (tcp-channel _ _ bs))
-       (write-bytes bs (connection-state-cout state))
+       (if (string? bs)
+           (write-string bs (connection-state-cout state))
+           (write-bytes bs (connection-state-cout state)))
        (flush-output (connection-state-cout state))
        #f]
       [(? patch? p)
