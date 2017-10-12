@@ -433,8 +433,8 @@
                                 (lambda ()
                                   (begin/void-default script ...))))))))]))
 
-(define-syntax-rule (stop-current-facet)
-  (stop-facet (current-facet-id)))
+(define-syntax-rule (stop-current-facet script ...)
+  (stop-facet (current-facet-id) script ...))
 
 (define-syntax (stop-when stx)
   (syntax-parse stx
