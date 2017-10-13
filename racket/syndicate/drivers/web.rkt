@@ -34,6 +34,8 @@
          websocket-connection-closed
          websocket-message-recv
          websocket-message-send!
+         web-request-send!
+         web-request-send!*
          web-respond/bytes!
          web-respond/string!
          web-respond/xexpr!
@@ -158,6 +160,25 @@
 
 (define (websocket-message-send! id str)
   (send! (websocket-message id 'outbound str)))
+
+(define (web-request-send! id url-string
+                           #:method [method 'GET]
+                           #:headers [headers '()]
+                           #:query [query #f]
+                           #:body [body #""])
+  (define u (string->url url-string))
+  (web-request-send!* id (url->resource u)
+                      #:method method
+                      #:headers headers
+                      #:query (or query (url-query u))
+                      #:body body))
+
+(define (web-request-send!* id resource
+                            #:method [method 'GET]
+                            #:headers [headers '()]
+                            #:query [query '()]
+                            #:body [body #f])
+  (send! (web-request id 'outbound (web-request-header method resource headers query) body)))
 
 (define (web-respond/bytes! id #:header [header (make-web-response-header)] body-bytes)
   (send! (web-response-complete id header body-bytes)))
