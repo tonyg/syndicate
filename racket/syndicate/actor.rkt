@@ -1213,6 +1213,9 @@
            (struct-out facet)
            (struct-out endpoint)
 
+           field-ref
+           field-set!
+
            suspend-script
            suspend-script*
 
