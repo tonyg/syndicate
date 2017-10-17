@@ -40,9 +40,8 @@
 (struct set-temperature (unit value) #:prefab)
 
 (spawn (versioned-field [C 0] [F 32])
-       (begin/dataflow
-         (F (+ (* (C) 9/5) 32) C)
-         (C (* (- (F) 32) 5/9) F))
+       (begin/dataflow (F (+ (* (C) 9/5) 32) C))
+       (begin/dataflow (C (* (- (F) 32) 5/9) F))
        (assert (temperature 'C (C)))
        (assert (temperature 'F (F)))
        (on (message (set-temperature 'C $v)) (C v))
