@@ -17,6 +17,12 @@
          λ Case →
          Facet)
 
+(require (rename-in racket/match [match-lambda match-lambda-]))
+
+(module+ test
+  (require rackunit)
+  (require turnstile/rackunit-typechecking))
+
 ;(require syndicate/actor-lang)
 #;(provide (all-from-out syndicate/actor-lang))
 
@@ -80,12 +86,23 @@
                   (retracted p:pat))))
                   
   (define-syntax-class pat
-    #:datum-literals (tuple _ discard)
-    (pattern (~or (tuple p:pat ...)
-                  ($ x:id : τ:type)
-                  discard
-                  x:id
-                  e:exp))))
+    #:datum-literals (tuple _ discard bind)
+    #:attributes (syndicate-pattern match-pattern)
+    (pattern (~or (~and (tuple p:pat ...)
+                        (~bind [syndicate-pattern #'(list 'tuple p.syndicate-pattern ...)]
+                               [match-pattern #'(list 'tuple p.match-pattern ...)]))
+                  (~and (bind ~! x:id τ:type)
+                        (~bind [syndicate-pattern #'($ x)]
+                               [match-pattern #'x]))
+                  (~and discard
+                        (~bind [syndicate-pattern #'_]
+                               [match-pattern #'_]))
+                  (~and x:id
+                        (~bind [syndicate-pattern #'x]
+                               [match-pattern #'(== x)]))
+                  (~and e:exp
+                        (~bind [syndicate-pattern #'e]
+                               [match-pattern #'(== e)]))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Statements
@@ -111,13 +128,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
 
-#;(define-syntax-class exp
-    #:datum-literals (tuple λ)
-    (pattern (~or (o:prim-op e:exp ...)
-                  basic-val
-                  (tuple e:exp ...)
-                  (λ [p:pat s:stmt] ...))))
-
 (define-typed-syntax (tuple e:expr ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
   -----------------------
@@ -126,9 +136,12 @@
 (define-typed-syntax (λ [p:pat s:stmt] ...) ≫
   #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
   [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ : τ1) (⇒ :2 τ2) (⇒ :3 τ3)] ...
+  ;; REALLY not sure how to handle p/p-/p.match-pattern,
+  ;; particularly w.r.t. typed terms that appear in p.match-pattern
   [⊢ p ≫ p- ⇒ τ-p] ...
   --------------------------------------------------------------
-  [⊢ (match-lambda- [p- s-] ...) ⇒ (Case [→ τ-p (Facet τ1 τ2 τ3)] ...)])
+  ;; TODO: add a catch-all error clause
+  [⊢ (match-lambda- [p.match-pattern s-] ...) ⇒ (Case [→ τ-p (Facet τ1 τ2 τ3)] ...)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Patterns
@@ -177,11 +190,8 @@
   ----------------
   [⊢ (#%datum- . s) ⇒ String]])
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Tests
 
-
-;; x[A (D S) ...]
-
-#;(react x
-       (assert A)
-       (on D S)
-       ...)
+(module+ test
+  (check-true (void? ((λ [(bind x Int) nil]) 1))))
