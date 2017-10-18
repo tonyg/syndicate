@@ -1,26 +1,27 @@
 #lang typed/syndicate
 
-(require turnstile/rackunit-typechecking)
+(define-type-alias ds-type
+   (U (Observe (Tuple String ★)) (Tuple String Int)))
 
-#;(spawn
- (assert (list "hello")))
+(dataspace ds-type
 
-#;(spawn
- (on (asserted (list "hello"))
-     (printf "hello\n")))
+           (spawn ds-type
+                  (facet _
+                         (fields [the-thing Int 0])
+                         (assert (tuple "the thing" (ref the-thing)))
+                         (on (asserted (tuple "set thing" (bind new-v Int)))
+                             (set! the-thing new-v))))
 
-(check-type 1 : Int)
+           (spawn ds-type
+                  (let [k (λ [10 (begin)]
+                            [(bind x Int)
+                             (facet _ (fields)
+                                    (assert (tuple "set thing" (+ x 1))))])]
+                    (facet _ (fields)
+                           (on (asserted (tuple "the thing" (bind x Int)))
+                               (k x)))))
 
-(check-type (let-field x : Int 5 nil) : ⊥)
-(check-type (let-field x : Int 5 nil) :2 ⊥)
-(check-type (let-field x : Int 5 nil) :3 ⊥)
-
-(check-type (tuple 1 2 3) : (Tuple Int Int Int))
-
-(typecheck-fail (let-field x : Int 5
-                           (let-field y : (Field Int) x nil))
-                #:with-msg "Keep your functions out of fields")
-
-(check-type (tuple discard 1 (bind x Int)) : (Tuple Discard Int (Bind Int)))
-
-(check-type (λ [(bind x Int) nil]) : (Case [→ (Bind Int) (Facet ⊥ ⊥ ⊥)]))
+           (spawn ds-type
+                  (facet _ (fields)
+                         (on (asserted (tuple "the thing" (bind t Int)))
+                             (displayln t)))))
