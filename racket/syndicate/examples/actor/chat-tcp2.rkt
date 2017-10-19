@@ -6,8 +6,8 @@
 (require (only-in racket/string string-trim))
 (require racket/format)
 
-(struct speak (who what) #:prefab)
-(struct present (who) #:prefab)
+(message-struct speak (who what))
+(assertion-struct present (who))
 
 (spawn #:name 'chat-server
  (during/spawn (tcp-connection $id (tcp-listener 5999))
