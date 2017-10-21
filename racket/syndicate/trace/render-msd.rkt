@@ -205,6 +205,10 @@
 (define WIDTH (make-parameter 100))
 (define HEIGHT (make-parameter 4))
 (define GAP (make-parameter 4))
+
+(define NUMBER-STEPS? (make-parameter #f))
+(define NUMBER-GAP (make-parameter 0))
+
 (define ACTIVE-WIDTH 10)
 
 (define ACTION-COLOR "white")
@@ -272,6 +276,11 @@
                     para)))]
                 [_ #f]))))
 
+(define (should-label-row? row-number max-lane current-row)
+  (and (not (negative? row-number))
+       (for/or [(lane (+ max-lane 1))]
+         (labelled-cell? (hash-ref current-row lane #f)))))
+
 (define (msd->pict m)
   (match-define (msd max-lane all-events) m)
   (define-values (connections events) (partition connection? all-events))
@@ -296,15 +305,27 @@
             (define overlay (render-overlay max-lane current-row))
             (define height (+ (GAP) (apply max (map pict-height overlay))))
             (define underlay (render-underlay max-lane prev-row current-row next-row height))
-            (list row-number underlay overlay)])
+            (list row-number
+                  underlay
+                  overlay
+                  (should-label-row? row-number max-lane current-row))])
          row-triples))
   (define overlay-index (for/hash [(entry over-and-unders)]
                           (values (car entry) (caddr entry))))
   (define base-pict
     (apply vl-append 0
            (map (lambda (over-and-under)
-                  (ct-superimpose (apply hb-append 4 (cadr over-and-under))
-                                  (apply hb-append 4 (caddr over-and-under))))
+                  (hc-append (ct-superimpose (apply hb-append 4 (cadr over-and-under))
+                                             (apply hb-append 4 (caddr over-and-under)))
+                             (if (and (NUMBER-STEPS?) (cadddr over-and-under))
+                                 (let ((L (cc-superimpose
+                                           (circle 30)
+                                           (text (number->string (car over-and-under))))))
+                                   (hc-append (blank (NUMBER-GAP) 0)
+                                              (inset L
+                                                     (- (pict-width L))
+                                                     (- (pict-height L)))))
+                                 (blank 0))))
                 over-and-unders)))
   (for/fold [(base-pict base-pict)]
             [(c connections)]
@@ -327,8 +348,8 @@
 (define (render p #:target [target (string->symbol (or (getenv "VM_PICTURES_TARGET") "eps"))])
   (define (final-border) 1)
   (define final-pict (cc-superimpose (blank (+ (pict-width p) (* 2 (final-border)))
-					    (+ (pict-height p) (* 2 (final-border))))
-				     (panorama p)))
+                                            (+ (pict-height p) (* 2 (final-border))))
+                                     (panorama p)))
   (case target
     [(screen)
      ;; FFS. This connects to the display even if you don't use it.
@@ -368,6 +389,12 @@
       (HEIGHT (string->number height))]
      [("--gap") gap ((format "Extra space between rows (default: ~a)" (GAP)))
       (GAP (string->number gap))]
+     [("--number") "Enables step numbering"
+      (NUMBER-STEPS? #t)]
+     [("--no-number") "Disables step numbering"
+      (NUMBER-STEPS? #f)]
+     [("--number-gap") number-gap ((format "Extra space to row numbers (default: ~a)" (NUMBER-GAP)))
+      (NUMBER-GAP (string->number number-gap))]
      #:args (filename)
      filename))
   (render (scale (msd->pict (if (equal? filename "-")
