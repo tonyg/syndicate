@@ -5,13 +5,13 @@
          #%top-interaction
          require
          ;; Types
-         Int ⊥ Tuple Bind Discard Case → Facet Field
+         Int ⊥ Tuple Bind Discard Case → Facet Field ★ Observe Inbound Outbound
          ;; Statements
          nil let-field let-function spawn dataspace facet set! begin stop
          ;; endpoints
          assert on
          ;; expressions
-         tuple λ ref
+         tuple λ ref observe inbound outbound
          ;; values
          #%datum
          ;; patterns
@@ -31,7 +31,7 @@
 ;(require syndicate/actor-lang)
 #;(provide (all-from-out syndicate/actor-lang))
 
-(define-base-types Int Bool String ⊥ Discard)
+(define-base-types Int Bool String ⊥ Discard ★)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Facet #:arity = 3)
 (define-type-constructor Bind #:arity = 1)
@@ -39,15 +39,25 @@
 (define-type-constructor U #:arity >= 0)
 (define-type-constructor Case #:arity >= 0)
 (define-type-constructor → #:arity > 0)
+(define-type-constructor Observe #:arity = 1)
+(define-type-constructor Inbound #:arity = 1)
+(define-type-constructor Outbound #:arity = 1)
 
 (begin-for-syntax
   (define-syntax-class exp
     #:datum-literals (tuple λ ref)
-    (pattern (~or (o:prim-op e:exp ...)
+    (pattern (~or (o:prim-op es:exp ...)
                   basic-val
-                  (tuple e:exp ...)
+                  (k:kons1 e:exp)
+                  (tuple es:exp ...)
                   (ref x:id)
                   (λ [p:pat s:stmt] ...))))
+
+  ;; constructors with arity one
+  (define-syntax-class kons1
+    (pattern (~or (~literal observe)
+                  (~literal inbound)
+                  (~literal outbound))))
 
   (define-syntax-class basic-val
     (pattern (~or boolean
@@ -96,9 +106,13 @@
   (define-syntax-class pat
     #:datum-literals (tuple _ discard bind)
     #:attributes (syndicate-pattern match-pattern)
-    (pattern (~or (~and (tuple p:pat ...)
-                        (~bind [syndicate-pattern #'(list 'tuple p.syndicate-pattern ...)]
-                               [match-pattern #'(list 'tuple p.match-pattern ...)]))
+    (pattern (~or (~and (tuple ps:pat ...)
+                        (~bind [syndicate-pattern #'(list 'tuple ps.syndicate-pattern ...)]
+                               [match-pattern #'(list 'tuple ps.match-pattern ...)]))
+                  (~and (k:kons1 p:pat)
+                        ;; not sure if this gets the binding of k right
+                        (~bind [syndicate-pattern #'(k p.syndicate-pattern)]
+                               [match-pattern #'(k p.match-pattern)]))
                   (~and (bind ~! x:id τ:type)
                         (~bind [syndicate-pattern #'($ x)]
                                [match-pattern #'x]))
@@ -145,16 +159,36 @@
   ----------------------------------------------
   [⊢ (syndicate:dataspace s- ...) (⇒ : τ-i) (⇒ :2 (U τ-o τ-relay)) (⇒ :3 ⊥)])
 
+(define-for-syntax (strip-? t)
+  (syntax-parse t
+    ;; TODO: probably need to `normalize` the result
+    [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+    [~★ #'★]
+    [(~Observe τ) #'τ]
+    [_ #'⊥]))
+
 (define-for-syntax (strip-inbound t)
   (syntax-parse t
+    ;; TODO: probably need to `normalize` the result
+    [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+    [~★ #'★]
+    [(~Inbound τ) #'τ]
     [_ #'⊥]))
 
 (define-for-syntax (strip-outbound t)
   (syntax-parse t
+    ;; TODO: probably need to `normalize` the result
+    [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+    [~★ #'★]
+    [(~Outbound τ) #'τ]
     [_ #'⊥]))
 
 (define-for-syntax (relay-interests t)
   (syntax-parse t
+    ;; TODO: probably need to `normalize` the result
+    [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+    [~★ #'★]
+    [(~Observe (~Inbound τ)) #'(Observe τ)]
     [_ #'⊥]))
 
 (define-typed-syntax (spawn τ-c:type s:stmt) ≫
@@ -189,7 +223,7 @@
 (define-typed-syntax (begin s:stmt ...) ≫
   [⊢ s ≫ s- (⇒ : τ1) (⇒ : τ2) (⇒ : τ3)] ...
   ------------------------------------------
-  [⊢ (begin- s- ...) (⇒ : (U τ1 ...)) (⇒ : (U τ2 ...)) (⇒ : (U τ3 ...))])
+  [⊢ (begin- (void-) s- ...) (⇒ : (U τ1 ...)) (⇒ :2 (U τ2 ...)) (⇒ :3 (U τ3 ...))])
 
 (define-typed-syntax nil
   [_:id ≫
@@ -210,18 +244,43 @@
     (pattern (~or (on ed:event-desc s:stmt)
                   (assert e:exp))))
 
-(define-typed-syntax (on ed:event-desc s:stmt) ≫
-  -------------------
-  [⊢ (void-) (⇒ : ⊥) (⇒ :2 ⊥) (⇒ :3 ⊥)])
+(define-typed-syntax on
+  [(on (~literal start) s:stmt) ≫
+   [⊢ s ≫ s- (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]
+   -----------------------------------
+   [⊢ (syndicate:on-start s-) (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]]
+  [(on (~literal stop) s:stmt) ≫
+   [⊢ s ≫ s- (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]
+   -----------------------------------
+   [⊢ (syndicate:on-stop s-) (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]]
+  ;; eww
+  [(on ((~and a/p (~or (~literal asserted) (~literal retracted))) p:pat) s:stmt) ≫
+   [⊢ p ≫ _ ⇒ τp]
+   #:with pat-sub (replace-bind-with-★ #'τp)
+   #:with pat-constraint (replace-bind-with-type #'τp)
+   [⊢ s ≫ s- (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]
+   -----------------------------------
+   [⊢ (syndicate:on (a/p p.syndicate-pattern) s-)
+      (⇒ : (U τi pat-constraint))
+      (⇒ :2 (U (Observe pat-sub τ-o)))
+      (⇒ :3 τ-a)]])
+
+(define-for-syntax (replace-bind-with-★ t)
+  t)
+
+(define-for-syntax (replace-bind-with-type t)
+  t)
 
 (define-typed-syntax (assert e:exp) ≫
-  -------------------
-  [⊢ (void-) (⇒ : ⊥) (⇒ :2 ⊥) (⇒ :3 ⊥)])
+  [⊢ e ≫ e- ⇒ τ]
+  #:with τ-in (strip-? #'τ.norm)
+  -------------------------------------
+  [⊢ (void-) (⇒ : τ-in) (⇒ :2 τ) (⇒ :3 ⊥)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
 
-(define-typed-syntax (tuple e:expr ...) ≫
+(define-typed-syntax (tuple e:exp ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
   -----------------------
   [⊢ (list 'tuple e- ...) (⇒ : (Tuple τ ...))])
@@ -240,6 +299,22 @@
   --------------------------------------------------------------
   ;; TODO: add a catch-all error clause
   [⊢ (match-lambda- [p.match-pattern s-] ...) ⇒ (Case [→ τ-p (Facet τ1 τ2 τ3)] ...)])
+
+;; it would be nice to abstract over these three
+(define-typed-syntax (observe e:exp) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  ---------------
+  [⊢ (syndicate:observe e-) ⇒ (Observe τ)])
+
+(define-typed-syntax (inbound e:exp) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  ---------------
+  [⊢ (syndicate:inbound e-) ⇒ (Inbound τ)])
+
+(define-typed-syntax (outbound e:exp) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  ---------------
+  [⊢ (syndicate:outbound e-) ⇒ (Outbound τ)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Patterns
@@ -295,6 +370,16 @@
   [⊢ (#%datum- . s) ⇒ String]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Utilities
+
+#;(define-syntax (begin/void-default stx)
+  (syntax-parse stx
+    [(_)
+     (syntax/loc stx (void))]
+    [(_ expr0 expr ...)
+     (syntax/loc stx (begin- expr0 expr ...))]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 
 (module+ test
@@ -307,13 +392,13 @@
   (check-type (tuple 1 2 3) : (Tuple Int Int Int))
 
   (typecheck-fail (let-field x : Int 5
-                             (let-field y : (Field Int) x nil))
+                             (let-field y : (Field Int) x (begin)))
                   #:with-msg "Keep your functions out of fields")
 
   (check-type (tuple discard 1 (bind x Int)) : (Tuple Discard Int (Bind Int)))
 
-  (check-type (λ [(bind x Int) (begin)]) : (Case [→ (Bind Int) (Facet ⊥ ⊥ ⊥)]))
-  (check-true (void? ((λ [(bind x Int) (begin)]) 1))))
+  #;(check-type (λ [(bind x Int) (begin)]) : (Case [→ (Bind Int) (Facet ⊥ ⊥ ⊥)]))
+  #;(check-true (void? ((λ [(bind x Int) (begin)]) 1))))
 
 (define bank-account
   #'(facet account
@@ -335,8 +420,6 @@
                                   (if (= (ref deposits) 0)
                                       (stop client (begin))
                                       (begin))))))))
-
-(require rackunit)
 
 (define-syntax (test-syntax-class stx)
   (syntax-parse stx
