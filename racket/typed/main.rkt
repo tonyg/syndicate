@@ -5,7 +5,7 @@
          #%top-interaction
          require only-in
          ;; Types
-         Int ⊥ Tuple Bind Discard Case → Facet FacetName Field ★ Observe Inbound Outbound
+         Int ⊥ Tuple Bind Discard Case → Facet FacetName Field ★ Observe Inbound Outbound Actor U
          ;; Statements
          let-field let-function spawn dataspace facet set! begin stop unsafe-do
          ;; endpoints
@@ -43,6 +43,7 @@
 (define-type-constructor Observe #:arity = 1)
 (define-type-constructor Inbound #:arity = 1)
 (define-type-constructor Outbound #:arity = 1)
+(define-type-constructor Actor #:arity = 1)
 
 (begin-for-syntax
   (define-syntax-class exp
@@ -127,6 +128,38 @@
                   (~and e:exp
                         (~bind [syndicate-pattern #'e]
                                [match-pattern #'(== e)]))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subtyping
+
+;; Int ⊥ Bind Discard Case → Facet FacetName Field Actor
+
+(define-for-syntax (<: t1 t2)
+  ;; should add a check for type=?
+  (syntax-parse #'(,t1 ,t2)
+    [((~U τ1:type ...) _)
+     (stx-andmap (lambda (t) (<: t t2)) #'(τ1 ...))]
+    [(_ (~U τ2:type ...))
+     (stx-andmap (lambda (t) (<: t1 t)) #'(τ2 ...))]
+    [((~Actor τ1:type) (~Actor τ2:type))
+     (and (<: #'τ1 #'τ2)
+          (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
+    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
+     #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
+     (stx-andmap <: #'(τ1 ...) #'(τ2 ...))]
+    [(_ ~★)
+     (flat-type? t1)]
+    [((~Observe τ1:type) (~Observe τ2:type))
+     (<: #'τ1 #'τ2)]
+    [((~Inbound τ1:type) (~Inbound τ2:type))
+     (<: #'τ1 #'τ2)]
+    [((~Outbound τ1:type) (~Outbound τ2:type))
+     (<: #'τ1 #'τ2)]
+    ;; should probably put this first.
+    [_ (type=? t1 t2)]))
+
+(define-for-syntax (∩ t1 t2)
+  #'(U))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Statements
