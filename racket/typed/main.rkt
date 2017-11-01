@@ -3,11 +3,11 @@
 (provide (rename-out [syndicate:#%module-begin #%module-begin])
          #%app
          #%top-interaction
-         require
+         require only-in
          ;; Types
-         Int ⊥ Tuple Bind Discard Case → Facet Field ★ Observe Inbound Outbound
+         Int ⊥ Tuple Bind Discard Case → Facet FacetName Field ★ Observe Inbound Outbound
          ;; Statements
-         nil let-field let-function spawn dataspace facet set! begin stop
+         let-field let-function spawn dataspace facet set! begin stop unsafe-do
          ;; endpoints
          assert on
          ;; expressions
@@ -17,12 +17,13 @@
          ;; patterns
          bind discard
          ;; primitives
-         + - displayln           
+         + - displayln
+         ;; DEBUG
+         (rename-out [printf- printf])
          )
 
 (require (rename-in racket/match [match-lambda match-lambda-]))
-(require (prefix-in syndicate: syndicate/actor))
-(require (prefix-in syndicate: (only-in syndicate/actor-lang #%module-begin)))
+(require (prefix-in syndicate: syndicate/actor-lang))
 
 (module+ test
   (require rackunit)
@@ -31,7 +32,7 @@
 ;(require syndicate/actor-lang)
 #;(provide (all-from-out syndicate/actor-lang))
 
-(define-base-types Int Bool String ⊥ Discard ★)
+(define-base-types Int Bool String ⊥ Discard ★ FacetName)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Facet #:arity = 3)
 (define-type-constructor Bind #:arity = 1)
@@ -79,17 +80,18 @@
                       dataspace
                       stop
                       facet
-                      nil)
+                      unsafe-do)
     (pattern (~or (begin seq:stmt ...)
                   (e1:exp e2:exp)
-                  ;; nil ;; TODO - remove, only for making some initial examples
                   (let-field [x:id : τ:type e:exp] lf-body:stmt)
                   (let-function [f:id : τ:type e:exp] let-fun-body:stmt)
                   (set! x:id e:exp)
                   (spawn τ:type s:stmt)
                   (dataspace τ:type nested:stmt ...)
                   (stop x:id s:stmt)
-                  (facet x:id ep:endpoint ...))))
+                  (facet x:id ep:endpoint ...)
+                  ;; note racket expr, not exp
+                  (unsafe-do rkt:expr ...))))
 
   (define-syntax-class endpoint
     #:datum-literals (on start stop)
@@ -137,13 +139,13 @@
   [⊢ (x- e-) (⇒ : ⊥) (⇒ :2 ⊥) (⇒ :3 ⊥)])
 
 (define-typed-syntax (stop facet-name:id cont:stmt) ≫
-  [⊢ facet-name ≫ facet-name- ⇐ Facet]
+  [⊢ facet-name ≫ facet-name- ⇐ FacetName]
   [⊢ cont ≫ cont- (⇒ : τ-i) (⇒ :2 τ-o) (⇒ :3 τ-a)]
   --------------------------------------------------
   [⊢ (syndicate:stop facet-name- cont-) (⇒ : τ-i) (⇒ :2 τ-o) (⇒ :3 τ-a)])
 
 (define-typed-syntax (facet name:id ep:endpoint ...) ≫
-  [[name ≫ name- : Facet] ⊢ ep ≫ ep- (⇒ : τ-i) (⇒ :2 τ-o) (⇒ :3 τ-a)] ...
+  [[name ≫ name- : FacetName] ⊢ ep ≫ ep- (⇒ : τ-i) (⇒ :2 τ-o) (⇒ :3 τ-a)] ...
   --------------------------------------------------------------
   ;; name NOT name- here because I get an error that way.
   ;; Since name is just an identifier I think it's OK?
@@ -199,7 +201,7 @@
   ;; TODO: (Actor τ-a) <: (Actor τ-c)
   ;; TODO: project-safe(strip-?(τ-o) ∩ τ-c, τ-i)
   ----------------------------------------------
-  [⊢ (syndicate:spawn s-) (⇒ : ⊥) (⇒ :2 ⊥) (⇒ :3 τ-c)])
+  [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ⊥) (⇒ :2 ⊥) (⇒ :3 τ-c)])
 
 (define-typed-syntax (let-field x:id (~datum :) τ:type e:expr body:expr) ≫
   [⊢ e ≫ e- (⇐ : τ.norm)]
@@ -225,16 +227,15 @@
   ------------------------------------------
   [⊢ (begin- (void-) s- ...) (⇒ : (U τ1 ...)) (⇒ :2 (U τ2 ...)) (⇒ :3 (U τ3 ...))])
 
-(define-typed-syntax nil
-  [_:id ≫
-   ---------------
-   [⊢ (void-) (⇒ : ⊥) (⇒ :2 ⊥) (⇒ :3 ⊥)]])
-
 (define-for-syntax (flat-type? τ)
   (syntax-parse τ
     [(~→ _ ...) #f]
     [(~Field _) #f]
     [_ #t]))
+
+(define-typed-syntax (unsafe-do rkt:expr ...) ≫
+  ------------------------
+  [⊢ (let- () rkt ...) (⇒ : ⊥) (⇒ :2 ⊥) (⇒ :3 ⊥)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Endpoints
@@ -260,9 +261,10 @@
    #:with pat-constraint (replace-bind-with-type #'τp)
    [⊢ s ≫ s- (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]
    -----------------------------------
-   [⊢ (syndicate:on (a/p p.syndicate-pattern) s-)
+   ;; TODO - hard codes asserted!
+   [⊢ (syndicate:on (syndicate:asserted p.syndicate-pattern) s-)
       (⇒ : (U τi pat-constraint))
-      (⇒ :2 (U (Observe pat-sub τ-o)))
+      (⇒ :2 (U (Observe pat-sub) τ-o))
       (⇒ :3 τ-a)]])
 
 (define-for-syntax (replace-bind-with-★ t)
@@ -275,7 +277,7 @@
   [⊢ e ≫ e- ⇒ τ]
   #:with τ-in (strip-? #'τ.norm)
   -------------------------------------
-  [⊢ (void-) (⇒ : τ-in) (⇒ :2 τ) (⇒ :3 ⊥)])
+  [⊢ (syndicate:assert e-) (⇒ : τ-in) (⇒ :2 τ) (⇒ :3 ⊥)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
@@ -385,9 +387,9 @@
 (module+ test
   (check-type 1 : Int)
 
-  (check-type (let-field x : Int 5 nil) : ⊥)
-  (check-type (let-field x : Int 5 nil) :2 ⊥)
-  (check-type (let-field x : Int 5 nil) :3 ⊥)
+  (check-type (let-field x : Int 5 (begin)) : (U))
+  (check-type (let-field x : Int 5 (begin)) :2 (U))
+  (check-type (let-field x : Int 5 (begin)) :3 (U))
 
   (check-type (tuple 1 2 3) : (Tuple Int Int Int))
 

@@ -1,12 +1,12 @@
 #lang typed/syndicate
 
-(require turnstile/rackunit-typechecking)
+#;(require racket/base)
 
-#;(spawn
- (assert (list "hello")))
+(spawn ⊥
+       (facet _
+              (assert "hello")))
 
-#;(spawn
- (on (asserted (list "hello"))
-     (printf "hello\n")))
-
-(spawn ⊥ (assert "hello"))
+(spawn ⊥
+       (facet _
+              (on (asserted "hello")
+                  (unsafe-do (printf "got hello\n")))))
