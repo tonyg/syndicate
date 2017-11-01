@@ -19,7 +19,7 @@
                "sandbox-lib"
                "images-lib"
                "automata"
-	       ))
+	       "sha"))
 (define build-deps '("racket-doc"
                      "scribble-lib"
                      "sha"
