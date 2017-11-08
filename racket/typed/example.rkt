@@ -4,13 +4,13 @@
 
 ;; really lame how many times I have to write the dataspace type
 
-(print-type
+#;(print-type
  (λ [10 (begin)]
      [(bind x Int)
       (facet _ (fields)
              (assert (tuple "set thing" (+ x 1))))]))
 
-#;(dataspace (U (Observe (Tuple String ★)) (Tuple String Int))
+(dataspace (U (Observe (Tuple String ★)) (Tuple String Int))
 
            (spawn (U (Observe (Tuple String ★)) (Tuple String Int))
                   (facet _
@@ -20,10 +20,13 @@
                              (set! the-thing new-v))))
 
            (spawn (U (Observe (Tuple String ★)) (Tuple String Int))
-                  (facet _ (fields)
-                         (on (asserted (tuple "the thing" (bind x Int)))
-                             (facet _ (fields)
-                                    (assert (tuple "set thing" (+ x 1)))))))
+                  (let-function [k (λ [10 (begin)]
+                                      [(bind x Int)
+                                       (facet _ (fields)
+                                              (assert (tuple "set thing" (+ x 1))))])]
+                                (facet _ (fields)
+                                       (on (asserted (tuple "the thing" (bind x Int)))
+                                           (k x)))))
 
            (spawn (U (Observe (Tuple String ★)) (Tuple String Int))
                   (facet _ (fields)
