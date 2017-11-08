@@ -1,7 +1,7 @@
 #lang turnstile
 
 (provide (rename-out [syndicate:#%module-begin #%module-begin])
-         #%app
+         (rename-out [typed-app #%app])
          #%top-interaction
          require only-in
          ;; Types
@@ -20,6 +20,7 @@
          ;; primitives
          + - displayln
          ;; DEBUG
+         print-type
          (rename-out [printf- printf])
          )
 
@@ -82,7 +83,8 @@
                       dataspace
                       stop
                       facet
-                      unsafe-do)
+                      unsafe-do
+                      fields)
     (pattern (~or (begin seq:stmt ...)
                   (e1:exp e2:exp)
                   (let-field [x:id : τ:type e:exp] lf-body:stmt)
@@ -91,7 +93,7 @@
                   (spawn τ:type s:stmt)
                   (dataspace τ:type nested:stmt ...)
                   (stop x:id s:stmt)
-                  (facet x:id ep:endpoint ...)
+                  (facet x:id (fields [fn:id τf:type ef:exp] ...) ep:endpoint ...+)
                   ;; note racket expr, not exp
                   (unsafe-do rkt:expr ...))))
 
@@ -133,9 +135,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subtyping
 
-;; Bind Discard Case → Facet Field
-
-;; TODO: subtyping for procedures, facets, fields
+;; TODO: subtyping for facets
 
 ;; Type Type -> Bool
 (define-for-syntax (<: t1 t2)
@@ -143,17 +143,18 @@
   ;; should add a check for type=?
   (syntax-parse #`(#,t1 #,t2)
     #;[(τ1 τ2) #:do [(displayln (type->str #'τ1))
-                   (displayln (type->str #'τ2))]
-             #:when #f
-             (error "")]
+                     (displayln (type->str #'τ2))]
+               #:when #f
+               (error "")]
     [((~U τ1 ...) _)
-     #;(printf "union on the left\n")
      (stx-andmap (lambda (t) (<: t t2)) #'(τ1 ...))]
     [(_ (~U τ2:type ...))
      (stx-ormap (lambda (t) (<: t1 t)) #'(τ2 ...))]
     [((~Actor τ1:type) (~Actor τ2:type))
+     ;; should these be .norm? Is the invariant that inputs are always fully
+     ;; evalutated/expanded?
      (and (<: #'τ1 #'τ2)
-          (<: ((current-type-eval) (∩ (strip-? #'τ1) #'τ2)) #'τ1))]
+          (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
     [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
      #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
      (stx-andmap <: #'(τ1 ...) #'(τ2 ...))]
@@ -165,6 +166,13 @@
      (<: #'τ1 #'τ2)]
     [((~Outbound τ1:type) (~Outbound τ2:type))
      (<: #'τ1 #'τ2)]
+    [((~→ τ-in1 ... τ-out1) (~→ τ-in2 ... τ-out2))
+     #:when (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
+     (and (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
+          (<: #'τ-out1 #'τ-out2))]
+    [((~Field τ1) (~Field τ2))
+     (and (<: #'τ1 #'τ2)
+          (<: #'τ2 #'τ1))]
     ;; should probably put this first.
     [_ (type=? t1 t2)]))
 
@@ -181,9 +189,9 @@
      #:when (type=? t1 t2)
      t1]
     [((~U τ1:type ...) _)
-     #`(U #,@(stx-map (lambda (t) (∩ t t2)) #'(τ1 ...)))]
+     (type-eval #`(U #,@(stx-map (lambda (t) (∩ t t2)) #'(τ1 ...))))]
     [(_ (~U τ2:type ...))
-     #`(U #,@(stx-map (lambda (t) (∩ t1 t)) #'(τ2 ...)))]
+     (type-eval #`(U #,@(stx-map (lambda (t) (∩ t1 t)) #'(τ2 ...))))]
     ;; all of these fail-when/unless clauses are meant to cause this through to
     ;; the last case and result in ⊥.
     ;; Also, using <: is OK, even though <: refers to ∩, because <:'s use of ∩ is only
@@ -192,22 +200,22 @@
      #:fail-unless (stx-length=? #'(τ1 ...) #'(τ2 ...)) #f
      #:with (τ ...) (stx-map ∩ #'(τ1 ...) #'(τ2 ...))
      ;; I don't think stx-ormap is part of the documented api of turnstile *shrug*
-     #:fail-when (stx-ormap (lambda (t) (<: t #'(U))) #'(τ ...)) #f
-     #'(Tuple τ ...)]
+     #:fail-when (stx-ormap (lambda (t) (<: t (type-eval #'(U)))) #'(τ ...)) #f
+     (type-eval #'(Tuple τ ...))]
     ;; these three are just the same :(
     [((~Observe τ1:type) (~Observe τ2:type))
      #:with τ (∩ #'τ1 #'τ2)
-     #:fail-when (<: #'τ #'(U)) #f
-     #'(Observe τ)]
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Observe τ))]
     [((~Inbound τ1:type) (~Inbound τ2:type))
      #:with τ (∩ #'τ1 #'τ2)
-     #:fail-when (<: #'τ #'(U)) #f
-     #'(Inbound τ)]
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Inbound τ))]
     [((~Outbound τ1:type) (~Outbound τ2:type))
      #:with τ (∩ #'τ1 #'τ2)
-     #:fail-when (<: #'τ #'(U)) #f
-     #'(Outbound τ)]
-    [_ #'(U)]))
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Outbound τ))]
+    [_ (type-eval #'(U))]))
 
 ;; Type Type -> Bool
 ;; first type is the contents of the set
@@ -273,14 +281,21 @@
      (finite? #'τ)]
     [_ #t]))
 
+;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;; MODIFYING GLOBAL TYPECHECKING STATE!!!!!
+;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+(begin-for-syntax
+  (current-typecheck-relation <:))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Statements
 
 (define-typed-syntax (set! x:id e:exp) ≫
   [⊢ e ≫ e- ⇒ τ]
-  [⊢ x ≫ x- ⇒ (~Field τ-x)]
-  ;; TODO: (~ τ τ-x)
-  -------------------------
+  [⊢ x ≫ x- ⇒ (~Field τ-x:type)]
+  #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
+  ----------------------------------------------------
   [⊢ (x- e-) (⇒ : (U)) (⇒ :2 (U)) (⇒ :3 (U))])
 
 (define-typed-syntax (stop facet-name:id cont:stmt) ≫
@@ -289,87 +304,94 @@
   --------------------------------------------------
   [⊢ (syndicate:stop facet-name- cont-) (⇒ : τ-i) (⇒ :2 τ-o) (⇒ :3 τ-a)])
 
-(define-typed-syntax (facet name:id ep:endpoint ...) ≫
-  [[name ≫ name- : FacetName] ⊢ ep ≫ ep- (⇒ : τ-i) (⇒ :2 τ-o) (⇒ :3 τ-a)] ...
+(define-typed-syntax (facet name:id ((~datum fields) [x:id τ:type e:exp] ...) ep:endpoint ...+) ≫
+  [⊢ e ≫ e- ⇐ τ] ...
+  ;; I think the repetition of x ≫ x- for each endpoint is causing a problem
+  [[name ≫ name- : FacetName] [x ≫ x- : (Field τ)] ...
+   ⊢ [ep ≫ ep- (⇒ : τ-i) (⇒ :2 τ-o) (⇒ :3 τ-a)] ...]
   --------------------------------------------------------------
   ;; name NOT name- here because I get an error that way.
   ;; Since name is just an identifier I think it's OK?
-  [⊢ (syndicate:react (let- ([name (syndicate:current-facet-id)]) ep- ...))
+  [⊢ (syndicate:react (let- ([name- (syndicate:current-facet-id)])
+                            #,(make-fields #'(x- ...) #'(e- ...))
+                            #;(syndicate:field [x- e-] ...)
+                            ep- ...))
      (⇒ : (U τ-i ...)) (⇒ :2 (U τ-o ...)) (⇒ :3 (U τ-a ...))])
+
+(define-for-syntax (make-fields names inits)
+  (syntax-parse #`(#,names #,inits)
+    [((x:id ...) (e ...))
+     #'(syndicate:field [x e] ...)]))
 
 (define-typed-syntax (dataspace τ-c:type s:stmt ...) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   [⊢ s ≫ s- (⇒ : τ-i:type) (⇒ :2 τ-o:type) (⇒ :3 τ-s:type)] ...
   ;; #:do [(printf "dataspace types: ~a\n" (stx-map type->str #'(τ-s.norm ...)))
   ;;      (printf "dataspace type: ~a\n" (type->str ((current-type-eval) #'(Actor τ-c.norm))))]
-  #:fail-unless (stx-andmap (lambda (t) (<: ((current-type-eval) #`(Actor #,t))
-                                            ((current-type-eval) #'(Actor τ-c.norm))))
+  #:fail-unless (stx-andmap (lambda (t) (<: (type-eval #`(Actor #,t))
+                                            (type-eval #'(Actor τ-c.norm))))
                             #'(τ-s.norm ...))
                 "Not all actors conform to communication type"
-  #:fail-unless (stx-andmap (lambda (t) (<: t ((current-type-eval) #'(U))))
+  #:fail-unless (stx-andmap (lambda (t) (<: t (type-eval #'(U))))
                             #'(τ-i.norm ...)) "dataspace init should only be a spawn"
-  #:fail-unless (stx-andmap (lambda (t) (<: t ((current-type-eval) #'(U))))
+  #:fail-unless (stx-andmap (lambda (t) (<: t (type-eval #'(U))))
                             #'(τ-o.norm ...)) "dataspace init should only be a spawn"
-  ;; TODO: check that each is is <: (Actor τ-c)
   #:with τ-ds-i (strip-inbound #'τ-c.norm)
   #:with τ-ds-o (strip-outbound #'τ-c.norm)
   #:with τ-relay (relay-interests #'τ-c.norm)
-  ----------------------------------------------
-  [⊢ (syndicate:dataspace s- ...) (⇒ : τ-ds-i) (⇒ :2 (U τ-ds-o τ-relay)) (⇒ :3 (U))])
+  -----------------------------------------------------------------------------------
+  [⊢ (syndicate:dataspace s- ...) (⇒ : (U)) (⇒ :2 (U)) (⇒ :3 (U τ-ds-i τ-ds-o τ-relay))])
 
 (define-for-syntax (strip-? t)
-  (syntax-parse t
-    ;; TODO: probably need to `normalize` the result
-    [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
-    [~★ #'★]
-    [(~Observe τ) #'τ]
-    [_ #'(U)]))
+  (type-eval
+   (syntax-parse t
+     ;; TODO: probably need to `normalize` the result
+     [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [~★ #'★]
+     [(~Observe τ) #'τ]
+     [_ #'(U)])))
 
 (define-for-syntax (strip-inbound t)
-  (syntax-parse t
-    ;; TODO: probably need to `normalize` the result
-    [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
-    [~★ #'★]
-    [(~Inbound τ) #'τ]
-    [_ #'(U)]))
+  (type-eval
+   (syntax-parse t
+     ;; TODO: probably need to `normalize` the result
+     [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [~★ #'★]
+     [(~Inbound τ) #'τ]
+     [_ #'(U)])))
 
 (define-for-syntax (strip-outbound t)
-  (syntax-parse t
-    ;; TODO: probably need to `normalize` the result
-    [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
-    [~★ #'★]
-    [(~Outbound τ) #'τ]
-    [_ #'(U)]))
+  (type-eval
+   (syntax-parse t
+     ;; TODO: probably need to `normalize` the result
+     [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [~★ #'★]
+     [(~Outbound τ) #'τ]
+     [_ #'(U)])))
 
 (define-for-syntax (relay-interests t)
-  (syntax-parse t
-    ;; TODO: probably need to `normalize` the result
-    [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
-    [~★ #'★]
-    [(~Observe (~Inbound τ)) #'(Observe τ)]
-    [_ #'(U)]))
+  (type-eval
+   (syntax-parse t
+     ;; TODO: probably need to `normalize` the result
+     [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [~★ #'★]
+     [(~Observe (~Inbound τ)) #'(Observe τ)]
+     [_ #'(U)])))
 
 (define-typed-syntax (spawn τ-c:type s:stmt) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   [⊢ s ≫ s- (⇒ : τ-i:type) (⇒ :2 τ-o:type) (⇒ :3 τ-a:type)]
   ;; TODO: s shouldn't refer to facets or fields!
-  ;; TODO: should these be .norm ?
-  #:with test-val (syntax-parse #'τ-o
-                    [(~U τ-t:type ...) #'(τ-t ...)]
-                    [_ #'#f])
-  ;; #:do [(displayln (type->str #'τ-o))
-  ;;      (displayln (type->str #'τ-c))]
   #:fail-unless (<: #'τ-o.norm #'τ-c.norm)
                 (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o) (type->str #'τ-c))
-  #:fail-unless (<: ((current-type-eval) #'(Actor τ-a.norm))
-                    ((current-type-eval) #'(Actor τ-c.norm))) "Spawned actors not valid in dataspace"
-  #:fail-unless (project-safe? (∩ (strip-? ((current-type-eval) #'τ-o.norm))
-                                  ((current-type-eval) #'τ-c.norm))
-                               ((current-type-eval) #'τ-i.norm)) "Not prepared to handle all inputs"
-  ----------------------------------------------
+  #:fail-unless (<: (type-eval #'(Actor τ-a.norm))
+                    (type-eval #'(Actor τ-c.norm))) "Spawned actors not valid in dataspace"
+  #:fail-unless (project-safe? (∩ (strip-? #'τ-o.norm) #'τ-c.norm)
+                               #'τ-i.norm) "Not prepared to handle all inputs"
+  --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : (U)) (⇒ :2 (U)) (⇒ :3 τ-c)])
 
-(define-typed-syntax (let-field x:id (~datum :) τ:type e:expr body:expr) ≫
+(define-typed-syntax (let-field [x:id (~datum :) τ:type e:expr] body:expr) ≫
   [⊢ e ≫ e- (⇐ : τ.norm)]
   [[x ≫ x- : (Field τ)] ⊢ body ≫ body- (⇒ : τ-body) (⇒ :2 τ-body2) (⇒ :3 τ-body3)]
   #:fail-unless (flat-type? #'τ.norm) "Keep your functions out of fields"
@@ -407,10 +429,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Endpoints
 
-#;(define-syntax-class endpoint
-    #:datum-literals (on start stop)
-    (pattern (~or (on ed:event-desc s:stmt)
-                  (assert e:exp))))
+(begin-for-syntax
+  (define-syntax-class asserted-or-retracted
+    #:datum-literals (asserted retracted)
+    (pattern (~or (~and asserted
+                        (~bind [syndicate-kw #'syndicate:asserted]))
+                  (~and retracted
+                        (~bind [syndicate-kw #'syndicate:retracted]))))))
 
 (define-typed-syntax on
   [(on (~literal start) s:stmt) ≫
@@ -421,26 +446,37 @@
    [⊢ s ≫ s- (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]]
-  ;; eww
-  [(on ((~and a/p (~or (~literal asserted) (~literal retracted))) p:pat) s:stmt) ≫
+  [(on (a/r:asserted-or-retracted p:pat) s:stmt) ≫
    [⊢ p ≫ _ ⇒ τp]
-   #:with pat-sub (replace-bind-with-★ #'τp)
-   #:with pat-constraint (replace-bind-with-type #'τp)
-   [⊢ s ≫ s- (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]
+   #:with ([x:id τ:type] ...) (pat-bindings #'p)
+   [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ : τi) (⇒ :2 τ-o) (⇒ :3 τ-a)]
+   ;; the type of subscriptions to draw assertions to the pattern
+   #:with pat-sub (replace-bind-and-discard-with-★ #'τp)
    -----------------------------------
-   ;; TODO - hard codes asserted!
-   [⊢ (syndicate:on (syndicate:asserted p.syndicate-pattern) s-)
-      (⇒ : (U τi pat-constraint))
+   [⊢ (syndicate:on (a/r.syndicate-kw p.syndicate-pattern)
+                    (let- ([x- x] ...) s-))
+      (⇒ : (U τi τp))
       (⇒ :2 (U (Observe pat-sub) τ-o))
       (⇒ :3 τ-a)]])
 
-;; TODO
-(define-for-syntax (replace-bind-with-★ t)
-  t)
-
-;; TODO
-(define-for-syntax (replace-bind-with-type t)
-  t)
+;; FlattishType -> FlattishType
+(define-for-syntax (replace-bind-and-discard-with-★ t)
+  (syntax-parse t
+    [(~Bind _)
+     (type-eval #'★)]
+    [~Discard
+     (type-eval #'★)]
+    [(~U τ ...)
+     (type-eval #`(U #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
+    [(~Tuple τ ...)
+     (type-eval #`(Tuple #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
+    [(~Observe τ)
+     (type-eval #`(Observe #,(replace-bind-and-discard-with-★ #'τ)))]
+    [(~Inbound τ)
+     (type-eval #`(Inbound #,(replace-bind-and-discard-with-★ #'τ)))]
+    [(~Outbound τ)
+     (type-eval #`(Outbound #,(replace-bind-and-discard-with-★ #'τ)))]
+    [_ t]))
 
 (define-typed-syntax (assert e:exp) ≫
   [⊢ e ≫ e- ⇒ τ]
@@ -457,7 +493,7 @@
   [⊢ (list 'tuple e- ...) (⇒ : (Tuple τ ...))])
 
 (define-typed-syntax (ref x:id) ≫
-  [⊢ x ≫ x- ⇒ (Field τ)]
+  [⊢ x ≫ x- ⇒ (~Field τ)]
   ------------------------
   [⊢ (x-) ⇒ τ])
 
@@ -467,9 +503,39 @@
   ;; REALLY not sure how to handle p/p-/p.match-pattern,
   ;; particularly w.r.t. typed terms that appear in p.match-pattern
   [⊢ p ≫ p- ⇒ τ-p] ...
+  #:with (τ-in ...) (stx-map lower-pattern-type #'(τ-p ...))
   --------------------------------------------------------------
   ;; TODO: add a catch-all error clause
-  [⊢ (match-lambda- [p.match-pattern s-] ...) ⇒ (Case [→ τ-p (Facet τ1 τ2 τ3)] ...)])
+  [⊢ (match-lambda- [p.match-pattern (let- ([x- x] ...) s-)] ...)
+     ⇒ (→ (U τ-p ...) (Facet (U τ1 ...) (U τ2 ...) (U τ3 ...)))])
+
+;; FlattishType -> FlattishType
+;; replaces (Bind τ) with τ and Discard with ★
+(define-for-syntax (lower-pattern-type t)
+  (syntax-parse t
+    [(~Bind τ)
+     #'τ]
+    [~Discard
+     (type-eval #'★)]
+    [(~U τ ...)
+     (type-eval #`(U #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
+    [(~Tuple τ ...)
+     (type-eval #`(Tuple #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
+    [(~Observe τ)
+     (type-eval #`(Observe #,(replace-bind-and-discard-with-★ #'τ)))]
+    [(~Inbound τ)
+     (type-eval #`(Inbound #,(replace-bind-and-discard-with-★ #'τ)))]
+    [(~Outbound τ)
+     (type-eval #`(Outbound #,(replace-bind-and-discard-with-★ #'τ)))]
+    [_ t]))
+
+(define-typed-syntax (typed-app e_fn e_arg ...) ≫
+  [⊢ e_fn ≫ e_fn- ⇒ (~→ τ_in ... τ_out)]
+  #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
+                (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
+  [⊢ e_arg ≫ e_arg- ⇐ τ_in] ...
+  --------
+  [⊢ (#%app- e_fn- e_arg- ...) ⇒ τ_out])
 
 ;; it would be nice to abstract over these three
 (define-typed-syntax (observe e:exp) ≫
@@ -491,7 +557,7 @@
 ;; Patterns
 
 (define-typed-syntax (bind x:id τ:type) ≫
-  --------------------
+  ----------------------------------------
   ;; TODO: at some point put $ back in
   [⊢ (void-) ⇒ (Bind τ)])
 
@@ -523,7 +589,7 @@
 (define-typed-syntax (displayln e:exp) ≫
   [⊢ e ≫ e- ⇒ τ]
   ---------------
-  [⊢ (displayln- e-) ⇒ (U)])
+  [⊢ (displayln- e-) (⇒ : (U)) (⇒ :2 (U)) (⇒ :3 (U))])
   
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -550,6 +616,9 @@
     [(_ expr0 expr ...)
      (syntax/loc stx (begin- expr0 expr ...))]))
 
+(define-for-syntax (type-eval t)
+  ((current-type-eval) t))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 
@@ -566,14 +635,14 @@
 (module+ test
   (check-type 1 : Int)
 
-  (check-type (let-field x : Int 5 (begin)) : (U))
-  (check-type (let-field x : Int 5 (begin)) :2 (U))
-  (check-type (let-field x : Int 5 (begin)) :3 (U))
+  (check-type (let-field [x : Int 5] (begin)) : (U))
+  (check-type (let-field [x : Int 5] (begin)) :2 (U))
+  (check-type (let-field [x : Int 5] (begin)) :3 (U))
 
   (check-type (tuple 1 2 3) : (Tuple Int Int Int))
 
-  (typecheck-fail (let-field x : Int 5
-                             (let-field y : (Field Int) x (begin)))
+  (typecheck-fail (let-field [x : Int 5]
+                             (let-field [y : (Field Int) x] (begin)))
                   #:with-msg "Keep your functions out of fields")
 
   (check-type (tuple discard 1 (bind x Int)) : (Tuple Discard Int (Bind Int)))
@@ -617,3 +686,21 @@
                  [(~U τ ...)
                   #'(τ ...)]
                  [_ 'boo])))
+
+;; This one doesn't blow up
+;; (expand/step #'(spawn Int (facet _ (fields [x Int 0]) (on start (set! x 12)) (assert 42))))
+;; But, this one does- "identifier x used out of context"
+;; (expand/step #'(spawn Int (facet _ (fields [x Int 0]) (assert 42) (on start (set! x 12)))))
+
+#;(define-typed-syntax (λ2 ([x:id τ:type] ...) e:expr ...+) ≫
+  [[x ≫ x- : τ] ... ⊢ (e ≫ e-  ⇒ τ-e) ...]
+  ;;#:do ((printf "~v\n" #'((x- ...) ...)))
+  ------------------------------
+  [⊢ (lambda- (x- ...) e- ...)
+     ⇒ (→ τ ... #,(last (stx->list #'(τ-e ...))))])
+
+(define-typed-syntax (print-type e) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  #:do [(displayln (type->str #'τ))]
+  ----------------------------------
+  [⊢ e- ⇒ τ])
