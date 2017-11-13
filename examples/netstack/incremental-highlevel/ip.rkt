@@ -176,20 +176,22 @@
       (when (and (not (equal? (ip-packet-source-interface p) interface-name))
                  (ip-address-in-subnet? destination network netmask))
         (define timer-id (gensym 'ippkt))
-        (react (on-start (send! (set-timer timer-id 5000 'relative)))
+        ;; v Use `spawn` instead of `react` to avoid gratuitous packet
+        ;; reordering.
+        (spawn (on-start (send! (set-timer timer-id 5000 'relative)))
                (stop-when (message (timer-expired timer-id _))
-                          (log-warning "ARP lookup of ~a failed, packet dropped"
-                                       (ip-address->hostname destination)))
+                 (log-warning "ARP lookup of ~a failed, packet dropped"
+                              (ip-address->hostname destination)))
                (stop-when (asserted (arp-query IPv4-ethertype
                                                destination
                                                ($ interface (ethernet-interface interface-name _))
                                                $destination-hwaddr))
-                          (send! (ethernet-packet interface
-                                                  #f
-                                                  (ethernet-interface-hwaddr interface)
-                                                  destination-hwaddr
-                                                  IPv4-ethertype
-                                                  (format-ip-packet p))))))))
+                 (send! (ethernet-packet interface
+                                         #f
+                                         (ethernet-interface-hwaddr interface)
+                                         destination-hwaddr
+                                         IPv4-ethertype
+                                         (format-ip-packet p))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

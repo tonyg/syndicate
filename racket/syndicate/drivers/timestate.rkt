@@ -1,6 +1,7 @@
 #lang syndicate
 
 (provide (struct-out later-than)
+         on-timeout
          stop-when-timeout
          sleep)
 
@@ -15,10 +16,13 @@
          (on (message (timer-expired timer-id _))
              (react (assert (later-than msecs))))))
 
-(define-syntax-rule (stop-when-timeout relative-msecs body ...)
+(define-syntax-rule (on-timeout relative-msecs body ...)
   (let ((timer-id (gensym 'timeout)))
     (on-start (send! (set-timer timer-id relative-msecs 'relative)))
-    (stop-when (message (timer-expired timer-id _)) body ...)))
+    (on (message (timer-expired timer-id _)) body ...)))
+
+(define-syntax-rule (stop-when-timeout relative-msecs body ...)
+  (on-timeout relative-msecs (stop-current-facet body ...)))
 
 (define (sleep sec)
   (define timer-id (gensym 'sleep))

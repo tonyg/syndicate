@@ -83,4 +83,7 @@
                             "<p>There have been ~a requests prior to this one.</p>\n")
                            counter)))
                 (send! (outbound (tcp-channel us them response)))
+                (for [(i 4)]
+                  (define buf (make-bytes 1024 (+ #x30 i)))
+                  (send! (outbound (tcp-channel us them buf))))
                 (stop-facet (current-facet-id)))))))
