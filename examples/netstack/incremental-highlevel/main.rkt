@@ -75,7 +75,9 @@
                 (define response
                   (string->bytes/utf-8
                    (format (string-append
-                            "HTTP/1.0 200 OK\r\n\r\n"
+                            "HTTP/1.0 200 OK\r\n"
+                            "Content-Type: text/html\r\n"
+                            "\r\n"
                             "<h1>Hello world from syndicate-netstack!</h1>\n"
                             "<p>This is running on syndicate's own\n"
                             "<a href='https://github.com/tonyg/syndicate/'>\n"
