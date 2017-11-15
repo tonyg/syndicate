@@ -44,6 +44,9 @@
     (raise-syntax-error #f "allowed only around a module body" stx))
   (syntax-case stx ()
     [(_ forms ...)
+     ;; the inclusion of (module+ syndicate-main) is because it seems that the appearance order
+     ;; of module+ forms determines the mutual visibility. So syndicate-main is ensured to be the
+     ;; first module+ and consequently the main submodule can require it.
      #'(#%module-begin (syndicate-module () ((module+ syndicate-main) forms ...)))]))
 
 (define-syntax (syndicate-module stx)
