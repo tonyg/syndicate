@@ -34,8 +34,8 @@
   (require rackunit)
   (require turnstile/rackunit-typechecking))
 
-;(require syndicate/actor-lang)
-#;(provide (all-from-out syndicate/actor-lang))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Types
 
 (define-base-types Int Bool String Discard ★ FacetName)
 (define-type-constructor Field #:arity = 1)
@@ -55,7 +55,36 @@
 (define-type-constructor Outbound #:arity = 1)
 (define-type-constructor Actor #:arity = 1)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Syntax
+
 (begin-for-syntax
+
+#|
+it's expensive and inflexible to fully parse these, but this is what the language
+is meant to be
+  (define-syntax-class stmt
+    #:datum-literals (:
+                      begin
+                      let-function
+                      set!
+                      spawn
+                      dataspace
+                      stop
+                      facet
+                      unsafe-do
+                      fields)
+    (pattern (~or (begin seq:stmt ...)
+                  (e1:exp e2:exp)
+                  (let-function [f:id e:exp] let-fun-body:stmt)
+                  (set! x:id e:exp)
+                  (spawn τ:type s:stmt)
+                  (dataspace τ:type nested:stmt ...)
+                  (stop x:id s:stmt)
+                  (facet x:id (fields [fn:id τf:type ef:exp] ...) ep:endpoint ...+)
+                  ;; note racket expr, not exp
+                  (unsafe-do rkt:expr ...))))
+  
   (define-syntax-class exp
     #:datum-literals (tuple λ ref)
     (pattern (~or (o:prim-op es:exp ...)
@@ -64,6 +93,7 @@
                   (tuple es:exp ...)
                   (ref x:id)
                   (λ [p:pat s:stmt] ...))))
+|#
 
   ;; constructors with arity one
   (define-syntax-class kons1
@@ -88,32 +118,10 @@
                   (~literal -)
                   (~literal displayln))))
 
-  (define-syntax-class stmt
-    #:datum-literals (:
-                      begin
-                      let-function
-                      set!
-                      spawn
-                      dataspace
-                      stop
-                      facet
-                      unsafe-do
-                      fields)
-    (pattern (~or (begin seq:stmt ...)
-                  (e1:exp e2:exp)
-                  (let-function [f:id e:exp] let-fun-body:stmt)
-                  (set! x:id e:exp)
-                  (spawn τ:type s:stmt)
-                  (dataspace τ:type nested:stmt ...)
-                  (stop x:id s:stmt)
-                  (facet x:id (fields [fn:id τf:type ef:exp] ...) ep:endpoint ...+)
-                  ;; note racket expr, not exp
-                  (unsafe-do rkt:expr ...))))
-
   (define-syntax-class endpoint
     #:datum-literals (on start stop)
-    (pattern (~or (on ed:event-desc s:stmt)
-                  (assert e:exp))))
+    (pattern (~or (on ed:event-desc s)
+                  (assert e:expr))))
 
   (define-syntax-class event-desc
     #:datum-literals (start stop asserted retracted)
@@ -140,7 +148,7 @@
                   (~and x:id
                         (~bind [syndicate-pattern #'x]
                                [match-pattern #'(== x)]))
-                  (~and e:exp
+                  (~and e:expr
                         (~bind [syndicate-pattern #'e]
                                [match-pattern #'(== e)]))))))
 
@@ -320,20 +328,20 @@
 ;; The `:o` key is for output assertions
 ;; The `:a` key is for spawned actors
 
-(define-typed-syntax (set! x:id e:exp) ≫
+(define-typed-syntax (set! x:id e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   [⊢ x ≫ x- (⇒ : (~Field τ-x:type))]
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
   ----------------------------------------------------
   [⊢ (x- e-) (⇒ : (U)) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
 
-(define-typed-syntax (stop facet-name:id cont:stmt) ≫
+(define-typed-syntax (stop facet-name:id cont) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
   [⊢ cont ≫ cont- (⇒ :i τ-i) (⇒ :o τ-o) (⇒ :a τ-a)]
   --------------------------------------------------
   [⊢ (syndicate:stop facet-name- cont-) (⇒ : (U)) (⇒ :i τ-i) (⇒ :o τ-o) (⇒ :a τ-a)])
 
-(define-typed-syntax (facet name:id ((~datum fields) [x:id τ:type e:exp] ...) ep:endpoint ...+) ≫
+(define-typed-syntax (facet name:id ((~datum fields) [x:id τ:type e:expr] ...) ep:endpoint ...+) ≫
   #:fail-unless (stx-andmap flat-type? #'(τ ...)) "keep your uppity data outa my fields"
   [⊢ e ≫ e- (⇐ : τ)] ...
   [[name ≫ name- : FacetName] [x ≫ x- : (Field τ)] ...
@@ -352,7 +360,7 @@
     [((x:id ...) (e ...))
      #'(syndicate:field [x e] ...)]))
 
-(define-typed-syntax (dataspace τ-c:type s:stmt ...) ≫
+(define-typed-syntax (dataspace τ-c:type s ...) ≫
   ;; #:do [(printf "τ-c: ~a\n" (type->str #'τ-c.norm))]
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   [⊢ s ≫ s- (⇒ :i τ-i:type) (⇒ :o τ-o:type) (⇒ :a τ-s:type)] ...
@@ -408,7 +416,7 @@
      [(~Observe (~Inbound τ)) #'(Observe τ)]
      [_ #'(U)])))
 
-(define-typed-syntax (spawn τ-c:type s:stmt) ≫
+(define-typed-syntax (spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   [⊢ s ≫ s- (⇒ :i τ-i:type) (⇒ :o τ-o:type) (⇒ :a τ-a:type)]
   ;; TODO: s shouldn't refer to facets or fields!
@@ -434,7 +442,7 @@
     [(~→ τ ...+) #t]
     [_ #f]))
 
-(define-typed-syntax (begin s:stmt ...) ≫
+(define-typed-syntax (begin s ...) ≫
   [⊢ s ≫ s- (⇒ :i τ1) (⇒ :o τ2) (⇒ :a τ3)] ...
   ------------------------------------------
   [⊢ (begin- (void-) s- ...) (⇒ : (U)) (⇒ :i (U τ1 ...)) (⇒ :o (U τ2 ...)) (⇒ :a (U τ3 ...))])
@@ -462,15 +470,15 @@
                         (~bind [syndicate-kw #'syndicate:retracted]))))))
 
 (define-typed-syntax on
-  [(on (~literal start) s:stmt) ≫
+  [(on (~literal start) s) ≫
    [⊢ s ≫ s- (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]
    -----------------------------------
    [⊢ (syndicate:on-start s-) (⇒ : (U)) (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]]
-  [(on (~literal stop) s:stmt) ≫
+  [(on (~literal stop) s) ≫
    [⊢ s ≫ s- (⇒ : τi) (⇒ :o τ-o) (⇒ :a τ-a)]
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : (U)) (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]]
-  [(on (a/r:asserted-or-retracted p:pat) s:stmt) ≫
+  [(on (a/r:asserted-or-retracted p:pat) s) ≫
    [⊢ p ≫ _ ⇒ τp]
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
    [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ : τi) (⇒ :o τ-o) (⇒ :a τ-a)]
@@ -503,7 +511,7 @@
      (type-eval #`(Outbound #,(replace-bind-and-discard-with-★ #'τ)))]
     [_ t]))
 
-(define-typed-syntax (assert e:exp) ≫
+(define-typed-syntax (assert e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:with τ-in (strip-? #'τ.norm)
   -------------------------------------
@@ -512,7 +520,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
 
-(define-typed-syntax (tuple e:exp ...) ≫
+(define-typed-syntax (tuple e:expr ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
   -----------------------
   [⊢ (list 'tuple e- ...) (⇒ : (Tuple τ ...)) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
@@ -522,7 +530,7 @@
   ------------------------
   [⊢ (x-) (⇒ : τ) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
 
-(define-typed-syntax (λ [p:pat s:stmt] ...) ≫
+(define-typed-syntax (λ [p:pat s] ...) ≫
   #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
   [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ : τv) (⇒ :i τ1) (⇒ :o τ2) (⇒ :a τ3)] ...
   ;; REALLY not sure how to handle p/p-/p.match-pattern,
@@ -566,17 +574,17 @@
   [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ-v) (⇒ :i τ-i) (⇒ :o τ-o) (⇒ :a τ-a)])
 
 ;; it would be nice to abstract over these three
-(define-typed-syntax (observe e:exp) ≫
+(define-typed-syntax (observe e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   ---------------------------------------------------------------------------
   [⊢ (syndicate:observe e-) (⇒ : (Observe τ)) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
 
-(define-typed-syntax (inbound e:exp) ≫
+(define-typed-syntax (inbound e:expr) ≫
   [⊢ e ≫ e- ⇒ τ]
   ---------------------------------------------------------------------------
   [⊢ (syndicate:inbound e-) (⇒ : (Inbound τ)) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
 
-(define-typed-syntax (outbound e:exp) ≫
+(define-typed-syntax (outbound e:expr) ≫
   [⊢ e ≫ e- ⇒ τ]
   ---------------------------------------------------------------------------
   [⊢ (syndicate:outbound e-) (⇒ : (Outbound τ)) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
@@ -614,7 +622,7 @@
 (define-primop + (→ Int Int (Behavior Int (U) (U) (U))))
 (define-primop - (→ Int Int (Behavior Int (U) (U) (U))))
 
-(define-typed-syntax (displayln e:exp) ≫
+(define-typed-syntax (displayln e:expr) ≫
   [⊢ e ≫ e- ⇒ τ]
   ---------------
   [⊢ (displayln- e-) (⇒ : (U)) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
