@@ -2,7 +2,9 @@
 
 (provide (rename-out [syndicate:#%module-begin #%module-begin])
          (rename-out [typed-app #%app])
+         (rename-out [syndicate:begin-for-declarations declare-types])
          #%top-interaction
+         #%top
          require only-in
          ;; Types
          Int Bool String Tuple Bind Discard Case → Behavior FacetName Field ★
@@ -19,7 +21,8 @@
          bind discard
          ;; primitives
          + - displayln
-         ;; DEBUG
+         ;; DEBUG and utilities
+         define-type-alias
          print-type
          (rename-out [printf- printf])
          )
@@ -344,6 +347,7 @@
      #'(syndicate:field [x e] ...)]))
 
 (define-typed-syntax (dataspace τ-c:type s:stmt ...) ≫
+  ;; #:do [(printf "τ-c: ~a\n" (type->str #'τ-c.norm))]
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   [⊢ s ≫ s- (⇒ :i τ-i:type) (⇒ :o τ-o:type) (⇒ :a τ-s:type)] ...
   ;; #:do [(printf "dataspace types: ~a\n" (stx-map type->str #'(τ-s.norm ...)))
@@ -637,6 +641,26 @@
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
 
+(define-typed-syntax (print-type e) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  #:do [(displayln (type->str #'τ))]
+  ----------------------------------
+  [⊢ e- ⇒ τ])
+
+;; τ.norm in 1st case causes "not valid type" error when file is compiled
+;; (copied from ext-stlc example)
+(define-syntax define-type-alias
+  (syntax-parser
+    [(_ alias:id τ:any-type)
+     #'(define-syntax- alias
+         (make-variable-like-transformer #'τ.norm))]
+    [(_ (f:id x:id ...) ty)
+     #'(define-syntax- (f stx)
+         (syntax-parse stx
+           [(_ x ...)
+            #:with τ:any-type #'ty
+            #'τ.norm]))]))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 
@@ -697,11 +721,6 @@
                   #'(τ ...)]
                  [_ 'boo])))
 
-;; This one doesn't blow up
-;; (expand/step #'(spawn Int (facet _ (fields [x Int 0]) (on start (set! x 12)) (assert 42))))
-;; But, this one does- "identifier x used out of context"
-;; (expand/step #'(spawn Int (facet _ (fields [x Int 0]) (assert 42) (on start (set! x 12)))))
-
 #;(define-typed-syntax (λ2 ([x:id τ:type] ...) e:expr ...+) ≫
   [[x ≫ x- : τ] ... ⊢ (e ≫ e-  ⇒ τ-e) ...]
   ;;#:do ((printf "~v\n" #'((x- ...) ...)))
@@ -709,8 +728,6 @@
   [⊢ (lambda- (x- ...) e- ...)
      ⇒ (→ τ ... #,(last (stx->list #'(τ-e ...))))])
 
-(define-typed-syntax (print-type e) ≫
-  [⊢ e ≫ e- ⇒ τ]
-  #:do [(displayln (type->str #'τ))]
-  ----------------------------------
-  [⊢ e- ⇒ τ])
+#;(define-syntax (#%top stx)
+  (printf "my #%top\n")
+  #'f)
