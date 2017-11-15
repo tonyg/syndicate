@@ -67,9 +67,16 @@
 
   ;; constructors with arity one
   (define-syntax-class kons1
-    (pattern (~or (~literal observe)
-                  (~literal inbound)
-                  (~literal outbound))))
+    (pattern (~or (~datum observe)
+                  (~datum inbound)
+                  (~datum outbound))))
+
+  (define (kons1->constructor stx)
+    (syntax-parse stx
+      #:datum-literals (observe inbound outbound)
+      [observe #'syndicate:observe]
+      [inbound #'syndicate:inbound]
+      [outbound #'syndicate:outbound]))
 
   (define-syntax-class basic-val
     (pattern (~or boolean
@@ -122,9 +129,8 @@
                         (~bind [syndicate-pattern #'(list 'tuple ps.syndicate-pattern ...)]
                                [match-pattern #'(list 'tuple ps.match-pattern ...)]))
                   (~and (k:kons1 p:pat)
-                        ;; not sure if this gets the binding of k right
-                        (~bind [syndicate-pattern #'(k p.syndicate-pattern)]
-                               [match-pattern #'(k p.match-pattern)]))
+                        (~bind [syndicate-pattern #`(#,(kons1->constructor #'k) p.syndicate-pattern)]
+                               [match-pattern #`(#,(kons1->constructor #'k) p.match-pattern)]))
                   (~and (bind ~! x:id τ:type)
                         (~bind [syndicate-pattern #'($ x)]
                                [match-pattern #'x]))
