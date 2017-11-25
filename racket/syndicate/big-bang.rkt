@@ -12,6 +12,7 @@
          (struct-out mouse-event)
          (struct-out mouse-state)
          (struct-out active-window)
+         (struct-out frame-dimensions)
          update-window
          (all-from-out 2htdp/image))
 
@@ -41,6 +42,7 @@
 (struct mouse-event (x y window type) #:transparent)
 (struct mouse-state (x y window) #:transparent)
 (struct active-window (id) #:transparent)
+(struct frame-dimensions (width height) #:transparent)
 
 (define (update-window id x y image #:z [z 0])
   (patch-seq (retract (outbound (window id ? ? ? ?)))
@@ -48,7 +50,7 @@
 
 ;;---------------------------------------------------------------------------
 
-(struct bb (proc windows inbound outbound halted? x y) #:transparent)
+(struct bb (proc windows inbound outbound halted? x y width height) #:transparent)
 
 (define window-projection (?! (window ? ? ? ? ?)))
 
@@ -132,16 +134,18 @@
   (patch-seq (retract (active-window ?))
              (assert (active-window active-id))))
 
-(define-syntax-rule (big-bang-dataspace* boot-actions extra-clause ...)
+(define-syntax-rule (big-bang-dataspace* width height boot-actions extra-clause ...)
   (let-values (((proc initial-transition _initial-assertions-always-empty)
                 (actor->process+transition/assertions (dataspace-actor boot-actions))))
     (big-bang (interpret-actions (bb proc
                                      '()
-                                     '()
+                                     (list (assert (frame-dimensions width height)))
                                      '()
                                      #f
                                      0
-                                     0)
+                                     0
+                                     width
+                                     height)
                                  initial-transition
                                  #t)
               (on-tick (lambda (b)
@@ -161,27 +165,43 @@
               (stop-when bb-halted?)
               extra-clause ...)))
 
-(define-syntax-rule (big-bang-dataspace** width height exit? boot-actions extra-clause ...)
+(define-syntax-rule (big-bang-dataspace** fullscreen? width height exit? boot-actions
+                                          extra-clause ...)
   (begin
-    (if (and width height)
-        (big-bang-dataspace* boot-actions (to-draw render width height) extra-clause ...)
-        (big-bang-dataspace* boot-actions (to-draw render) extra-clause ...))
+    (cond
+      [fullscreen?
+       (big-bang-dataspace* width height boot-actions (to-draw render)
+                            (display-mode 'fullscreen
+                                          (lambda (b w h)
+                                            (inject (struct-copy bb b [width w] [height h])
+                                                    (list
+                                                     (patch-seq (retract (frame-dimensions ? ?))
+                                                                (assert (frame-dimensions w h)))))))
+                            extra-clause ...)]
+      [(and width height)
+       (big-bang-dataspace* width height boot-actions (to-draw render width height)
+                            extra-clause ...)]
+      [else
+       (big-bang-dataspace* width height boot-actions (to-draw render)
+                            extra-clause ...)])
     (when exit? (exit 0))))
 
 (define ((big-bang-dataspace #:width [width #f]
                              #:height [height #f]
-                             #:exit? [exit? #t])
+                             #:exit? [exit? #t]
+                             #:fullscreen? [fullscreen? #f])
          . boot-actions)
-  (big-bang-dataspace** width height exit? boot-actions))
+  (big-bang-dataspace** fullscreen? width height exit? boot-actions))
 
 (define ((big-bang-dataspace/universe #:width [width #f]
                                       #:height [height #f]
                                       #:exit? [exit? #t]
                                       #:register [ip LOCALHOST]
                                       #:port [port-number SQPORT]
-                                      #:name [world-name (gensym 'syndicate)])
+                                      #:name [world-name (gensym 'syndicate)]
+                                      #:fullscreen? [fullscreen? #f])
          . boot-actions)
-  (big-bang-dataspace** width height exit? boot-actions
+  (big-bang-dataspace** fullscreen? width height exit? boot-actions
                         (on-receive (lambda (b sexps)
                                       (inject b (for/list ((m sexps)) (message (from-server m))))))
                         (register ip)
