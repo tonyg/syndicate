@@ -13,13 +13,13 @@
                              (set! the-thing new-v))))
 
            (spawn ds-type
-                  (let-function [k (λ [10 (begin)]
-                                      [(bind x Int)
-                                       (facet _ (fields)
-                                              (assert (tuple "set thing" (+ x 1))))])]
-                                (facet _ (fields)
-                                       (on (asserted (tuple "the thing" (bind x Int)))
-                                           (k x)))))
+                  (let [k (λ [10 (begin)]
+                            [(bind x Int)
+                             (facet _ (fields)
+                                    (assert (tuple "set thing" (+ x 1))))])]
+                    (facet _ (fields)
+                           (on (asserted (tuple "the thing" (bind x Int)))
+                               (k x)))))
 
            (spawn ds-type
                   (facet _ (fields)

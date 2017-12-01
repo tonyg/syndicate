@@ -10,7 +10,7 @@
          Int Bool String Tuple Bind Discard Case → Behavior FacetName Field ★
          Observe Inbound Outbound Actor U
          ;; Statements
-         let-function spawn dataspace facet set! begin stop unsafe-do
+         let spawn dataspace facet set! begin stop unsafe-do
          ;; endpoints
          assert on
          ;; expressions
@@ -20,14 +20,17 @@
          ;; patterns
          bind discard
          ;; primitives
-         + - displayln
+         + - * / and or not > < >= <= = equal? displayln
          ;; DEBUG and utilities
          define-type-alias
          print-type
          (rename-out [printf- printf])
+         ;; Extensions
+         match if cond
          )
 
 (require (rename-in racket/match [match-lambda match-lambda-]))
+(require (rename-in racket/math [exact-truncate exact-truncate-]))
 (require (prefix-in syndicate: syndicate/actor-lang))
 
 (module+ test
@@ -66,7 +69,7 @@ is meant to be
   (define-syntax-class stmt
     #:datum-literals (:
                       begin
-                      let-function
+                      let
                       set!
                       spawn
                       dataspace
@@ -76,7 +79,7 @@ is meant to be
                       fields)
     (pattern (~or (begin seq:stmt ...)
                   (e1:exp e2:exp)
-                  (let-function [f:id e:exp] let-fun-body:stmt)
+                  (let [f:id e:exp] let-fun-body:stmt)
                   (set! x:id e:exp)
                   (spawn τ:type s:stmt)
                   (dataspace τ:type nested:stmt ...)
@@ -339,13 +342,13 @@ is meant to be
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
   [⊢ cont ≫ cont- (⇒ :i τ-i) (⇒ :o τ-o) (⇒ :a τ-a)]
   --------------------------------------------------
-  [⊢ (syndicate:stop facet-name- cont-) (⇒ : (U)) (⇒ :i τ-i) (⇒ :o τ-o) (⇒ :a τ-a)])
+  [⊢ (syndicate:stop-facet facet-name- cont-) (⇒ : (U)) (⇒ :i τ-i) (⇒ :o τ-o) (⇒ :a τ-a)])
 
-(define-typed-syntax (facet name:id ((~datum fields) [x:id τ:type e:expr] ...) ep:endpoint ...+) ≫
+(define-typed-syntax (facet name:id ((~datum fields) [x:id τ:type e:expr] ...) ep ...+) ≫
   #:fail-unless (stx-andmap flat-type? #'(τ ...)) "keep your uppity data outa my fields"
   [⊢ e ≫ e- (⇐ : τ)] ...
   [[name ≫ name- : FacetName] [x ≫ x- : (Field τ)] ...
-   ⊢ [ep ≫ ep- (⇒ : τ-i) (⇒ :o τ-o) (⇒ :a τ-a)] ...]
+   ⊢ [ep ≫ ep- (⇒ :i τ-i) (⇒ :o τ-o) (⇒ :a τ-a)] ...]
   --------------------------------------------------------------
   ;; name NOT name- here because I get an error that way.
   ;; Since name is just an identifier I think it's OK?
@@ -421,18 +424,19 @@ is meant to be
   [⊢ s ≫ s- (⇒ :i τ-i:type) (⇒ :o τ-o:type) (⇒ :a τ-a:type)]
   ;; TODO: s shouldn't refer to facets or fields!
   #:fail-unless (<: #'τ-o.norm #'τ-c.norm)
-                (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o) (type->str #'τ-c))
+                (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o.norm) (type->str #'τ-c.norm))
   #:fail-unless (<: (type-eval #'(Actor τ-a.norm))
                     (type-eval #'(Actor τ-c.norm))) "Spawned actors not valid in dataspace"
   #:fail-unless (project-safe? (∩ (strip-? #'τ-o.norm) #'τ-c.norm)
                                #'τ-i.norm) "Not prepared to handle all inputs"
+  ;; #:do [(printf "spawning: ~v\n" #'s-)]
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : (U)) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a τ-c)])
 
-(define-typed-syntax (let-function [f:id e:expr] body:expr) ≫
+(define-typed-syntax (let [f:id e:expr] body:expr) ≫
   [⊢ e ≫ e- (⇒ : τ:type)]
-  #:fail-unless (procedure-type? #'τ.norm)
-                (format "let-function only binds procedures; got ~a" (type->str #'τ.norm))
+  #:fail-unless (or (procedure-type? #'τ.norm) (flat-type? #'τ.norm))
+                (format "let doesn't bind actions; got ~a" (type->str #'τ.norm))
   [[f ≫ f- : τ] ⊢ body ≫ body- (⇒ : τ-body) (⇒ :i τ-body-i) (⇒ :o τ-body-o) (⇒ :a τ-body-a)]
    ------------------------------------------------------------------------
   [⊢ (let- ([f- e-]) body-) (⇒ : τ-body) (⇒ :i τ-body-i) (⇒ :o τ-body-o) (⇒ :a τ-body-a)])
@@ -475,13 +479,13 @@ is meant to be
    -----------------------------------
    [⊢ (syndicate:on-start s-) (⇒ : (U)) (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]]
   [(on (~literal stop) s) ≫
-   [⊢ s ≫ s- (⇒ : τi) (⇒ :o τ-o) (⇒ :a τ-a)]
+   [⊢ s ≫ s- (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : (U)) (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]]
   [(on (a/r:asserted-or-retracted p:pat) s) ≫
-   [⊢ p ≫ _ ⇒ τp]
+   [⊢ p ≫ _ (⇒ : τp)]
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
-   [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ : τi) (⇒ :o τ-o) (⇒ :a τ-a)]
+   [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]
    ;; the type of subscriptions to draw assertions to the pattern
    #:with pat-sub (replace-bind-and-discard-with-★ #'τp)
    -----------------------------------
@@ -540,7 +544,7 @@ is meant to be
   --------------------------------------------------------------
   ;; TODO: add a catch-all error clause
   [⊢ (match-lambda- [p.match-pattern (let- ([x- x] ...) s-)] ...)
-     (⇒ : (→ (U τ-in ...) (Behavior (U τv ...) (U τ1 ...) (U τ2 ...) (U τ3 ...))))
+     (⇒ : (→ (U τ-p ...) (Behavior (U τv ...) (U τ1 ...) (U τ2 ...) (U τ3 ...))))
      (⇒ :i (U))
      (⇒ :o (U))
      (⇒ :a (U))])
@@ -554,22 +558,28 @@ is meant to be
     [~Discard
      (type-eval #'★)]
     [(~U τ ...)
-     (type-eval #`(U #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
+     (type-eval #`(U #,@(stx-map lower-pattern-type #'(τ ...))))]
     [(~Tuple τ ...)
-     (type-eval #`(Tuple #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
+     (type-eval #`(Tuple #,@(stx-map lower-pattern-type #'(τ ...))))]
     [(~Observe τ)
-     (type-eval #`(Observe #,(replace-bind-and-discard-with-★ #'τ)))]
+     (type-eval #`(Observe #,(lower-pattern-type #'τ)))]
     [(~Inbound τ)
-     (type-eval #`(Inbound #,(replace-bind-and-discard-with-★ #'τ)))]
+     (type-eval #`(Inbound #,(lower-pattern-type #'τ)))]
     [(~Outbound τ)
-     (type-eval #`(Outbound #,(replace-bind-and-discard-with-★ #'τ)))]
+     (type-eval #`(Outbound #,(lower-pattern-type #'τ)))]
     [_ t]))
 
 (define-typed-syntax (typed-app e_fn e_arg ...) ≫
-  [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in ... (~Behavior τ-v τ-i τ-o τ-a)))]
+  [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in:type ... (~Behavior τ-v τ-i τ-o τ-a)))]
   #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
                 (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
-  [⊢ e_arg ≫ e_arg- (⇐ : τ_in)] ...
+  [⊢ e_arg ≫ e_arg- (⇒ : τ_arg:type)] ...
+  ;; #:do [(printf "~a\n" (stx-map type->str #'(τ_arg.norm ...)))
+  ;;      (printf "~a\n" (stx-map type->str #'(τ_in.norm ...) #;(stx-map lower-pattern-type #'(τ_in.norm ...))))]
+  #:fail-unless (stx-andmap <: #'(τ_arg.norm ...) (stx-map lower-pattern-type #'(τ_in.norm ...)))
+  "argument mismatch"
+  #:fail-unless (stx-andmap project-safe? #'(τ_arg.norm ...) #'(τ_in.norm ...))
+  "match error"
   ------------------------------------------------------------------------
   [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ-v) (⇒ :i τ-i) (⇒ :o τ-o) (⇒ :a τ-a)])
 
@@ -612,6 +622,8 @@ is meant to be
     [(tuple p:pat ...)
      #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
      #'([x τ] ... ...)]
+    [(k:kons1 p:pat)
+     (pat-bindings #'p)]
     [_:pat
      #'()]))
 
@@ -621,6 +633,35 @@ is meant to be
 ;; hmmm
 (define-primop + (→ Int Int (Behavior Int (U) (U) (U))))
 (define-primop - (→ Int Int (Behavior Int (U) (U) (U))))
+(define-primop * (→ Int Int (Behavior Int (U) (U) (U))))
+#;(define-primop and (→ Bool Bool (Behavior Bool (U) (U) (U))))
+(define-primop or (→ Bool Bool (Behavior Bool (U) (U) (U))))
+(define-primop not (→ Bool (Behavior Bool (U) (U) (U))))
+(define-primop < (→ Int Int (Behavior Bool (U) (U) (U))))
+(define-primop > (→ Int Int (Behavior Bool (U) (U) (U))))
+(define-primop <= (→ Int Int (Behavior Bool (U) (U) (U))))
+(define-primop >= (→ Int Int (Behavior Bool (U) (U) (U))))
+(define-primop = (→ Int Int (Behavior Bool (U) (U) (U))))
+
+(define-typed-syntax (/ e1 e2) ≫
+  [⊢ e1 ≫ e1- (⇐ : Int)]
+  [⊢ e2 ≫ e2- (⇐ : Int)]
+  ------------------------
+  [⊢ (exact-truncate- (/- e1- e2-)) (⇒ : Int) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
+
+;; for some reason defining `and` as a prim op doesn't work
+(define-typed-syntax (and e ...) ≫
+  [⊢ e ≫ e- (⇐ : Bool)] ...
+  ------------------------
+  [⊢ (and- e- ...) (⇒ : Bool) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
+
+(define-typed-syntax (equal? e1:expr e2:expr) ≫
+  [⊢ e1 ≫ e1- (⇒ : τ1:type)]
+  #:fail-unless (flat-type? #'τ1.norm)
+  (format "equality only available on flat data; got ~a" (type->str #'τ1))
+  [⊢ e2 ≫ e2- (⇐ : τ1)]
+  ---------------------------------------------------------------------------
+  [⊢ (equal?- e1- e2-) (⇒ : Bool) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
 
 (define-typed-syntax (displayln e:expr) ≫
   [⊢ e ≫ e- ⇒ τ]
@@ -676,6 +717,27 @@ is meant to be
             #'τ.norm]))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Extensions
+
+(define-syntax (match stx)
+  (syntax-parse stx
+    [(match e [pat body] ...+)
+     (syntax/loc stx
+       (typed-app (λ [pat body] ...) e))]))
+
+(define-syntax (if stx)
+  (syntax-parse stx
+    [(if e1 e2 e3)
+     (syntax/loc stx
+       (typed-app (λ [#f e3] [discard e2]) e1))]))
+
+(define-typed-syntax (cond [pred:expr s] ...+) ≫
+  [⊢ pred ≫ pred- (⇐ : Bool)] ...
+  [⊢ s ≫ s- (⇒ :i τ-i) (⇒ :o τ-o) (⇒ :a τ-a)] ...
+  ------------------------------------------------
+  [⊢ (cond- [pred- s-] ...) (⇒ : (U)) (⇒ :i (U τ-i ...)) (⇒ :o (U τ-o ...)) (⇒ :a (U τ-a ...))])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 
 ;; WANTED UNIT TESTS
@@ -697,27 +759,6 @@ is meant to be
 
   #;(check-type (λ [(bind x Int) (begin)]) : (Case [→ (Bind Int) (Facet (U) (U) (U))]))
   #;(check-true (void? ((λ [(bind x Int) (begin)]) 1))))
-
-(define bank-account
-  #'(facet account
-           (let-field [balance : Int 0]
-                      ;; this bit isn't valid because `assert` is not a statement
-                      (begin (assert (tuple "balance" (ref balance)))
-                             (on (asserted (tuple "deposit" (bind amount Int)))
-                                 (set! balance (+ (ref balance) amount)))))))
-
-(define client
-  #'(spawn
-     (let-field [deposits : Int 3]
-                (facet client
-                       (on (asserted (tuple "balance" (bind amount Int)))
-                           ;; this bit isn't valid because `assert` is not a statement
-                           (begin (assert (tuple "deposit" 100))
-                                  (set! deposits (- (ref deposits) 1))
-                                  ;; also `if` isn't in the grammar
-                                  (if (= (ref deposits) 0)
-                                      (stop client (begin))
-                                      (begin))))))))
 
 (define-syntax (test-syntax-class stx)
   (syntax-parse stx
