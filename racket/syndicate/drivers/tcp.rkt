@@ -111,16 +111,15 @@
 (define (spawn-tcp-connection local-addr remote-addr)
   (match-define (tcp-address remote-hostname remote-port) remote-addr)
   (define-values (cin cout)
-    (with-handlers ([exn:fail:network? (lambda (e)
-					 ;; TODO: it'd be nice to
-					 ;; somehow communicate the
-					 ;; actual error to the local
-					 ;; peer.
-					 (log-error "~a" (exn->string e))
-					 (define o (open-output-string))
-					 (close-output-port o)
-					 (values (open-input-string "")
-						 o))])
+    (with-handlers ([exn:fail? (lambda (e)
+                                 ;; TODO: it'd be nice to somehow
+                                 ;; communicate the actual error to
+                                 ;; the local peer.
+                                 (log-error "~a" (exn->string e))
+                                 (define o (open-output-string))
+                                 (close-output-port o)
+                                 (values (open-input-string "")
+                                         o))])
       (tcp:tcp-connect remote-hostname remote-port)))
   (spawn-connection local-addr remote-addr cin cout))
 
