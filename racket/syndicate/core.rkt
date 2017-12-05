@@ -129,7 +129,10 @@
 ;; Seals are used by protocols to prevent the routing tries from
 ;; examining internal structure of values.
 
-(struct seal (contents)) ;; NB. Neither transparent nor prefab
+(struct seal (contents) ;; NB. Neither transparent nor prefab
+  #:methods gen:custom-write
+  [(define (write-proc s port mode)
+     (fprintf port "#{~v}" (seal-contents s)))])
 
 ;; contract -> contract
 (define ((sealof c) x)
