@@ -12,16 +12,22 @@
          (assert (dns-entry "localhost" "127.0.0.1"))))
 
 (spawn #:name 'cache
-       (on (asserted (dns-entry $name $addr))
-           (define deadline (+ (current-inexact-milliseconds) 5000))
+       (on (asserted (observe (dns-entry $name _)))
+           (define deadline (+ (current-inexact-milliseconds) 2000))
            (react (stop-when (asserted (later-than deadline)))
-                  (on-start (printf "caching ~a = ~a\n" name addr))
-                  (on-stop (printf "uncaching ~a = ~a\n" name addr))
-                  (assert (dns-entry name addr)))))
+                  (on-start (printf "caching ~a\n" name))
+                  (on-stop (printf "uncaching ~a\n" name))
+                  (assert (observe (dns-entry name _))))))
 
 (spawn #:name 'main
        (stop-when (asserted (dns-entry "localhost" $addr))
          (printf "localhost is ~a\n" addr)
          (sleep 1)
          (react (stop-when (asserted (dns-entry "localhost" $addr))
-                  (printf "localhost is still ~a\n" addr)))))
+                  (printf "localhost is still ~a\n" addr)
+                  (sleep 2)
+                  (react (stop-when (asserted (dns-entry "localhost" $addr))
+                           (printf "localhost is STILL ~a\n" addr)))))))
+
+(module+ main
+  (file-stream-buffer-mode (current-output-port) 'line))
