@@ -1,33 +1,46 @@
 #lang typed/syndicate
 
+(define-constructor (account balance)
+  #:type-constructor AccountT
+  #:with Account (AccountT Int)
+  #:with AccountRequest (AccountT ★))
+
+(define-constructor (deposit amount)
+  #:type-constructor DepositT
+  #:with Deposit (DepositT Int)
+  #:with DepositRequest (DepositT ★))
+
 (define-type-alias ds-type
-  (U (Tuple String Int)
-     (Observe (Tuple String ★))
-     (Observe (Observe (Tuple String ★)))))
+  (U Account
+     (Observe AccountRequest)
+     (Observe (Observe AccountRequest))
+     Deposit
+     (Observe DepositRequest)
+     (Observe (Observe DepositRequest))))
 
 (dataspace ds-type
 
            (spawn ds-type
                   (facet _
                          (fields [balance Int 0])
-                         (assert (tuple "balance" (ref balance)))
-                         (on (asserted (tuple "deposit" (bind amount Int)))
+                         (assert (account (ref balance)))
+                         (on (asserted (deposit (bind amount Int)))
                              (set! balance (+ (ref balance) amount)))))
 
            (spawn ds-type
                   (facet _
                          (fields)
-                         (on (asserted (tuple "balance" (bind amount Int)))
+                         (on (asserted (account (bind amount Int)))
                              (displayln amount))))
 
            (spawn ds-type
                   (facet _
                          (fields)
-                         (on (asserted (observe (tuple "deposit" discard)))
+                         (on (asserted (observe (deposit discard)))
                                (facet _
                                       (fields)
-                                      (assert (tuple "deposit" 100))
-                                      (assert (tuple "deposit" -30)))))))
+                                      (assert (deposit 100))
+                                      (assert (deposit -30)))))))
 
 #|
 ;; Hello-worldish "bank account" example.
