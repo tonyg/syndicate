@@ -4,7 +4,6 @@
          (rename-out [typed-app #%app])
          (rename-out [syndicate:begin-for-declarations declare-types])
          #%top-interaction
-         #%top
          require only-in
          ;; Types
          Int Bool String Tuple Bind Discard Case → Behavior FacetName Field ★
@@ -21,8 +20,10 @@
          bind discard
          ;; primitives
          + - * / and or not > < >= <= = equal? displayln
-         ;; DEBUG and utilities
+         ;; making types
          define-type-alias
+         define-constructor
+         ;; DEBUG and utilities
          print-type
          (rename-out [printf- printf])
          ;; Extensions
@@ -57,6 +58,137 @@
 (define-type-constructor Inbound #:arity = 1)
 (define-type-constructor Outbound #:arity = 1)
 (define-type-constructor Actor #:arity = 1)
+
+(define-for-syntax (type-eval t)
+  ((current-type-eval) t))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; User Defined Types, aka Constructors
+
+;; τ.norm in 1st case causes "not valid type" error when file is compiled
+;; (copied from ext-stlc example)
+(define-syntax define-type-alias
+  (syntax-parser
+    [(_ alias:id τ:any-type)
+     #'(define-syntax- alias
+         (make-variable-like-transformer #'τ.norm))]
+    [(_ (f:id x:id ...) ty)
+     #'(define-syntax- (f stx)
+         (syntax-parse stx
+           [(_ x ...)
+            #:with τ:any-type #'ty
+            #'τ.norm]))]))
+
+(begin-for-syntax
+  (define-splicing-syntax-class type-constructor-decl
+    (pattern (~seq #:type-constructor TypeCons:id))
+    (pattern (~seq) #:attr TypeCons #f))
+
+  (struct user-ctor (typed-ctor untyped-ctor)
+    #:property prop:procedure
+    (lambda (v stx)
+      (define transformer (user-ctor-typed-ctor v))
+      (syntax-parse stx
+        [(_ e ...)
+         #`(#,transformer e ...)]))))
+
+(define-syntax (define-constructor stx)
+  (syntax-parse stx
+    [(_ (Cons:id slot:id ...)
+        ty-cons:type-constructor-decl
+        (~seq #:with
+              Alias AliasBody) ...)
+     #:with TypeCons (or (attribute ty-cons.TypeCons) (format-id stx "~a/t" (syntax-e #'Cons)))
+     #:with MakeTypeCons (format-id #'TypeCons "make-~a" #'TypeCons)
+     #:with GetTypeParams (format-id #'TypeCons "get-~a-type-params" #'TypeCons)
+     #:with TypeConsExpander (format-id #'TypeCons "~~~a" #'TypeCons)
+     #:with TypeConsExtraInfo (format-id #'TypeCons "~a-extra-info" #'TypeCons)
+     #:with (StructName Cons- type-tag) (generate-temporaries #'(Cons Cons Cons))
+     (define arity (stx-length #'(slot ...)))
+     #`(begin-
+         (struct- StructName (slot ...) #:reflection-name 'Cons #:transparent)
+         (define-syntax (TypeConsExtraInfo stx)
+           (syntax-parse stx
+             [(_ X (... ...)) #'('type-tag 'MakeTypeCons 'GetTypeParams)]))
+         (define-type-constructor TypeCons
+           #:arity = #,arity
+           #:extra-info 'TypeConsExtraInfo)
+         (define-syntax (MakeTypeCons stx)
+           (syntax-parse stx
+             [(_ t (... ...))
+              #:fail-unless (= #,arity (stx-length #'(t (... ...)))) "arity mismatch"
+              #'(TypeCons t (... ...))]))
+         (define-syntax (GetTypeParams stx)
+           (syntax-parse stx
+             [(_ (TypeConsExpander t (... ...)))
+              #'(t (... ...))]))
+         (define-syntax Cons
+           (user-ctor #'Cons- #'StructName))
+         (define-typed-syntax (Cons- e (... ...)) ≫
+           #:fail-unless (= #,arity (stx-length #'(e (... ...)))) "arity mismatch"
+           [⊢ e ≫ e- (⇒ : τ)] (... ...)
+           ----------------------
+           [⊢ (#%app- StructName e- (... ...)) (⇒ : (TypeCons τ (... ...)))
+              (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
+         (define-type-alias Alias AliasBody) ...)]))
+
+(begin-for-syntax
+  (define-syntax ~constructor-extra-info
+    (pattern-expander
+     (syntax-parser
+       [(_ tag mk get)
+        #'(_ (_ tag) (_ mk) (_ get))])))
+
+  (define-syntax ~constructor-type
+    (pattern-expander
+     (syntax-parser
+       [(_ tag . rst)
+        #'(~and it
+                (~fail #:unless (user-defined-type? #'it))
+                (~parse tag (get-type-tag #'it))
+                (~Any _ . rst))])))
+
+  (define-syntax ~constructor-exp
+    (pattern-expander
+     (syntax-parser
+       [(_ cons . rst)
+        #'(~and (cons . rst)
+                (~fail #:unless (ctor-id? #'cons)))])))
+
+  (define (inspect t)
+    (syntax-parse t
+      [(~constructor-type tag t ...)
+       (list (syntax-e #'tag) (stx-map type->str #'(t ...)))]))
+
+  (define (tags-equal? t1 t2)
+    (equal? (syntax-e t1) (syntax-e t2)))
+    
+  (define (user-defined-type? t)
+    (get-extra-info (type-eval t)))
+
+  (define (get-type-tag t)
+    (syntax-parse (get-extra-info t)
+      [(~constructor-extra-info tag _ _)
+       (syntax-e #'tag)]))
+
+  (define (get-type-args t)
+    (syntax-parse (get-extra-info t)
+      [(~constructor-extra-info _ _ get)
+       (define f (syntax-local-value #'get))
+       (syntax->list (f #`(get #,t)))]))
+
+  (define (make-cons-type t args)
+    (syntax-parse (get-extra-info t)
+      [(~constructor-extra-info _ mk _)
+       (define f (syntax-local-value #'mk))
+        (type-eval (f #`(mk #,@args)))]))
+
+  (define (ctor-id? stx)
+    (and (identifier? stx)
+         (user-ctor? (syntax-local-value stx (const #f)))))
+
+  (define (untyped-ctor stx)
+    (user-ctor-untyped-ctor (syntax-local-value stx (const #f)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax
@@ -121,19 +253,19 @@ is meant to be
                   (~literal -)
                   (~literal displayln))))
 
-  (define-syntax-class endpoint
+  #;(define-syntax-class endpoint
     #:datum-literals (on start stop)
     (pattern (~or (on ed:event-desc s)
                   (assert e:expr))))
 
-  (define-syntax-class event-desc
+  #;(define-syntax-class event-desc
     #:datum-literals (start stop asserted retracted)
     (pattern (~or start
                   stop
                   (asserted p:pat)
                   (retracted p:pat))))
                   
-  (define-syntax-class pat
+  #;(define-syntax-class pat
     #:datum-literals (tuple _ discard bind)
     #:attributes (syndicate-pattern match-pattern)
     (pattern (~or (~and (tuple ps:pat ...)
@@ -153,7 +285,35 @@ is meant to be
                                [match-pattern #'(== x)]))
                   (~and e:expr
                         (~bind [syndicate-pattern #'e]
-                               [match-pattern #'(== e)]))))))
+                               [match-pattern #'(== e)])))))
+
+  (define (compile-pattern pat bind-id-transformer exp-transformer)
+    (let loop ([pat pat])
+      (syntax-parse pat
+        #:datum-literals (tuple discard bind)
+        [(tuple p ...)
+         #`(list 'tuple #,@(stx-map loop #'(p ...)))]
+        [(k:kons1 p)
+         #`(#,(kons1->constructor #'k) #,(loop #'p))]
+        [(bind x:id τ:type)
+         (bind-id-transformer #'x)]
+        [discard
+         #'_]
+        [(~constructor-exp ctor p ...)
+         (define/with-syntax uctor (untyped-ctor #'ctor))
+         #`(uctor #,@(stx-map loop #'(p ...)))]
+        [_
+         (exp-transformer pat)])))
+
+  (define (compile-match-pattern pat)
+    (compile-pattern pat
+                     identity
+                     (lambda (exp) #`(== #,exp))))
+
+  (define (compile-syndicate-pattern pat)
+    (compile-pattern pat
+                     (lambda (id) #`($ #,id))
+                     identity)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subtyping
@@ -189,6 +349,10 @@ is meant to be
      (<: #'τ1 #'τ2)]
     [((~Outbound τ1:type) (~Outbound τ2:type))
      (<: #'τ1 #'τ2)]
+    [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
+     #:when (tags-equal? #'t1 #'t2)
+     (and (stx-length=? #'(τ1 ...) #'(τ2 ...))
+          (stx-andmap <: #'(τ1 ...) #'(τ2 ...)))]
     [((~Behavior τ-v1 τ-i1 τ-o1 τ-a1) (~Behavior τ-v2 τ-i2 τ-o2 τ-a2))
      (and (<: #'τ-v1 #'τ-v2)
           ;; HMMMMMM. i2 and i1 are types of patterns. TODO
@@ -236,6 +400,11 @@ is meant to be
      ;; I don't think stx-ormap is part of the documented api of turnstile *shrug*
      #:fail-when (stx-ormap (lambda (t) (<: t (type-eval #'(U)))) #'(τ ...)) #f
      (type-eval #'(Tuple τ ...))]
+    [((~constructor-type tag1 τ1:type ...) (~constructor-type tag2 τ2:type ...))
+     #:when (tags-equal? #'tag1 #'tag2)
+     #:with (τ ...) (stx-map ∩ #'(τ1 ...) #'(τ2 ...))
+     #:fail-when (stx-ormap (lambda (t) (<: t (type-eval #'(U)))) #'(τ ...)) #f
+     (make-cons-type t1 #'(τ ...))]
     ;; these three are just the same :(
     [((~Observe τ1:type) (~Observe τ2:type))
      #:with τ (∩ #'τ1 #'τ2)
@@ -267,6 +436,9 @@ is meant to be
     [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
      #:when (overlap? t1 t2)
      (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
+    [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
+     #:when (tags-equal? #'t1 #'t2)
+     (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
     [((~Observe τ1:type) (~Observe τ2:type))
      (project-safe? #'τ1 #'τ2)]
     [((~Inbound τ1:type) (~Inbound τ2:type))
@@ -290,6 +462,9 @@ is meant to be
     [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
      (and (stx-length=? #'(τ1 ...) #'(τ2 ...))
           (stx-andmap overlap? #'(τ1 ...) #'(τ2 ...)))]
+    [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
+     (and (tags-equal? #'t1 #'t2)
+          (stx-andmap overlap? #'(τ1 ...) #'(τ2 ...)))]
     [((~Observe τ1:type) (~Observe τ2:type))
      (overlap? #'τ1 #'τ2)]
     [((~Inbound τ1:type) (~Inbound τ2:type))
@@ -306,6 +481,8 @@ is meant to be
     [(~U τ:type ...)
      (stx-andmap finite? #'(τ ...))]
     [(~Tuple τ:type ...)
+     (stx-andmap finite? #'(τ ...))]
+    [(~constructor-type _ τ:type ...)
      (stx-andmap finite? #'(τ ...))]
     [(~Observe τ:type)
      (finite? #'τ)]
@@ -482,14 +659,15 @@ is meant to be
    [⊢ s ≫ s- (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : (U)) (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]]
-  [(on (a/r:asserted-or-retracted p:pat) s) ≫
+  [(on (a/r:asserted-or-retracted p) s) ≫
    [⊢ p ≫ _ (⇒ : τp)]
+   #:with p- (compile-syndicate-pattern #'p)
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
    [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]
    ;; the type of subscriptions to draw assertions to the pattern
    #:with pat-sub (replace-bind-and-discard-with-★ #'τp)
    -----------------------------------
-   [⊢ (syndicate:on (a/r.syndicate-kw p.syndicate-pattern)
+   [⊢ (syndicate:on (a/r.syndicate-kw p-)
                     (let- ([x- x] ...) s-))
       (⇒ : (U))
       (⇒ :i (U τi τp))
@@ -513,10 +691,12 @@ is meant to be
      (type-eval #`(Inbound #,(replace-bind-and-discard-with-★ #'τ)))]
     [(~Outbound τ)
      (type-eval #`(Outbound #,(replace-bind-and-discard-with-★ #'τ)))]
+    [(~constructor-type _ τ ...)
+     (make-cons-type t (stx-map replace-bind-and-discard-with-★ #'(τ ...)))]
     [_ t]))
 
 (define-typed-syntax (assert e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ)]
+  [⊢ e ≫ e- (⇒ : τ:type)]
   #:with τ-in (strip-? #'τ.norm)
   -------------------------------------
   [⊢ (syndicate:assert e-) (⇒ : (U)) (⇒ :i τ-in) (⇒ :o τ) (⇒ :a (U))])
@@ -534,16 +714,17 @@ is meant to be
   ------------------------
   [⊢ (x-) (⇒ : τ) (⇒ :i (U)) (⇒ :o (U)) (⇒ :a (U))])
 
-(define-typed-syntax (λ [p:pat s] ...) ≫
+(define-typed-syntax (λ [p s] ...) ≫
   #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
-  [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ : τv) (⇒ :i τ1) (⇒ :o τ2) (⇒ :a τ3)] ...
+  [[x ≫ x- : τ :i (U) :o (U) :a (U)] ... ⊢ s ≫ s- (⇒ : τv) (⇒ :i τ1) (⇒ :o τ2) (⇒ :a τ3)] ...
   ;; REALLY not sure how to handle p/p-/p.match-pattern,
   ;; particularly w.r.t. typed terms that appear in p.match-pattern
-  [⊢ p ≫ p- ⇒ τ-p] ...
+  [⊢ p ≫ _ ⇒ τ-p] ...
+  #:with (p- ...) (stx-map compile-match-pattern #'(p ...))
   #:with (τ-in ...) (stx-map lower-pattern-type #'(τ-p ...))
   --------------------------------------------------------------
   ;; TODO: add a catch-all error clause
-  [⊢ (match-lambda- [p.match-pattern (let- ([x- x] ...) s-)] ...)
+  [⊢ (match-lambda- [p- (let- ([x- x] ...) s-)] ...)
      (⇒ : (→ (U τ-p ...) (Behavior (U τv ...) (U τ1 ...) (U τ2 ...) (U τ3 ...))))
      (⇒ :i (U))
      (⇒ :o (U))
@@ -567,6 +748,8 @@ is meant to be
      (type-eval #`(Inbound #,(lower-pattern-type #'τ)))]
     [(~Outbound τ)
      (type-eval #`(Outbound #,(lower-pattern-type #'τ)))]
+    [(~constructor-type _ τ ...)
+     (make-cons-type t (stx-map lower-pattern-type #'(τ ...)))]
     [_ t]))
 
 (define-typed-syntax (typed-app e_fn e_arg ...) ≫
@@ -619,12 +802,15 @@ is meant to be
     #:datum-literals (bind tuple)
     [(bind x:id τ:type)
      #'([x τ])]
-    [(tuple p:pat ...)
+    [(tuple p ...)
      #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
      #'([x τ] ... ...)]
-    [(k:kons1 p:pat)
+    [(k:kons1 p)
      (pat-bindings #'p)]
-    [_:pat
+    [(~constructor-exp cons p ...)
+     #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
+     #'([x τ] ... ...)]
+    [_
      #'()]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -693,28 +879,13 @@ is meant to be
     [(_ expr0 expr ...)
      (syntax/loc stx (begin- expr0 expr ...))]))
 
-(define-for-syntax (type-eval t)
-  ((current-type-eval) t))
+
 
 (define-typed-syntax (print-type e) ≫
   [⊢ e ≫ e- ⇒ τ]
   #:do [(displayln (type->str #'τ))]
   ----------------------------------
   [⊢ e- ⇒ τ])
-
-;; τ.norm in 1st case causes "not valid type" error when file is compiled
-;; (copied from ext-stlc example)
-(define-syntax define-type-alias
-  (syntax-parser
-    [(_ alias:id τ:any-type)
-     #'(define-syntax- alias
-         (make-variable-like-transformer #'τ.norm))]
-    [(_ (f:id x:id ...) ty)
-     #'(define-syntax- (f stx)
-         (syntax-parse stx
-           [(_ x ...)
-            #:with τ:any-type #'ty
-            #'τ.norm]))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Extensions
@@ -769,20 +940,3 @@ is meant to be
              [(~var _ class) #'#t]
              [_ #'#f]))
          (test-result))]))
-
-#;(begin-for-syntax
-    (displayln (syntax-parse ((current-type-eval) #'(U String))
-                 [(~U τ ...)
-                  #'(τ ...)]
-                 [_ 'boo])))
-
-#;(define-typed-syntax (λ2 ([x:id τ:type] ...) e:expr ...+) ≫
-  [[x ≫ x- : τ] ... ⊢ (e ≫ e-  ⇒ τ-e) ...]
-  ;;#:do ((printf "~v\n" #'((x- ...) ...)))
-  ------------------------------
-  [⊢ (lambda- (x- ...) e- ...)
-     ⇒ (→ τ ... #,(last (stx->list #'(τ-e ...))))])
-
-#;(define-syntax (#%top stx)
-  (printf "my #%top\n")
-  #'f)
