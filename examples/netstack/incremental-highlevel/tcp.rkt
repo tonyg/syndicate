@@ -368,7 +368,6 @@
 (define (buffer-push b data)
   (struct-copy buffer b [data (bit-string-append (buffer-data b) data)]))
 
-(define transmit-check-interval-msec 2000)
 (define inbound-buffer-limit 65535)
 (define maximum-segment-size 536) ;; bytes
 (define maximum-segment-lifetime-sec (* 2 60)) ;; two minutes; 2MSL is TIME-WAIT timeout
