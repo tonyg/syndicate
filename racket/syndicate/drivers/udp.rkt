@@ -93,7 +93,7 @@
 	     [(message (inbound (? udp-packet? p)))
 	      (transition s (message p))]
 	     [(message (udp-packet _ (udp-remote-address host port) body))
-	      (udp:udp-send-to socket host port body)
+              (thread (lambda () (udp:udp-send-to socket host port body)))
 	      #f]
 	     [_ #f]))
 	 (void)
