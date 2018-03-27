@@ -88,8 +88,14 @@ Actor.prototype.quiesce = function() {
       if (!facet.terminated) {
         withCurrentFacet(facet, function () {
           var patch = Patch.retract(__).andThen(endpoint.subscriptionFn.call(facet.fields));
+          var newInterests = patch.prunedBy(facet.actor.mux.interestsOf(endpoint.eid));
+          var newlyRelevantKnowledge =
+              Patch.biasedIntersection(facet.actor.knowledge, newInterests.added);
           var r = facet.actor.mux.updateStream(endpoint.eid, patch);
           Dataspace.stateChange(r.deltaAggregate);
+          facet.handleEvent(_Dataspace.stateChange(new Patch.Patch(newlyRelevantKnowledge,
+                                                                   Trie.emptyTrie)),
+                            true);
         });
       }
     });
