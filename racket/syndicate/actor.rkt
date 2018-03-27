@@ -1171,8 +1171,18 @@
                                (with-current-facet fid #f
                                  (define ep (hash-ref (facet-endpoints f) eid))
                                  (define new-patch ((endpoint-patch-fn ep)))
-                                 (update-stream! eid (compose-patch new-patch
-                                                                    (core:retract ?))))))))
+                                 (define a (current-actor-state))
+                                 (define new-interests
+                                   (trie-subtract (patch-added new-patch)
+                                                  (mux-interests-of (actor-state-mux a) eid)
+                                                  #:combiner (lambda (v1 v2) trie-empty)))
+                                 (define newly-relevant-knowledge
+                                   (biased-intersection (actor-state-knowledge a) new-interests))
+                                 (update-stream! eid (compose-patch new-patch (core:retract ?)))
+                                 (facet-handle-event! fid
+                                                      (lookup-facet fid)
+                                                      (patch newly-relevant-knowledge trie-empty)
+                                                      #t))))))
 
 (define (update-stream! eid patch)
   (define a (current-actor-state))

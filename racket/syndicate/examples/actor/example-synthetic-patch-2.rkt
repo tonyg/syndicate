@@ -1,7 +1,7 @@
 #lang syndicate
-;; Illustrates a bug where an endpoint whose interest moves with time,
-;; where that interest eventually overlaps with existing interest,
-;; fails to be notified of an otherwise-known assertion.
+;; Illustrates a (fixed) bug where an endpoint whose interest moves
+;; with time, where that interest eventually overlaps with existing
+;; interest, fails to be notified of an otherwise-known assertion.
 ;;
 ;; Symptomatic output:
 ;;
