@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require (for-syntax racket/base syntax/kerncase))
+(require (for-syntax syntax/parse))
 
 (require racket/match)
 (require "main.rkt")
@@ -43,52 +44,57 @@
     (raise-syntax-error #f "allowed only around a module body" stx))
   (syntax-case stx ()
     [(_ forms ...)
-     (let ()
-       (define (accumulate-actions action-ids final-forms forms)
-	 (if (null? forms)
-	     (let ((final-stx
-		    #`(#%module-begin (module+ syndicate-main
-                                        (provide boot-actions activate!)
-                                        (define activated? #f)
-                                        (define boot-actions (list #,@(reverse action-ids)))
-                                        (define (activate!)
-                                          (when (not activated?)
-                                            (set! activated? #t)
-                                            boot-actions)))
-                                      (module+ main
-                                        (current-ground-dataspace run-ground))
-                                      #,@(reverse final-forms)
-                                      (module+ main
-                                        (require (submod ".." syndicate-main))
-                                        ((current-ground-dataspace) (activate!))))))
+     ;; the inclusion of (module+ syndicate-main) is because it seems that the appearance order
+     ;; of module+ forms determines the mutual visibility. So syndicate-main is ensured to be the
+     ;; first module+ and consequently the main submodule can require it.
+     #'(#%module-begin (syndicate-module () ((module+ syndicate-main) forms ...)))]))
+
+(define-syntax (syndicate-module stx)
+  (syntax-parse stx
+    [(_ (action-ids ...) (form forms ...))
+     (define expanded (local-expand  #'form
+                                     'module
+                                     (append (list #'module+
+                                                   #'begin-for-declarations)
+                                             (kernel-form-identifier-list))))
+     (syntax-parse expanded
+       #:literals (begin)
+       [(begin more-forms ...)
+        #'(syndicate-module (action-ids ...) (more-forms ... forms ...))]
+       [(head rest ...)
+        (if (ormap (lambda (i) (free-identifier=? #'head i))
+                   (syntax->list #'(require
+                                     provide
+                                     define-values
+                                     define-syntaxes
+                                     begin-for-syntax
+                                     module
+                                     module*
+                                     module+
+                                     #%require
+                                     #%provide
+                                     #%declare
+                                     begin-for-declarations)))
+            #`(begin #,expanded (syndicate-module (action-ids ...) (forms ...)))
+            (with-syntax ([action-id (car (generate-temporaries (list #'form)))])
+              #`(begin (define action-id (capture-actor-actions (lambda () #,expanded)))
+                       (syndicate-module (action-ids ... action-id) (forms ...)))))]
+       [non-pair-syntax
+        #'(begin form (syndicate-module (action-ids ...) (forms ...)))])]
+    [(_ (action-ids ...) ())
+     (let ([final-stx
+            #`(begin (module+ syndicate-main
+                       (provide boot-actions activate!)
+                       (define activated? #f)
+                       (define boot-actions (list action-ids ...))
+                       (define (activate!)
+                         (when (not activated?)
+                           (set! activated? #t)
+                           boot-actions)))
+                     (module+ main
+                       (current-ground-dataspace run-ground))
+                     (module+ main
+                       (require (submod ".." syndicate-main))
+                       ((current-ground-dataspace) (activate!))))])
 	       ;;(pretty-print (syntax->datum final-stx))
-	       final-stx)
-	     (syntax-case (local-expand (car forms)
-					'module
-                                        (append (list #'module+
-                                                      #'begin-for-declarations)
-                                                (kernel-form-identifier-list))) ()
-	       [(head rest ...)
-		(if (free-identifier=? #'head #'begin)
-		    (accumulate-actions action-ids
-					final-forms
-					(append (syntax->list #'(rest ...)) (cdr forms)))
-		    (if (ormap (lambda (i) (free-identifier=? #'head i))
-			       (syntax->list #'(define-values define-syntaxes begin-for-syntax
-						 module module* module+
-						 #%module-begin
-						 #%require #%provide
-                                                 begin-for-declarations)))
-			(accumulate-actions action-ids
-					    (cons (car forms) final-forms)
-					    (cdr forms))
-			(accumulate-action (car forms) action-ids final-forms (cdr forms))))]
-	       [non-pair-syntax
-		(accumulate-action (car forms) action-ids final-forms (cdr forms))])))
-       (define (accumulate-action action action-ids final-forms remaining-forms)
-	 (define temp (car (generate-temporaries (list action))))
-	 (accumulate-actions (cons temp action-ids)
-			     (cons #`(define #,temp (capture-actor-actions (lambda () #,action)))
-                                   final-forms)
-			     remaining-forms))
-       (accumulate-actions '() '() (syntax->list #'(forms ...))))]))
+	       final-stx)]))
