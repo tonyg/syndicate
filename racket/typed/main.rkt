@@ -62,6 +62,11 @@
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
 
+;; this needs to be here until I stop 'compiling' patterns and just have them expand to the right
+;; thing
+(begin-for-syntax
+  (current-use-stop-list? #f))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User Defined Types, aka Constructors
 
