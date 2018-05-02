@@ -4,7 +4,6 @@
          (rename-out [typed-app #%app])
          (rename-out [syndicate:begin-for-declarations declare-types])
          #%top-interaction
-         #%top
          require only-in
          ;; Types
          Int Bool String Tuple Bind Discard Case → Behavior FacetName Field ★
@@ -697,7 +696,7 @@ is meant to be
     [_ t]))
 
 (define-typed-syntax (assert e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ)]
+  [⊢ e ≫ e- (⇒ : τ:type)]
   #:with τ-in (strip-? #'τ.norm)
   -------------------------------------
   [⊢ (syndicate:assert e-) (⇒ : (U)) (⇒ :i τ-in) (⇒ :o τ) (⇒ :a (U))])
