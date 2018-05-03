@@ -6,7 +6,7 @@
          #%top-interaction
          require only-in
          ;; Types
-         Int Bool String Tuple Bind Discard → ★
+         Int Bool String Tuple Bind Discard → ★/t
          Observe Inbound Outbound Actor U
          ;; Statements
          actor dataspace unsafe-do
@@ -26,6 +26,8 @@
          ;; Extensions
          )
 
+(require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx))
+
 (require (rename-in racket/match [match-lambda match-lambda-]))
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
 (require (prefix-in syndicate: syndicate/core-lang))
@@ -34,11 +36,24 @@
   (require rackunit)
   (require turnstile/rackunit-typechecking))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Needed Forms
+;; * dataspace DONE
+;; * actor DONE
+;; * make-assertion-set DONE
+;;   - ★ DONE
+;; * patch DONE
+;; * project
+;;   - $
+;;   - _
+;; * transition
+;; * quit
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
 
-(define-base-types Int Bool String Discard ★ FacetName)
-(define-type-constructor Bind #:arity = 1)
+(define-base-types Int Bool String Discard Bind ★/t)
+
 (define-type-constructor Tuple #:arity >= 0)
 (define-type-constructor U #:arity >= 0)
 (define-type-constructor → #:arity > 0)
@@ -46,9 +61,26 @@
 (define-type-constructor Inbound #:arity = 1)
 (define-type-constructor Outbound #:arity = 1)
 (define-type-constructor Actor #:arity = 1)
+(define-type-constructor AssertionSet #:arity = 1)
+(define-type-constructor Patch #:arity = 1)
+(define-type-constructor Transition #:arity = 3)
+(define-type-constructor Quit #:arity = 1)
+(define-type-constructor List #:arity = 1)
 
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
+
+(begin-for-syntax
+  (define-syntax ~U/no-order
+    (pattern-expander
+     (syntax-parser
+       [(_ p ...)
+        #:fail-when (stx-ormap (λ [x] (and (identifier? x)
+                                           (free-identifier=? x #'(... ...))))
+                               #'(p ...))
+        "ellipses not allowed"
+        #:with ((v ...) ...) (permutations (stx->list #'(p ...)))
+        #'(~or* (~U v ...) ...)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User Defined Types, aka Constructors
@@ -178,6 +210,30 @@
     (user-ctor-untyped-ctor (syntax-local-value stx (const #f)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Conveniences
+
+(define-type-alias (Action τ-a τ-s)
+  (U (Patch τ-a ★/t) (Actor τ-s)))
+
+(begin-for-syntax
+  (define-syntax ~Action
+    (pattern-expander
+     (syntax-parser
+       [(_ p1 p2)
+        #'(~U/no-order (~Patch p1 _) (~Actor p2))]))))
+
+(define-type-alias (Event τ)
+  (Patch τ τ))
+
+#;(begin-for-syntax
+  (define-syntax ~Event
+    (pattern-expander
+     (syntax-parser
+       [(_ t)
+        #`(~and (~Patch τ1:type τ2:type)
+                (~parse t #,(type-eval #'(U τ1 τ2))))]))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax
 
 (begin-for-syntax
@@ -229,7 +285,7 @@
     [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
      #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
      (stx-andmap <: #'(τ1 ...) #'(τ2 ...))]
-    [(_ ~★)
+    [(_ ~★/t)
      (flat-type? t1)]
     [((~Observe τ1:type) (~Observe τ2:type))
      (<: #'τ1 #'τ2)]
@@ -257,9 +313,9 @@
   (unless (and (flat-type? t1) (flat-type? t2))
     (error '∩ "expected two flat-types"))
   (syntax-parse #`(#,t1 #,t2)
-    [(_ ~★)
+    [(_ ~★/t)
      t1]
-    [(~★ _)
+    [(~★/t _)
      t2]
     [(_ _)
      #:when (type=? t1 t2)
@@ -327,10 +383,10 @@
 
 ;; AssertionType PatternType -> Bool
 ;; Is it possible for things of these two types to match each other?
-;; Flattish-Type = Flat-Types + ★, Bind, Discard (assertion and pattern types)
+;; Flattish-Type = Flat-Types + ★/t, Bind, Discard (assertion and pattern types)
 (define-for-syntax (overlap? t1 t2)
   (syntax-parse #`(#,t1 #,t2)
-    [(~★ _) #t]
+    [(~★/t _) #t]
     [(_ (~Bind _)) #t]
     [(_ ~Discard) #t]
     [((~U τ1:type ...) _)
@@ -355,7 +411,7 @@
 ;; Flattish-Type -> Bool
 (define-for-syntax (finite? t)
   (syntax-parse t
-    [~★ #f]
+    [~★/t #f]
     [(~U τ:type ...)
      (stx-andmap finite? #'(τ ...))]
     [(~Tuple τ:type ...)
@@ -378,30 +434,68 @@
   (current-typecheck-relation <:))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Statements
+;; Core forms
 
-(define-typed-syntax (dataspace τ-c:type s ...) ≫
-  ;; #:do [(printf "τ-c: ~a\n" (type->str #'τ-c.norm))]
+(define-typed-syntax (actor τ-c:type beh st0 as0) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  [⊢ s ≫ s- (⇒ : τ-s:type)] ...
-  ;; #:do [(printf "dataspace types: ~a\n" (stx-map type->str #'(τ-s.norm ...)))
-  ;;      (printf "dataspace type: ~a\n" (type->str ((current-type-eval) #'(Actor τ-c.norm))))]
-  #:fail-unless (stx-andmap (lambda (t) (<: t
-                                            (type-eval #'(Actor τ-c.norm))))
-                            #'(τ-s.norm ...))
-                "Not all actors conform to communication type"
+  [⊢ beh ≫ beh- ⇒ (~→ (Tuple (~Patch τ-i1:type τ-i2:type) τ-s:type)
+                      (~U/no-order (~Transition τ-s2:type τ-ta:type τ-ts:type)
+                                   (~Quit τ-qa:type τ-qs:type)))]
+  [⊢ st0 ≫ st0- ⇒ τ-st0:type]
+  [⊢ as0 ≫ as0- ⇒ (~AssertionSet τ-as0:type)]
+  #:with τ-out:type (type-eval #'(U τ-ta τ-qa τ-as0))
+  #:with τ-in:type (type-eval #'(U τ-i1 τ-i2))
+  #:with τ-siblings:type (type-eval #'(U τ-ts τ-qs))
+  #:fail-unless (<: #'τ-st0.norm #'τ-s.norm)
+    "bad initial state"
+  #:fail-unless (<: #'τ-s2.norm #'τ-s.norm)
+    "bad state update"
+  #:fail-unless (<: #'τ-out.norm #'τ-c.norm)
+    "output not allowed in dataspace"
+  #:fail-unless (<: (type-eval #'(Actor τ-siblings.norm))
+                    (type-eval #'(Actor τ-c.norm)))
+    "spawned actors not valid in dataspace"
+  #:fail-unless (<: (∩ (strip-? #'τ-out.norm) #'τ-c.norm) #'τ-i.norm)
+    "Not prepared to handle all inputs"
+  --------------------------------------------------------------------------------------------
+  [⊢ (syndicate:actor beh- st0- as0-) ⇒ (Actor τ-c)])
+
+(define-typed-syntax (dataspace τ-c:type e) ≫
+  #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
+  [⊢ e ≫ e- ⇒ (~List τa:type)]
+  #:fail-unless (<: #'τa.norm (type-eval #'(Actor τ-c.norm)))
+    "Not all actors conform to communication type"
   #:with τ-ds-i (strip-inbound #'τ-c.norm)
   #:with τ-ds-o (strip-outbound #'τ-c.norm)
   #:with τ-relay (relay-interests #'τ-c.norm)
   -----------------------------------------------------------------------------------
-  [⊢ (syndicate:dataspace s- ...) (⇒ : (U τ-ds-i τ-ds-o τ-relay))])
+  [⊢ (syndicate:dataspace e-) ⇒ (Actor (U τ-ds-i τ-ds-o τ-relay))])
+
+(define-typed-syntax ★
+  [_ ≫
+   -------------------------
+   [⊢ syndicate:? ⇒ ★/t]])
+
+(define-typed-syntax (make-assertion-set e ...) ≫
+  [⊢ e ≫ e- ⇒ τ] ...
+  #:fail-unless (stx-andmap flat-type? #'(τ ...))
+    "assertions must be first-order"
+  -------------------------------------------------
+  [⊢ (syndicate:trie-union-all (list (syndicate:pattern->trie 'typed e-) ...))
+     ⇒ (AssertionSet (U τ ...))])
+
+(define-typed-syntax (patch e-add e-sub) ≫
+  [⊢ e-add ≫ e-add- ⇒ (~AssertionSet τ-add)]
+  [⊢ e-sub ≫ e-sub- ⇒ (~AssertionSet τ-sub)]
+  --------------------------------------------
+  [⊢ (syndicate:patch- e-add- e-sub-) ⇒ (Patch τ-add τ-sub)])
 
 (define-for-syntax (strip-? t)
   (type-eval
    (syntax-parse t
      ;; TODO: probably need to `normalize` the result
      [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
-     [~★ #'★]
+     [~★/t #'★/t]
      [(~Observe τ) #'τ]
      [_ #'(U)])))
 
@@ -410,7 +504,7 @@
    (syntax-parse t
      ;; TODO: probably need to `normalize` the result
      [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
-     [~★ #'★]
+     [~★/t #'★/t]
      [(~Inbound τ) #'τ]
      [_ #'(U)])))
 
@@ -419,7 +513,7 @@
    (syntax-parse t
      ;; TODO: probably need to `normalize` the result
      [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
-     [~★ #'★]
+     [~★/t #'★/t]
      [(~Outbound τ) #'τ]
      [_ #'(U)])))
 
@@ -428,17 +522,9 @@
    (syntax-parse t
      ;; TODO: probably need to `normalize` the result
      [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
-     [~★ #'★]
+     [~★/t #'★/t]
      [(~Observe (~Inbound τ)) #'(Observe τ)]
      [_ #'(U)])))
-
-(define-typed-syntax (actor τ-c:type beh st0 as0) ≫
-  #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  [⊢ beh ≫ beh- ⇒ τ-b:type]
-  [⊢ st0 ≫ st0- ⇒ τ-s:type]
-  [⊢ as0 ≫ as0- ⇒ τ-a:type]
-  --------------------------------------------------------------------------------------------
-  [⊢ (syndicate:actor beh- st0- as0-) ⇒ (Actor τ-c)])
 
 (define-for-syntax (procedure-type? τ)
   (syntax-parse τ
