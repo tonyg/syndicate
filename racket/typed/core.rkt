@@ -445,9 +445,9 @@
 
 (define-typed-syntax (actor τ-c:type beh st0 as0) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  [⊢ beh ≫ beh- ⇒ (~→ (Tuple (~Patch τ-i1:type τ-i2:type) τ-s:type)
-                      (~U/no-order (~Transition τ-s2:type τ-ta:type τ-ts:type)
-                                   (~Quit τ-qa:type τ-qs:type)))]
+  [⊢ beh ≫ beh- ⇒ (~→ (~Tuple (~Patch τ-i1:type τ-i2:type) τ-s:type)
+                       (~U/no-order (~Transition τ-s2:type τ-ta:type τ-ts:type)
+                                    (~Quit τ-qa:type τ-qs:type)))]
   [⊢ st0 ≫ st0- ⇒ τ-st0:type]
   [⊢ as0 ≫ as0- ⇒ (~AssertionSet τ-as0:type)]
   #:with τ-out:type (type-eval #'(U τ-ta τ-qa τ-as0))
