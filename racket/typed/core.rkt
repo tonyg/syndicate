@@ -9,7 +9,7 @@
          Int Bool String Tuple Bind Discard → ★/t
          Observe Inbound Outbound Actor U
          ;; Core Forms
-         actor dataspace make-assertion-set project ★ $ patch
+         actor dataspace make-assertion-set project ★ patch
          tuple λ observe inbound outbound
          ;; values
          #%datum
@@ -32,7 +32,8 @@
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
 (require (rename-in racket/set [set->list set->list-]))
 (require (prefix-in syndicate: syndicate/core-lang)
-         (prefix-in syndicate: syndicate/trie))
+         (prefix-in syndicate: syndicate/trie)
+         (prefix-in syndicate: syndicate/comprehensions))
 
 (module+ test
   (require rackunit)
@@ -55,8 +56,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
 
-(define-base-types Int Bool String Discard Bind ★/t)
+(define-base-types Int Bool String Discard ★/t)
 
+(define-type-constructor Bind #:arity = 1)
 (define-type-constructor Tuple #:arity >= 0)
 (define-type-constructor U #:arity >= 0)
 (define-type-constructor → #:arity > 0)
@@ -360,8 +362,8 @@
 ;; second type is the type of a pattern
 (define-for-syntax (project-safe? t1 t2)
   (syntax-parse #`(#,t1 #,t2)
-    [(_ ~Bind)
-     (finite? t1)]
+    [(_ (~Bind τ2:type))
+     (and (finite? t1) (<: t1 #'τ2))]
     [(_ ~Discard)
      #t]
     [(_ ~★/t)
@@ -390,7 +392,7 @@
 (define-for-syntax (overlap? t1 t2)
   (syntax-parse #`(#,t1 #,t2)
     [(~★/t _) #t]
-    [(_ ~Bind) #t]
+    [(_ (~Bind _)) #t]
     [(_ ~Discard) #t]
     [(_ ~★/t) #t]
     [((~U τ1:type ...) _)
@@ -494,83 +496,42 @@
   --------------------------------------------
   [⊢ (syndicate:patch- e-add- e-sub-) ⇒ (Patch τ-add τ-sub)])
 
-(define-typed-syntax $
-  [_ ≫
-   -------------------------
-   [⊢ (syndicate:?!) ⇒ Bind]])
-
-(define (#%project e p)
-  (define num-captures (syndicate:projection-arity p))
-  (define results (syndicate:trie-project/set #:take num-captures e p))
-  (for/list ([l (in-set results)])
-    (cons 'tuple l)))
-
-(define-typed-syntax (project e p) ≫
-  [⊢ e ≫ e- ⇒ (~AssertionSet τ-e:type)]
-  [⊢ p ≫ p- ⇒ τ-p:type]
-  #:fail-unless (project-safe? #'τ-e.norm #'τ-p.norm)
+(define-typed-syntax (project [pat e-set] e-body) ≫
+  [⊢ e-set ≫ e-set- ⇒ (~AssertionSet τ-s:type)]
+  [⊢ pat ≫ _ ⇒ τ-p:type]
+  #:with ([x:id τ:type] ...) (pat-bindings #'pat)
+  [[x ≫ x- : τ] ... ⊢ e-body ≫ e-body- ⇒ τ-b]
+  #:fail-unless (project-safe? #'τ-s.norm #'τ-p.norm)
     "pattern captures infinite set"
-  #:with captures (analyze-captures #'τ-e.norm #'τ-p.norm)
-  #:with τ-out:type (list->tuple-ty (stx->list #'captures))
+  #:with pat- (compile-syndicate-pattern #'pat)
   --------------------------------------------------------
-  [⊢ (#%project e- p-) ⇒ (List τ-out)])
+  [⊢ (syndicate:for-trie/list ([pat- e-set-])
+       (let- ([x- x] ...) e-body-))
+     ⇒ (List τ-b)])
 
 (begin-for-syntax
-  ;; ... -> (Listof Type)
-  (define (analyze-captures t-set t-pat)
-    (syntax-parse #`(#,t-set #,t-pat)
-      [(_ ~Bind)
-       (list t-set)]
-      [(_ ~Discard)
-       (list)]
-      [(_ ~★/t)
-       (list)]
-      [((~U τ1:type ...) _)
-       (define branch-captures
-         (for/fold ([branches (list)])
-                   ([t (in-list (stx->list #'(τ1 ...)))])
-           (match (analyze-captures t t-pat)
-             ['() branches]
-             [x (cons x branches)])))
-       (match branch-captures
-         ['() '()]
-         [(list t) t]
-         [_
-          (unless (andmap (λ (l) (= (length (first branch-captures)) (length l)))
-                          branch-captures)
-            (type-error #:src #'TODO #:msg "uneven captures"))
-          (map (λ x (type-eval #`(U #,@x))) branch-captures)])]
-      [(_ (~U τ2:type ...))
-       (define branch-captures
-         (for/fold ([t (in-list (stx->list #'(τ2 ...)))])
-                   ([branches (list)])
-           (match (analyze-captures t-set t)
-             ['() branches]
-             [x (cons x branches)])))
-       (match branch-captures
-         ['() '()]
-         [(list t) t]
-         [_
-          (unless (andmap (λ (l) (= (length (first branch-captures)) (length l)))
-                          branch-captures)
-            (type-error #:src #'TODO #:msg "uneven captures"))
-          (map (λ x (type-eval #`(U #,@x))) branch-captures)])]
-      [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
-       #:when (overlap? t-set t-pat)
-       (apply append (map analyze-captures (stx->list #'(τ1 ...)) (stx->list #'(τ2 ...))))]
-      [((~constructor-type _ τ1:type ...) (~constructor-type _ τ2:type ...))
-       #:when (overlap? t-set t-pat)
-       (apply append (map analyze-captures (stx->list #'(τ1 ...)) (stx->list #'(τ2 ...))))]
-      [((~Observe τ1:type) (~Observe τ2:type))
-       (analyze-captures #'τ1 #'τ2)]
-      [((~Inbound τ1:type) (~Inbound τ2:type))
-       (analyze-captures #'τ1 #'τ2)]
-      [((~Outbound τ1:type) (~Outbound τ2:type))
-       (analyze-captures #'τ1 #'τ2)]
-      [_ (list)]))
-  
-  (define (list->tuple-ty tys)
-    (type-eval #`(Tuple #,@tys))))
+  (define (compile-pattern pat bind-id-transformer exp-transformer)
+    (let loop ([pat pat])
+      (syntax-parse pat
+        #:datum-literals (tuple discard bind)
+        [(tuple p ...)
+         #`(list 'tuple #,@(stx-map loop #'(p ...)))]
+        [(k:kons1 p)
+         #`(#,(kons1->constructor #'k) #,(loop #'p))]
+        [(bind x:id τ:type)
+         (bind-id-transformer #'x)]
+        [discard
+         #'_]
+        [(~constructor-exp ctor p ...)
+         (define/with-syntax uctor (untyped-ctor #'ctor))
+         #`(uctor #,@(stx-map loop #'(p ...)))]
+        [_
+         (exp-transformer pat)])))
+
+  (define (compile-syndicate-pattern pat)
+    (compile-pattern pat
+                     (lambda (id) #`($ #,id))
+                     identity)))
 
 (define-for-syntax (strip-? t)
   (type-eval
@@ -759,18 +720,31 @@
 (module+ test
   
 
-  (check-type (project (make-assertion-set (tuple 1 2)) (tuple))
+  (check-type (project [(tuple) (make-assertion-set (tuple 1 2))]
+                (tuple))
               : (List (Tuple))
               -> (list))
 
-  (check-type (project (make-assertion-set (tuple)) (tuple))
+  (check-type (project [(tuple) (make-assertion-set (tuple))]
+                (tuple))
               : (List (Tuple))
               -> (list (tuple)))
 
-  #;(project (make-assertion-set (tuple 1 2)) (tuple $ 2))
+  (check-type (project [(tuple (bind x Int) 2) (make-assertion-set (tuple 1 2))]
+                x)
+              : (List Int)
+              -> (list 1))
 
-  #;(project (make-assertion-set (tuple 1 2) "hello") (tuple $ 2))
-  #;(project (make-assertion-set (tuple 1 2)
-                               "hello"
-                               (tuple (tuple 4 5) 2))
-           (tuple $ 2)))
+  (check-type (project [(tuple (bind x Int) 2) (make-assertion-set (tuple 1 2) "hello")]
+                x)
+              : (List Int)
+              -> (list 1))
+
+  (check-type (project [(tuple (bind x (U Int (Tuple Int Int))) 2)
+                        (make-assertion-set (tuple 1 2)
+                                            "hello"
+                                            (tuple (tuple 4 5) 2))]
+           
+                x)
+              : (List (U Int (Tuple Int Int)))
+              -> (list (tuple 4 5) 1)))
