@@ -503,7 +503,7 @@
   #:fail-unless (stx-andmap flat-type? #'(τ ...))
     "assertions must be first-order"
   -------------------------------------------------
-  [⊢ (syndicate:trie-union-all (list (syndicate:pattern->trie 'typed e-) ...))
+  [⊢ (syndicate:trie-union-all (list- (syndicate:pattern->trie 'typed e-) ...))
      ⇒ (AssertionSet (U τ ...))])
 
 (define-typed-syntax (patch e-add e-sub) ≫
@@ -525,13 +525,32 @@
        (let- ([x- x] ...) e-body-))
      ⇒ (List τ-b)])
 
+(define-typed-syntax (list e ...) ≫
+  [⊢ e ≫ e- ⇒ τ] ...
+  -------------------
+  [⊢ (list- e- ...) ⇒ (List (U τ ...))])
+
+(define-typed-syntax (for/fold [acc:id e-acc]
+                               [x:id e-list]
+                       e-body) ≫
+  [⊢ e-list ≫ e-list- ⇒ (~List τ-l)]
+  [⊢ e-acc ≫ e-acc- ⇒ τ-a:type]
+  [[x ≫ x- : τ-l] [acc ≫ acc- : τ-a] ⊢ e-body ≫ e-body- ⇒ τ-b:type]
+  #:fail-unless (<: #'τ-b.norm #'τ-a.norm)
+    "loop body doesn't match accumulator"
+  -------------------------------------------------------
+  [⊢ (for/fold- ([acc- e-acc-])
+                ([x- (in-list- e-list-)])
+       e-body-)
+     ⇒ τ-b])
+
 (begin-for-syntax
   (define (compile-pattern pat bind-id-transformer exp-transformer)
     (let loop ([pat pat])
       (syntax-parse pat
         #:datum-literals (tuple discard bind)
         [(tuple p ...)
-         #`(list 'tuple #,@(stx-map loop #'(p ...)))]
+         #`(list- 'tuple #,@(stx-map loop #'(p ...)))]
         [(k:kons1 p)
          #`(#,(kons1->constructor #'k) #,(loop #'p))]
         [(bind x:id τ:type)
@@ -605,7 +624,7 @@
 (define-typed-syntax (tuple e:expr ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
   -----------------------
-  [⊢ (list 'tuple e- ...) (⇒ : (Tuple τ ...))])
+  [⊢ (list- 'tuple e- ...) (⇒ : (Tuple τ ...))])
 
 (define-typed-syntax (typed-app e_fn e_arg ...) ≫
   [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in:type ... τ_out:type))]
@@ -733,28 +752,29 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 
+;; project
 (module+ test
   
 
   (check-type (project [(tuple) (make-assertion-set (tuple 1 2))]
                 (tuple))
               : (List (Tuple))
-              -> (list))
+              -> (list-))
 
   (check-type (project [(tuple) (make-assertion-set (tuple))]
                 (tuple))
               : (List (Tuple))
-              -> (list (tuple)))
+              -> (list- (tuple)))
 
   (check-type (project [(tuple (bind x Int) 2) (make-assertion-set (tuple 1 2))]
                 x)
               : (List Int)
-              -> (list 1))
+              -> (list- 1))
 
   (check-type (project [(tuple (bind x Int) 2) (make-assertion-set (tuple 1 2) "hello")]
                 x)
               : (List Int)
-              -> (list 1))
+              -> (list- 1))
 
   (check-type (project [(tuple (bind x (U Int (Tuple Int Int))) 2)
                         (make-assertion-set (tuple 1 2)
@@ -763,4 +783,12 @@
            
                 x)
               : (List (U Int (Tuple Int Int)))
-              -> (list (tuple 4 5) 1)))
+              -> (list- (tuple 4 5) 1)))
+
+;; fold
+(module+ test
+  (check-type (for/fold (sum 0)
+                        (x (list 1 2 3))
+                (typed-app + x sum))
+              : Int
+              -> 6))
