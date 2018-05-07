@@ -46,12 +46,13 @@
 ;; * make-assertion-set DONE
 ;;   - ★ DONE
 ;; * patch DONE
-;; * project
-;;   - $
-;;   - _
-;; * transition
-;; * quit
+;; * project DONE
+;;   - bind
+;;   - discard
+;; * transition DONE
+;; * quit DONE
 ;; * fold
+;; * list
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
@@ -476,6 +477,21 @@
   #:with τ-relay (relay-interests #'τ-c.norm)
   -----------------------------------------------------------------------------------
   [⊢ (syndicate:dataspace e-) ⇒ (Actor (U τ-ds-i τ-ds-o τ-relay))])
+
+(define-typed-syntax (transition e-s e-as) ≫
+  [⊢ e-s ≫ e-s- ⇒ τ-s]
+  [⊢ e-as ≫ e-as- ⇒ (~List (~Action τ-o τ-a))]
+  -----------------------------------------
+  [⊢ (syndicate:transition e-s- e-as-) ⇒ (Transition τ-s τ-o τ-a)])
+
+(define-typed-syntax quit
+  [(quit) ≫
+   -------------------------------------
+   [⊢ (syndicate:quit) ⇒ (Quit (U) (U))]]
+  [(quit as) ≫
+   [⊢ as ≫ as- ⇒ (~List (~Action τ-o τ-a))]
+   ----------------------------------------
+   [⊢ (syndicate:quit as-) ⇒ (Quit τ-o τ-a)]])
 
 (define-typed-syntax ★
   [_ ≫
