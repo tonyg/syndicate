@@ -8,8 +8,8 @@
          ;; Types
          Int Bool String Tuple Bind Discard → ★/t
          Observe Inbound Outbound Actor U
-         ;; Statements
-         actor dataspace unsafe-do
+         ;; Core Forms
+         actor dataspace make-assertion-set project ★ $ patch
          tuple λ observe inbound outbound
          ;; values
          #%datum
@@ -30,7 +30,9 @@
 
 (require (rename-in racket/match [match-lambda match-lambda-]))
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
-(require (prefix-in syndicate: syndicate/core-lang))
+(require (rename-in racket/set [set->list set->list-]))
+(require (prefix-in syndicate: syndicate/core-lang)
+         (prefix-in syndicate: syndicate/trie))
 
 (module+ test
   (require rackunit)
@@ -48,6 +50,7 @@
 ;;   - _
 ;; * transition
 ;; * quit
+;; * fold
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
@@ -303,8 +306,6 @@
           (<: #'τ-out1 #'τ-out2))]
     [(~Discard _)
      #t]
-    [((~Bind τ1) (~Bind τ2))
-     (<: #'τ1 #'τ2)]
     ;; should probably put this first.
     [_ (type=? t1 t2)]))
 
@@ -359,9 +360,11 @@
 ;; second type is the type of a pattern
 (define-for-syntax (project-safe? t1 t2)
   (syntax-parse #`(#,t1 #,t2)
-    [(_ (~Bind τ2:type))
-     (and (finite? t1) (<: t1 #'τ2))]
+    [(_ ~Bind)
+     (finite? t1)]
     [(_ ~Discard)
+     #t]
+    [(_ ~★/t)
      #t]
     [((~U τ1:type ...) _)
      (stx-andmap (lambda (t) (project-safe? t t2)) #'(τ1 ...))]
@@ -370,8 +373,8 @@
     [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
      #:when (overlap? t1 t2)
      (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
-    [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
-     #:when (tags-equal? #'t1 #'t2)
+    [((~constructor-type _ τ1:type ...) (~constructor-type _ τ2:type ...))
+     #:when (overlap? t1 t2)
      (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
     [((~Observe τ1:type) (~Observe τ2:type))
      (project-safe? #'τ1 #'τ2)]
@@ -387,8 +390,9 @@
 (define-for-syntax (overlap? t1 t2)
   (syntax-parse #`(#,t1 #,t2)
     [(~★/t _) #t]
-    [(_ (~Bind _)) #t]
+    [(_ ~Bind) #t]
     [(_ ~Discard) #t]
+    [(_ ~★/t) #t]
     [((~U τ1:type ...) _)
      (stx-ormap (lambda (t) (overlap? t t2)) #'(τ1 ...))]
     [(_ (~U τ2:type ...))
@@ -489,6 +493,84 @@
   [⊢ e-sub ≫ e-sub- ⇒ (~AssertionSet τ-sub)]
   --------------------------------------------
   [⊢ (syndicate:patch- e-add- e-sub-) ⇒ (Patch τ-add τ-sub)])
+
+(define-typed-syntax $
+  [_ ≫
+   -------------------------
+   [⊢ (syndicate:?!) ⇒ Bind]])
+
+(define (#%project e p)
+  (define num-captures (syndicate:projection-arity p))
+  (define results (syndicate:trie-project/set #:take num-captures e p))
+  (for/list ([l (in-set results)])
+    (cons 'tuple l)))
+
+(define-typed-syntax (project e p) ≫
+  [⊢ e ≫ e- ⇒ (~AssertionSet τ-e:type)]
+  [⊢ p ≫ p- ⇒ τ-p:type]
+  #:fail-unless (project-safe? #'τ-e.norm #'τ-p.norm)
+    "pattern captures infinite set"
+  #:with captures (analyze-captures #'τ-e.norm #'τ-p.norm)
+  #:with τ-out:type (list->tuple-ty (stx->list #'captures))
+  --------------------------------------------------------
+  [⊢ (#%project e- p-) ⇒ (List τ-out)])
+
+(begin-for-syntax
+  ;; ... -> (Listof Type)
+  (define (analyze-captures t-set t-pat)
+    (syntax-parse #`(#,t-set #,t-pat)
+      [(_ ~Bind)
+       (list t-set)]
+      [(_ ~Discard)
+       (list)]
+      [(_ ~★/t)
+       (list)]
+      [((~U τ1:type ...) _)
+       (define branch-captures
+         (for/fold ([branches (list)])
+                   ([t (in-list (stx->list #'(τ1 ...)))])
+           (match (analyze-captures t t-pat)
+             ['() branches]
+             [x (cons x branches)])))
+       (match branch-captures
+         ['() '()]
+         [(list t) t]
+         [_
+          (unless (andmap (λ (l) (= (length (first branch-captures)) (length l)))
+                          branch-captures)
+            (type-error #:src #'TODO #:msg "uneven captures"))
+          (map (λ x (type-eval #`(U #,@x))) branch-captures)])]
+      [(_ (~U τ2:type ...))
+       (define branch-captures
+         (for/fold ([t (in-list (stx->list #'(τ2 ...)))])
+                   ([branches (list)])
+           (match (analyze-captures t-set t)
+             ['() branches]
+             [x (cons x branches)])))
+       (match branch-captures
+         ['() '()]
+         [(list t) t]
+         [_
+          (unless (andmap (λ (l) (= (length (first branch-captures)) (length l)))
+                          branch-captures)
+            (type-error #:src #'TODO #:msg "uneven captures"))
+          (map (λ x (type-eval #`(U #,@x))) branch-captures)])]
+      [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
+       #:when (overlap? t-set t-pat)
+       (apply append (map analyze-captures (stx->list #'(τ1 ...)) (stx->list #'(τ2 ...))))]
+      [((~constructor-type _ τ1:type ...) (~constructor-type _ τ2:type ...))
+       #:when (overlap? t-set t-pat)
+       (apply append (map analyze-captures (stx->list #'(τ1 ...)) (stx->list #'(τ2 ...))))]
+      [((~Observe τ1:type) (~Observe τ2:type))
+       (analyze-captures #'τ1 #'τ2)]
+      [((~Inbound τ1:type) (~Inbound τ2:type))
+       (analyze-captures #'τ1 #'τ2)]
+      [((~Outbound τ1:type) (~Outbound τ2:type))
+       (analyze-captures #'τ1 #'τ2)]
+      [_ (list)]))
+  
+  (define (list->tuple-ty tys)
+    (type-eval #`(Tuple #,@tys))))
 
 (define-for-syntax (strip-? t)
   (type-eval
@@ -673,3 +755,22 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
+
+(module+ test
+  
+
+  (check-type (project (make-assertion-set (tuple 1 2)) (tuple))
+              : (List (Tuple))
+              -> (list))
+
+  (check-type (project (make-assertion-set (tuple)) (tuple))
+              : (List (Tuple))
+              -> (list (tuple)))
+
+  #;(project (make-assertion-set (tuple 1 2)) (tuple $ 2))
+
+  #;(project (make-assertion-set (tuple 1 2) "hello") (tuple $ 2))
+  #;(project (make-assertion-set (tuple 1 2)
+                               "hello"
+                               (tuple (tuple 4 5) 2))
+           (tuple $ 2)))
