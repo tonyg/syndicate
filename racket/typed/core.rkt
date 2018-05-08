@@ -51,8 +51,8 @@
 ;;   - discard
 ;; * transition DONE
 ;; * quit DONE
-;; * fold
-;; * list
+;; * fold DONE
+;; * list DONE
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
@@ -519,11 +519,38 @@
   [[x ≫ x- : τ] ... ⊢ e-body ≫ e-body- ⇒ τ-b]
   #:fail-unless (project-safe? #'τ-s.norm #'τ-p.norm)
     "pattern captures infinite set"
-  #:with pat- (compile-syndicate-pattern #'pat)
+  #:with pat- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'pat))
   --------------------------------------------------------
   [⊢ (syndicate:for-trie/list ([pat- e-set-])
-       (let- ([x- x] ...) e-body-))
+       e-body-)
      ⇒ (List τ-b)])
+
+(begin-for-syntax
+  (define (compile-pattern pat bind-id-transformer exp-transformer)
+    (define (l-e stx) (local-expand stx 'expression '()))
+    (let loop ([pat pat])
+      (syntax-parse pat
+        #:datum-literals (tuple discard bind)
+        [(tuple p ...)
+         #`(list- 'tuple #,@(stx-map loop #'(p ...)))]
+        [(k:kons1 p)
+         #`(#,(kons1->constructor #'k) #,(loop #'p))]
+        [(bind x:id τ:type)
+         (bind-id-transformer #'x)]
+        [discard
+         #'_]
+        [(~constructor-exp ctor p ...)
+         (define/with-syntax uctor (untyped-ctor #'ctor))
+         #`(uctor #,@(stx-map loop #'(p ...)))]
+        [_
+         ;; local expanding "expression-y" syntax allows variable references to transform
+         ;; according to the mappings set up by turnstile.
+         (exp-transformer (l-e pat))])))
+
+  (define (compile-syndicate-pattern pat)
+    (compile-pattern pat
+                     (lambda (id) #`($ #,id))
+                     identity)))
 
 (define-typed-syntax (list e ...) ≫
   [⊢ e ≫ e- ⇒ τ] ...
@@ -543,30 +570,6 @@
                 ([x- (in-list- e-list-)])
        e-body-)
      ⇒ τ-b])
-
-(begin-for-syntax
-  (define (compile-pattern pat bind-id-transformer exp-transformer)
-    (let loop ([pat pat])
-      (syntax-parse pat
-        #:datum-literals (tuple discard bind)
-        [(tuple p ...)
-         #`(list- 'tuple #,@(stx-map loop #'(p ...)))]
-        [(k:kons1 p)
-         #`(#,(kons1->constructor #'k) #,(loop #'p))]
-        [(bind x:id τ:type)
-         (bind-id-transformer #'x)]
-        [discard
-         #'_]
-        [(~constructor-exp ctor p ...)
-         (define/with-syntax uctor (untyped-ctor #'ctor))
-         #`(uctor #,@(stx-map loop #'(p ...)))]
-        [_
-         (exp-transformer pat)])))
-
-  (define (compile-syndicate-pattern pat)
-    (compile-pattern pat
-                     (lambda (id) #`($ #,id))
-                     identity)))
 
 (define-for-syntax (strip-? t)
   (type-eval
@@ -655,14 +658,13 @@
 
 (define-typed-syntax (bind x:id τ:type) ≫
   ----------------------------------------
-  ;; TODO: at some point put $ back in
-  [⊢ (void-) (⇒ : (Bind τ))])
+  [⊢ (error- 'bind "escaped") ⇒ (Bind τ)])
 
 (define-typed-syntax discard
   [_ ≫
    --------------------
    ;; TODO: change void to _
-   [⊢ (void-) (⇒ : Discard)]])
+   [⊢ (error- 'discard "escaped") ⇒ Discard]])
 
 ;; pat -> ([Id Type] ...)
 (define-for-syntax (pat-bindings stx)
@@ -783,7 +785,14 @@
            
                 x)
               : (List (U Int (Tuple Int Int)))
-              -> (list- (tuple 4 5) 1)))
+              -> (list- (tuple 4 5) 1))
+
+  ;; nested project to test for ambiguous binding error
+  (check-type (project [(tuple (bind x Int) 2) (make-assertion-set (tuple 1 2))]
+                (project [(tuple discard x) (make-assertion-set (tuple "bizboz" 1))]
+                  x))
+              : (List (List Int))
+              -> (list- (list- 1))))
 
 ;; fold
 (module+ test
