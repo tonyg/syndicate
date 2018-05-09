@@ -8,9 +8,11 @@
          ;; Types
          Int Bool String Tuple Bind Discard → ★/t
          Observe Inbound Outbound Actor U
+         Event AssertionSet Patch Transition Quit
          ;; Core Forms
          actor dataspace make-assertion-set project ★ patch
-         tuple λ observe inbound outbound
+         tuple lambda observe inbound outbound
+         quit transition patch-added patch-removed
          ;; values
          #%datum
          ;; patterns
@@ -68,9 +70,9 @@
 (define-type-constructor Outbound #:arity = 1)
 (define-type-constructor Actor #:arity = 1)
 (define-type-constructor AssertionSet #:arity = 1)
-(define-type-constructor Patch #:arity = 1)
+(define-type-constructor Patch #:arity = 2)
 (define-type-constructor Transition #:arity = 3)
-(define-type-constructor Quit #:arity = 1)
+(define-type-constructor Quit #:arity = 2)
 (define-type-constructor List #:arity = 1)
 
 (define-for-syntax (type-eval t)
@@ -81,8 +83,8 @@
     (pattern-expander
      (syntax-parser
        [(_ p ...)
-        #:fail-when (stx-ormap (λ [x] (and (identifier? x)
-                                           (free-identifier=? x #'(... ...))))
+        #:fail-when (stx-ormap (lambda [x] (and (identifier? x)
+                                                (free-identifier=? x #'(... ...))))
                                #'(p ...))
         "ellipses not allowed"
         #:with ((v ...) ...) (permutations (stx->list #'(p ...)))
@@ -288,6 +290,18 @@
      ;; evalutated/expanded?
      (and (<: #'τ1 #'τ2)
           (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
+    [((~AssertionSet τ1) (~AssertionSet τ2))
+     (<: #'τ1 #'τ2)]
+    [((~Patch τ11 τ12) (~Patch τ21 τ22))
+     (and (<: #'τ11 #'τ21)
+          (<: #'τ12 #'τ22))]
+    [((~Transition τs1 τo1 τa1) (~Transition τs2 τo2 τa2))
+     (and (<: #'τs1 #'τs2)
+          (<: #'τo1 #'τo2)
+          (<: (type-eval #'(Actor τa1)) (type-eval #'(Actor τa2))))]
+    [((~Quit τo1 τa1) (~Quit τo2 τa2))
+     (and (<: #'τo1 #'τo2)
+          (<: (type-eval #'(Actor τa1)) (type-eval #'(Actor τa2))))]
     [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
      #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
      (stx-andmap <: #'(τ1 ...) #'(τ2 ...))]
@@ -312,6 +326,9 @@
     ;; should probably put this first.
     [_ (type=? t1 t2)]))
 
+(define-for-syntax (bot? t)
+  (<: t (type-eval #'(U))))
+
 ;; Flat-Type Flat-Type -> Type
 (define-for-syntax (∩ t1 t2)
   (unless (and (flat-type? t1) (flat-type? t2))
@@ -328,6 +345,25 @@
      (type-eval #`(U #,@(stx-map (lambda (t) (∩ t t2)) #'(τ1 ...))))]
     [(_ (~U τ2:type ...))
      (type-eval #`(U #,@(stx-map (lambda (t) (∩ t1 t)) #'(τ2 ...))))]
+    [((~AssertionSet τ1) (~AssertionSet τ2))
+     #:with τ12 (∩ #'τ1 #'τ2)
+     (type-eval #'(AssertionSet τ12))]
+    [((~Patch τ11 τ12) (~Patch τ21 τ22))
+     #:with τ1 (∩ #'τ11 #'τ12)
+     #:with τ2 (∩ #'τ21 #'τ22)
+     (type-eval #'(Patch τ1 τ2))]
+    [((~Transition τs1 τo1 τa1) (~Transition τs2 τo2 τa2))
+     #:with τs (∩ #'τs1 #'τs2)
+     #:fail-when (bot? #'τs) #f
+     #:with τa (∩ #'τa1 #'τa2)
+     #:fail-when (bot? #'τa) #f
+     #:with τo (∩ #'τo1 #'τo2)
+     (type-eval #'(Transition τs τo τa))]
+    [((~Quit τo1 τa1) (~Quit τo2 τa2))
+     #:with τa (∩ #'τa1 #'τa2)
+     #:fail-when (bot? #'τa) #f
+     #:with τo (∩ #'τo1 #'τo2)
+     (type-eval #'(Quit τo τa))]
     ;; all of these fail-when/unless clauses are meant to cause this through to
     ;; the last case and result in ⊥.
     ;; Also, using <: is OK, even though <: refers to ∩, because <:'s use of ∩ is only
@@ -400,6 +436,9 @@
      (stx-ormap (lambda (t) (overlap? t t2)) #'(τ1 ...))]
     [(_ (~U τ2:type ...))
      (stx-ormap (lambda (t) (overlap? t1 t)) #'(τ2 ...))]
+    [((~List _) (~List _))
+     ;; share the empty list
+     #t]
     [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
      (and (stx-length=? #'(τ1 ...) #'(τ2 ...))
           (stx-andmap overlap? #'(τ1 ...) #'(τ2 ...)))]
@@ -445,7 +484,8 @@
 
 (define-typed-syntax (actor τ-c:type beh st0 as0) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  [⊢ beh ≫ beh- ⇒ (~→ (~Tuple (~Patch τ-i1:type τ-i2:type) τ-s:type)
+  [⊢ beh ≫ beh- ⇒ (~→ (~Patch τ-i1:type τ-i2:type)
+                       τ-s:type
                        (~U/no-order (~Transition τ-s2:type τ-ta:type τ-ts:type)
                                     (~Quit τ-qa:type τ-qs:type)))]
   [⊢ st0 ≫ st0- ⇒ τ-st0:type]
@@ -465,7 +505,8 @@
   #:fail-unless (<: (∩ (strip-? #'τ-out.norm) #'τ-c.norm) #'τ-i.norm)
     "Not prepared to handle all inputs"
   --------------------------------------------------------------------------------------------
-  [⊢ (syndicate:actor beh- st0- as0-) ⇒ (Actor τ-c)])
+  [⊢ (syndicate:actor beh- st0- (list- (syndicate:patch as0- syndicate:trie-empty)))
+     ⇒ (Actor τ-c)])
 
 (define-typed-syntax (dataspace τ-c:type e) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
@@ -510,7 +551,7 @@
   [⊢ e-add ≫ e-add- ⇒ (~AssertionSet τ-add)]
   [⊢ e-sub ≫ e-sub- ⇒ (~AssertionSet τ-sub)]
   --------------------------------------------
-  [⊢ (syndicate:patch- e-add- e-sub-) ⇒ (Patch τ-add τ-sub)])
+  [⊢ (syndicate:patch e-add- e-sub-) ⇒ (Patch τ-add τ-sub)])
 
 (define-typed-syntax (project [pat e-set] e-body) ≫
   [⊢ e-set ≫ e-set- ⇒ (~AssertionSet τ-s:type)]
@@ -624,6 +665,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
 
+(define-typed-syntax (lambda ([x:id (~optional (~literal :)) τ:type] ...) e) ≫
+  [[x ≫ x- : τ] ... ⊢ e ≫ e- ⇒ τ-e]
+  ----------------------------------------
+  [⊢ (lambda- (x- ...) e-) ⇒ (→ τ ... τ-e)])
+
 (define-typed-syntax (tuple e:expr ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
   -----------------------
@@ -652,6 +698,16 @@
   [⊢ e ≫ e- ⇒ τ]
   ---------------------------------------------------------------------------
   [⊢ (syndicate:outbound e-) (⇒ : (Outbound τ))])
+
+(define-typed-syntax (patch-added e) ≫
+  [⊢ e ≫ e- ⇒ (~Patch τ _)]
+  --------------------------
+  [⊢ (syndicate:patch-added e-) ⇒ (AssertionSet τ)])
+
+(define-typed-syntax (patch-removed e) ≫
+  [⊢ e ≫ e- ⇒ (~Patch _ τ)]
+  --------------------------
+  [⊢ (syndicate:patch-removed e-) ⇒ (AssertionSet τ)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Patterns
@@ -801,3 +857,19 @@
                 (typed-app + x sum))
               : Int
               -> 6))
+
+;; functions
+(module+ test
+  (check-type (lambda ([x Int]) x) : (→ Int Int))
+  (check-type (typed-app (lambda ([x : Int]) x) 5)
+              : Int
+              -> 5))
+
+;; patches
+(module+ test
+  (check-type (patch-added (patch (make-assertion-set 12) (make-assertion-set)))
+              : (AssertionSet Int)
+              -> (make-assertion-set 12))
+  (check-type (patch-removed (patch (make-assertion-set 12) (make-assertion-set)))
+              : (AssertionSet (U))
+              -> (make-assertion-set)))
