@@ -8,7 +8,7 @@
          ;; Types
          Int Bool String Tuple Bind Discard → ★/t
          Observe Inbound Outbound Actor U
-         Event AssertionSet Patch Transition Quit
+         Event AssertionSet Patch Instruction
          ;; Core Forms
          actor dataspace make-assertion-set project ★ patch
          tuple lambda observe inbound outbound
@@ -71,9 +71,9 @@
 (define-type-constructor Actor #:arity = 1)
 (define-type-constructor AssertionSet #:arity = 1)
 (define-type-constructor Patch #:arity = 2)
-(define-type-constructor Transition #:arity = 3)
-(define-type-constructor Quit #:arity = 2)
 (define-type-constructor List #:arity = 1)
+;; essentially the sum type of a transition or quit
+(define-type-constructor Instruction #:arity = 3)
 
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
@@ -295,12 +295,9 @@
     [((~Patch τ11 τ12) (~Patch τ21 τ22))
      (and (<: #'τ11 #'τ21)
           (<: #'τ12 #'τ22))]
-    [((~Transition τs1 τo1 τa1) (~Transition τs2 τo2 τa2))
+    [((~Instruction τs1 τo1 τa1) (~Instruction τs2 τo2 τa2))
      (and (<: #'τs1 #'τs2)
           (<: #'τo1 #'τo2)
-          (<: (type-eval #'(Actor τa1)) (type-eval #'(Actor τa2))))]
-    [((~Quit τo1 τa1) (~Quit τo2 τa2))
-     (and (<: #'τo1 #'τo2)
           (<: (type-eval #'(Actor τa1)) (type-eval #'(Actor τa2))))]
     [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
      #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
@@ -352,18 +349,13 @@
      #:with τ1 (∩ #'τ11 #'τ12)
      #:with τ2 (∩ #'τ21 #'τ22)
      (type-eval #'(Patch τ1 τ2))]
-    [((~Transition τs1 τo1 τa1) (~Transition τs2 τo2 τa2))
+    [((~Instruction τs1 τo1 τa1) (~Instruction τs2 τo2 τa2))
      #:with τs (∩ #'τs1 #'τs2)
      #:fail-when (bot? #'τs) #f
      #:with τa (∩ #'τa1 #'τa2)
      #:fail-when (bot? #'τa) #f
      #:with τo (∩ #'τo1 #'τo2)
-     (type-eval #'(Transition τs τo τa))]
-    [((~Quit τo1 τa1) (~Quit τo2 τa2))
-     #:with τa (∩ #'τa1 #'τa2)
-     #:fail-when (bot? #'τa) #f
-     #:with τo (∩ #'τo1 #'τo2)
-     (type-eval #'(Quit τo τa))]
+     (type-eval #'(Instruction τs τo τa))]
     ;; all of these fail-when/unless clauses are meant to cause this through to
     ;; the last case and result in ⊥.
     ;; Also, using <: is OK, even though <: refers to ∩, because <:'s use of ∩ is only
@@ -486,23 +478,21 @@
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   [⊢ beh ≫ beh- ⇒ (~→ (~Patch τ-i1:type τ-i2:type)
                        τ-s:type
-                       (~U/no-order (~Transition τ-s2:type τ-ta:type τ-ts:type)
-                                    (~Quit τ-qa:type τ-qs:type)))]
+                       (~Instruction τ-s2:type τ-ta:type τ-ts:type))]
   [⊢ st0 ≫ st0- ⇒ τ-st0:type]
   [⊢ as0 ≫ as0- ⇒ (~AssertionSet τ-as0:type)]
-  #:with τ-out:type (type-eval #'(U τ-ta τ-qa τ-as0))
+  #:with τ-out:type (type-eval #'(U τ-ta τ-as0))
   #:with τ-in:type (type-eval #'(U τ-i1 τ-i2))
-  #:with τ-siblings:type (type-eval #'(U τ-ts τ-qs))
   #:fail-unless (<: #'τ-st0.norm #'τ-s.norm)
     "bad initial state"
   #:fail-unless (<: #'τ-s2.norm #'τ-s.norm)
     "bad state update"
   #:fail-unless (<: #'τ-out.norm #'τ-c.norm)
     "output not allowed in dataspace"
-  #:fail-unless (<: (type-eval #'(Actor τ-siblings.norm))
+  #:fail-unless (<: (type-eval #'(Actor τ-ts.norm))
                     (type-eval #'(Actor τ-c.norm)))
     "spawned actors not valid in dataspace"
-  #:fail-unless (<: (∩ (strip-? #'τ-out.norm) #'τ-c.norm) #'τ-i.norm)
+  #:fail-unless (<: (∩ (strip-? #'τ-out.norm) #'τ-c.norm) #'τ-in.norm)
     "Not prepared to handle all inputs"
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:actor beh- st0- (list- (syndicate:patch as0- syndicate:trie-empty)))
@@ -523,16 +513,16 @@
   [⊢ e-s ≫ e-s- ⇒ τ-s]
   [⊢ e-as ≫ e-as- ⇒ (~List (~Action τ-o τ-a))]
   -----------------------------------------
-  [⊢ (syndicate:transition e-s- e-as-) ⇒ (Transition τ-s τ-o τ-a)])
+  [⊢ (syndicate:transition e-s- e-as-) ⇒ (Instruction τ-s τ-o τ-a)])
 
 (define-typed-syntax quit
   [(quit) ≫
    -------------------------------------
-   [⊢ (syndicate:quit) ⇒ (Quit (U) (U))]]
+   [⊢ (syndicate:quit) ⇒ (Instruction (U) (U) (U))]]
   [(quit as) ≫
    [⊢ as ≫ as- ⇒ (~List (~Action τ-o τ-a))]
    ----------------------------------------
-   [⊢ (syndicate:quit as-) ⇒ (Quit τ-o τ-a)]])
+   [⊢ (syndicate:quit as-) ⇒ (Instruction (U) τ-o τ-a)]])
 
 (define-typed-syntax ★
   [_ ≫
