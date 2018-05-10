@@ -7,18 +7,21 @@
          require only-in
          ;; Types
          Int Bool String Tuple Bind Discard → ★/t
-         Observe Inbound Outbound Actor U
+         Observe Inbound Outbound Actor U (type-out U*)
          Event AssertionSet Patch Instruction
          ;; Core Forms
          actor dataspace make-assertion-set project ★ patch
          tuple lambda observe inbound outbound
-         quit transition patch-added patch-removed
+         idle quit transition patch-added patch-removed
+         ;; core-ish forms
+         begin define let let* ann if
          ;; values
          #%datum
          ;; patterns
          bind discard
          ;; primitives
          + - * / and or not > < >= <= = equal? displayln
+         list first rest empty?
          ;; making types
          define-type-alias
          define-constructor
@@ -29,9 +32,12 @@
          )
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx))
+(require (for-syntax turnstile/examples/util/filter-maximal))
 
-(require (rename-in racket/match [match-lambda match-lambda-]))
+(require macrotypes/postfix-in)
+
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
+(require (postfix-in - racket/list))
 (require (rename-in racket/set [set->list set->list-]))
 (require (prefix-in syndicate: syndicate/core-lang)
          (prefix-in syndicate: syndicate/trie)
@@ -63,7 +69,6 @@
 
 (define-type-constructor Bind #:arity = 1)
 (define-type-constructor Tuple #:arity >= 0)
-(define-type-constructor U #:arity >= 0)
 (define-type-constructor → #:arity > 0)
 (define-type-constructor Observe #:arity = 1)
 (define-type-constructor Inbound #:arity = 1)
@@ -78,6 +83,24 @@
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
 
+(define-type-constructor U* #:arity >= 0)
+
+(define-for-syntax (prune+sort tys)
+  (stx-sort 
+   (filter-maximal 
+    (stx->list tys)
+    typecheck?)))
+  
+(define-syntax (U stx)
+  (syntax-parse stx
+    [(_ . tys)
+     ;; canonicalize by expanding to U*, with only (sorted and pruned) leaf tys
+     #:with ((~or (~U* ty1- ...) ty2-) ...) (stx-map (current-type-eval) #'tys)
+     #:with tys- (prune+sort #'(ty1- ... ... ty2- ...))
+     (if (= 1 (stx-length #'tys-))
+         (stx-car #'tys-)
+         (syntax/loc stx (U* . tys-)))]))
+
 (begin-for-syntax
   (define-syntax ~U/no-order
     (pattern-expander
@@ -88,7 +111,7 @@
                                #'(p ...))
         "ellipses not allowed"
         #:with ((v ...) ...) (permutations (stx->list #'(p ...)))
-        #'(~or* (~U v ...) ...)]))))
+        #'(~or* (~U* v ...) ...)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User Defined Types, aka Constructors
@@ -228,7 +251,11 @@
     (pattern-expander
      (syntax-parser
        [(_ p1 p2)
-        #'(~U/no-order (~Patch p1 _) (~Actor p2))]))))
+        #'(~or (~and (~Patch p1 _)
+                     (~parse p2 (type-eval #'(U))))
+               (~and (~Actor p2)
+                     (~parse p1 (type-eval #'(U))))
+               (~U/no-order (~Patch p1 _) (~Actor p2)))]))))
 
 (define-type-alias (Event τ)
   (Patch τ τ))
@@ -281,9 +308,9 @@
                      (displayln (type->str #'τ2))]
                #:when #f
                (error "")]
-    [((~U τ1 ...) _)
+    [((~U* τ1 ...) _)
      (stx-andmap (lambda (t) (<: t t2)) #'(τ1 ...))]
-    [(_ (~U τ2:type ...))
+    [(_ (~U* τ2:type ...))
      (stx-ormap (lambda (t) (<: t1 t)) #'(τ2 ...))]
     [((~Actor τ1:type) (~Actor τ2:type))
      ;; should these be .norm? Is the invariant that inputs are always fully
@@ -338,9 +365,9 @@
     [(_ _)
      #:when (type=? t1 t2)
      t1]
-    [((~U τ1:type ...) _)
+    [((~U* τ1:type ...) _)
      (type-eval #`(U #,@(stx-map (lambda (t) (∩ t t2)) #'(τ1 ...))))]
-    [(_ (~U τ2:type ...))
+    [(_ (~U* τ2:type ...))
      (type-eval #`(U #,@(stx-map (lambda (t) (∩ t1 t)) #'(τ2 ...))))]
     [((~AssertionSet τ1) (~AssertionSet τ2))
      #:with τ12 (∩ #'τ1 #'τ2)
@@ -397,9 +424,9 @@
      #t]
     [(_ ~★/t)
      #t]
-    [((~U τ1:type ...) _)
+    [((~U* τ1:type ...) _)
      (stx-andmap (lambda (t) (project-safe? t t2)) #'(τ1 ...))]
-    [(_ (~U τ2:type ...))
+    [(_ (~U* τ2:type ...))
      (stx-andmap (lambda (t) (project-safe? t1 t)) #'(τ2 ...))]
     [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
      #:when (overlap? t1 t2)
@@ -424,9 +451,9 @@
     [(_ (~Bind _)) #t]
     [(_ ~Discard) #t]
     [(_ ~★/t) #t]
-    [((~U τ1:type ...) _)
+    [((~U* τ1:type ...) _)
      (stx-ormap (lambda (t) (overlap? t t2)) #'(τ1 ...))]
-    [(_ (~U τ2:type ...))
+    [(_ (~U* τ2:type ...))
      (stx-ormap (lambda (t) (overlap? t1 t)) #'(τ2 ...))]
     [((~List _) (~List _))
      ;; share the empty list
@@ -450,7 +477,7 @@
 (define-for-syntax (finite? t)
   (syntax-parse t
     [~★/t #f]
-    [(~U τ:type ...)
+    [(~U* τ:type ...)
      (stx-andmap finite? #'(τ ...))]
     [(~Tuple τ:type ...)
      (stx-andmap finite? #'(τ ...))]
@@ -495,8 +522,13 @@
   #:fail-unless (<: (∩ (strip-? #'τ-out.norm) #'τ-c.norm) #'τ-in.norm)
     "Not prepared to handle all inputs"
   --------------------------------------------------------------------------------------------
-  [⊢ (syndicate:actor beh- st0- (list- (syndicate:patch as0- syndicate:trie-empty)))
+  [⊢ (syndicate:actor (filter-poll-events beh-)
+                      st0-
+                      (list- (syndicate:patch as0- syndicate:trie-empty)))
      ⇒ (Actor τ-c)])
+
+(define ((filter-poll-events beh) e s)
+  (and- e (beh e s)))
 
 (define-typed-syntax (dataspace τ-c:type e) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
@@ -507,7 +539,7 @@
   #:with τ-ds-o (strip-outbound #'τ-c.norm)
   #:with τ-relay (relay-interests #'τ-c.norm)
   -----------------------------------------------------------------------------------
-  [⊢ (syndicate:dataspace e-) ⇒ (Actor (U τ-ds-i τ-ds-o τ-relay))])
+  [⊢ (syndicate:dataspace-actor e-) ⇒ (Actor (U τ-ds-i τ-ds-o τ-relay))])
 
 (define-typed-syntax (transition e-s e-as) ≫
   [⊢ e-s ≫ e-s- ⇒ τ-s]
@@ -523,6 +555,11 @@
    [⊢ as ≫ as- ⇒ (~List (~Action τ-o τ-a))]
    ----------------------------------------
    [⊢ (syndicate:quit as-) ⇒ (Instruction (U) τ-o τ-a)]])
+
+(define-typed-syntax idle
+  [_ ≫
+   -------------------------
+   [⊢ #f ⇒ (Instruction (U) (U) (U))]])
 
 (define-typed-syntax ★
   [_ ≫
@@ -606,7 +643,7 @@
   (type-eval
    (syntax-parse t
      ;; TODO: probably need to `normalize` the result
-     [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
      [~★/t #'★/t]
      [(~Observe τ) #'τ]
      [_ #'(U)])))
@@ -615,7 +652,7 @@
   (type-eval
    (syntax-parse t
      ;; TODO: probably need to `normalize` the result
-     [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
      [~★/t #'★/t]
      [(~Inbound τ) #'τ]
      [_ #'(U)])))
@@ -624,7 +661,7 @@
   (type-eval
    (syntax-parse t
      ;; TODO: probably need to `normalize` the result
-     [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
      [~★/t #'★/t]
      [(~Outbound τ) #'τ]
      [_ #'(U)])))
@@ -633,7 +670,7 @@
   (type-eval
    (syntax-parse t
      ;; TODO: probably need to `normalize` the result
-     [(~U τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
      [~★/t #'★/t]
      [(~Observe (~Inbound τ)) #'(Observe τ)]
      [_ #'(U)])))
@@ -655,10 +692,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
 
-(define-typed-syntax (lambda ([x:id (~optional (~literal :)) τ:type] ...) e) ≫
-  [[x ≫ x- : τ] ... ⊢ e ≫ e- ⇒ τ-e]
+(define-typed-syntax (lambda ([x:id (~optional (~datum :)) τ:type] ...) body ...+) ≫
+  [[x ≫ x- : τ] ... ⊢ (begin body ...) ≫ body- ⇒ τ-e]
   ----------------------------------------
-  [⊢ (lambda- (x- ...) e-) ⇒ (→ τ ... τ-e)])
+  [⊢ (lambda- (x- ...) body-) ⇒ (→ τ ... τ-e)])
 
 (define-typed-syntax (tuple e:expr ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
@@ -730,6 +767,92 @@
      #'()]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Core-ish forms
+
+;; copied from stlc
+(define-typed-syntax (ann e (~optional (~datum :)) τ:type) ≫
+  [⊢ e ≫ e- ⇐ τ.norm]
+  --------
+  [⊢ e- ⇒ τ.norm])
+
+;; copied from ext-stlc
+(define-typed-syntax define
+  [(_ x:id (~datum :) τ:type e:expr) ≫
+   ;[⊢ e ≫ e- ⇐ τ.norm]
+   #:with x- (generate-temporary #'x)
+   --------
+   [≻ (begin-
+        (define-typed-variable-rename x ≫ x- : τ.norm)
+        (define- x- (ann e : τ.norm)))]]
+  [(_ x:id e) ≫
+   ;This won't work with mutually recursive definitions
+   [⊢ e ≫ e- ⇒ τ]
+   #:with y (generate-temporary #'x)
+   #:with y+props (transfer-props #'e- (assign-type #'y #'τ #:wrap? #f))
+   --------
+   [≻ (begin-
+        (define-syntax x (make-rename-transformer #'y+props))
+        (define- y e-))]]
+  [(_ (f [x (~optional (~datum :)) ty] ... (~or (~datum →) (~datum ->)) ty_out) e ...+) ≫
+   #:with f- (add-orig (generate-temporary #'f) #'f)
+   --------
+   [≻ (begin-
+        (define-typed-variable-rename f ≫ f- : (→ ty ... ty_out))
+        (define- f-
+          (lambda ([x : ty] ...)
+            (ann (begin e ...) : ty_out))))]])
+
+;; copied from ext-stlc
+(define-typed-syntax if
+  [(_ e_tst e1 e2) ⇐ τ-expected ≫
+   [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
+   [⊢ e1 ≫ e1- ⇐ τ-expected]
+   [⊢ e2 ≫ e2- ⇐ τ-expected]
+   --------
+   [⊢ (if- e_tst- e1- e2-)]]
+  [(_ e_tst e1 e2) ≫
+   [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
+   [⊢ e1 ≫ e1- ⇒ τ1]
+   [⊢ e2 ≫ e2- ⇒ τ2]
+   --------
+   [⊢ (if- e_tst- e1- e2-) ⇒ (U τ1 τ2)]])
+
+;; copied from ext-stlc
+(define-typed-syntax begin
+  [(_ e_unit ... e) ⇐ τ_expected ≫
+   [⊢ e_unit ≫ e_unit- ⇒ _] ...
+   [⊢ e ≫ e- ⇐ τ_expected]
+   --------
+   [⊢ (begin- e_unit- ... e-)]]
+  [(_ e_unit ... e) ≫
+   [⊢ e_unit ≫ e_unit- ⇒ _] ...
+   [⊢ e ≫ e- ⇒ τ_e]
+   --------
+   [⊢ (begin- e_unit- ... e-) ⇒ τ_e]])
+
+;; copied from ext-stlc
+(define-typed-syntax let
+  [(_ ([x e] ...) e_body ...) ⇐ τ_expected ≫
+   [⊢ e ≫ e- ⇒ : τ_x] ...
+   [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- ⇐ τ_expected]
+   --------
+   [⊢ (let- ([x- e-] ...) e_body-)]]
+  [(_ ([x e] ...) e_body ...) ≫
+   [⊢ e ≫ e- ⇒ : τ_x] ...
+   [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- ⇒ τ_body]
+   --------
+   [⊢ (let- ([x- e-] ...) e_body-) ⇒ τ_body]])
+
+;; copied from ext-stlc
+(define-typed-syntax let*
+  [(_ () e_body ...) ≫
+   --------
+   [≻ (begin e_body ...)]]
+  [(_ ([x e] [x_rst e_rst] ...) e_body ...) ≫
+   --------
+   [≻ (let ([x e]) (let* ([x_rst e_rst] ...) e_body ...))]])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Primitives
 
 ;; hmmm
@@ -764,6 +887,21 @@
   [⊢ e2 ≫ e2- (⇐ : τ1)]
   ---------------------------------------------------------------------------
   [⊢ (equal?- e1- e2-) (⇒ : Bool)])
+
+(define-typed-syntax (empty? e) ≫
+  [⊢ e ≫ e- ⇒ (~List _)]
+  -----------------------
+  [⊢ (empty?- e-) ⇒ Bool])
+
+(define-typed-syntax (first e) ≫
+  [⊢ e ≫ e- ⇒ (~List τ)]
+  -----------------------
+  [⊢ (first- e-) ⇒ τ])
+
+(define-typed-syntax (rest e) ≫
+  [⊢ e ≫ e- ⇒ (~List τ)]
+  -----------------------
+  [⊢ (rest- e-) ⇒ (List τ)])
 
 (define-typed-syntax (displayln e:expr) ≫
   [⊢ e ≫ e- ⇒ τ]
