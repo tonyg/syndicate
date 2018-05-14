@@ -9,10 +9,12 @@
          Int Bool String Tuple Bind Discard → ★/t
          Observe Inbound Outbound Actor U (type-out U*)
          Event AssertionSet Patch Instruction
+         ⊥
          ;; Core Forms
          actor dataspace make-assertion-set project ★ patch
          tuple lambda observe inbound outbound
          idle quit transition patch-added patch-removed
+         for/fold
          ;; core-ish forms
          begin define let let* ann if
          ;; values
@@ -267,6 +269,8 @@
        [(_ t)
         #`(~and (~Patch τ1:type τ2:type)
                 (~parse t #,(type-eval #'(U τ1 τ2))))]))))
+
+(define-type-alias ⊥ (U))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax
@@ -1001,3 +1005,9 @@
   (check-type (patch-removed (patch (make-assertion-set 12) (make-assertion-set)))
               : (AssertionSet (U))
               -> (make-assertion-set)))
+
+(module+ test
+  (check-type (lambda ([e : (Event ⊥)]
+                       [s : ★/t])
+                idle)
+              : (→ (Event ⊥) ★/t (Instruction ⊥ ⊥ ⊥))))
