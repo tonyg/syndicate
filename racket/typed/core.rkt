@@ -6,15 +6,17 @@
          #%top-interaction
          require only-in
          ;; Types
-         Int Bool String Tuple Bind Discard → ★/t
+         Int Bool String Tuple Bind Discard → ★/t List
          Observe Inbound Outbound Actor U (type-out U*)
          Event AssertionSet Patch Instruction
          ⊥
          ;; Core Forms
          actor dataspace make-assertion-set project ★ patch
-         tuple lambda observe inbound outbound
+         tuple select lambda observe inbound outbound
          idle quit transition patch-added patch-removed
          for/fold
+         ;; extensions
+         assert retract sub unsub patch-seq patch-seq*
          ;; core-ish forms
          begin define let let* ann if
          ;; values
@@ -23,7 +25,10 @@
          bind discard
          ;; primitives
          + - * / and or not > < >= <= = equal? displayln
-         list first rest empty?
+         list first rest empty? member?
+         ;; sets
+         Set set set-member? set-add set-count set-union set-subtract set-intersect
+         list->set set->list
          ;; making types
          define-type-alias
          define-constructor
@@ -40,7 +45,7 @@
 
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
 (require (postfix-in - racket/list))
-(require (rename-in racket/set [set->list set->list-]))
+(require (postfix-in - racket/set))
 (require (prefix-in syndicate: syndicate/core-lang)
          (prefix-in syndicate: syndicate/trie)
          (prefix-in syndicate: syndicate/comprehensions))
@@ -79,6 +84,7 @@
 (define-type-constructor AssertionSet #:arity = 1)
 (define-type-constructor Patch #:arity = 2)
 (define-type-constructor List #:arity = 1)
+(define-type-constructor Set #:arity = 1)
 ;; essentially the sum type of a transition or quit
 (define-type-constructor Instruction #:arity = 3)
 
@@ -323,6 +329,8 @@
           (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
     [((~AssertionSet τ1) (~AssertionSet τ2))
      (<: #'τ1 #'τ2)]
+    [((~Set τ1) (~Set τ2))
+     (<: #'τ1 #'τ2)]
     [((~Patch τ11 τ12) (~Patch τ21 τ22))
      (and (<: #'τ11 #'τ21)
           (<: #'τ12 #'τ22))]
@@ -376,6 +384,9 @@
     [((~AssertionSet τ1) (~AssertionSet τ2))
      #:with τ12 (∩ #'τ1 #'τ2)
      (type-eval #'(AssertionSet τ12))]
+    [((~Set τ1) (~Set τ2))
+     #:with τ12 (∩ #'τ1 #'τ2)
+     (type-eval #'(Set τ12))]
     [((~Patch τ11 τ12) (~Patch τ21 τ22))
      #:with τ1 (∩ #'τ11 #'τ12)
      #:with τ2 (∩ #'τ21 #'τ22)
@@ -492,6 +503,8 @@
     [(~Inbound τ:type)
      (finite? #'τ)]
     [(~Outbound τ:type)
+     (finite? #'τ)]
+    [(~Set τ:type)
      (finite? #'τ)]
     [_ #t]))
 
@@ -706,6 +719,17 @@
   -----------------------
   [⊢ (list- 'tuple e- ...) (⇒ : (Tuple τ ...))])
 
+(define-typed-syntax (select n:nat e:expr) ≫
+  #:do [(define i (syntax->datum #'n))]
+  [⊢ e ≫ e- ⇒ (~Tuple τ ...)]
+  #:fail-unless (< i (stx-length #'(τ ...))) "index out of range"
+  #:with τr (list-ref (stx->list #'(τ ...)) i)
+  --------------------------------------------------------------
+  [⊢ (tuple-select n e-) ⇒ τr])
+
+(define- (tuple-select n t)
+  (list-ref- t (add1 n)))
+
 (define-typed-syntax (typed-app e_fn e_arg ...) ≫
   [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in:type ... τ_out:type))]
   #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
@@ -907,10 +931,49 @@
   -----------------------
   [⊢ (rest- e-) ⇒ (List τ)])
 
+(define-typed-syntax (member? e l) ≫
+  [⊢ e ≫ e- ⇒ τe:type]
+  [⊢ l ≫ l- ⇒ (~List τl:type)]
+  #:fail-unless (<: #'τe.norm #'τl.norm) "incompatible list"
+  ----------------------------------------
+  [⊢ (member?- e- l-) ⇒ Bool])
+
+(define- (member?- v l)
+  (and- (member- v l) #t))
+
 (define-typed-syntax (displayln e:expr) ≫
   [⊢ e ≫ e- ⇒ τ]
   ---------------
   [⊢ (displayln- e-) (⇒ : (U))])
+
+(define-typed-syntax (assert e) ≫
+  --------------------------------------------------------
+  [≻ (patch (make-assertion-set e) (make-assertion-set))])
+
+(define-typed-syntax (retract e) ≫
+  --------------------------------------------------------
+  [≻ (patch (make-assertion-set) (make-assertion-set e))])
+
+(define-typed-syntax (sub e) ≫
+  -----------------------------
+  [≻ (assert (observe e))])
+
+(define-typed-syntax (unsub e) ≫
+  -----------------------------
+  [≻ (retract (observe e))])
+
+(define-typed-syntax (patch-seq* e) ≫
+  [⊢ e ≫ e- ⇒ (~List τ)]
+  #:with (~or* (~Patch τa τr)
+               (~and (~U* (~Patch τai τri) ...)
+                     (~parse (τa τr) #'((U τai ...) (U τri ...)))))
+         #'τ
+  -------------------------------------
+  [⊢ (syndicate:patch-seq* e-) ⇒ (Patch τa τr)])
+
+(define-typed-syntax (patch-seq e ...) ≫
+  -----------------------------
+  [≻ (patch-seq* (list e ...))])
   
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -928,11 +991,87 @@
   [⊢ (#%datum- . s) (⇒ : String)]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Sets
+
+(define-typed-syntax (set e ...) ≫
+  [⊢ e ≫ e- ⇒ τ] ...
+  ---------------
+  [⊢ (set- e- ...) ⇒ (Set (U τ ...))])
+
+(define-typed-syntax (set-count e) ≫
+  [⊢ e ≫ e- ⇒ (~Set _)]
+  ----------------------
+  [⊢ (set-count- e-) ⇒ Int])
+
+(define-typed-syntax (set-add st v) ≫
+  [⊢ st ≫ st- ⇒ (~Set τs)]
+  [⊢ v ≫ v- ⇒ τv]
+  -------------------------
+  [⊢ (set-add- st- v-) ⇒ (Set (U τs τv))])
+
+(define-typed-syntax (set-member? st v) ≫
+  [⊢ st ≫ st- ⇒ (~Set τs:type)]
+  [⊢ v ≫ v- ⇒ τv:type]
+  #:fail-unless (<: #'τv.norm #'τs.norm)
+    "type mismatch"
+  -------------------------------------
+  [⊢ (set-member?- st- v-) ⇒ Bool])
+
+(define-typed-syntax (set-union st0 st ...) ≫
+  [⊢ st0 ≫ st0- ⇒ (~Set τ-st0)]
+  [⊢ st ≫ st- ⇒ (~Set τ-st)] ...
+  -------------------------------------
+  [⊢ (set-union- st0- st- ...) ⇒ (Set (U τ-st0 τ-st ...))])
+
+(define-typed-syntax (set-intersect st0 st ...) ≫
+  [⊢ st0 ≫ st0- ⇒ (~Set τ-st0)]
+  [⊢ st ≫ st- ⇒ (~Set τ-st)] ...
+  #:with τr (∩ #'τ-st0 (type-eval #'(U τ-st ...)))
+  -------------------------------------
+  [⊢ (set-intersect- st0- st- ...) ⇒ (Set τr)])
+
+(define-typed-syntax (set-subtract st0 st ...) ≫
+  [⊢ st0 ≫ st0- ⇒ (~Set τ-st0)]
+  [⊢ st ≫ st- ⇒ (~Set _)] ...
+  -------------------------------------
+  [⊢ (set-subtract- st0- st- ...) ⇒ (Set τ-st0)])
+
+(define-typed-syntax (list->set l) ≫
+  [⊢ l ≫ l- ⇒ (~List τ)]
+  -----------------------
+  [⊢ (list->set- l-) ⇒ (Set τ)])
+
+(define-typed-syntax (set->list s) ≫
+  [⊢ s ≫ s- ⇒ (~Set τ)]
+  -----------------------
+  [⊢ (set->list- s-) ⇒ (List τ)])
+
+(module+ test
+  (check-type (set 1 2 3)
+              : (Set Int)
+              -> (set- 2 3 1))
+  (check-type (set 1 "hello" 3)
+              : (Set (U Int String))
+              -> (set- "hello" 3 1))
+  (check-type (set-count (set 1 "hello" 3))
+              : Int
+              -> 3)
+  (check-type (set-union (set 1 2 3) (set "hello" "world"))
+              : (Set (U Int String))
+              -> (set- 1 2 3 "hello" "world"))
+  (check-type (set-intersect (set 1 2 3) (set "hello" "world"))
+              : (Set ⊥)
+              -> (set-))
+  (check-type (set-intersect (set 1 "hello" 3) (set #t "world" #f "hello"))
+              : (Set String)
+              -> (set- "hello")))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities
 
 (define-typed-syntax (print-type e) ≫
-  [⊢ e ≫ e- ⇒ τ]
-  #:do [(displayln (type->str #'τ))]
+  [⊢ e ≫ e- ⇒ τ:type]
+  #:do [(displayln (type->str #'τ.norm))]
   ----------------------------------
   [⊢ e- ⇒ τ])
 
@@ -1004,8 +1143,23 @@
               -> (make-assertion-set 12))
   (check-type (patch-removed (patch (make-assertion-set 12) (make-assertion-set)))
               : (AssertionSet (U))
-              -> (make-assertion-set)))
+              -> (make-assertion-set))
+  ;; patch utilities
+  (check-type (patch-seq* (list (assert 1) (assert 2)))
+              : (Patch Int ⊥)
+              -> (patch (make-assertion-set 1 2) (make-assertion-set)))
+  (check-type (patch-seq* (list (assert 1) (retract (tuple "humpty" 42)) (assert "hello")))
+              : (Patch (U Int String) (Tuple String Int))
+              -> (patch (make-assertion-set 1 "hello") (make-assertion-set (tuple "humpty" 42)))))
 
+;; tuples
+(module+ test
+  (typecheck-fail (select 0 (tuple)))
+  (check-type (select 0 (tuple 18))
+              : Int
+              -> 18))
+
+;; not reproducing an issue with using ⊥
 (module+ test
   (check-type (lambda ([e : (Event ⊥)]
                        [s : ★/t])
