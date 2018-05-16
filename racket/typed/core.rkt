@@ -560,7 +560,10 @@
 
 (define-typed-syntax (transition e-s e-as) ≫
   [⊢ e-s ≫ e-s- ⇒ τ-s]
-  [⊢ e-as ≫ e-as- ⇒ (~List (~Action τ-o τ-a))]
+  [⊢ e-as ≫ e-as- ⇒ (~List τ)]
+  ;; this parsing of actions is getting realllly hacky
+  #:with (~or (~Action τ-o τ-a)
+              (~parse (τ-o τ-a) #'(⊥ ⊥))) #'τ
   -----------------------------------------
   [⊢ (syndicate:transition e-s- e-as-) ⇒ (Instruction τ-s τ-o τ-a)])
 
@@ -569,7 +572,10 @@
    -------------------------------------
    [⊢ (syndicate:quit) ⇒ (Instruction (U) (U) (U))]]
   [(quit as) ≫
-   [⊢ as ≫ as- ⇒ (~List (~Action τ-o τ-a))]
+   [⊢ as ≫ as- ⇒ (~List τ)]
+   ;; this parsing of actions is getting realllly hacky
+   #:with (~or (~Action τ-o τ-a)
+              (~parse (τ-o τ-a) (stx-map type-eval #'(⊥ ⊥)))) #'τ
    ----------------------------------------
    [⊢ (syndicate:quit as-) ⇒ (Instruction (U) τ-o τ-a)]])
 
@@ -1165,3 +1171,9 @@
                        [s : ★/t])
                 idle)
               : (→ (Event ⊥) ★/t (Instruction ⊥ ⊥ ⊥))))
+
+;; transition
+(module+ test
+  (check-type (transition #f (list))
+              : (Instruction Bool ⊥ ⊥)
+              -> (syndicate:transition #f (list-))))
