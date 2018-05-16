@@ -35,6 +35,8 @@
          ;; DEBUG and utilities
          print-type
          (rename-out [printf- printf])
+         begin-for-syntax
+         (for-syntax #%app displayln type-eval current-type? syntax)
          ;; Extensions
          )
 
@@ -128,9 +130,9 @@
 ;; (copied from ext-stlc example)
 (define-syntax define-type-alias
   (syntax-parser
-    [(_ alias:id τ:any-type)
+    [(_ alias:id τ)
      #'(define-syntax- alias
-         (make-variable-like-transformer #'τ.norm))]
+         (make-variable-like-transformer #'τ))]
     [(_ (f:id x:id ...) ty)
      #'(define-syntax- (f stx)
          (syntax-parse stx
@@ -563,7 +565,7 @@
   [⊢ e-as ≫ e-as- ⇒ (~List τ)]
   ;; this parsing of actions is getting realllly hacky
   #:with (~or (~Action τ-o τ-a)
-              (~parse (τ-o τ-a) #'(⊥ ⊥))) #'τ
+              (~parse (τ-o τ-a) (stx-map type-eval #'(⊥ ⊥)))) #'τ
   -----------------------------------------
   [⊢ (syndicate:transition e-s- e-as-) ⇒ (Instruction τ-s τ-o τ-a)])
 
@@ -1176,4 +1178,6 @@
 (module+ test
   (check-type (transition #f (list))
               : (Instruction Bool ⊥ ⊥)
-              -> (syndicate:transition #f (list-))))
+              -> (syndicate:transition #f (list-)))
+  (check-type (quit) : (Instruction ⊥ ⊥ ⊥))
+  (check-type (quit (list)) : (Instruction ⊥ ⊥ ⊥)))
