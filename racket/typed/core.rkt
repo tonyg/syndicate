@@ -126,7 +126,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User Defined Types, aka Constructors
 
-;; τ.norm in 1st case causes "not valid type" error when file is compiled
+;; τ.norm in 1st case causes "not valid type" error when referring to ⊥ in another file.
+;; however, this version expands the type at every reference, incurring a potentially large
+;; overhead---2x in the case of book-club.rkt
 ;; (copied from ext-stlc example)
 (define-syntax define-type-alias
   (syntax-parser
