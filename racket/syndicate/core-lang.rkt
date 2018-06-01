@@ -47,7 +47,10 @@
      ;; the inclusion of (module+ syndicate-main) is because it seems that the appearance order
      ;; of module+ forms determines the mutual visibility. So syndicate-main is ensured to be the
      ;; first module+ and consequently the main submodule can require it.
-     #'(#%module-begin (syndicate-module () ((module+ syndicate-main) forms ...)))]))
+     #'(#%module-begin
+        (syndicate-module () ((module+ syndicate-main)
+                              (module+ main (current-ground-dataspace run-ground))
+                              forms ...)))]))
 
 (define-syntax (syndicate-module stx)
   (syntax-parse stx
@@ -91,8 +94,6 @@
                          (when (not activated?)
                            (set! activated? #t)
                            boot-actions)))
-                     (module+ main
-                       (current-ground-dataspace run-ground))
                      (module+ main
                        (require (submod ".." syndicate-main))
                        ((current-ground-dataspace) (activate!))))])
