@@ -102,6 +102,22 @@
          (stx-car #'tys-)
          (syntax/loc stx (U* . tys-)))]))
 
+;; for looking at the "effects"
+(begin-for-syntax
+  (define-syntax ~effs
+    (pattern-expander
+     (syntax-parser
+       [(_ eff:id ...)
+        #:with tmp (generate-temporary 'effss)
+        #'(~and tmp
+                (~parse (eff ...) (stx-or #'tmp #'())))])))
+
+  (define (stx-truth? a)
+    (and a (not (and (syntax? a) (false? (syntax-e a))))))
+  (define (stx-or a b)
+    (cond [(stx-truth? a) a]
+          [else b])))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User Defined Types, aka Constructors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -430,11 +446,11 @@
    [⊢ p ≫ _ (⇒ : τp)]
    #:with p- (compile-syndicate-pattern #'p)
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
-   [[x ≫ x- : τ a (U*) r (U*) e (U*)] ... ⊢ s ≫ s-  (⇒ a τ-as) (⇒ r τ-rs) (⇒ e (τ-e ...))]
-   #:do [(displayln (stx-map type->str #'τ-as))]
-   #:do [(displayln (stx-andmap bot? #'τ-as))]
-   ;; #:do [(displayln (stx-andmap bot? #'τ-rs))]
-   #:fail-unless (and (stx-andmap bot? #'τ-as) (stx-andmap bot? #'τ-rs)) "illegal context"
+   [[x ≫ x- : τ] ... ⊢ s ≫ s-  (⇒ a (~effs τ-as ...))
+                                      (⇒ r (~effs τ-rs ...))
+                                      (⇒ e (~effs τ-e ...))]
+   #:fail-unless (and (stx-andmap bot? #'(τ-as ...)) (stx-andmap bot? #'(τ-rs ...)))
+                 "illegal context"
    #:with (rhs ...) (if (stx-null? #'(τ-e ...)) #'((U*)) #'(τ-e ...))
    #:with τ-r #'(Reaction (a/r.react-con τp) rhs ...)
    -----------------------------------
