@@ -27,7 +27,18 @@
         (set! balance (+ (ref balance) amount))))))
 
 (spawn ds-type
+  (print-role
   (start-facet observer
     (fields)
     (on (asserted (account (bind amount Int)))
-        (displayln amount))))
+        (displayln amount)))))
+
+(spawn ds-type
+  (print-role
+  (start-facet buyer
+    (fields)
+    (on (asserted (observe (deposit discard)))
+        (start-facet deposits
+          (fields)
+          (assert (deposit 100))
+          (assert (deposit -30)))))))
