@@ -63,7 +63,7 @@
 
 (define-binding-type Role #:arity >= 0 #:bvs = 1)
 (define-type-constructor Shares #:arity = 1)
-(define-type-constructor Reacts #:arity >= 2)
+(define-type-constructor Reacts #:arity >= 1)
 (define-type-constructor Know #:arity = 1)
 (define-type-constructor ¬Know #:arity = 1)
 (define-type-constructor Message #:arity = 1)
@@ -329,16 +329,76 @@
      [(~Observe (~Inbound τ)) #'(Observe τ)]
      [_ #'(U*)])))
 
+;; (SyntaxOf RoleType ...) -> (Syntaxof Type Type)
+(define-for-syntax (analyze-roles rs)
+  (define-values (lis los)
+    (for/fold ([is '()]
+               [os '()])
+              ([r (in-syntax rs)])
+      (define-values (i o) (analyze-role-input/output r))
+      (values (cons i is) (cons o os))))
+  #`(#,(type-eval #`(U #,@lis))
+     #,(type-eval #`(U #,@los))))
+
+;; Wanted test case, but can't use it bc it uses things defined for-syntax
+#;(module+ test
+ (let ([r (type-eval #'(Role (x) (Shares Int)))])
+   (syntax-parse (analyze-role-input/output r)
+     [(τ-i τ-o)
+      (check-true (type=? #'τ-o (type-eval #'Int)))])))
+
+;; RoleType -> (Values Type Type)
 (define-for-syntax (analyze-role-input/output t)
   (syntax-parse t
     [(~Role (name:id)
        (~or (~Shares τ-s)
             (~Reacts τ-if τ-then ...)) ...
        (~and (~Role _ ...) sub-role) ...)
-     (type-eval #'(U*))]))
+     (define-values (is os)
+       (for/fold ([ins '()]
+                  [outs '()])
+                 ([t (in-syntax #'(τ-then ... ... sub-role ...))])
+         (define-values (i o) (analyze-role-input/output t))
+         (values (cons i ins) (cons o outs))))
+     (define pat-types (stx-map event-desc-type #'(τ-if ...)))
+     (values (type-eval #`(U #,@is #,@pat-types))
+             (type-eval #`(U τ-s ... #,@os #,@(stx-map pattern-sub-type pat-types))))]))
+
+;; EventDescriptorType -> Type
+(define-for-syntax (event-desc-type desc)
+  (syntax-parse desc
+    [(~Know τ) #'τ]
+    [(~¬Know τ) #'τ]
+    [(~Message τ) desc]
+    [_ (type-eval #'(U*))]))
+
+;; PatternType -> Type
+(define-for-syntax (pattern-sub-type pt)
+  (define t (replace-bind-and-discard-with-★ pt))
+  (type-eval #`(Observe #,t)))
+
+(define-for-syntax (replace-bind-and-discard-with-★ t)
+  (syntax-parse t
+    [(~Bind _)
+     (type-eval #'★/t)]
+    [~Discard
+     (type-eval #'★/t)]
+    [(~U* τ ...)
+     (type-eval #`(U #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
+    [(~Tuple τ ...)
+     (type-eval #`(Tuple #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
+    [(~Observe τ)
+     (type-eval #`(Observe #,(replace-bind-and-discard-with-★ #'τ)))]
+    [(~Inbound τ)
+     (type-eval #`(Inbound #,(replace-bind-and-discard-with-★ #'τ)))]
+    [(~Outbound τ)
+     (type-eval #`(Outbound #,(replace-bind-and-discard-with-★ #'τ)))]
+    [(~constructor-type _ τ ...)
+     (make-cons-type t (stx-map replace-bind-and-discard-with-★ #'(τ ...)))]
+    [_ t]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Subtyping
+;; Subtyping and Judgments on Types
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Type Type -> Bool
@@ -385,6 +445,141 @@
     ;; TODO: clauses for Roles, and so on
     ;; should probably put this first.
     [_ (type=? t1 t2)]))
+
+;; Flat-Type Flat-Type -> Type
+(define-for-syntax (∩ t1 t2)
+  (unless (and (flat-type? t1) (flat-type? t2))
+    (error '∩ "expected two flat-types"))
+  (syntax-parse #`(#,t1 #,t2)
+    [(_ ~★/t)
+     t1]
+    [(~★/t _)
+     t2]
+    [(_ _)
+     #:when (type=? t1 t2)
+     t1]
+    [((~U* τ1:type ...) _)
+     (type-eval #`(U #,@(stx-map (lambda (t) (∩ t t2)) #'(τ1 ...))))]
+    [(_ (~U* τ2:type ...))
+     (type-eval #`(U #,@(stx-map (lambda (t) (∩ t1 t)) #'(τ2 ...))))]
+    [((~AssertionSet τ1) (~AssertionSet τ2))
+     #:with τ12 (∩ #'τ1 #'τ2)
+     (type-eval #'(AssertionSet τ12))]
+    [((~Set τ1) (~Set τ2))
+     #:with τ12 (∩ #'τ1 #'τ2)
+     (type-eval #'(Set τ12))]
+    [((~Patch τ11 τ12) (~Patch τ21 τ22))
+     #:with τ1 (∩ #'τ11 #'τ12)
+     #:with τ2 (∩ #'τ21 #'τ22)
+     (type-eval #'(Patch τ1 τ2))]
+    ;; all of these fail-when/unless clauses are meant to cause this through to
+    ;; the last case and result in ⊥.
+    ;; Also, using <: is OK, even though <: refers to ∩, because <:'s use of ∩ is only
+    ;; in the Actor case.
+    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
+     #:fail-unless (stx-length=? #'(τ1 ...) #'(τ2 ...)) #f
+     #:with (τ ...) (stx-map ∩ #'(τ1 ...) #'(τ2 ...))
+     ;; I don't think stx-ormap is part of the documented api of turnstile *shrug*
+     #:fail-when (stx-ormap (lambda (t) (<: t (type-eval #'(U)))) #'(τ ...)) #f
+     (type-eval #'(Tuple τ ...))]
+    [((~constructor-type tag1 τ1:type ...) (~constructor-type tag2 τ2:type ...))
+     #:when (tags-equal? #'tag1 #'tag2)
+     #:with (τ ...) (stx-map ∩ #'(τ1 ...) #'(τ2 ...))
+     #:fail-when (stx-ormap (lambda (t) (<: t (type-eval #'(U)))) #'(τ ...)) #f
+     (make-cons-type t1 #'(τ ...))]
+    ;; these three are just the same :(
+    [((~Observe τ1:type) (~Observe τ2:type))
+     #:with τ (∩ #'τ1 #'τ2)
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Observe τ))]
+    [((~Inbound τ1:type) (~Inbound τ2:type))
+     #:with τ (∩ #'τ1 #'τ2)
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Inbound τ))]
+    [((~Outbound τ1:type) (~Outbound τ2:type))
+     #:with τ (∩ #'τ1 #'τ2)
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Outbound τ))]
+    [_ (type-eval #'(U))]))
+
+;; Type Type -> Bool
+;; first type is the contents of the set
+;; second type is the type of a pattern
+(define-for-syntax (project-safe? t1 t2)
+  (syntax-parse #`(#,t1 #,t2)
+    [(_ (~Bind τ2:type))
+     (and (finite? t1) (<: t1 #'τ2))]
+    [(_ ~Discard)
+     #t]
+    [(_ ~★/t)
+     #t]
+    [((~U* τ1:type ...) _)
+     (stx-andmap (lambda (t) (project-safe? t t2)) #'(τ1 ...))]
+    [(_ (~U* τ2:type ...))
+     (stx-andmap (lambda (t) (project-safe? t1 t)) #'(τ2 ...))]
+    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
+     #:when (overlap? t1 t2)
+     (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
+    [((~constructor-type _ τ1:type ...) (~constructor-type _ τ2:type ...))
+     #:when (overlap? t1 t2)
+     (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
+    [((~Observe τ1:type) (~Observe τ2:type))
+     (project-safe? #'τ1 #'τ2)]
+    [((~Inbound τ1:type) (~Inbound τ2:type))
+     (project-safe? #'τ1 #'τ2)]
+    [((~Outbound τ1:type) (~Outbound τ2:type))
+     (project-safe? #'τ1 #'τ2)]
+    [_ #t]))
+
+;; AssertionType PatternType -> Bool
+;; Is it possible for things of these two types to match each other?
+;; Flattish-Type = Flat-Types + ★/t, Bind, Discard (assertion and pattern types)
+(define-for-syntax (overlap? t1 t2)
+  (syntax-parse #`(#,t1 #,t2)
+    [(~★/t _) #t]
+    [(_ (~Bind _)) #t]
+    [(_ ~Discard) #t]
+    [(_ ~★/t) #t]
+    [((~U* τ1:type ...) _)
+     (stx-ormap (lambda (t) (overlap? t t2)) #'(τ1 ...))]
+    [(_ (~U* τ2:type ...))
+     (stx-ormap (lambda (t) (overlap? t1 t)) #'(τ2 ...))]
+    [((~List _) (~List _))
+     ;; share the empty list
+     #t]
+    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
+     (and (stx-length=? #'(τ1 ...) #'(τ2 ...))
+          (stx-andmap overlap? #'(τ1 ...) #'(τ2 ...)))]
+    [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
+     (and (tags-equal? #'t1 #'t2)
+          (stx-andmap overlap? #'(τ1 ...) #'(τ2 ...)))]
+    [((~Observe τ1:type) (~Observe τ2:type))
+     (overlap? #'τ1 #'τ2)]
+    [((~Inbound τ1:type) (~Inbound τ2:type))
+     (overlap? #'τ1 #'τ2)]
+    [((~Outbound τ1:type) (~Outbound τ2:type))
+     (overlap? #'τ1 #'τ2)]
+    [_ (<: t1 t2)]))
+
+;; Flattish-Type -> Bool
+(define-for-syntax (finite? t)
+  (syntax-parse t
+    [~★/t #f]
+    [(~U* τ:type ...)
+     (stx-andmap finite? #'(τ ...))]
+    [(~Tuple τ:type ...)
+     (stx-andmap finite? #'(τ ...))]
+    [(~constructor-type _ τ:type ...)
+     (stx-andmap finite? #'(τ ...))]
+    [(~Observe τ:type)
+     (finite? #'τ)]
+    [(~Inbound τ:type)
+     (finite? #'τ)]
+    [(~Outbound τ:type)
+     (finite? #'τ)]
+    [(~Set τ:type)
+     (finite? #'τ)]
+    [_ #t]))
 
 ;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;; MODIFYING GLOBAL TYPECHECKING STATE!!!!!
@@ -475,8 +670,7 @@
                                (⇒ r (~effs))
                                (⇒ f (~effs τ-f ...))
                                (⇒ s (~effs τ-s ...))]
-   #:with (rhs ...) (if (stx-null? #'(τ-f ...)) #'((U*)) #'(τ-f ... τ-s ...))
-   #:with τ-r #'(Reacts (a/r.react-con τp) rhs ...)
+   #:with τ-r #'(Reacts (a/r.react-con τp) τ-f ...)
    -----------------------------------
    [⊢ (syndicate:on (a/r.syndicate-kw p-)
                     (let- ([x- x] ...) s-))
@@ -530,16 +724,15 @@
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   [⊢ s ≫ s- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
   ;; TODO: s shouldn't refer to facets or fields!
-  ;; TODO - check the role against the type of the dataspace
-  #:do [(define ins-and-outs (stx-map analyze-role-input/output #'(τ-f ...)))]
-  #|
-  #:fail-unless (<: #'τ-o.norm #'τ-c.norm)
-                (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o.norm) (type->str #'τ-c.norm))
-  #:fail-unless (<: (type-eval #'(Actor τ-a.norm))
-                    (type-eval #'(Actor τ-c.norm))) "Spawned actors not valid in dataspace"
-  #:fail-unless (project-safe? (∩ (strip-? #'τ-o.norm) #'τ-c.norm)
-                               #'τ-i.norm) "Not prepared to handle all inputs"
-  |#
+  #:with (τ-i τ-o) (analyze-roles #'(τ-f ...))
+  #:fail-unless (<: #'τ-o #'τ-c.norm)
+                (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o) (type->str #'τ-c.norm))
+  ;; TODO - type of spawned actors
+  ;; #:fail-unless (<: (type-eval #'(Actor τ-a.norm))
+  ;;                  (type-eval #'(Actor τ-c.norm))) "Spawned actors not valid in dataspace"
+  #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c.norm)
+                               #'τ-i)
+                "Not prepared to handle all inputs"
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ s ((Actor τ-c)))
@@ -739,3 +932,7 @@
           (displayln (type->str r)))]
   ----------------------------------
   [⊢ e- (⇒ : τ) (⇒ a as) (⇒ r rs) (⇒ f es)])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Tests
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
