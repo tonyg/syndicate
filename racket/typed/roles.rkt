@@ -186,7 +186,7 @@
            (user-ctor #'Cons- #'StructName))
          (define-typed-syntax (Cons- e (... ...)) ≫
            #:fail-unless (= #,arity (stx-length #'(e (... ...)))) "arity mismatch"
-           [⊢ e ≫ e- (⇒ : τ)] (... ...)
+           [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs)) (⇒ s (~effs))] (... ...)
            ----------------------
            [⊢ (#%app- StructName e- (... ...)) (⇒ : (TypeCons τ (... ...)))])
          (define-type-alias Alias AliasBody) ...)]))
@@ -390,6 +390,19 @@
   (current-typecheck-relation <:))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Effect Checking
+
+;; DesugaredSyntax EffectName -> Bool
+(define-for-syntax (effect-free? e- eff)
+  (define prop (syntax-property e- eff))
+  (or (false? prop) (stx-null? prop)))
+
+;; DesugaredSyntax -> Bool
+(define-for-syntax (pure? e-)
+  (for/and ([key (in-list '(a r f s))])
+    (effect-free? e- key)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core forms
 
 (define-typed-syntax (start-facet name:id ((~datum fields) [x:id τ-f:type e:expr] ...) ep ...+) ≫
@@ -397,9 +410,10 @@
   ;; TODO - probably don't want these expressions to have any effects
   [⊢ e ≫ e- (⇐ : τ-f)] ...
   [[name ≫ name- : FacetName] [x ≫ x- : (Field τ-f.norm)] ...
-   ⊢ [ep ≫ ep- (⇒ r (τ-r ...))
-                (⇒ a (τ-a ...))
-                (⇒ f (τ-fs ...))] ...]
+   ⊢ [ep ≫ ep- (⇒ r (~effs τ-r ...))
+                (⇒ a (~effs τ-a ...))
+                (⇒ f (~effs τ-fs ...))
+                (⇒ s (~effs))] ...]
   #:with as (type-eval #'(U τ-a ... ...))
   #:with τ (type-eval #'(Role (name-)
                           (Shares as)
@@ -413,6 +427,7 @@
      (⇒ : ★/t)
      (⇒ r ())
      (⇒ a ())
+     (⇒ s ())
      (⇒ f (τ))])
 
 (define-for-syntax (make-fields names inits)
@@ -421,12 +436,14 @@
      #'(syndicate:field [x e] ...)]))
 
 (define-typed-syntax (assert e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   -------------------------------------
   [⊢ (syndicate:assert e-) (⇒ : ★/t)
                            (⇒ a (τ))
                            (⇒ r ())
-                           (⇒ f ())])
+                           (⇒ f ())
+                           (⇒ s ())])
 
 (begin-for-syntax
   (define-syntax-class asserted-or-retracted
@@ -449,13 +466,15 @@
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : (U)) (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]]
   [(on (a/r:asserted-or-retracted p) s) ≫
-   [⊢ p ≫ _ (⇒ : τp) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+   [⊢ p ≫ p-- (⇒ : τp)]
+   #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
    #:with p- (compile-syndicate-pattern #'p)
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
    [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ a (~effs))
                                (⇒ r (~effs))
-                               (⇒ f (~effs τ-f ...))]
-   #:with (rhs ...) (if (stx-null? #'(τ-f ...)) #'((U*)) #'(τ-f ...))
+                               (⇒ f (~effs τ-f ...))
+                               (⇒ s (~effs τ-s ...))]
+   #:with (rhs ...) (if (stx-null? #'(τ-f ...)) #'((U*)) #'(τ-f ... τ-s ...))
    #:with τ-r #'(Reaction (a/r.react-con τp) rhs ...)
    -----------------------------------
    [⊢ (syndicate:on (a/r.syndicate-kw p-)
@@ -463,7 +482,8 @@
       (⇒ : ★/t)
       (⇒ r (τ-r))
       (⇒ f ())
-      (⇒ a ())]])
+      (⇒ a ())
+      (⇒ s ())]])
 
 ;; pat -> ([Id Type] ...)
 (define-for-syntax (pat-bindings stx)
@@ -507,7 +527,7 @@
 
 (define-typed-syntax (spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  [⊢ s ≫ s- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs τ-f ...))]
+  [⊢ s ≫ s- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
   ;; TODO: s shouldn't refer to facets or fields!
   ;; TODO - check the role against the type of the dataspace
   #:do [(define ins-and-outs (stx-map analyze-role-input/output #'(τ-f ...)))]
@@ -521,10 +541,15 @@
   |#
   --------------------------------------------------------------------------------------------
   ;; TODO - need a key for spawning actors, I guess
-  [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
+                                               (⇒ s ((Actor τ-c)))
+                                               (⇒ a ())
+                                               (⇒ r ())
+                                               (⇒ f ())])
 
 (define-typed-syntax (set! x:id e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   [⊢ x ≫ x- (⇒ : (~Field τ-x:type))]
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
   ----------------------------------------------------
@@ -541,20 +566,24 @@
 
 (define-typed-syntax (typed-app e_fn e_arg ...) ≫
   ;; TODO : other keys
-  [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in ... τ_out)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in ... τ_out))]
+  #:fail-unless (pure? #'e_fn-) "expression not allowed to have effects"
   #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
                 (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
-  [⊢ e_arg ≫ e_arg- (⇐ : τ_in) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))] ...
+  [⊢ e_arg ≫ e_arg- (⇐ : τ_in)] ...
+  #:fail-unless (stx-andmap pure? #'(e_arg- ...)) "expressions not allowed to have effects"
   ------------------------------------------------------------------------
   [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ_out)])
 
 (define-typed-syntax (tuple e:expr ...) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))] ...
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions not allowed to have effects"
   -----------------------
   [⊢ (list- 'tuple e- ...) (⇒ : (Tuple τ ...))])
 
 (define-typed-syntax (select n:nat e:expr) ≫
-  [⊢ e ≫ e- (⇒ : (~Tuple τ ...)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : (~Tuple τ ...))]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   #:do [(define i (syntax->datum #'n))]
   #:fail-unless (< i (stx-length #'(τ ...))) "index out of range"
   #:with τr (list-ref (stx->list #'(τ ...)) i)
@@ -566,17 +595,20 @@
 
 ;; it would be nice to abstract over these three
 (define-typed-syntax (observe e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   ---------------------------------------------------------------------------
   [⊢ (syndicate:observe e-) (⇒ : (Observe τ))])
 
 (define-typed-syntax (inbound e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   ---------------------------------------------------------------------------
   [⊢ (syndicate:inbound e-) (⇒ : (Inbound τ))])
 
 (define-typed-syntax (outbound e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   ---------------------------------------------------------------------------
   [⊢ (syndicate:outbound e-) (⇒ : (Outbound τ))])
 
@@ -616,44 +648,54 @@
 (define-primop = (→ Int Int Bool))
 
 (define-typed-syntax (/ e1 e2) ≫
-  [⊢ e1 ≫ e1- (⇐ : Int) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
-  [⊢ e2 ≫ e2- (⇐ : Int) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e1 ≫ e1- (⇐ : Int)]
+  [⊢ e2 ≫ e2- (⇐ : Int)]
+  #:fail-unless (pure? #'e1-) "expression not allowed to have effects"
+  #:fail-unless (pure? #'e2-) "expression not allowed to have effects"
   ------------------------
   [⊢ (exact-truncate- (/- e1- e2-)) (⇒ : Int)])
 
 ;; for some reason defining `and` as a prim op doesn't work
 (define-typed-syntax (and e ...) ≫
-  [⊢ e ≫ e- (⇐ : Bool) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))] ...
+  [⊢ e ≫ e- (⇐ : Bool)] ...
+  #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions not allowed to have effects"
   ------------------------
   [⊢ (and- e- ...) (⇒ : Bool)])
 
 (define-typed-syntax (equal? e1:expr e2:expr) ≫
-  [⊢ e1 ≫ e1- (⇒ : τ1:type) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
-  #:fail-unless (flat-type? #'τ1.norm)
+  [⊢ e1 ≫ e1- (⇒ : τ1)]
+  #:fail-unless (flat-type? #'τ1)
   (format "equality only available on flat data; got ~a" (type->str #'τ1))
-  [⊢ e2 ≫ e2- (⇐ : τ1) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e2 ≫ e2- (⇐ : τ1)]
+  #:fail-unless (pure? #'e1-) "expression not allowed to have effects"
+  #:fail-unless (pure? #'e2-) "expression not allowed to have effects"
   ---------------------------------------------------------------------------
-  [⊢ (equal?- e1- e2-) (⇒ : Bool) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))])
+  [⊢ (equal?- e1- e2-) (⇒ : Bool)])
 
 (define-typed-syntax (empty? e) ≫
-  [⊢ e ≫ e- (⇒ : (~List _)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : (~List _))]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   -----------------------
   [⊢ (empty?- e-) (⇒ : Bool)])
 
 (define-typed-syntax (first e) ≫
-  [⊢ e ≫ e- (⇒ : (~List τ)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : (~List τ))]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   -----------------------
   [⊢ (first- e-) (⇒ : τ)])
 
 (define-typed-syntax (rest e) ≫
-  [⊢ e ≫ e- (⇒ : (~List τ)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : (~List τ))]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   -----------------------
   [⊢ (rest- e-) (⇒ : (List τ))])
 
 (define-typed-syntax (member? e l) ≫
-  [⊢ e ≫ e- (⇒ : τe:type) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
-  [⊢ l ≫ l- (⇒ : (~List τl:type)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : τe:type)]
+  [⊢ l ≫ l- (⇒ : (~List τl:type))]
   #:fail-unless (<: #'τe.norm #'τl.norm) "incompatible list"
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
+  #:fail-unless (pure? #'l-) "expression not allowed to have effects"
   ----------------------------------------
   [⊢ (member?- e- l-) (⇒ : Bool)])
 
@@ -661,7 +703,8 @@
   (and- (member- v l) #t))
 
 (define-typed-syntax (displayln e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   ---------------
   [⊢ (displayln- e-) (⇒ : ★/t)])
 
