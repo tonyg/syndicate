@@ -6,7 +6,7 @@
          require only-in
          ;; Types
          Int Bool String Tuple Bind Discard → List
-         Role Reacts Reaction Shares Know ¬Know Message
+         Role Reacts Shares Know ¬Know Message
          FacetName Field ★/t
          Observe Inbound Outbound Actor U
          ;; Statements
@@ -49,20 +49,21 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; : describes the immediate result of evaluation
-;; a key aggregates `assert` endpoints
-;; r key aggregates each `on` endpoint as a `Reaction`
-;; f key aggregates facet effects (starting a facet)
-;; s key aggregates spawned actors
+;; a key aggregates `assert` endpoints as `Shares`
+;; r key aggregates each `on` endpoint as a `Reacts`
+;; f key aggregates facet effects (starting a facet) as `Role`s
+;; s key aggregates spawned actors as `Actor`s
+
+;; TODO - chan the `a` and `r` keys be merged into one 'endpoint' key?
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-binding-type Role #:arity >= 2 #:bvs = 1)
+(define-binding-type Role #:arity >= 0 #:bvs = 1)
 (define-type-constructor Shares #:arity = 1)
-(define-type-constructor Reacts #:arity >= 0)
-(define-type-constructor Reaction #:arity >= 2)
+(define-type-constructor Reacts #:arity >= 2)
 (define-type-constructor Know #:arity = 1)
 (define-type-constructor ¬Know #:arity = 1)
 (define-type-constructor Message #:arity = 1)
@@ -330,7 +331,10 @@
 
 (define-for-syntax (analyze-role-input/output t)
   (syntax-parse t
-    [(~Role (name:id) (~Shares τ-s) (~Reacts τ-r ...) sub-role ...)
+    [(~Role (name:id)
+       (~or (~Shares τ-s)
+            (~Reacts τ-if τ-then ...)) ...
+       (~and (~Role _ ...) sub-role) ...)
      (type-eval #'(U*))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -412,14 +416,11 @@
   [[name ≫ name- : FacetName] [x ≫ x- : (Field τ-f.norm)] ...
    ⊢ [ep ≫ ep- (⇒ r (~effs τ-r ...))
                 (⇒ a (~effs τ-a ...))
-                (⇒ f (~effs τ-fs ...))
+                (⇒ f (~effs))
                 (⇒ s (~effs))] ...]
-  #:with as (type-eval #'(U τ-a ... ...))
   #:with τ (type-eval #'(Role (name-)
-                          (Shares as)
-                          (Reacts τ-r ... ...)
-                          ;; actually these should be empty
-                          τ-fs ... ...))
+                          τ-a ... ...
+                          τ-r ... ...))
   --------------------------------------------------------------
   [⊢ (syndicate:react (let- ([name- (syndicate:current-facet-id)])
                             #,(make-fields #'(x- ...) #'(e- ...))
@@ -440,7 +441,7 @@
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   -------------------------------------
   [⊢ (syndicate:assert e-) (⇒ : ★/t)
-                           (⇒ a (τ))
+                           (⇒ a ((Shares τ)))
                            (⇒ r ())
                            (⇒ f ())
                            (⇒ s ())])
@@ -475,7 +476,7 @@
                                (⇒ f (~effs τ-f ...))
                                (⇒ s (~effs τ-s ...))]
    #:with (rhs ...) (if (stx-null? #'(τ-f ...)) #'((U*)) #'(τ-f ... τ-s ...))
-   #:with τ-r #'(Reaction (a/r.react-con τp) rhs ...)
+   #:with τ-r #'(Reacts (a/r.react-con τp) rhs ...)
    -----------------------------------
    [⊢ (syndicate:on (a/r.syndicate-kw p-)
                     (let- ([x- x] ...) s-))
@@ -540,7 +541,6 @@
                                #'τ-i.norm) "Not prepared to handle all inputs"
   |#
   --------------------------------------------------------------------------------------------
-  ;; TODO - need a key for spawning actors, I guess
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ s ((Actor τ-c)))
                                                (⇒ a ())
