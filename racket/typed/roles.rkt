@@ -186,10 +186,9 @@
            (user-ctor #'Cons- #'StructName))
          (define-typed-syntax (Cons- e (... ...)) ≫
            #:fail-unless (= #,arity (stx-length #'(e (... ...)))) "arity mismatch"
-           [⊢ e ≫ e- (⇒ : τ) (⇒ a ()) (⇒ r ()) (⇒ f ())] (... ...)
+           [⊢ e ≫ e- (⇒ : τ)] (... ...)
            ----------------------
-           [⊢ (#%app- StructName e- (... ...)) (⇒ : (TypeCons τ (... ...)))
-              (⇒ a ()) (⇒ r ()) (⇒ f ())])
+           [⊢ (#%app- StructName e- (... ...)) (⇒ : (TypeCons τ (... ...)))])
          (define-type-alias Alias AliasBody) ...)]))
 
 (begin-for-syntax
@@ -402,11 +401,11 @@
                 (⇒ a (τ-a ...))
                 (⇒ f (τ-fs ...))] ...]
   #:with as (type-eval #'(U τ-a ... ...))
-  #:with τ #'(Role (name-)
-                   (Shares as)
-                   (Reacts τ-r ... ...)
-                   ;; actually these should be empty
-                   τ-fs ... ...)
+  #:with τ (type-eval #'(Role (name-)
+                          (Shares as)
+                          (Reacts τ-r ... ...)
+                          ;; actually these should be empty
+                          τ-fs ... ...))
   --------------------------------------------------------------
   [⊢ (syndicate:react (let- ([name- (syndicate:current-facet-id)])
                             #,(make-fields #'(x- ...) #'(e- ...))
@@ -422,7 +421,7 @@
      #'(syndicate:field [x e] ...)]))
 
 (define-typed-syntax (assert e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   -------------------------------------
   [⊢ (syndicate:assert e-) (⇒ : ★/t)
                            (⇒ a (τ))
@@ -450,14 +449,12 @@
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : (U)) (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]]
   [(on (a/r:asserted-or-retracted p) s) ≫
-   [⊢ p ≫ _ (⇒ : τp)]
+   [⊢ p ≫ _ (⇒ : τp) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
    #:with p- (compile-syndicate-pattern #'p)
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
-   [[x ≫ x- : τ] ... ⊢ s ≫ s-  (⇒ a (~effs τ-as ...))
-                                      (⇒ r (~effs τ-rs ...))
-                                      (⇒ f (~effs τ-f ...))]
-   #:fail-unless (and (stx-andmap bot? #'(τ-as ...)) (stx-andmap bot? #'(τ-rs ...)))
-                 "illegal context"
+   [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ a (~effs))
+                               (⇒ r (~effs))
+                               (⇒ f (~effs τ-f ...))]
    #:with (rhs ...) (if (stx-null? #'(τ-f ...)) #'((U*)) #'(τ-f ...))
    #:with τ-r #'(Reaction (a/r.react-con τp) rhs ...)
    -----------------------------------
@@ -510,12 +507,10 @@
 
 (define-typed-syntax (spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  [⊢ s ≫ s- (⇒ a (~effs τ-a ...)) (⇒ r (~effs τ-r ...)) (⇒ f (~effs τ-f ...))]
-  #:fail-unless (and (stx-andmap bot? #'(τ-a ...)) (stx-andmap bot? #'(τ-r ...)))
-                "illegal context"
+  [⊢ s ≫ s- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs τ-f ...))]
   ;; TODO: s shouldn't refer to facets or fields!
   ;; TODO - check the role against the type of the dataspace
-  #:do [(define ins-and-outs (stx-map analyze-role-input/output #'(τ-r ...)))]
+  #:do [(define ins-and-outs (stx-map analyze-role-input/output #'(τ-f ...)))]
   #|
   #:fail-unless (<: #'τ-o.norm #'τ-c.norm)
                 (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o.norm) (type->str #'τ-c.norm))
@@ -529,11 +524,11 @@
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t) (⇒ a ()) (⇒ r ()) (⇒ f ())])
 
 (define-typed-syntax (set! x:id e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   [⊢ x ≫ x- (⇒ : (~Field τ-x:type))]
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
   ----------------------------------------------------
-  [⊢ (x- e-) (⇒ : ★/t) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (x- e-) (⇒ : ★/t)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
@@ -542,54 +537,48 @@
 (define-typed-syntax (ref x:id) ≫
   [⊢ x ≫ x- ⇒ (~Field τ)]
   ------------------------
-  [⊢ (x-) (⇒ : τ) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (x-) (⇒ : τ)])
 
 (define-typed-syntax (typed-app e_fn e_arg ...) ≫
   ;; TODO : other keys
-  [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in ... τ_out))]
+  [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in ... τ_out)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
                 (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
-  [⊢ e_arg ≫ e_arg- (⇐ : τ_in)] ...
+  [⊢ e_arg ≫ e_arg- (⇐ : τ_in) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))] ...
   ------------------------------------------------------------------------
-  [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ_out)
-                               (⇒ a ())
-                               (⇒ r ())
-                               (⇒ f ())])
+  [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ_out)])
 
 (define-typed-syntax (tuple e:expr ...) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a ()) (⇒ r ()) (⇒ f ())] ...
+  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))] ...
   -----------------------
-  [⊢ (list- 'tuple e- ...) (⇒ : (Tuple τ ...))
-                           (⇒ a ())
-                           (⇒ r ())
-                           (⇒ f ())])
+  [⊢ (list- 'tuple e- ...) (⇒ : (Tuple τ ...))])
 
 (define-typed-syntax (select n:nat e:expr) ≫
-  [⊢ e ≫ e- (⇒ : (~Tuple τ ...)) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : (~Tuple τ ...)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   #:do [(define i (syntax->datum #'n))]
   #:fail-unless (< i (stx-length #'(τ ...))) "index out of range"
   #:with τr (list-ref (stx->list #'(τ ...)) i)
   --------------------------------------------------------------
-  [⊢ (tuple-select n e-) (⇒ : τr) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (tuple-select n e-) (⇒ : τr)])
 
 (define- (tuple-select n t)
   (list-ref- t (add1 n)))
 
 ;; it would be nice to abstract over these three
 (define-typed-syntax (observe e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   ---------------------------------------------------------------------------
-  [⊢ (syndicate:observe e-) (⇒ : (Observe τ)) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (syndicate:observe e-) (⇒ : (Observe τ))])
 
 (define-typed-syntax (inbound e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   ---------------------------------------------------------------------------
-  [⊢ (syndicate:inbound e-) (⇒ : (Inbound τ)) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (syndicate:inbound e-) (⇒ : (Inbound τ))])
 
 (define-typed-syntax (outbound e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   ---------------------------------------------------------------------------
-  [⊢ (syndicate:outbound e-) (⇒ : (Outbound τ)) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (syndicate:outbound e-) (⇒ : (Outbound τ))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Patterns
@@ -597,13 +586,13 @@
 
 (define-typed-syntax (bind x:id τ:type) ≫
   ----------------------------------------
-  [⊢ (error- 'bind "escaped") (⇒ : (Bind τ)) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (error- 'bind "escaped") (⇒ : (Bind τ))])
 
 (define-typed-syntax discard
   [_ ≫
    --------------------
    ;; TODO: change void to _
-   [⊢ (error- 'discard "escaped") (⇒ : Discard) (⇒ a ()) (⇒ r ()) (⇒ f ())]])
+   [⊢ (error- 'discard "escaped") (⇒ : Discard)]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core-ish forms
@@ -627,54 +616,54 @@
 (define-primop = (→ Int Int Bool))
 
 (define-typed-syntax (/ e1 e2) ≫
-  [⊢ e1 ≫ e1- (⇐ : Int) (⇒ a ()) (⇒ r ()) (⇒ f ())]
-  [⊢ e2 ≫ e2- (⇐ : Int) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e1 ≫ e1- (⇐ : Int) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ e2 ≫ e2- (⇐ : Int) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   ------------------------
-  [⊢ (exact-truncate- (/- e1- e2-)) (⇒ : Int) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (exact-truncate- (/- e1- e2-)) (⇒ : Int)])
 
 ;; for some reason defining `and` as a prim op doesn't work
 (define-typed-syntax (and e ...) ≫
-  [⊢ e ≫ e- (⇐ : Bool) (⇒ a ()) (⇒ r ()) (⇒ f ())] ...
+  [⊢ e ≫ e- (⇐ : Bool) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))] ...
   ------------------------
-  [⊢ (and- e- ...) (⇒ : Bool) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (and- e- ...) (⇒ : Bool)])
 
 (define-typed-syntax (equal? e1:expr e2:expr) ≫
-  [⊢ e1 ≫ e1- (⇒ : τ1:type) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e1 ≫ e1- (⇒ : τ1:type) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   #:fail-unless (flat-type? #'τ1.norm)
   (format "equality only available on flat data; got ~a" (type->str #'τ1))
-  [⊢ e2 ≫ e2- (⇐ : τ1) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e2 ≫ e2- (⇐ : τ1) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   ---------------------------------------------------------------------------
-  [⊢ (equal?- e1- e2-) (⇒ : Bool) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (equal?- e1- e2-) (⇒ : Bool) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))])
 
 (define-typed-syntax (empty? e) ≫
-  [⊢ e ≫ e- (⇒ : (~List _)) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : (~List _)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   -----------------------
-  [⊢ (empty?- e-) (⇒ : Bool) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (empty?- e-) (⇒ : Bool)])
 
 (define-typed-syntax (first e) ≫
-  [⊢ e ≫ e- (⇒ : (~List τ)) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : (~List τ)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   -----------------------
-  [⊢ (first- e-) (⇒ : τ) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (first- e-) (⇒ : τ)])
 
 (define-typed-syntax (rest e) ≫
-  [⊢ e ≫ e- (⇒ : (~List τ)) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : (~List τ)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   -----------------------
-  [⊢ (rest- e-) (⇒ : (List τ)) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (rest- e-) (⇒ : (List τ))])
 
 (define-typed-syntax (member? e l) ≫
-  [⊢ e ≫ e- (⇒ : τe:type) (⇒ a ()) (⇒ r ()) (⇒ f ())]
-  [⊢ l ≫ l- (⇒ : (~List τl:type)) (⇒ a ()) (⇒ r ()) (⇒ f ())]
+  [⊢ e ≫ e- (⇒ : τe:type) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
+  [⊢ l ≫ l- (⇒ : (~List τl:type)) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   #:fail-unless (<: #'τe.norm #'τl.norm) "incompatible list"
   ----------------------------------------
-  [⊢ (member?- e- l-) (⇒ : Bool) (⇒ a ()) (⇒ r ()) (⇒ f ())])
+  [⊢ (member?- e- l-) (⇒ : Bool)])
 
 (define- (member?- v l)
   (and- (member- v l) #t))
 
 (define-typed-syntax (displayln e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a as) (⇒ r rs) (⇒ f es)]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs))]
   ---------------
-  [⊢ (displayln- e-) (⇒ : ★/t) (⇒ a as) (⇒ r rs) (⇒ f es)])
+  [⊢ (displayln- e-) (⇒ : ★/t)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Basic Values
@@ -683,13 +672,13 @@
 (define-typed-syntax #%datum
   [(_ . n:integer) ≫
   ----------------
-  [⊢ (#%datum- . n) (⇒ : Int) (⇒ a ()) (⇒ r ()) (⇒ f ())]]
+  [⊢ (#%datum- . n) (⇒ : Int)]]
   [(_ . b:boolean) ≫
   ----------------
-  [⊢ (#%datum- . b) (⇒ : Bool) (⇒ a ()) (⇒ r ()) (⇒ f ())]]
+  [⊢ (#%datum- . b) (⇒ : Bool)]]
   [(_ . s:string) ≫
   ----------------
-  [⊢ (#%datum- . s) (⇒ : String) (⇒ a ()) (⇒ r ()) (⇒ f ())]])
+  [⊢ (#%datum- . s) (⇒ : String)]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities
