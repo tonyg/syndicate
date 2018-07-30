@@ -27,7 +27,7 @@
          ;; DEBUG and utilities
          print-type print-role
          ;; Extensions
-         ;; match if cond
+         cond
          )
 
 (require (prefix-in syndicate: syndicate/actor-lang))
@@ -741,6 +741,11 @@
                    (lambda (id) #`($ #,id))
                    identity))
 
+(define-for-syntax (compile-match-pattern pat)
+  (compile-pattern pat
+                   identity
+                   (lambda (exp) #`(== #,exp))))
+
 (define-typed-syntax (spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   ;; TODO: check that each τ-f is a Role
@@ -881,8 +886,6 @@
 ;; Core-ish forms
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (⇒ a as) (⇒ r rs) (⇒ f fs) (⇒ s ss)
-
 ;; copied from stlc
 (define-typed-syntax (ann e (~optional (~datum :)) τ:type) ≫
   [⊢ e ≫ e- (⇐ : τ.norm)]
@@ -1018,6 +1021,45 @@
   [(_ ([x e] [x_rst e_rst] ...) e_body ...) ≫
    --------
    [≻ (let ([x e]) (let* ([x_rst e_rst] ...) e_body ...))]])
+
+(define-typed-syntax (cond [pred:expr s ...+] ...+) ≫
+  [⊢ pred ≫ pred- (⇐ : Bool)] ...
+  #:fail-unless (stx-andmap pure? #'(pred- ...)) "predicates must be pure"
+  [⊢ (begin s ...) ≫ s- (⇒ : τ-s)
+                   (⇒ a (~effs as ...))
+                   (⇒ r (~effs rs ...))
+                   (⇒ f (~effs fs ...))
+                   (⇒ s (~effs ss ...))] ...
+  ------------------------------------------------
+  [⊢ (cond- [pred- s-] ...) (⇒ : (U τ-s ...))
+     (⇒ a (as ... ...))
+     (⇒ r (rs ... ...))
+     (⇒ f (fs ... ...))
+     (⇒ s (ss ... ...))])
+
+(define-typed-syntax (match e [p s ...+] ...+) ≫
+  [⊢ e ≫ e- (⇒ : τ-e)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  #:with (([x τ] ...) ...) (stx-map pat-bindings #'(p ...))
+  [[x ≫ x- : τ] ... ⊢ (begin s ...) ≫ s- (⇒ : τ-s)
+                (⇒ a (~effs as ...))
+                (⇒ r (~effs rs ...))
+                (⇒ f (~effs fs ...))
+                (⇒ s (~effs ss ...))] ...
+  ;; REALLY not sure how to handle p/p-/p.match-pattern,
+  ;; particularly w.r.t. typed terms that appear in p.match-pattern
+  [⊢ p ≫ p-- ⇒ τ-p] ...
+  #:fail-unless (project-safe? #'τ-e (type-eval #'(U τ-p ...))) "possibly unsafe pattern match"
+  #:fail-unless (stx-andmap pure? #'(p-- ...)) "patterns must be pure"
+  #:with (p- ...) (stx-map compile-match-pattern #'(p ...))
+  --------------------------------------------------------------
+  [⊢ (match- e- [p- (let- ([x- x] ...) s-)] ...
+                [_ (error "incomplete pattern match")])
+     (⇒ : (U τ-s ...))
+     (⇒ a (as ... ...))
+     (⇒ r (rs ... ...))
+     (⇒ f (fs ... ...))
+     (⇒ s (ss ... ...))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Primitives
