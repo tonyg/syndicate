@@ -14,7 +14,7 @@
          ;; endpoints
          assert on
          ;; expressions
-         tuple #;λ ref observe inbound outbound
+         tuple lambda ref observe inbound outbound
          ;; values
          #%datum
          ;; patterns
@@ -70,7 +70,7 @@
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
 
-(define-type-constructor → #:arity > 0)
+
 (define-type-constructor Tuple #:arity >= 0)
 (define-type-constructor Observe #:arity = 1)
 (define-type-constructor Inbound #:arity = 1)
@@ -80,6 +80,17 @@
 (define-type-constructor Patch #:arity = 2)
 (define-type-constructor List #:arity = 1)
 (define-type-constructor Set #:arity = 1)
+
+(define-type-constructor → #:arity > 0)
+;; for describing the RHS
+;; a value and a description of the effects
+(define-type-constructor Computation #:arity = 5)
+(define-type-constructor Value #:arity = 1)
+(define-type-constructor Asserts #:arity >= 0)
+(define-type-constructor Reactions #:arity >= 0)
+(define-type-constructor Roles #:arity >= 0)
+(define-type-constructor Spawns #:arity >= 0)
+
 
 (define-base-types Int Bool String Discard ★/t FacetName)
 
@@ -605,8 +616,8 @@
 
 (define-typed-syntax (start-facet name:id ((~datum fields) [x:id τ-f:type e:expr] ...) ep ...+) ≫
   #:fail-unless (stx-andmap flat-type? #'(τ-f ...)) "keep your uppity data outta my fields"
-  ;; TODO - probably don't want these expressions to have any effects
   [⊢ e ≫ e- (⇐ : τ-f)] ...
+  #:fail-unless (stx-andmap pure? #'(e- ...)) "field initializers not allowed to have effects"
   [[name ≫ name- : FacetName] [x ≫ x- : (Field τ-f.norm)] ...
    ⊢ [ep ≫ ep- (⇒ r (~effs τ-r ...))
                 (⇒ a (~effs τ-a ...))
@@ -785,16 +796,36 @@
   ------------------------
   [⊢ (x-) (⇒ : τ)])
 
+(define-typed-syntax (lambda ([x:id (~optional (~datum :)) τ:type] ...) body ...+) ≫
+  [[x ≫ x- : τ] ... ⊢ (begin body ...) ≫ body- (⇒ : τ-e)
+                (⇒ a (~effs τ-a ...))
+                (⇒ r (~effs τ-r ...))
+                (⇒ s (~effs τ-s ...))
+                (⇒ f (~effs τ-f ...))]
+  ----------------------------------------
+  [⊢ (lambda- (x- ...) body-) (⇒ : (→ τ ... (Computation (Value τ-e)
+                                                         (Asserts τ-a ...)
+                                                         (Reactions τ-r ...)
+                                                         (Roles τ-f ...)
+                                                         (Spawns τ-s ...))))])
+
 (define-typed-syntax (typed-app e_fn e_arg ...) ≫
-  ;; TODO : other keys
-  [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in ... τ_out))]
+  [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in ... (~Computation (~Value τ-out)
+                                                  (~Asserts τ-a ...)
+                                                  (~Reactions τ-r ...)
+                                                  (~Roles τ-f ...)
+                                                  (~Spawns τ-s ...))))]
   #:fail-unless (pure? #'e_fn-) "expression not allowed to have effects"
   #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
                 (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
   [⊢ e_arg ≫ e_arg- (⇐ : τ_in)] ...
   #:fail-unless (stx-andmap pure? #'(e_arg- ...)) "expressions not allowed to have effects"
   ------------------------------------------------------------------------
-  [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ_out)])
+  [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ-out)
+     (⇒ a (τ-a ...))
+     (⇒ r (τ-r ...))
+     (⇒ s (τ-s ...))
+     (⇒ f (τ-f ...))])
 
 (define-typed-syntax (tuple e:expr ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
@@ -844,7 +875,6 @@
 (define-typed-syntax discard
   [_ ≫
    --------------------
-   ;; TODO: change void to _
    [⊢ (error- 'discard "escaped") (⇒ : Discard)]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -879,12 +909,17 @@
    [≻ (begin-
         (define-syntax x (make-rename-transformer #'y+props))
         (define- y e-))]]
-  ;; TODO - put lambdas and functions back in
-  #;[(_ (f [x (~optional (~datum :)) ty] ... (~or (~datum →) (~datum ->)) ty_out) e ...+) ≫
+  ;; TODO - not sure how to get this to work with effects
+  ;; right now `ann` forces the body to be pure
+  [(_ (f [x (~optional (~datum :)) ty] ... (~or (~datum →) (~datum ->)) ty_out) e ...+) ≫
    #:with f- (add-orig (generate-temporary #'f) #'f)
    --------
    [≻ (begin-
-        (define-typed-variable-rename f ≫ f- : (→ ty ... ty_out))
+        (define-typed-variable-rename f ≫ f- : (→ ty ... (Compuation (Value ty_out)
+                                                                     (Asserts)
+                                                                     (Reactions)
+                                                                     (Roles)
+                                                                     (Spawns))))
         (define- f-
           (lambda ([x : ty] ...)
             (ann (begin e ...) : ty_out))))]])
@@ -989,17 +1024,17 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; hmmm
-(define-primop + (→ Int Int Int))
-(define-primop - (→ Int Int Int))
-(define-primop * (→ Int Int Int))
+(define-primop + (→ Int Int (Computation (Value Int) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop - (→ Int Int (Computation (Value Int) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop * (→ Int Int (Computation (Value Int) (Asserts) (Reactions) (Roles) (Spawns))))
 #;(define-primop and (→ Bool Bool Bool))
-(define-primop or (→ Bool Bool Bool))
-(define-primop not (→ Bool Bool))
-(define-primop < (→ Int Int Bool))
-(define-primop > (→ Int Int Bool))
-(define-primop <= (→ Int Int Bool))
-(define-primop >= (→ Int Int Bool))
-(define-primop = (→ Int Int Bool))
+(define-primop or (→ Bool Bool (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop not (→ Bool (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop < (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop > (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop <= (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop >= (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop = (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
 
 (define-typed-syntax (/ e1 e2) ≫
   [⊢ e1 ≫ e1- (⇐ : Int)]
