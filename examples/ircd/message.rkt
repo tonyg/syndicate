@@ -64,7 +64,7 @@
 (define (parse-command prefix line)
   (match-define (pregexp #px"^([^ ]+)( +([^:]+)?(:(.*))?)?$" (list _ command _ params _ rest)) line)
   (irc-message prefix
-               command
+               (string-upcase command)
                (string-split (or params ""))
                rest))
 
