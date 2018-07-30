@@ -10,7 +10,7 @@
          FacetName Field ★/t
          Observe Inbound Outbound Actor U
          ;; Statements
-         #;let spawn dataspace start-facet set! #;begin stop #;unsafe-do
+         let let* if spawn dataspace start-facet set! begin stop #;unsafe-do
          ;; endpoints
          assert on
          ;; expressions
@@ -850,6 +850,139 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core-ish forms
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; (⇒ a as) (⇒ r rs) (⇒ f fs) (⇒ s ss)
+
+;; copied from stlc
+(define-typed-syntax (ann e (~optional (~datum :)) τ:type) ≫
+  [⊢ e ≫ e- (⇐ : τ.norm)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  ------------------------------------------------
+  [⊢ e- (⇒ : τ.norm) ])
+
+;; copied from ext-stlc
+(define-typed-syntax define
+  [(_ x:id (~datum :) τ:type e:expr) ≫
+   ;[⊢ e ≫ e- ⇐ τ.norm]
+   #:with x- (generate-temporary #'x)
+   --------
+   [≻ (begin-
+        (define-typed-variable-rename x ≫ x- : τ.norm)
+        (define- x- (ann e : τ.norm)))]]
+  [(_ x:id e) ≫
+   ;This won't work with mutually recursive definitions
+   [⊢ e ≫ e- ⇒ τ]
+   #:fail-unless (pure? #'e-) "expression must be pure"
+   #:with y (generate-temporary #'x)
+   #:with y+props (transfer-props #'e- (assign-type #'y #'τ #:wrap? #f))
+   --------
+   [≻ (begin-
+        (define-syntax x (make-rename-transformer #'y+props))
+        (define- y e-))]]
+  ;; TODO - put lambdas and functions back in
+  #;[(_ (f [x (~optional (~datum :)) ty] ... (~or (~datum →) (~datum ->)) ty_out) e ...+) ≫
+   #:with f- (add-orig (generate-temporary #'f) #'f)
+   --------
+   [≻ (begin-
+        (define-typed-variable-rename f ≫ f- : (→ ty ... ty_out))
+        (define- f-
+          (lambda ([x : ty] ...)
+            (ann (begin e ...) : ty_out))))]])
+
+;; copied from ext-stlc
+(define-typed-syntax if
+  [(_ e_tst e1 e2) ⇐ τ-expected ≫
+   [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
+   #:fail-unless (pure? #'e_tst-) "expression must be pure"
+   [⊢ e1 ≫ e1- (⇐ : τ-expected)
+      (⇒ a (~effs as1 ...)) (⇒ r (~effs rs1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))]
+   [⊢ e2 ≫ e2- (⇐ : τ-expected)
+      (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
+   --------
+   [⊢ (if- e_tst- e1- e2-)
+      (⇒ a (~effs as1 ... as2 ...))
+      (⇒ r (~effs rs1 ... rs2 ...))
+      (⇒ f (~effs fs1 ... fs2 ...))
+      (⇒ s (~effs ss1 ... ss2 ...))]]
+  [(_ e_tst e1 e2) ≫
+   [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
+   #:fail-unless (pure? #'e_tst-) "expression must be pure"
+   [⊢ e1 ≫ e1- (⇒ : τ1)
+      (⇒ a (~effs as1 ...)) (⇒ r (~effs rs1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))]
+   [⊢ e2 ≫ e2- (⇒ : τ2)
+      (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
+   #:with τ (type-eval #'(U τ1 τ2))
+   --------
+   [⊢ (if- e_tst- e1- e2-) (⇒ : τ)
+      (⇒ a (~effs as1 ... as2 ...))
+      (⇒ r (~effs rs1 ... rs2 ...))
+      (⇒ f (~effs fs1 ... fs2 ...))
+      (⇒ s (~effs ss1 ... ss2 ...))]])
+
+;; copied from ext-stlc
+(define-typed-syntax begin
+  [(_ e_unit ... e) ⇐ τ_expected ≫
+   [⊢ e_unit ≫ e_unit- (⇒ : _)
+      (⇒ a (~effs as1 ...)) (⇒ r (~effs rs1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))] ...
+   [⊢ e ≫ e- (⇐ : τ_expected)
+      (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
+   --------
+   [⊢ (begin- e_unit- ... e-)
+      (⇒ a (~effs as1 ... ... as2 ...))
+      (⇒ r (~effs rs1 ... ... rs2 ...))
+      (⇒ f (~effs fs1 ... ... fs2 ...))
+      (⇒ s (~effs ss1 ... ... ss2 ...))]]
+  [(_ e_unit ... e) ≫
+   [⊢ e_unit ≫ e_unit- (⇒ : _)
+      (⇒ a (~effs as1 ...)) (⇒ r (~effs rs1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))] ...
+   [⊢ e ≫ e- (⇒ : τ_e)
+      (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
+   --------
+   [⊢ (begin- e_unit- ... e-) (⇒ : τ_e)
+      (⇒ a (~effs as1 ... ... as2 ...))
+      (⇒ r (~effs rs1 ... ... rs2 ...))
+      (⇒ f (~effs fs1 ... ... fs2 ...))
+      (⇒ s (~effs ss1 ... ... ss2 ...))]])
+
+;; copied from ext-stlc
+(define-typed-syntax let
+  [(_ ([x e] ...) e_body ...) ⇐ τ_expected ≫
+   [⊢ e ≫ e- ⇒ : τ_x] ...
+   #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
+   [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- (⇐ : τ_expected)
+                   (⇒ a (~effs as ...))
+                   (⇒ r (~effs rs ...))
+                   (⇒ f (~effs fs ...))
+                   (⇒ s (~effs ss ...))]
+   ----------------------------------------------------------
+   [⊢ (let- ([x- e-] ...) e_body-)
+      (⇒ a (~effs as ...))
+      (⇒ r (~effs rs ...))
+      (⇒ f (~effs fs ...))
+      (⇒ s (~effs ss ...))]]
+  [(_ ([x e] ...) e_body ...) ≫
+   [⊢ e ≫ e- ⇒ : τ_x] ...
+   #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
+   [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- (⇒ : τ_body)
+                   (⇒ a (~effs as ...))
+                   (⇒ r (~effs rs ...))
+                   (⇒ f (~effs fs ...))
+                   (⇒ s (~effs ss ...))]
+   ----------------------------------------------------------
+   [⊢ (let- ([x- e-] ...) e_body-) (⇒ : τ_body)
+      (⇒ a (~effs as ...))
+      (⇒ r (~effs rs ...))
+      (⇒ f (~effs fs ...))
+      (⇒ s (~effs ss ...))]])
+
+;; copied from ext-stlc
+(define-typed-syntax let*
+  [(_ () e_body ...) ≫
+   --------
+   [≻ (begin e_body ...)]]
+  [(_ ([x e] [x_rst e_rst] ...) e_body ...) ≫
+   --------
+   [≻ (let ([x e]) (let* ([x_rst e_rst] ...) e_body ...))]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Primitives
