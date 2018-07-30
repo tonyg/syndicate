@@ -154,6 +154,15 @@
                                     (irc-privmsg (irc-source-nick (nick) (user)) T Text))))]
              [_ (void)]))])))
 
+(spawn #:name 'ison-responder
+       (stop-when-reloaded)
+       (define/query-set nicks (ircd-connection-info _ $N _) N)
+       (on (message (ircd-action $conn (irc-message _ "ISON" $SomeNicks $MoreNicks)))
+           (define Nicks (append SomeNicks (string-split (or MoreNicks ""))))
+           (define (on? N) (set-member? (nicks) N))
+           (define Present (string-join (filter on? Nicks) " "))
+           (send! (ircd-event conn (irc-message server-prefix 303 '("*") Present)))))
+
 (spawn #:name 'session-listener-factory
        (stop-when-reloaded)
        (during/spawn (ircd-listener $port)
