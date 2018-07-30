@@ -6,11 +6,11 @@
          require only-in
          ;; Types
          Int Bool String Tuple Bind Discard → List
-         Role Reacts Shares Know ¬Know Message
+         Role Reacts Shares Know ¬Know Message Stop
          FacetName Field ★/t
          Observe Inbound Outbound Actor U
          ;; Statements
-         #;let spawn dataspace start-facet set! #;begin #;stop #;unsafe-do
+         #;let spawn dataspace start-facet set! #;begin stop #;unsafe-do
          ;; endpoints
          assert on
          ;; expressions
@@ -20,13 +20,12 @@
          ;; patterns
          bind discard
          ;; primitives
-         + - * / and or not > < >= <= = equal? displayln
+         + - * / and or not > < >= <= = equal? displayln printf
          ;; making types
          define-type-alias
          define-constructor
          ;; DEBUG and utilities
          print-type print-role
-         (rename-out [printf- printf])
          ;; Extensions
          ;; match if cond
          )
@@ -66,6 +65,7 @@
 (define-type-constructor Reacts #:arity >= 1)
 (define-type-constructor Know #:arity = 1)
 (define-type-constructor ¬Know #:arity = 1)
+(define-type-constructor Stop #:arity >= 1)
 (define-type-constructor Message #:arity = 1)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
@@ -350,6 +350,8 @@
 ;; RoleType -> (Values Type Type)
 (define-for-syntax (analyze-role-input/output t)
   (syntax-parse t
+    [(~Stop name:id τ-r)
+     (analyze-role-input/output #'τ-r)]
     [(~Role (name:id)
        (~or (~Shares τ-s)
             (~Reacts τ-if τ-then ...)) ...
@@ -638,6 +640,17 @@
                            (⇒ f ())
                            (⇒ s ())])
 
+(define-typed-syntax (stop facet-name:id cont) ≫
+  [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
+  [⊢ cont ≫ cont- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
+  #:with τ (mk-Stop- #'(facet-name- τ-f ...))
+  ---------------------------------------------------------------------------------
+  [⊢ (syndicate:stop-facet facet-name- cont-) (⇒ : ★/t)
+                                              (⇒ s ())
+                                              (⇒ a ())
+                                              (⇒ r ())
+                                              (⇒ f (τ))])
+
 (begin-for-syntax
   (define-syntax-class asserted-or-retracted
     #:datum-literals (asserted retracted)
@@ -719,6 +732,7 @@
 
 (define-typed-syntax (spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
+  ;; TODO: check that each τ-f is a Role
   [⊢ s ≫ s- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
   ;; TODO: s shouldn't refer to facets or fields!
   #:with (τ-i τ-o) (analyze-roles #'(τ-f ...))
@@ -914,6 +928,12 @@
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   ---------------
   [⊢ (displayln- e-) (⇒ : ★/t)])
+
+(define-typed-syntax (printf e ...+) ≫
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:fail-unless (stx-andmap pure? #'(e- ...)) "expression not allowed to have effects"
+  ---------------
+  [⊢ (printf- e- ...) (⇒ : ★/t)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Basic Values
