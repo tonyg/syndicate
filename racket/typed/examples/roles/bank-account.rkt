@@ -1,5 +1,9 @@
 #lang typed/syndicate/roles
 
+;; Expected Output
+;; 0
+;; 70
+
 (define-constructor (account balance)
   #:type-constructor AccountT
   #:with Account (AccountT Int)
