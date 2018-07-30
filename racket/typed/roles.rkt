@@ -10,7 +10,7 @@
          FacetName Field ★/t
          Observe Inbound Outbound Actor U
          ;; Statements
-         #;let spawn #;dataspace start-facet set! #;begin #;stop #;unsafe-do
+         #;let spawn dataspace start-facet set! #;begin #;stop #;unsafe-do
          ;; endpoints
          assert on
          ;; expressions
@@ -408,10 +408,7 @@
      (stx-andmap (lambda (t) (<: t t2)) #'(τ1 ...))]
     [(_ (~U* τ2:type ...))
      (stx-ormap (lambda (t) (<: t1 t)) #'(τ2 ...))]
-    ;; TODO
-    #;[((~Actor τ1:type) (~Actor τ2:type))
-     ;; should these be .norm? Is the invariant that inputs are always fully
-     ;; evalutated/expanded?
+    [((~Actor τ1) (~Actor τ2))
      (and (<: #'τ1 #'τ2)
           (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
     [((~AssertionSet τ1) (~AssertionSet τ2))
@@ -733,12 +730,29 @@
   #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c.norm)
                                #'τ-i)
                 "Not prepared to handle all inputs"
+  #:with τ-a (type-eval #'(Actor τ-c.norm))
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
-                                               (⇒ s ((Actor τ-c)))
+                                               (⇒ s (τ-a))
                                                (⇒ a ())
                                                (⇒ r ())
                                                (⇒ f ())])
+
+(define-typed-syntax (dataspace τ-c:type s ...) ≫
+  #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
+  [⊢ s ≫ s- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs τ-s ...)) (⇒ f (~effs))] ...
+  #:with τ-actor (type-eval #'(Actor τ-c.norm))
+  #:fail-unless (stx-andmap (lambda (t) (<: t #'τ-actor)) #'(τ-s ... ...))
+                "Not all actors conform to communication type"
+  #:with τ-ds-i (strip-inbound #'τ-c.norm)
+  #:with τ-ds-o (strip-outbound #'τ-c.norm)
+  #:with τ-relay (relay-interests #'τ-c.norm)
+  -----------------------------------------------------------------------------------
+  [⊢ (syndicate:dataspace s- ...) (⇒ : ★/t)
+                                  (⇒ s ((Actor (U τ-ds-i τ-ds-o τ-relay))))
+                                  (⇒ a ())
+                                  (⇒ r ())
+                                  (⇒ f ())])
 
 (define-typed-syntax (set! x:id e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
