@@ -1,5 +1,11 @@
 #lang typed/syndicate
 
+;; Expected Output
+;; Completed Order:
+;; Catch 22
+;; 10001483
+;; March 9th
+
 (define-constructor (price v)
   #:type-constructor PriceT
   #:with Price (PriceT Int))
@@ -131,6 +137,7 @@
                                                       [(tuple (order-id (bind id Int)) (delivery-date (bind date String)))
                                                        ;; complete!
                                                        (begin (displayln "Completed Order:")
+                                                              (displayln title)
                                                               (displayln id)
                                                               (displayln date)
                                                               (stop purchase (begin)))]
