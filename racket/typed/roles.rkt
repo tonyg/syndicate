@@ -38,6 +38,7 @@
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
 (require (postfix-in - racket/list))
 (require (postfix-in - racket/set))
+(require (postfix-in - racket/match))
 
 (module+ test
   (require rackunit)
@@ -69,6 +70,7 @@
 (define-type-constructor Message #:arity = 1)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
+(define-base-types OnStart OnStop)
 
 
 (define-type-constructor Tuple #:arity >= 0)
@@ -340,16 +342,18 @@
      [(~Observe (~Inbound τ)) #'(Observe τ)]
      [_ #'(U*)])))
 
-;; (SyntaxOf RoleType ...) -> (Syntaxof Type Type)
+;; (SyntaxOf RoleType ...) -> (Syntaxof InputType OutputType SpawnType)
 (define-for-syntax (analyze-roles rs)
-  (define-values (lis los)
+  (define-values (lis los lss)
     (for/fold ([is '()]
-               [os '()])
+               [os '()]
+               [ss '()])
               ([r (in-syntax rs)])
-      (define-values (i o) (analyze-role-input/output r))
-      (values (cons i is) (cons o os))))
+      (define-values (i o s) (analyze-role-input/output r))
+      (values (cons i is) (cons o os) (cons s ss))))
   #`(#,(type-eval #`(U #,@lis))
-     #,(type-eval #`(U #,@los))))
+     #,(type-eval #`(U #,@los))
+     #,(type-eval #`(U #,@lss))))
 
 ;; Wanted test case, but can't use it bc it uses things defined for-syntax
 #;(module+ test
@@ -358,25 +362,29 @@
      [(τ-i τ-o)
       (check-true (type=? #'τ-o (type-eval #'Int)))])))
 
-;; RoleType -> (Values Type Type)
+;; RoleType -> (Values InputType OutputType SpawnType)
 (define-for-syntax (analyze-role-input/output t)
   (syntax-parse t
     [(~Stop name:id τ-r ...)
-     #:with (τi τo) (analyze-roles #'(τ-r ...))
-     (values #'τi #'τo)]
+     #:with (τi τo τa) (analyze-roles #'(τ-r ...))
+     (values #'τi #'τo #'τa)]
+    [(~Actor τc)
+     (values (mk-U*- '()) (mk-U*- '()) t)]
     [(~Role (name:id)
        (~or (~Shares τ-s)
             (~Reacts τ-if τ-then ...)) ...
        (~and (~Role _ ...) sub-role) ...)
-     (define-values (is os)
+     (define-values (is os ss)
        (for/fold ([ins '()]
-                  [outs '()])
+                  [outs '()]
+                  [spawns '()])
                  ([t (in-syntax #'(τ-then ... ... sub-role ...))])
-         (define-values (i o) (analyze-role-input/output t))
-         (values (cons i ins) (cons o outs))))
+         (define-values (i o s) (analyze-role-input/output t))
+         (values (cons i ins) (cons o outs) (cons s spawns))))
      (define pat-types (stx-map event-desc-type #'(τ-if ...)))
      (values (type-eval #`(U #,@is #,@pat-types))
-             (type-eval #`(U τ-s ... #,@os #,@(stx-map pattern-sub-type pat-types))))]))
+             (type-eval #`(U τ-s ... #,@os #,@(stx-map pattern-sub-type pat-types)))
+             (type-eval #`(U #,@ss)))]))
 
 ;; EventDescriptorType -> Type
 (define-for-syntax (event-desc-type desc)
@@ -674,25 +682,41 @@
                                [react-con #'¬Know]))))))
 
 (define-typed-syntax on
-  ;; TODO - on start/stop
-  #;[(on (~literal start) s) ≫
-   [⊢ s ≫ s- (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]
+  [(on (~literal start) s ...) ≫
+   [⊢ (begin s ...) ≫ s- (⇒ a (~effs))
+                          (⇒ r (~effs))
+                          (⇒ f (~effs τ-f ...))
+                          (⇒ s (~effs τ-s ...))]
+   #:with τ-r #'(Reacts OnStart τ-f ... τ-s ...)
    -----------------------------------
-   [⊢ (syndicate:on-start s-) (⇒ : (U)) (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]]
-  #;[(on (~literal stop) s) ≫
-   [⊢ s ≫ s- (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]
+   [⊢ (syndicate:on-start s-) (⇒ : ★/t)
+      (⇒ a ())
+      (⇒ r (τ-r))
+      (⇒ f ())
+      (⇒ s ())]]
+  [(on (~literal stop) s ...) ≫
+   [⊢ (begin s ...) ≫ s- (⇒ a (~effs))
+                          (⇒ r (~effs))
+                          (⇒ f (~effs τ-f ...))
+                          (⇒ s (~effs τ-s ...))]
+   #:with τ-r #'(Reacts OnStop τ-f ... τ-s ...)
    -----------------------------------
-   [⊢ (syndicate:on-stop s-) (⇒ : (U)) (⇒ :i τi) (⇒ :o τ-o) (⇒ :a τ-a)]]
-  [(on (a/r:asserted-or-retracted p) s) ≫
+   [⊢ (syndicate:on-stop s-) (⇒ : ★/t)
+      (⇒ a ())
+      (⇒ r (τ-r))
+      (⇒ f ())
+      (⇒ s ())]]
+  [(on (a/r:asserted-or-retracted p) s ...) ≫
    [⊢ p ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
-   [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ a (~effs))
-                               (⇒ r (~effs))
-                               (⇒ f (~effs τ-f ...))
-                               (⇒ s (~effs τ-s ...))]
+   [[x ≫ x- : τ] ... ⊢ (begin s ...) ≫ s-
+                 (⇒ a (~effs))
+                 (⇒ r (~effs))
+                 (⇒ f (~effs τ-f ...))
+                 (⇒ s (~effs τ-s ...))]
    #:with p- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'p))
-   #:with τ-r #'(Reacts (a/r.react-con τp) τ-f ...)
+   #:with τ-r #'(Reacts (a/r.react-con τp) τ-f ... τ-s ...)
    -----------------------------------
    [⊢ (syndicate:on (a/r.syndicate-kw p-)
                     s-)
@@ -725,7 +749,7 @@
       (syntax-parse pat
         #:datum-literals (tuple discard bind)
         [(tuple p ...)
-         #`(list- 'tuple #,@(stx-map loop #'(p ...)))]
+         #`(list 'tuple #,@(stx-map loop #'(p ...)))]
         [(k:kons1 p)
          #`(#,(kons1->constructor #'k) #,(loop #'p))]
         [(bind x:id τ:type)
@@ -748,26 +772,26 @@
 (define-for-syntax (compile-match-pattern pat)
   (compile-pattern pat
                    identity
-                   (lambda (exp) #`(== #,exp))))
+                   (lambda (exp) #`(==- #,exp))))
 
 (define-typed-syntax (spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   ;; TODO: check that each τ-f is a Role
   [⊢ s ≫ s- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
   ;; TODO: s shouldn't refer to facets or fields!
-  #:with (τ-i τ-o) (analyze-roles #'(τ-f ...))
+  #:with (τ-i τ-o τ-a) (analyze-roles #'(τ-f ...))
   #:fail-unless (<: #'τ-o #'τ-c.norm)
                 (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o) (type->str #'τ-c.norm))
-  ;; TODO - type of spawned actors
-  ;; #:fail-unless (<: (type-eval #'(Actor τ-a.norm))
-  ;;                  (type-eval #'(Actor τ-c.norm))) "Spawned actors not valid in dataspace"
+  #:fail-unless (<: #'τ-a
+                    (type-eval #'(Actor τ-c.norm)))
+                "Spawned actors not valid in dataspace"
   #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c.norm)
                                #'τ-i)
                 "Not prepared to handle all inputs"
-  #:with τ-a (type-eval #'(Actor τ-c.norm))
+  #:with τ-final (type-eval #'(Actor τ-c.norm))
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
-                                               (⇒ s (τ-a))
+                                               (⇒ s (τ-final))
                                                (⇒ a ())
                                                (⇒ r ())
                                                (⇒ f ())])
