@@ -686,16 +686,16 @@
   [(on (a/r:asserted-or-retracted p) s) ≫
    [⊢ p ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
-   #:with p- (compile-syndicate-pattern #'p)
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
    [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ a (~effs))
                                (⇒ r (~effs))
                                (⇒ f (~effs τ-f ...))
                                (⇒ s (~effs τ-s ...))]
+   #:with p- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'p))
    #:with τ-r #'(Reacts (a/r.react-con τp) τ-f ...)
    -----------------------------------
    [⊢ (syndicate:on (a/r.syndicate-kw p-)
-                    (let- ([x- x] ...) s-))
+                    s-)
       (⇒ : ★/t)
       (⇒ r (τ-r))
       (⇒ f ())
@@ -720,22 +720,25 @@
      #'()]))
 
 (define-for-syntax (compile-pattern pat bind-id-transformer exp-transformer)
-  (let loop ([pat pat])
-    (syntax-parse pat
-      #:datum-literals (tuple discard bind)
-      [(tuple p ...)
-       #`(list 'tuple #,@(stx-map loop #'(p ...)))]
-      [(k:kons1 p)
-       #`(#,(kons1->constructor #'k) #,(loop #'p))]
-      [(bind x:id τ:type)
-       (bind-id-transformer #'x)]
-      [discard
-       #'_]
-      [(~constructor-exp ctor p ...)
-       (define/with-syntax uctor (untyped-ctor #'ctor))
-       #`(uctor #,@(stx-map loop #'(p ...)))]
-      [_
-       (exp-transformer pat)])))
+    (define (l-e stx) (local-expand stx 'expression '()))
+    (let loop ([pat pat])
+      (syntax-parse pat
+        #:datum-literals (tuple discard bind)
+        [(tuple p ...)
+         #`(list- 'tuple #,@(stx-map loop #'(p ...)))]
+        [(k:kons1 p)
+         #`(#,(kons1->constructor #'k) #,(loop #'p))]
+        [(bind x:id τ:type)
+         (bind-id-transformer #'x)]
+        [discard
+         #'_]
+        [(~constructor-exp ctor p ...)
+         (define/with-syntax uctor (untyped-ctor #'ctor))
+         #`(uctor #,@(stx-map loop #'(p ...)))]
+        [_
+         ;; local expanding "expression-y" syntax allows variable references to transform
+         ;; according to the mappings set up by turnstile.
+         (exp-transformer (l-e pat))])))
 
 (define-for-syntax (compile-syndicate-pattern pat)
   (compile-pattern pat
@@ -1052,9 +1055,12 @@
   [⊢ p ≫ p-- ⇒ τ-p] ...
   #:fail-unless (project-safe? #'τ-e (type-eval #'(U τ-p ...))) "possibly unsafe pattern match"
   #:fail-unless (stx-andmap pure? #'(p-- ...)) "patterns must be pure"
-  #:with (p- ...) (stx-map compile-match-pattern #'(p ...))
+  #:with (p- ...) (stx-map (lambda (p x-s xs) (substs x-s xs (compile-match-pattern p)))
+                           #'(p ...)
+                           #'((x- ...) ...)
+                           #'((x ...) ...))
   --------------------------------------------------------------
-  [⊢ (match- e- [p- (let- ([x- x] ...) s-)] ...
+  [⊢ (match- e- [p- s-] ...
                 [_ (error "incomplete pattern match")])
      (⇒ : (U τ-s ...))
      (⇒ a (as ... ...))
