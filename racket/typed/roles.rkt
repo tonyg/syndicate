@@ -27,7 +27,7 @@
          ;; DEBUG and utilities
          print-type print-role
          ;; Extensions
-         cond
+         match cond
          )
 
 (require (prefix-in syndicate: syndicate/actor-lang))
@@ -361,8 +361,9 @@
 ;; RoleType -> (Values Type Type)
 (define-for-syntax (analyze-role-input/output t)
   (syntax-parse t
-    [(~Stop name:id τ-r)
-     (analyze-role-input/output #'τ-r)]
+    [(~Stop name:id τ-r ...)
+     #:with (τi τo) (analyze-roles #'(τ-r ...))
+     (values #'τi #'τo)]
     [(~Role (name:id)
        (~or (~Shares τ-s)
             (~Reacts τ-if τ-then ...)) ...
@@ -651,10 +652,10 @@
                            (⇒ f ())
                            (⇒ s ())])
 
-(define-typed-syntax (stop facet-name:id cont) ≫
+(define-typed-syntax (stop facet-name:id cont ...) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
-  [⊢ cont ≫ cont- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
-  #:with τ (mk-Stop- #'(facet-name- τ-f ...))
+  [⊢ (begin #f cont ...) ≫ cont- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
+  #:with τ (mk-Stop- #`(facet-name- τ-f ...))
   ---------------------------------------------------------------------------------
   [⊢ (syndicate:stop-facet facet-name- cont-) (⇒ : ★/t)
                                               (⇒ s ())
@@ -938,10 +939,10 @@
       (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
    --------
    [⊢ (if- e_tst- e1- e2-)
-      (⇒ a (~effs as1 ... as2 ...))
-      (⇒ r (~effs rs1 ... rs2 ...))
-      (⇒ f (~effs fs1 ... fs2 ...))
-      (⇒ s (~effs ss1 ... ss2 ...))]]
+      (⇒ a (as1 ... as2 ...))
+      (⇒ r (rs1 ... rs2 ...))
+      (⇒ f (fs1 ... fs2 ...))
+      (⇒ s (ss1 ... ss2 ...))]]
   [(_ e_tst e1 e2) ≫
    [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
    #:fail-unless (pure? #'e_tst-) "expression must be pure"
@@ -952,10 +953,10 @@
    #:with τ (type-eval #'(U τ1 τ2))
    --------
    [⊢ (if- e_tst- e1- e2-) (⇒ : τ)
-      (⇒ a (~effs as1 ... as2 ...))
-      (⇒ r (~effs rs1 ... rs2 ...))
-      (⇒ f (~effs fs1 ... fs2 ...))
-      (⇒ s (~effs ss1 ... ss2 ...))]])
+      (⇒ a (as1 ... as2 ...))
+      (⇒ r (rs1 ... rs2 ...))
+      (⇒ f (fs1 ... fs2 ...))
+      (⇒ s (ss1 ... ss2 ...))]])
 
 ;; copied from ext-stlc
 (define-typed-syntax begin
@@ -966,10 +967,10 @@
       (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
    --------
    [⊢ (begin- e_unit- ... e-)
-      (⇒ a (~effs as1 ... ... as2 ...))
-      (⇒ r (~effs rs1 ... ... rs2 ...))
-      (⇒ f (~effs fs1 ... ... fs2 ...))
-      (⇒ s (~effs ss1 ... ... ss2 ...))]]
+      (⇒ a (as1 ... ... as2 ...))
+      (⇒ r (rs1 ... ... rs2 ...))
+      (⇒ f (fs1 ... ... fs2 ...))
+      (⇒ s (ss1 ... ... ss2 ...))]]
   [(_ e_unit ... e) ≫
    [⊢ e_unit ≫ e_unit- (⇒ : _)
       (⇒ a (~effs as1 ...)) (⇒ r (~effs rs1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))] ...
@@ -977,10 +978,10 @@
       (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
    --------
    [⊢ (begin- e_unit- ... e-) (⇒ : τ_e)
-      (⇒ a (~effs as1 ... ... as2 ...))
-      (⇒ r (~effs rs1 ... ... rs2 ...))
-      (⇒ f (~effs fs1 ... ... fs2 ...))
-      (⇒ s (~effs ss1 ... ... ss2 ...))]])
+      (⇒ a (as1 ... ... as2 ...))
+      (⇒ r (rs1 ... ... rs2 ...))
+      (⇒ f (fs1 ... ... fs2 ...))
+      (⇒ s (ss1 ... ... ss2 ...))]])
 
 ;; copied from ext-stlc
 (define-typed-syntax let
@@ -994,10 +995,10 @@
                    (⇒ s (~effs ss ...))]
    ----------------------------------------------------------
    [⊢ (let- ([x- e-] ...) e_body-)
-      (⇒ a (~effs as ...))
-      (⇒ r (~effs rs ...))
-      (⇒ f (~effs fs ...))
-      (⇒ s (~effs ss ...))]]
+      (⇒ a (as ...))
+      (⇒ r (rs ...))
+      (⇒ f (fs ...))
+      (⇒ s (ss ...))]]
   [(_ ([x e] ...) e_body ...) ≫
    [⊢ e ≫ e- ⇒ : τ_x] ...
    #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
@@ -1008,10 +1009,10 @@
                    (⇒ s (~effs ss ...))]
    ----------------------------------------------------------
    [⊢ (let- ([x- e-] ...) e_body-) (⇒ : τ_body)
-      (⇒ a (~effs as ...))
-      (⇒ r (~effs rs ...))
-      (⇒ f (~effs fs ...))
-      (⇒ s (~effs ss ...))]])
+      (⇒ a (as ...))
+      (⇒ r (rs ...))
+      (⇒ f (fs ...))
+      (⇒ s (ss ...))]])
 
 ;; copied from ext-stlc
 (define-typed-syntax let*
