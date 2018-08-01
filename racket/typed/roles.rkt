@@ -15,15 +15,17 @@
          assert on
          ;; expressions
          tuple lambda ref observe inbound outbound
+         ;; making types
+         define-type-alias
+         define-constructor
          ;; values
          #%datum
          ;; patterns
          bind discard
          ;; primitives
          + - * / and or not > < >= <= = equal? displayln printf
-         ;; making types
-         define-type-alias
-         define-constructor
+         ;; lists
+         list first rest member? empty? for for/fold
          ;; DEBUG and utilities
          print-type print-role
          ;; Extensions
@@ -620,6 +622,10 @@
   (for/and ([key (in-list '(a r f s))])
     (effect-free? e- key)))
 
+;; (SyntaxOf DesugaredSyntax ...) -> Bool
+(define-for-syntax (all-pure? es)
+  (stx-andmap pure? es))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core forms
 
@@ -1134,36 +1140,6 @@
   ---------------------------------------------------------------------------
   [⊢ (equal?- e1- e2-) (⇒ : Bool)])
 
-(define-typed-syntax (empty? e) ≫
-  [⊢ e ≫ e- (⇒ : (~List _))]
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  -----------------------
-  [⊢ (empty?- e-) (⇒ : Bool)])
-
-(define-typed-syntax (first e) ≫
-  [⊢ e ≫ e- (⇒ : (~List τ))]
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  -----------------------
-  [⊢ (first- e-) (⇒ : τ)])
-
-(define-typed-syntax (rest e) ≫
-  [⊢ e ≫ e- (⇒ : (~List τ))]
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  -----------------------
-  [⊢ (rest- e-) (⇒ : (List τ))])
-
-(define-typed-syntax (member? e l) ≫
-  [⊢ e ≫ e- (⇒ : τe:type)]
-  [⊢ l ≫ l- (⇒ : (~List τl:type))]
-  #:fail-unless (<: #'τe.norm #'τl.norm) "incompatible list"
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  #:fail-unless (pure? #'l-) "expression not allowed to have effects"
-  ----------------------------------------
-  [⊢ (member?- e- l-) (⇒ : Bool)])
-
-(define- (member?- v l)
-  (and- (member- v l) #t))
-
 (define-typed-syntax (displayln e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
@@ -1207,6 +1183,80 @@
           (displayln (type->str r)))]
   ----------------------------------
   [⊢ e- (⇒ : τ) (⇒ a as) (⇒ r rs) (⇒ f es)])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Lists
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-typed-syntax (list e ...) ≫
+  [⊢ e ≫ e- ⇒ τ] ...
+  #:fail-unless (all-pure? #'(e- ...)) "expressions must be pure"
+  -------------------
+  [⊢ (list- e- ...) ⇒ (List (U τ ...))])
+
+(define-typed-syntax (for/fold [acc:id e-acc]
+                               [x:id e-list]
+                       e-body ...+) ≫
+  [⊢ e-list ≫ e-list- ⇒ (~List τ-l)]
+  #:fail-unless (pure? #'e-list-) "expression must be pure"
+  [⊢ e-acc ≫ e-acc- ⇒ τ-a]
+  #:fail-unless (pure? #'e-acc-) "expression must be pure"
+  [[x ≫ x- : τ-l] [acc ≫ acc- : τ-a] ⊢ (begin e-body ...) ≫ e-body- ⇒ τ-b]
+  #:fail-unless (pure? #'e-body-) "body must be pure"
+  #:fail-unless (<: #'τ-b #'τ-a)
+    "loop body doesn't match accumulator"
+  -------------------------------------------------------
+  [⊢ (for/fold- ([acc- e-acc-])
+                ([x- (in-list- e-list-)])
+       e-body-)
+     ⇒ τ-b])
+
+(define-typed-syntax (for ([x:id e-list] ...)
+                       e-body ...+) ≫
+  [⊢ e-list ≫ e-list- ⇒ (~List τ-l)] ...
+  #:fail-unless (all-pure? #'(e-list- ...)) "expressions must be pure"
+  [[x ≫ x- : τ-l] ... ⊢ (begin e-body ...) ≫ e-body- (⇒ : τ-b)
+                  (⇒ a (~effs as ...))
+                  (⇒ r (~effs rs ...))
+                  (⇒ f (~effs fs ...))
+                  (⇒ s (~effs ss ...))]
+  -------------------------------------------------------
+  [⊢ (for- ([x- (in-list- e-list-)] ...)
+       e-body-) (⇒ : ★/t)
+                (⇒ a (as ...))
+                (⇒ r (rs ...))
+                (⇒ f (fs ...))
+                (⇒ s (ss ...))])
+
+(define-typed-syntax (empty? e) ≫
+  [⊢ e ≫ e- ⇒ (~List _)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  -----------------------
+  [⊢ (empty?- e-) ⇒ Bool])
+
+(define-typed-syntax (first e) ≫
+  [⊢ e ≫ e- ⇒ (~List τ)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  -----------------------
+  [⊢ (first- e-) ⇒ τ])
+
+(define-typed-syntax (rest e) ≫
+  [⊢ e ≫ e- ⇒ (~List τ)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  -----------------------
+  [⊢ (rest- e-) ⇒ (List τ)])
+
+(define-typed-syntax (member? e l) ≫
+  [⊢ e ≫ e- ⇒ τe]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  [⊢ l ≫ l- ⇒ (~List τl)]
+  #:fail-unless (pure? #'l-) "expression must be pure"
+  #:fail-unless (<: #'τe #'τl) "incompatible list"
+  ----------------------------------------
+  [⊢ (member?- e- l-) ⇒ Bool])
+
+(define- (member?- v l)
+  (and- (member- v l) #t))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
