@@ -11,6 +11,8 @@
          Observe Inbound Outbound Actor U
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop #;unsafe-do
+         ;; Derived Forms
+         during
          ;; endpoints
          assert on
          ;; expressions
@@ -754,13 +756,14 @@
     [_
      #'()]))
 
-(define-for-syntax (compile-pattern pat bind-id-transformer exp-transformer)
+;; TODO - figure out why this needs different list identifiers
+(define-for-syntax (compile-pattern pat list-binding bind-id-transformer exp-transformer)
     (define (l-e stx) (local-expand stx 'expression '()))
     (let loop ([pat pat])
       (syntax-parse pat
         #:datum-literals (tuple discard bind)
         [(tuple p ...)
-         #`(list 'tuple #,@(stx-map loop #'(p ...)))]
+         #`(#,list-binding 'tuple #,@(stx-map loop #'(p ...)))]
         [(k:kons1 p)
          #`(#,(kons1->constructor #'k) #,(loop #'p))]
         [(bind x:id τ:type)
@@ -777,11 +780,13 @@
 
 (define-for-syntax (compile-syndicate-pattern pat)
   (compile-pattern pat
+                   #'list-
                    (lambda (id) #`($ #,id))
                    identity))
 
 (define-for-syntax (compile-match-pattern pat)
   (compile-pattern pat
+                   #'list
                    identity
                    (lambda (exp) #`(==- #,exp))))
 
@@ -830,6 +835,39 @@
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
   ----------------------------------------------------
   [⊢ (x- e-) (⇒ : ★/t)])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Derived Forms
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-typed-syntax (during p s ...) ≫
+  #:with inst-p (instantiate-pattern #'p)
+  ----------------------------------------
+  [≻ (on (asserted p)
+         (start-facet during-inner
+           (fields)
+           (on (retracted inst-p)
+               (stop during-inner))
+           s ...))])
+
+;; TODO - reconcile this with `compile-pattern`
+(define-for-syntax (instantiate-pattern pat)
+  (let loop ([pat pat])
+    (syntax-parse pat
+      #:datum-literals (tuple discard bind)
+      [(tuple p ...)
+       #`(tuple #,@(stx-map loop #'(p ...)))]
+      [(k:kons1 p)
+       #`(k #,(loop #'p))]
+      [(bind x:id τ)
+       #'x]
+      [discard
+       #'_]
+      [(~constructor-exp ctor p ...)
+       (define/with-syntax uctor (untyped-ctor #'ctor))
+       #`(ctor #,@(stx-map loop #'(p ...)))]
+      [_
+       pat])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
