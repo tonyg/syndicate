@@ -9,12 +9,13 @@
          Role Reacts Shares Know ¬Know Message Stop
          FacetName Field ★/t
          Observe Inbound Outbound Actor U
+         Computation Value Endpoints Roles Spawns
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop #;unsafe-do
          ;; Derived Forms
          during
          ;; endpoints
-         assert on
+         assert on field
          ;; expressions
          tuple lambda ref observe inbound outbound
          ;; making types
@@ -56,13 +57,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; : describes the immediate result of evaluation
-;; a key aggregates `assert` endpoints as `Shares`
-;; r key aggregates each `on` endpoint as a `Reacts`
+;; ep key aggregates endpoint affects:
+;;   `Shares`, `Reacts`, and `MakesField`
+;; Note thar MakesField is only an effect, not a type
 ;; f key aggregates facet effects (starting a facet) as `Role`s
 ;; s key aggregates spawned actors as `Actor`s
-
-;; TODO - chan the `a` and `r` keys be merged into one 'endpoint' key?
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
@@ -77,7 +76,9 @@
 (define-type-constructor Message #:arity = 1)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
-(define-base-types OnStart OnStop)
+(define-base-types OnStart OnStop MakesField)
+;; MakesField has a syntax property ([x x- τ] ...)
+(define-for-syntax field-prop-name 'fields)
 
 
 (define-type-constructor Tuple #:arity >= 0)
@@ -93,10 +94,9 @@
 (define-type-constructor → #:arity > 0)
 ;; for describing the RHS
 ;; a value and a description of the effects
-(define-type-constructor Computation #:arity = 5)
+(define-type-constructor Computation #:arity = 4)
 (define-type-constructor Value #:arity = 1)
-(define-type-constructor Asserts #:arity >= 0)
-(define-type-constructor Reactions #:arity >= 0)
+(define-type-constructor Endpoints #:arity >= 0)
 (define-type-constructor Roles #:arity >= 0)
 (define-type-constructor Spawns #:arity >= 0)
 
@@ -209,7 +209,8 @@
            (user-ctor #'Cons- #'StructName))
          (define-typed-syntax (Cons- e (... ...)) ≫
            #:fail-unless (= #,arity (stx-length #'(e (... ...)))) "arity mismatch"
-           [⊢ e ≫ e- (⇒ : τ) (⇒ a (~effs)) (⇒ r (~effs)) (⇒ f (~effs)) (⇒ s (~effs))] (... ...)
+           [⊢ e ≫ e- (⇒ : τ)] (... ...)
+           #:fail-unless (all-pure? #'(e- (... ...))) "expressions must be pure"
            ----------------------
            [⊢ (#%app- StructName e- (... ...)) (⇒ : (TypeCons τ (... ...)))])
          (define-type-alias Alias AliasBody) ...)]))
@@ -626,7 +627,7 @@
 
 ;; DesugaredSyntax -> Bool
 (define-for-syntax (pure? e-)
-  (for/and ([key (in-list '(a r f s))])
+  (for/and ([key (in-list '(ep f s))])
     (effect-free? e- key)))
 
 ;; (SyntaxOf DesugaredSyntax ...) -> Bool
@@ -635,53 +636,83 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core forms
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-typed-syntax (start-facet name:id ((~datum fields) [x:id τ-f:type e:expr] ...) ep ...+) ≫
+(define-typed-syntax (start-facet name:id ep ...+) ≫
+  #:with name- (syntax-local-identifier-as-binding (syntax-local-introduce (generate-temporary #'name)))
+  #:with name+ (syntax-local-identifier-as-binding #'name)
+  #:with facet-name-ty (type-eval #'FacetName)
+  #:do [(define ctx (syntax-local-make-definition-context))
+        (define unique (gensym 'start-facet))
+        (define name-- (internal-definition-context-introduce ctx #'name- 'add))
+        (syntax-local-bind-syntaxes (list #'name-) #f ctx)
+        (syntax-local-bind-syntaxes (list #'name+)
+                                    #'(make-rename-transformer
+                                       (add-orig (assign-type #'name- #'facet-name-ty #:wrap? #f) #'name))
+                                    ctx)
+        (define-values (rev-endpoints- endpoint-effects)
+          (for/fold ([rev-eps- '()]
+                     [effects '()])
+                    ([e (in-syntax #'(ep ...))])
+            (define ep- (local-expand e (list unique) (list #'erased) ctx))
+            (unless (and (effect-free? ep- 'f) (effect-free? ep- 's))
+              (type-error #:src e #:msg "only endpoint effects allowed"))
+            (define effects (or (syntax-property ep- 'ep) #'()))
+            (define more-effects
+              (syntax-parse effects
+                [((~or (~and MF ~MakesField)
+                       other-eff) ...)
+                 #:with (([x x- τ] ...) ...) (stx-map (lambda (stx) (syntax-local-introduce (syntax-property stx field-prop-name))) #'(MF ...))
+                 (for ([orig-name (in-syntax (stx-map syntax-local-identifier-as-binding #'(x ... ...)))]
+                       [new-name (in-syntax (stx-map syntax-local-identifier-as-binding #'(x- ... ...)))]
+                       [field-ty (in-syntax #'(τ ... ...))])
+                   (syntax-local-bind-syntaxes (list new-name) #f ctx)
+                   (syntax-local-bind-syntaxes (list orig-name)
+                                               #`(make-rename-transformer
+                                                  (add-orig (assign-type #'#,new-name #'#,field-ty #:wrap? #f) #'#,orig-name))
+                                               ctx))
+                 (syntax->list #'(other-eff ...))]))
+            (values (cons ep- rev-eps-)
+                    (append more-effects effects))))]
+  #:with ((~or (~and τ-a (~Shares _))
+              (~and τ-r (~Reacts _ ...)))
+          ...)
+         endpoint-effects
+  #:with τ (type-eval #`(Role (#,name--)
+                          τ-a ...
+                          τ-r ...))
+  --------------------------------------------------------------
+  [⊢ (syndicate:react (let- ([#,name-- (syndicate:current-facet-id)])
+                        #,@(reverse rev-endpoints-)))
+     (⇒ : ★/t)
+     (⇒ f (τ))])
+
+(define-typed-syntax (field [x:id τ-f:type e:expr] ...) ≫
   #:fail-unless (stx-andmap flat-type? #'(τ-f ...)) "keep your uppity data outta my fields"
   [⊢ e ≫ e- (⇐ : τ-f)] ...
   #:fail-unless (stx-andmap pure? #'(e- ...)) "field initializers not allowed to have effects"
-  [[name ≫ name- : FacetName] [x ≫ x- : (Field τ-f.norm)] ...
-   ⊢ [ep ≫ ep- (⇒ r (~effs τ-r ...))
-                (⇒ a (~effs τ-a ...))
-                (⇒ f (~effs))
-                (⇒ s (~effs))] ...]
-  #:with τ (type-eval #'(Role (name-)
-                          τ-a ... ...
-                          τ-r ... ...))
-  --------------------------------------------------------------
-  [⊢ (syndicate:react (let- ([name- (syndicate:current-facet-id)])
-                            #,(make-fields #'(x- ...) #'(e- ...))
-                            ep- ...))
+  #:with (x- ...) (generate-temporaries #'(x ...))
+  #:with (τ ...) (stx-map type-eval #'((Field τ-f.norm) ...))
+  #:with MF (syntax-property (type-eval #'MakesField) field-prop-name (syntax-local-introduce #'([x x- τ] ...)))
+  ----------------------------------------------------------------------
+  [⊢ (syndicate:field [x- e-] ...)
      (⇒ : ★/t)
-     (⇒ r ())
-     (⇒ a ())
-     (⇒ s ())
-     (⇒ f (τ))])
-
-(define-for-syntax (make-fields names inits)
-  (syntax-parse #`(#,names #,inits)
-    [((x:id ...) (e ...))
-     #'(syndicate:field [x e] ...)]))
+     (⇒ ep (MF))])
 
 (define-typed-syntax (assert e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
+  #:with τs (type-eval #'(Shares τ))
   -------------------------------------
   [⊢ (syndicate:assert e-) (⇒ : ★/t)
-                           (⇒ a ((Shares τ)))
-                           (⇒ r ())
-                           (⇒ f ())
-                           (⇒ s ())])
+                           (⇒ ep (τs))])
 
 (define-typed-syntax (stop facet-name:id cont ...) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
-  [⊢ (begin #f cont ...) ≫ cont- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
+  [⊢ (begin #f cont ...) ≫ cont- (⇒ ep (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
   #:with τ (mk-Stop- #`(facet-name- τ-f ...))
   ---------------------------------------------------------------------------------
   [⊢ (syndicate:stop-facet facet-name- cont-) (⇒ : ★/t)
-                                              (⇒ s ())
-                                              (⇒ a ())
-                                              (⇒ r ())
                                               (⇒ f (τ))])
 
 (begin-for-syntax
@@ -696,48 +727,36 @@
 
 (define-typed-syntax on
   [(on (~literal start) s ...) ≫
-   [⊢ (begin s ...) ≫ s- (⇒ a (~effs))
-                          (⇒ r (~effs))
+   [⊢ (begin s ...) ≫ s- (⇒ ep (~effs))
                           (⇒ f (~effs τ-f ...))
                           (⇒ s (~effs τ-s ...))]
-   #:with τ-r #'(Reacts OnStart τ-f ... τ-s ...)
+   #:with τ-r (type-eval #'(Reacts OnStart τ-f ... τ-s ...))
    -----------------------------------
    [⊢ (syndicate:on-start s-) (⇒ : ★/t)
-      (⇒ a ())
-      (⇒ r (τ-r))
-      (⇒ f ())
-      (⇒ s ())]]
+      (⇒ ep (τ-r))]]
   [(on (~literal stop) s ...) ≫
-   [⊢ (begin s ...) ≫ s- (⇒ a (~effs))
-                          (⇒ r (~effs))
+   [⊢ (begin s ...) ≫ s- (⇒ ep (~effs))
                           (⇒ f (~effs τ-f ...))
                           (⇒ s (~effs τ-s ...))]
-   #:with τ-r #'(Reacts OnStop τ-f ... τ-s ...)
+   #:with τ-r (type-eval #'(Reacts OnStop τ-f ... τ-s ...))
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : ★/t)
-      (⇒ a ())
-      (⇒ r (τ-r))
-      (⇒ f ())
-      (⇒ s ())]]
+      (⇒ ep (τ-r))]]
   [(on (a/r:asserted-or-retracted p) s ...) ≫
    [⊢ p ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
    [[x ≫ x- : τ] ... ⊢ (begin s ...) ≫ s-
-                 (⇒ a (~effs))
-                 (⇒ r (~effs))
+                 (⇒ ep (~effs))
                  (⇒ f (~effs τ-f ...))
                  (⇒ s (~effs τ-s ...))]
    #:with p- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'p))
-   #:with τ-r #'(Reacts (a/r.react-con τp) τ-f ... τ-s ...)
+   #:with τ-r (type-eval #'(Reacts (a/r.react-con τp) τ-f ... τ-s ...))
    -----------------------------------
    [⊢ (syndicate:on (a/r.syndicate-kw p-)
                     s-)
       (⇒ : ★/t)
-      (⇒ r (τ-r))
-      (⇒ f ())
-      (⇒ a ())
-      (⇒ s ())]])
+      (⇒ ep (τ-r))]])
 
 ;; pat -> ([Id Type] ...)
 (define-for-syntax (pat-bindings stx)
@@ -793,7 +812,7 @@
 (define-typed-syntax (spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   ;; TODO: check that each τ-f is a Role
-  [⊢ s ≫ s- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
+  [⊢ s ≫ s- (⇒ ep (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
   ;; TODO: s shouldn't refer to facets or fields!
   #:with (τ-i τ-o τ-a) (analyze-roles #'(τ-f ...))
   #:fail-unless (<: #'τ-o #'τ-c.norm)
@@ -807,14 +826,11 @@
   #:with τ-final (type-eval #'(Actor τ-c.norm))
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
-                                               (⇒ s (τ-final))
-                                               (⇒ a ())
-                                               (⇒ r ())
-                                               (⇒ f ())])
+                                               (⇒ s (τ-final))])
 
 (define-typed-syntax (dataspace τ-c:type s ...) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  [⊢ s ≫ s- (⇒ a (~effs)) (⇒ r (~effs)) (⇒ s (~effs τ-s ...)) (⇒ f (~effs))] ...
+  [⊢ s ≫ s- (⇒ ep (~effs)) (⇒ s (~effs τ-s ...)) (⇒ f (~effs))] ...
   #:with τ-actor (type-eval #'(Actor τ-c.norm))
   #:fail-unless (stx-andmap (lambda (t) (<: t #'τ-actor)) #'(τ-s ... ...))
                 "Not all actors conform to communication type"
@@ -823,10 +839,7 @@
   #:with τ-relay (relay-interests #'τ-c.norm)
   -----------------------------------------------------------------------------------
   [⊢ (syndicate:dataspace s- ...) (⇒ : ★/t)
-                                  (⇒ s ((Actor (U τ-ds-i τ-ds-o τ-relay))))
-                                  (⇒ a ())
-                                  (⇒ r ())
-                                  (⇒ f ())])
+                                  (⇒ s ((Actor (U τ-ds-i τ-ds-o τ-relay))))])
 
 (define-typed-syntax (set! x:id e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
@@ -845,7 +858,6 @@
   ----------------------------------------
   [≻ (on (asserted p)
          (start-facet during-inner
-           (fields)
            (on (retracted inst-p)
                (stop during-inner))
            s ...))])
@@ -874,27 +886,26 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax (ref x:id) ≫
+  ;; #:do [(printf "reference info ~a\n" (syntax-debug-info #'x))]
   [⊢ x ≫ x- ⇒ (~Field τ)]
+  ;; #:do [(printf "~a ≫ ~a\n" #'x #'x-)]
   ------------------------
   [⊢ (x-) (⇒ : τ)])
 
 (define-typed-syntax (lambda ([x:id (~optional (~datum :)) τ:type] ...) body ...+) ≫
   [[x ≫ x- : τ] ... ⊢ (begin body ...) ≫ body- (⇒ : τ-e)
-                (⇒ a (~effs τ-a ...))
-                (⇒ r (~effs τ-r ...))
+                (⇒ ep (~effs τ-ep ...))
                 (⇒ s (~effs τ-s ...))
                 (⇒ f (~effs τ-f ...))]
   ----------------------------------------
   [⊢ (lambda- (x- ...) body-) (⇒ : (→ τ ... (Computation (Value τ-e)
-                                                         (Asserts τ-a ...)
-                                                         (Reactions τ-r ...)
+                                                         (EndPoints τ-ep ...)
                                                          (Roles τ-f ...)
                                                          (Spawns τ-s ...))))])
 
 (define-typed-syntax (typed-app e_fn e_arg ...) ≫
   [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in ... (~Computation (~Value τ-out)
-                                                  (~Asserts τ-a ...)
-                                                  (~Reactions τ-r ...)
+                                                  (~Endpoints τ-ep ...)
                                                   (~Roles τ-f ...)
                                                   (~Spawns τ-s ...))))]
   #:fail-unless (pure? #'e_fn-) "expression not allowed to have effects"
@@ -904,8 +915,7 @@
   #:fail-unless (stx-andmap pure? #'(e_arg- ...)) "expressions not allowed to have effects"
   ------------------------------------------------------------------------
   [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ-out)
-     (⇒ a (τ-a ...))
-     (⇒ r (τ-r ...))
+     (⇒ ep (τ-ep ...))
      (⇒ s (τ-s ...))
      (⇒ f (τ-f ...))])
 
@@ -996,8 +1006,7 @@
    --------
    [≻ (begin-
         (define-typed-variable-rename f ≫ f- : (→ ty ... (Compuation (Value ty_out)
-                                                                     (Asserts)
-                                                                     (Reactions)
+                                                                     (Endpoints)
                                                                      (Roles)
                                                                      (Spawns))))
         (define- f-
@@ -1010,27 +1019,25 @@
    [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
    #:fail-unless (pure? #'e_tst-) "expression must be pure"
    [⊢ e1 ≫ e1- (⇐ : τ-expected)
-      (⇒ a (~effs as1 ...)) (⇒ r (~effs rs1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))]
+      (⇒ ep (~effs eps1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))]
    [⊢ e2 ≫ e2- (⇐ : τ-expected)
-      (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
+      (⇒ ep (~effs eps2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
    --------
    [⊢ (if- e_tst- e1- e2-)
-      (⇒ a (as1 ... as2 ...))
-      (⇒ r (rs1 ... rs2 ...))
+      (⇒ ep (eps1 ... eps2 ...))
       (⇒ f (fs1 ... fs2 ...))
       (⇒ s (ss1 ... ss2 ...))]]
   [(_ e_tst e1 e2) ≫
    [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
    #:fail-unless (pure? #'e_tst-) "expression must be pure"
    [⊢ e1 ≫ e1- (⇒ : τ1)
-      (⇒ a (~effs as1 ...)) (⇒ r (~effs rs1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))]
+      (⇒ ep (~effs eps1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))]
    [⊢ e2 ≫ e2- (⇒ : τ2)
-      (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
+      (⇒ ep (~effs eps2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
    #:with τ (type-eval #'(U τ1 τ2))
    --------
    [⊢ (if- e_tst- e1- e2-) (⇒ : τ)
-      (⇒ a (as1 ... as2 ...))
-      (⇒ r (rs1 ... rs2 ...))
+      (⇒ ep (eps1 ... eps2 ...))
       (⇒ f (fs1 ... fs2 ...))
       (⇒ s (ss1 ... ss2 ...))]])
 
@@ -1038,24 +1045,22 @@
 (define-typed-syntax begin
   [(_ e_unit ... e) ⇐ τ_expected ≫
    [⊢ e_unit ≫ e_unit- (⇒ : _)
-      (⇒ a (~effs as1 ...)) (⇒ r (~effs rs1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))] ...
+      (⇒ ep (~effs eps1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))] ...
    [⊢ e ≫ e- (⇐ : τ_expected)
-      (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
+      (⇒ ep (~effs eps2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
    --------
    [⊢ (begin- e_unit- ... e-)
-      (⇒ a (as1 ... ... as2 ...))
-      (⇒ r (rs1 ... ... rs2 ...))
+      (⇒ ep (eps1 ... ... eps2 ...))
       (⇒ f (fs1 ... ... fs2 ...))
       (⇒ s (ss1 ... ... ss2 ...))]]
   [(_ e_unit ... e) ≫
    [⊢ e_unit ≫ e_unit- (⇒ : _)
-      (⇒ a (~effs as1 ...)) (⇒ r (~effs rs1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))] ...
+      (⇒ ep (~effs eps1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))] ...
    [⊢ e ≫ e- (⇒ : τ_e)
-      (⇒ a (~effs as2 ...)) (⇒ r (~effs rs2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
+      (⇒ ep (~effs eps2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
    --------
    [⊢ (begin- e_unit- ... e-) (⇒ : τ_e)
-      (⇒ a (as1 ... ... as2 ...))
-      (⇒ r (rs1 ... ... rs2 ...))
+      (⇒ ep (eps1 ... ... eps2 ...))
       (⇒ f (fs1 ... ... fs2 ...))
       (⇒ s (ss1 ... ... ss2 ...))]])
 
@@ -1065,28 +1070,24 @@
    [⊢ e ≫ e- ⇒ : τ_x] ...
    #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
    [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- (⇐ : τ_expected)
-                   (⇒ a (~effs as ...))
-                   (⇒ r (~effs rs ...))
+                   (⇒ ep (~effs eps ...))
                    (⇒ f (~effs fs ...))
                    (⇒ s (~effs ss ...))]
    ----------------------------------------------------------
    [⊢ (let- ([x- e-] ...) e_body-)
-      (⇒ a (as ...))
-      (⇒ r (rs ...))
+      (⇒ ep (eps ...))
       (⇒ f (fs ...))
       (⇒ s (ss ...))]]
   [(_ ([x e] ...) e_body ...) ≫
    [⊢ e ≫ e- ⇒ : τ_x] ...
    #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
    [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- (⇒ : τ_body)
-                   (⇒ a (~effs as ...))
-                   (⇒ r (~effs rs ...))
+                   (⇒ ep (~effs eps ...))
                    (⇒ f (~effs fs ...))
                    (⇒ s (~effs ss ...))]
    ----------------------------------------------------------
    [⊢ (let- ([x- e-] ...) e_body-) (⇒ : τ_body)
-      (⇒ a (as ...))
-      (⇒ r (rs ...))
+      (⇒ ep (eps ...))
       (⇒ f (fs ...))
       (⇒ s (ss ...))]])
 
@@ -1103,14 +1104,12 @@
   [⊢ pred ≫ pred- (⇐ : Bool)] ...
   #:fail-unless (stx-andmap pure? #'(pred- ...)) "predicates must be pure"
   [⊢ (begin s ...) ≫ s- (⇒ : τ-s)
-                   (⇒ a (~effs as ...))
-                   (⇒ r (~effs rs ...))
+                   (⇒ ep (~effs eps ...))
                    (⇒ f (~effs fs ...))
                    (⇒ s (~effs ss ...))] ...
   ------------------------------------------------
   [⊢ (cond- [pred- s-] ...) (⇒ : (U τ-s ...))
-     (⇒ a (as ... ...))
-     (⇒ r (rs ... ...))
+     (⇒ ep (eps ... ...))
      (⇒ f (fs ... ...))
      (⇒ s (ss ... ...))])
 
@@ -1119,8 +1118,7 @@
   #:fail-unless (pure? #'e-) "expression must be pure"
   #:with (([x τ] ...) ...) (stx-map pat-bindings #'(p ...))
   [[x ≫ x- : τ] ... ⊢ (begin s ...) ≫ s- (⇒ : τ-s)
-                (⇒ a (~effs as ...))
-                (⇒ r (~effs rs ...))
+                (⇒ ep (~effs eps ...))
                 (⇒ f (~effs fs ...))
                 (⇒ s (~effs ss ...))] ...
   ;; REALLY not sure how to handle p/p-/p.match-pattern,
@@ -1136,8 +1134,7 @@
   [⊢ (match- e- [p- s-] ...
                 [_ (error "incomplete pattern match")])
      (⇒ : (U τ-s ...))
-     (⇒ a (as ... ...))
-     (⇒ r (rs ... ...))
+     (⇒ ep (eps ... ...))
      (⇒ f (fs ... ...))
      (⇒ s (ss ... ...))])
 
@@ -1146,17 +1143,17 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; hmmm
-(define-primop + (→ Int Int (Computation (Value Int) (Asserts) (Reactions) (Roles) (Spawns))))
-(define-primop - (→ Int Int (Computation (Value Int) (Asserts) (Reactions) (Roles) (Spawns))))
-(define-primop * (→ Int Int (Computation (Value Int) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop + (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
+(define-primop - (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
+(define-primop * (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
 #;(define-primop and (→ Bool Bool Bool))
-(define-primop or (→ Bool Bool (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
-(define-primop not (→ Bool (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
-(define-primop < (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
-(define-primop > (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
-(define-primop <= (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
-(define-primop >= (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
-(define-primop = (→ Int Int (Computation (Value Bool) (Asserts) (Reactions) (Roles) (Spawns))))
+(define-primop or (→ Bool Bool (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop not (→ Bool (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop < (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop > (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop <= (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop >= (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop = (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
 
 (define-typed-syntax (/ e1 e2) ≫
   [⊢ e1 ≫ e1- (⇐ : Int)]
@@ -1215,17 +1212,17 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax (print-type e) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a as) (⇒ r rs) (⇒ f es)]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ep (~effs eps ...)) (⇒ f (~effs fs ...)) (⇒ s (~effs ss ...))]
   #:do [(displayln (type->str #'τ))]
   ----------------------------------
-  [⊢ e- (⇒ : τ) (⇒ a as) (⇒ r rs) (⇒ f es)])
+  [⊢ e- (⇒ : τ) (⇒ ep (eps ...)) (⇒ f (fs ...)) (⇒ s (ss ...))])
 
 (define-typed-syntax (print-role e) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ a as) (⇒ r rs) (⇒ f es)]
-  #:do [(for ([r (in-syntax #'es)])
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ep (~effs eps ...)) (⇒ f (~effs fs ...)) (⇒ s (~effs ss ...))]
+  #:do [(for ([r (in-syntax #'(fs ...))])
           (displayln (type->str r)))]
   ----------------------------------
-  [⊢ e- (⇒ : τ) (⇒ a as) (⇒ r rs) (⇒ f es)])
+  [⊢ e- (⇒ : τ) (⇒ ep (eps ...)) (⇒ f (fs ...)) (⇒ s (ss ...))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Lists
@@ -1259,15 +1256,13 @@
   [⊢ e-list ≫ e-list- ⇒ (~List τ-l)] ...
   #:fail-unless (all-pure? #'(e-list- ...)) "expressions must be pure"
   [[x ≫ x- : τ-l] ... ⊢ (begin e-body ...) ≫ e-body- (⇒ : τ-b)
-                  (⇒ a (~effs as ...))
-                  (⇒ r (~effs rs ...))
+                  (⇒ ep (~effs eps ...))
                   (⇒ f (~effs fs ...))
                   (⇒ s (~effs ss ...))]
   -------------------------------------------------------
   [⊢ (for- ([x- (in-list- e-list-)] ...)
        e-body-) (⇒ : ★/t)
-                (⇒ a (as ...))
-                (⇒ r (rs ...))
+                (⇒ ep (eps ...))
                 (⇒ f (fs ...))
                 (⇒ s (ss ...))])
 

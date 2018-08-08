@@ -65,11 +65,10 @@
 ;; seller
 (spawn ds-type
   (start-facet _
-    (fields [book (Tuple String Int) (tuple "Catch 22" 22)]
-            [next-order-id Int 10001483])
+    (field [book (Tuple String Int) (tuple "Catch 22" 22)]
+           [next-order-id Int 10001483])
     (on (asserted (observe (quote (bind title String) discard)))
         (start-facet x
-          (fields)
           (on (retracted (observe (quote title discard)))
               (stop x))
           (match title
@@ -79,7 +78,6 @@
              (assert (quote title (out-of-stock)))])))
     (on (asserted (observe (order (bind title String) (bind offer Int) discard discard)))
         (start-facet x
-          (fields)
           (on (retracted (observe (order title offer discard discard)))
               (stop x))
           (let ([asking-price 22])
@@ -92,15 +90,15 @@
 ;; buyer A
 (spawn ds-type
   (start-facet buyer
-    (fields [title String "Catch 22"]
-            [budget Int 1000])
+    (field [title String "Catch 22"]
+           [budget Int 1000])
     (on (asserted (quote (ref title) (bind answer QuoteAnswer)))
         (match answer
           [(out-of-stock)
            (stop buyer)]
           [(price (bind amount Int))
            (start-facet negotiation
-             (fields [contribution Int (/ amount 2)])
+             (field [contribution Int (/ amount 2)])
              (on (asserted (split-proposal (ref title) amount (ref contribution) (bind accept? Bool)))
                  (if accept?
                      (stop buyer)
@@ -112,26 +110,23 @@
 ;; buyer B
 (spawn ds-type
   (start-facet buyer-b
-    (fields [funds Int 5])
+    (field [funds Int 5])
     (on (asserted (observe (split-proposal (bind title String) (bind price Int) (bind their-contribution Int) discard)))
         (let ([my-contribution (- price their-contribution)])
           (cond
             [(> my-contribution (ref funds))
              (start-facet decline
-               (fields)
                (assert (split-proposal title price their-contribution #f))
                (on (retracted (observe (split-proposal title price their-contribution discard)))
                    (stop decline)))]
             [#t
              (start-facet accept
-               (fields)
                (assert (split-proposal title price their-contribution #t))
                (on (retracted (observe (split-proposal title price their-contribution discard)))
                    (stop accept))
                (on start
                    (spawn ds-type
                      (start-facet purchase
-                       (fields)
                        (on (asserted (order title price (bind order-id? (Maybe OrderId)) (bind delivery-date? (Maybe DeliveryDate))))
                            (match (tuple order-id? delivery-date?)
                              [(tuple (order-id (bind id Int)) (delivery-date (bind date String)))
