@@ -637,6 +637,13 @@
 ;; Core forms
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define-for-syntax (int-def-ctx-bind-type-rename x x- t ctx)
+  (syntax-local-bind-syntaxes (list x-) #f ctx)
+  (syntax-local-bind-syntaxes (list x)
+                              #`(make-rename-transformer
+                                 (add-orig (assign-type #'#,x- #'#,t #:wrap? #f) #'#,x))
+                              ctx))
+
 (define-typed-syntax (start-facet name:id ep ...+) ≫
   #:with name- (syntax-local-identifier-as-binding (syntax-local-introduce (generate-temporary #'name)))
   #:with name+ (syntax-local-identifier-as-binding #'name)
@@ -644,11 +651,7 @@
   #:do [(define ctx (syntax-local-make-definition-context))
         (define unique (gensym 'start-facet))
         (define name-- (internal-definition-context-introduce ctx #'name- 'add))
-        (syntax-local-bind-syntaxes (list #'name-) #f ctx)
-        (syntax-local-bind-syntaxes (list #'name+)
-                                    #'(make-rename-transformer
-                                       (add-orig (assign-type #'name- #'facet-name-ty #:wrap? #f) #'name))
-                                    ctx)
+        (int-def-ctx-bind-type-rename #'name+ #'name- #'facet-name-ty ctx)
         (define-values (rev-endpoints- endpoint-effects)
           (for/fold ([rev-eps- '()]
                      [effects '()])
@@ -663,11 +666,7 @@
                (for ([orig-name (in-syntax #'(x ... ))]
                      [new-name (in-syntax #'(x- ...))]
                      [field-ty (in-syntax #'(τ ...))])
-                   (syntax-local-bind-syntaxes (list new-name) #f ctx)
-                   (syntax-local-bind-syntaxes (list orig-name)
-                                               #`(make-rename-transformer
-                                                  (add-orig (assign-type #'#,new-name #'#,field-ty #:wrap? #f) #'#,orig-name))
-                                               ctx))]
+                 (int-def-ctx-bind-type-rename orig-name new-name field-ty ctx))]
               [_ (void)])
             (define more-effects
               (syntax-parse effects
