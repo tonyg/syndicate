@@ -619,6 +619,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Effect Checking
 
+;; DesugaredSyntax EffectName -> (Syntaxof Effect ...)
+(define-for-syntax (get-effect e- eff)
+  (or (syntax-property e- eff) #'()))
+
 ;; DesugaredSyntax EffectName -> Bool
 (define-for-syntax (effect-free? e- eff)
   (define prop (syntax-property e- eff))
@@ -644,6 +648,42 @@
                                  (add-orig (assign-type #'#,x- #'#,t #:wrap? #f) #'#,x))
                               ctx))
 
+;; -> (Values e-... (Listof Type) (Listof EndpointEffects) (Listof FacetEffects) (Listof SpawnEffects))
+(define-for-syntax (walk/bind e...
+                              [def-ctx (syntax-local-make-definition-context)]
+                              [unique (gensym 'walk/bind)])
+  (define-values (rev-e-... rev-τ... ep-effects facet-effects spawn-effects)
+    (for/fold ([rev-e-... '()]
+               [rev-τ... '()]
+               [ep-effects '()]
+               [facet-effects '()]
+               [spawn-effects '()])
+              ([e (in-syntax e...)])
+      (define e- (local-expand e (list unique) (list #'erased) def-ctx))
+      (define τ (syntax-property e- ':))
+      (define-values (ep-effs f-effs s-effs)
+        (values (syntax->list (get-effect e- 'ep))
+                (syntax->list (get-effect e- 'f))
+                (syntax->list (get-effect e- 's))))
+      (syntax-parse e-
+        #:literals (erased field/intermediate)
+        [(erased (field/intermediate (x:id x-:id τ e-) ...))
+         (for ([orig-name (in-syntax #'(x ... ))]
+               [new-name (in-syntax #'(x- ...))]
+               [field-ty (in-syntax #'(τ ...))])
+           (int-def-ctx-bind-type-rename orig-name new-name field-ty def-ctx))]
+        [_ (void)])
+      (values (cons e- rev-e-...)
+              (cons τ rev-τ...)
+              (append ep-effs ep-effects)
+              (append f-effs facet-effects)
+              (append s-effs spawn-effects))))
+  (values (reverse rev-e-...)
+          (reverse rev-τ...)
+          ep-effects
+          facet-effects
+          spawn-effects))
+
 (define-typed-syntax (start-facet name:id ep ...+) ≫
   #:with name- (syntax-local-identifier-as-binding (syntax-local-introduce (generate-temporary #'name)))
   #:with name+ (syntax-local-identifier-as-binding #'name)
@@ -652,39 +692,21 @@
         (define unique (gensym 'start-facet))
         (define name-- (internal-definition-context-introduce ctx #'name- 'add))
         (int-def-ctx-bind-type-rename #'name+ #'name- #'facet-name-ty ctx)
-        (define-values (rev-endpoints- endpoint-effects)
-          (for/fold ([rev-eps- '()]
-                     [effects '()])
-                    ([e (in-syntax #'(ep ...))])
-            (define ep- (local-expand e (list unique) (list #'erased) ctx))
-            (unless (and (effect-free? ep- 'f) (effect-free? ep- 's))
-              (type-error #:src e #:msg "only endpoint effects allowed"))
-            (define effects (or (syntax-property ep- 'ep) #'()))
-            (syntax-parse ep-
-              #:literals (erased field/intermediate)
-              [(erased (field/intermediate (x:id x-:id τ e-) ...))
-               (for ([orig-name (in-syntax #'(x ... ))]
-                     [new-name (in-syntax #'(x- ...))]
-                     [field-ty (in-syntax #'(τ ...))])
-                 (int-def-ctx-bind-type-rename orig-name new-name field-ty ctx))]
-              [_ (void)])
-            (define more-effects
-              (syntax-parse effects
-                [((~or (~and MF ~MakesField)
-                       other-eff) ...)
-                 (syntax->list #'(other-eff ...))]))
-            (values (cons ep- rev-eps-)
-                    (append more-effects effects))))]
+        (define-values (ep-... τ... ep-effects facet-effects spawn-effects)
+          (walk/bind #'(ep ...) ctx unique))
+        (unless (and (stx-null? facet-effects) (stx-null? spawn-effects))
+          (type-error #:src #'(ep ...) #:msg "only endpoint effects allowed"))]
   #:with ((~or (~and τ-a (~Shares _))
-              (~and τ-r (~Reacts _ ...)))
+               (~and τ-r (~Reacts _ ...))
+               ~MakesField)
           ...)
-         endpoint-effects
+         ep-effects
   #:with τ (type-eval #`(Role (#,name--)
                           τ-a ...
                           τ-r ...))
   --------------------------------------------------------------
   [⊢ (syndicate:react (let- ([#,name-- (syndicate:current-facet-id)])
-                        #,@(reverse rev-endpoints-)))
+                        #,@ep-...))
      (⇒ : ★/t)
      (⇒ f (τ))])
 
@@ -1049,26 +1071,14 @@
 
 ;; copied from ext-stlc
 (define-typed-syntax begin
-  [(_ e_unit ... e) ⇐ τ_expected ≫
-   [⊢ e_unit ≫ e_unit- (⇒ : _)
-      (⇒ ep (~effs eps1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))] ...
-   [⊢ e ≫ e- (⇐ : τ_expected)
-      (⇒ ep (~effs eps2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
-   --------
-   [⊢ (begin- e_unit- ... e-)
-      (⇒ ep (eps1 ... ... eps2 ...))
-      (⇒ f (fs1 ... ... fs2 ...))
-      (⇒ s (ss1 ... ... ss2 ...))]]
   [(_ e_unit ... e) ≫
-   [⊢ e_unit ≫ e_unit- (⇒ : _)
-      (⇒ ep (~effs eps1 ...)) (⇒ f (~effs fs1 ...)) (⇒ s (~effs ss1 ...))] ...
-   [⊢ e ≫ e- (⇒ : τ_e)
-      (⇒ ep (~effs eps2 ...)) (⇒ f (~effs fs2 ...)) (⇒ s (~effs ss2 ...))]
+   #:do [(define-values (e-... τ... ep-effs f-effs s-effs) (walk/bind #'(e_unit ... e)))]
+   #:with τ (last τ...)
    --------
-   [⊢ (begin- e_unit- ... e-) (⇒ : τ_e)
-      (⇒ ep (eps1 ... ... eps2 ...))
-      (⇒ f (fs1 ... ... fs2 ...))
-      (⇒ s (ss1 ... ... ss2 ...))]])
+   [⊢ (begin- #,@e-...) (⇒ : τ)
+      (⇒ ep (#,@ep-effs))
+      (⇒ f (#,@f-effs))
+      (⇒ s (#,@s-effs))]])
 
 ;; copied from ext-stlc
 (define-typed-syntax let
