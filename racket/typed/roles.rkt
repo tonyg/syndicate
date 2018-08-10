@@ -77,7 +77,6 @@
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
 (define-base-types OnStart OnStop MakesField)
-;; MakesField has a syntax property ([x x- τ] ...)
 (define-for-syntax field-prop-name 'fields)
 
 
@@ -658,19 +657,22 @@
             (unless (and (effect-free? ep- 'f) (effect-free? ep- 's))
               (type-error #:src e #:msg "only endpoint effects allowed"))
             (define effects (or (syntax-property ep- 'ep) #'()))
-            (define more-effects
-              (syntax-parse effects
-                [((~or (~and MF ~MakesField)
-                       other-eff) ...)
-                 #:with (([x x- τ] ...) ...) (stx-map (lambda (stx) (syntax-local-introduce (syntax-property stx field-prop-name))) #'(MF ...))
-                 (for ([orig-name (in-syntax (stx-map syntax-local-identifier-as-binding #'(x ... ...)))]
-                       [new-name (in-syntax (stx-map syntax-local-identifier-as-binding #'(x- ... ...)))]
-                       [field-ty (in-syntax #'(τ ... ...))])
+            (syntax-parse ep-
+              #:literals (erased field/intermediate)
+              [(erased (field/intermediate (x:id x-:id τ e-) ...))
+               (for ([orig-name (in-syntax #'(x ... ))]
+                     [new-name (in-syntax #'(x- ...))]
+                     [field-ty (in-syntax #'(τ ...))])
                    (syntax-local-bind-syntaxes (list new-name) #f ctx)
                    (syntax-local-bind-syntaxes (list orig-name)
                                                #`(make-rename-transformer
                                                   (add-orig (assign-type #'#,new-name #'#,field-ty #:wrap? #f) #'#,orig-name))
-                                               ctx))
+                                               ctx))]
+              [_ (void)])
+            (define more-effects
+              (syntax-parse effects
+                [((~or (~and MF ~MakesField)
+                       other-eff) ...)
                  (syntax->list #'(other-eff ...))]))
             (values (cons ep- rev-eps-)
                     (append more-effects effects))))]
@@ -693,11 +695,16 @@
   #:fail-unless (stx-andmap pure? #'(e- ...)) "field initializers not allowed to have effects"
   #:with (x- ...) (generate-temporaries #'(x ...))
   #:with (τ ...) (stx-map type-eval #'((Field τ-f.norm) ...))
-  #:with MF (syntax-property (type-eval #'MakesField) field-prop-name (syntax-local-introduce #'([x x- τ] ...)))
+  #:with MF (type-eval #'MakesField)
   ----------------------------------------------------------------------
-  [⊢ (syndicate:field [x- e-] ...)
+  [⊢ (field/intermediate [x x- τ e-] ...)
      (⇒ : ★/t)
      (⇒ ep (MF))])
+
+(define-syntax (field/intermediate stx)
+  (syntax-parse stx
+    [(_ [x:id x-:id τ e-] ...)
+     #'(syndicate:field [x- e-] ...)]))
 
 (define-typed-syntax (assert e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
