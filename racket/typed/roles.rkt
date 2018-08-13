@@ -906,8 +906,9 @@
        #`(k #,(loop #'p))]
       [(bind x:id τ)
        #'x]
+      ;; not sure about this
       [discard
-       #'_]
+       #'discard]
       [(~constructor-exp ctor p ...)
        (define/with-syntax uctor (untyped-ctor #'ctor))
        #`(ctor #,@(stx-map loop #'(p ...)))]
@@ -1033,10 +1034,14 @@
    #:with x- (generate-temporary #'x)
    --------
    [⊢ (define/intermediate x x- τ e-) (⇒ : ★/t)]]
-  ;; TODO - not sure how to get this to work with effects
-  ;; right now `ann` forces the body to be pure
-  [(_ (f [x (~optional (~datum :)) ty] ... (~or (~datum →) (~datum ->)) ty_out) e ...+) ≫
-   [⊢ (lambda ([x : ty] ...) (ann (begin e ...) : ty_out)) ≫ e- (⇒ : fun-ty)]
+  [(_ (f [x (~optional (~datum :)) ty] ...
+         (~or (~datum →) (~datum ->)) ty_out)
+         e ...+) ≫
+   [⊢ (lambda ([x : ty] ...) (begin e ...)) ≫ e- (⇒ : (~and fun-ty
+                                                            (~Computation (~Value τ-v)
+                                                                          _ ...)))]
+   #:fail-unless (<: #'τ-v #'ty_out)
+     (format "expected different return type, got ~a" (type->str #'τ-v))
    #:with f- (add-orig (generate-temporary #'f) #'f)
    --------
    [⊢ (define/intermediate f f- fun-ty e-) (⇒ : ★/t)]])
