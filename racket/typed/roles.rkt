@@ -26,7 +26,7 @@
          ;; patterns
          bind discard
          ;; primitives
-         + - * / and or not > < >= <= = equal? displayln printf
+         + - * / and or not > < >= <= = equal? displayln printf define
          ;; lists
          list first rest member? empty? for for/fold
          ;; sets
@@ -649,6 +649,9 @@
                               ctx))
 
 ;; -> (Values e-... (Listof Type) (Listof EndpointEffects) (Listof FacetEffects) (Listof SpawnEffects))
+;; recognizes local binding forms
+;; (field/intermediate [x e] ...
+;; (define/intermediate x x- τ e)
 (define-for-syntax (walk/bind e...
                               [def-ctx (syntax-local-make-definition-context)]
                               [unique (gensym 'walk/bind)])
@@ -666,12 +669,14 @@
                 (syntax->list (get-effect e- 'f))
                 (syntax->list (get-effect e- 's))))
       (syntax-parse e-
-        #:literals (erased field/intermediate)
+        #:literals (erased field/intermediate define/intermediate)
         [(erased (field/intermediate (x:id x-:id τ e-) ...))
          (for ([orig-name (in-syntax #'(x ... ))]
                [new-name (in-syntax #'(x- ...))]
                [field-ty (in-syntax #'(τ ...))])
            (int-def-ctx-bind-type-rename orig-name new-name field-ty def-ctx))]
+        [(erased (define/intermediate x:id x-:id τ e-))
+         (int-def-ctx-bind-type-rename #'x #'x- #'τ def-ctx)]
         [_ (void)])
       (values (cons e- rev-e-...)
               (cons τ rev-τ...)
@@ -1008,38 +1013,33 @@
   ------------------------------------------------
   [⊢ e- (⇒ : τ.norm) ])
 
+(define-syntax (define/intermediate stx)
+  (syntax-parse stx
+    [(_ x:id x-:id τ e)
+     #'(define- x- e)]))
+
 ;; copied from ext-stlc
 (define-typed-syntax define
   [(_ x:id (~datum :) τ:type e:expr) ≫
-   ;[⊢ e ≫ e- ⇐ τ.norm]
+   [⊢ e ≫ e- ⇐ τ.norm]
+   #:fail-unless (pure? #'e-) "expression must be pure"
    #:with x- (generate-temporary #'x)
    --------
-   [≻ (begin-
-        (define-typed-variable-rename x ≫ x- : τ.norm)
-        (define- x- (ann e : τ.norm)))]]
+   [⊢ (define/intermediate x x- τ.norm e-) (⇒ : ★/t)]]
   [(_ x:id e) ≫
    ;This won't work with mutually recursive definitions
    [⊢ e ≫ e- ⇒ τ]
    #:fail-unless (pure? #'e-) "expression must be pure"
-   #:with y (generate-temporary #'x)
-   #:with y+props (transfer-props #'e- (assign-type #'y #'τ #:wrap? #f))
+   #:with x- (generate-temporary #'x)
    --------
-   [≻ (begin-
-        (define-syntax x (make-rename-transformer #'y+props))
-        (define- y e-))]]
+   [⊢ (define/intermediate x x- τ e-) (⇒ : ★/t)]]
   ;; TODO - not sure how to get this to work with effects
   ;; right now `ann` forces the body to be pure
   [(_ (f [x (~optional (~datum :)) ty] ... (~or (~datum →) (~datum ->)) ty_out) e ...+) ≫
+   [⊢ (lambda ([x : ty] ...) (ann (begin e ...) : ty_out)) ≫ e- (⇒ : fun-ty)]
    #:with f- (add-orig (generate-temporary #'f) #'f)
    --------
-   [≻ (begin-
-        (define-typed-variable-rename f ≫ f- : (→ ty ... (Compuation (Value ty_out)
-                                                                     (Endpoints)
-                                                                     (Roles)
-                                                                     (Spawns))))
-        (define- f-
-          (lambda ([x : ty] ...)
-            (ann (begin e ...) : ty_out))))]])
+   [⊢ (define/intermediate f f- fun-ty e-) (⇒ : ★/t)]])
 
 ;; copied from ext-stlc
 (define-typed-syntax if
