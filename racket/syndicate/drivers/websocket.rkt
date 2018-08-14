@@ -215,16 +215,19 @@
 
 (define (spawn-connection local-addr remote-addr id c control-ch)
   (actor #:name (list 'drivers/websocket:connect local-addr remote-addr id)
+         #:assertions*
+         (patch-added
+          (patch-seq
+           (let-values (((la lp ra rp) (ws-conn-peer-addresses c)))
+             (assert (websocket-peer-details local-addr remote-addr la lp ra rp)))
+           (sub (observe (websocket-message remote-addr local-addr ?))) ;; monitor peer
+           (pub (websocket-message remote-addr local-addr ?)) ;; may send messages to peer
+           (sub (websocket-message local-addr remote-addr ?)) ;; want segments from peer
+           (sub (inbound (websocket-incoming-message id ?))) ;; segments from driver thd
+           ))
          websocket-connection-behaviour
-	 (connection-state local-addr remote-addr c control-ch)
-         (patch-seq
-          (let-values (((la lp ra rp) (ws-conn-peer-addresses c)))
-            (assert (websocket-peer-details local-addr remote-addr la lp ra rp)))
-          (sub (observe (websocket-message remote-addr local-addr ?))) ;; monitor peer
-          (pub (websocket-message remote-addr local-addr ?)) ;; may send messages to peer
-          (sub (websocket-message local-addr remote-addr ?)) ;; want segments from peer
-          (sub (inbound (websocket-incoming-message id ?))) ;; segments from driver thd
-          )))
+         (connection-state local-addr remote-addr c control-ch)
+         '()))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
