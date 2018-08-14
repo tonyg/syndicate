@@ -12,12 +12,13 @@
          Computation Value Endpoints Roles Spawns
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
+         when unless
          ;; Derived Forms
          during define/query-value define/query-set
          ;; endpoints
          assert on field
          ;; expressions
-         tuple lambda ref observe inbound outbound
+         tuple select lambda ref observe inbound outbound
          ;; making types
          define-type-alias
          define-constructor
@@ -28,7 +29,7 @@
          ;; primitives
          + - * / and or not > < >= <= = equal? displayln printf define
          ;; lists
-         list first rest member? empty? for for/fold
+         list cons first rest member? empty? for for/fold
          ;; sets
          Set set set-member? set-add set-remove set-count set-union set-subtract set-intersect
          list->set set->list
@@ -958,6 +959,7 @@
             (on (retracted p)
                 (set! x e0-)))])
 
+;; TODO: #:on-add
 (define-typed-syntax (define/query-set x:id p e) ≫
   #:with ([y τ] ...) (pat-bindings #'p)
   ;; e will be re-expanded :/
@@ -985,7 +987,7 @@
                 (⇒ f (~effs τ-f ...))]
   ----------------------------------------
   [⊢ (lambda- (x- ...) body-) (⇒ : (→ τ ... (Computation (Value τ-e)
-                                                         (EndPoints τ-ep ...)
+                                                         (Endpoints τ-ep ...)
                                                          (Roles τ-f ...)
                                                          (Spawns τ-s ...))))])
 
@@ -1069,7 +1071,10 @@
 (define-syntax (define/intermediate stx)
   (syntax-parse stx
     [(_ x:id x-:id τ e)
-     #'(define- x- e)]))
+     ;; typed-variable-rename allows for using at module top level
+     #'(begin-
+         (define-typed-variable-rename x ≫ x- : τ)
+         (define- x- e))]))
 
 ;; copied from ext-stlc
 (define-typed-syntax define
@@ -1086,17 +1091,25 @@
    #:with x- (generate-temporary #'x)
    --------
    [⊢ (define/intermediate x x- τ e-) (⇒ : ★/t)]]
-  [(_ (f [x (~optional (~datum :)) ty] ...
-         (~or (~datum →) (~datum ->)) ty_out)
+  [(_ (f [x (~optional (~datum :)) ty:type] ...
+         (~or (~datum →) (~datum ->)) ty_out:type)
          e ...+) ≫
    [⊢ (lambda ([x : ty] ...) (begin e ...)) ≫ e- (⇒ : (~and fun-ty
-                                                            (~Computation (~Value τ-v)
-                                                                          _ ...)))]
-   #:fail-unless (<: #'τ-v #'ty_out)
-     (format "expected different return type, got ~a" (type->str #'τ-v))
+                                                            (~→ (~not (~Computation _ ...)) ...
+                                                                (~Computation (~Value τ-v)
+                                                                              _ ...))))]
+   #:fail-unless (<: #'τ-v #'ty_out.norm)
+     (format "expected different return type\n got ~a\n expected ~a\n"
+       #'τ-v #'ty_out
+       #;(type->str #'τ-v)
+       #;(type->str #'ty_out))
    #:with f- (add-orig (generate-temporary #'f) #'f)
    --------
-   [⊢ (define/intermediate f f- fun-ty e-) (⇒ : ★/t)]])
+   [⊢ (define/intermediate f f- fun-ty e-) (⇒ : ★/t)]]
+  [(_ (f [x (~optional (~datum :)) ty] ...)
+         e ...+) ≫
+   --------
+   [≻ (define (f [x ty] ... -> ★/t) e ...)]])
 
 ;; copied from ext-stlc
 (define-typed-syntax if
@@ -1125,6 +1138,14 @@
       (⇒ ep (eps1 ... eps2 ...))
       (⇒ f (fs1 ... fs2 ...))
       (⇒ s (ss1 ... ss2 ...))]])
+
+(define-typed-syntax (when e s ...+) ≫
+  ------------------------------------
+  [≻ (if e (begin s ...) #f)])
+
+(define-typed-syntax (unless e s ...+) ≫
+  ------------------------------------
+  [≻ (if e #f (begin s ...))])
 
 ;; copied from ext-stlc
 (define-typed-syntax begin
@@ -1306,6 +1327,15 @@
   #:fail-unless (all-pure? #'(e- ...)) "expressions must be pure"
   -------------------
   [⊢ (list- e- ...) ⇒ (List (U τ ...))])
+
+(define-typed-syntax (cons e1 e2) ≫
+  [⊢ e1 ≫ e1- ⇒ τ1]
+  #:fail-unless (pure? #'e1-) "expression must be pure"
+  [⊢ e2 ≫ e2- ⇒ (~List τ2)]
+  #:fail-unless (pure? #'e2-) "expression must be pure"
+  #:with τ-l (type-eval #'(List (U τ1 τ2)))
+  ----------------------------------------
+  [⊢ (cons- e1- e2-) ⇒ τ-l])
 
 (define-typed-syntax (for/fold [acc:id e-acc]
                                [x:id e-list]
