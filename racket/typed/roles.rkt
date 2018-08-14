@@ -13,7 +13,7 @@
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop #;unsafe-do
          ;; Derived Forms
-         during define/query-value
+         during define/query-value define/query-set
          ;; endpoints
          assert on field
          ;; expressions
@@ -30,7 +30,7 @@
          ;; lists
          list first rest member? empty? for for/fold
          ;; sets
-         Set set set-member? set-add set-count set-union set-subtract set-intersect
+         Set set set-member? set-add set-remove set-count set-union set-subtract set-intersect
          list->set set->list
          ;; DEBUG and utilities
          print-type print-role
@@ -946,6 +946,17 @@
             (on (retracted p)
                 (set! x e0-)))])
 
+(define-typed-syntax (define/query-set x:id p e) ≫
+  #:with ([y τ] ...) (pat-bindings #'p)
+  ;; e will be re-expanded :/
+  [[y ≫ y- : τ] ... ⊢ e ≫ e- ⇒ τ-e]
+  ----------------------------------------
+  [≻ (begin (field [x (Set τ-e) (set)])
+            (on (asserted p)
+                (set! x (set-add (ref x) e)))
+            (on (retracted p)
+                (set! x (set-remove (ref x) e))))])
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1369,6 +1380,14 @@
   #:fail-unless (pure? #'v-) "expression must be pure"
   -------------------------
   [⊢ (set-add- st- v-) ⇒ (Set (U τs τv))])
+
+(define-typed-syntax (set-remove st v) ≫
+  [⊢ st ≫ st- ⇒ (~Set τs)]
+  #:fail-unless (pure? #'st-) "expression must be pure"
+  [⊢ v ≫ v- ⇐ τs]
+  #:fail-unless (pure? #'v-) "expression must be pure"
+  -------------------------
+  [⊢ (set-remove- st- v-) ⇒ (Set τs)])
 
 (define-typed-syntax (set-member? st v) ≫
   [⊢ st ≫ st- ⇒ (~Set τs)]
