@@ -6,12 +6,12 @@
          require only-in
          ;; Types
          Int Bool String Tuple Bind Discard → List
-         Role Reacts Shares Know ¬Know Message Stop
+         Role Reacts Shares Know ¬Know Message OnDataflow Stop OnStart OnStop
          FacetName Field ★/t
          Observe Inbound Outbound Actor U
          Computation Value Endpoints Roles Spawns
          ;; Statements
-         let let* if spawn dataspace start-facet set! begin stop #;unsafe-do
+         let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
          ;; Derived Forms
          during define/query-value define/query-set
          ;; endpoints
@@ -76,7 +76,7 @@
 (define-type-constructor Message #:arity = 1)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
-(define-base-types OnStart OnStop MakesField)
+(define-base-types OnStart OnStop OnDataflow MakesField)
 (define-for-syntax field-prop-name 'fields)
 
 
@@ -811,6 +811,18 @@
                     s-)
       (⇒ : ★/t)
       (⇒ ep (τ-r))]])
+
+(define-typed-syntax (begin/dataflow s ...+) ≫
+  [⊢ (begin s ...) ≫ s-
+     (⇒ : _)
+     (⇒ ep (~effs))
+     (⇒ f (~effs τ-f ...))
+     (⇒ s (~effs τ-s ...))]
+  #:with τ-r (type-eval #'(Reacts OnDataflow τ-f ... τ-s ...))
+  --------------------------------------------------
+  [⊢ (syndicate:begin/dataflow s-)
+     (⇒ : ★/t)
+     (⇒ ep (τ-r))])
 
 ;; pat -> ([Id Type] ...)
 (define-for-syntax (pat-bindings stx)
