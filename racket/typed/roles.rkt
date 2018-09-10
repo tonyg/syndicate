@@ -475,6 +475,13 @@
     ;; should probably put this first.
     [_ (type=? t1 t2)]))
 
+;; shortcuts for mapping
+(define-for-syntax ((<:l l) r)
+  (<: l r))
+
+(define-for-syntax ((<:r r) l)
+  (<: l r))
+
 ;; Flat-Type Flat-Type -> Type
 (define-for-syntax (∩ t1 t2)
   (unless (and (flat-type? t1) (flat-type? t2))
@@ -609,6 +616,244 @@
     [(~Set τ:type)
      (finite? #'τ)]
     [_ #t]))
+
+;; PatternType -> Type
+(define-for-syntax (pattern-matching-assertions t)
+  (syntax-parse t
+    [(~Bind τ)
+     #'τ]
+    [~Discard
+     (type-eval #'★/t)]
+    [(~U* τ ...)
+     (type-eval #`(U #,@(stx-map pattern-matching-assertions #'(τ ...))))]
+    [(~Tuple τ ...)
+     (type-eval #`(Tuple #,@(stx-map pattern-matching-assertions #'(τ ...))))]
+    [(~Observe τ)
+     (type-eval #`(Observe #,(pattern-matching-assertions #'τ)))]
+    [(~Inbound τ)
+     (type-eval #`(Inbound #,(pattern-matching-assertions #'τ)))]
+    [(~Outbound τ)
+     (type-eval #`(Outbound #,(pattern-matching-assertions #'τ)))]
+    [(~constructor-type _ τ ...)
+     (make-cons-type t (stx-map pattern-matching-assertions #'(τ ...)))]
+    [_ t]))
+
+;; it's ok for x to respond to strictly more events than y
+(define-for-syntax (condition-covers? x y)
+  (or
+   ;; covers Start,Stop,Dataflow
+   (type=? x y)
+   (syntax-parse #`(#,x #,y)
+     [((~Know τ1) (~Know τ2))
+      (<: (pattern-matching-assertions #'τ2)
+          (pattern-matching-assertions #'τ1))]
+     [((~¬Know τ1) (¬Know τ2))
+      (<: (pattern-matching-assertions #'τ2)
+          (pattern-matching-assertions #'τ1))]
+     [_ #f])))
+
+;; RoleType RoleType -> Bool
+;; Check that role r implements role spec (possibly does more)
+(define-for-syntax (role-implements? r spec)
+  (syntax-parse #`(#,r #,spec)
+    ;; TODO: cases for unions, stop
+    [((~Role (x:id) (~or (~Shares τ-s1) (~Reacts τ-if1 τ-then1 ...)) ...)
+      (~Role (y:id) (~or (~Shares τ-s2) (~Reacts τ-if2 τ-then2 ...)) ...))
+     #:when (free-identifier=? #'x #'y)
+     (and
+      ;; for each assertion in the spec, there must be a suitable assertion in the actual
+      ;; TODO: this kinda ignores numerosity, can one assertion in r cover multiple assertions in spec?
+      (for/and [(s2 (in-syntax #'(τ-s2 ...)))]
+        (stx-ormap (<:l s2) #'(τ-s1 ...)))
+      (for/and [(s2 (in-syntax #'((τ-if2 (τ-then2 ...)) ...)))]
+        (define/syntax-parse (τ-if2 (τ-then2 ...)) s2)
+        (for/or [(s1 (in-syntax #'((τ-if1 (τ-then1 ...)) ...)))]
+          (define/syntax-parse (τ-if1 (τ-then1 ...)) s1)
+          ;; the event descriptors need to line up
+          (and (condition-covers? #'τ-if1 #'τ-if2)
+               ;; and for each specified response to the event, there needs to be a similar one in the
+               ;; the actual
+               (stx-andmap (lambda (s) (stx-ormap (lambda (r) (role-implements? r s)) #'(τ-then1 ...)))
+                           #'(τ-then2 ...))))))]
+    [((~Role (x:id) _ ...)
+      (~Role (y:id) _ ...))
+     (role-implements? (subst #'y #'x r) spec)]
+    [((~Stop x:id τ1 ...)
+      (~Stop y:id τ2 ...))
+     (and
+      (free-identifier=? #'x #'y)
+      (for/and ([t2 (in-syntax #'(τ2 ...))])
+        (for/or ([t1 (in-syntax #'(τ1 ...))])
+          (role-implements? t1 t2))))]
+    [((~Actor _)
+      (~Actor _))
+     ;; spawned actor OK in specified dataspace
+     (<: r spec)]))
+
+(module+ test
+  (begin-for-syntax
+    ;; TESTS
+    (let ()
+      ;; utils
+      (local-require syntax/parse/define
+                     rackunit)
+      (define te type-eval)
+      (define-syntax-parser check-role-implements?
+        [(_ r1 r2)
+         (quasisyntax/loc this-syntax
+           (check-true (role-implements? (te #'r1) (te #'r2))))])
+      (define-syntax-parser check-role-not-implements?
+        [(_ r1 r2)
+         (quasisyntax/loc this-syntax
+           (check-false (role-implements? (te #'r1) (te #'r2))))])
+      ;; Name Related
+      (check-role-implements? (Role (x)) (Role (x)))
+      (check-role-implements? (Role (x)) (Role (y)))
+      ;; Assertion Related
+      (check-role-not-implements? (Role (x)) (Role (y) (Shares Int)))
+      (check-role-implements? (Role (x) (Shares Int)) (Role (y)))
+      (check-role-implements? (Role (x) (Shares Int)) (Role (y) (Shares Int)))
+      (check-role-implements? (Role (x)
+                                    (Shares Int)
+                                    (Shares String))
+                              (Role (y)
+                                    (Shares Int)
+                                    (Shares String)))
+      (check-role-implements? (Role (x)
+                                    (Shares String)
+                                    (Shares Int))
+                              (Role (y)
+                                    (Shares Int)
+                                    (Shares String)))
+      (check-role-not-implements? (Role (x)
+                                        (Shares Int))
+                                  (Role (y)
+                                        (Shares Int)
+                                        (Shares String)))
+      ;; Reactions
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)))
+                              (Role (y)
+                                    (Reacts (Know Int))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int))
+                                    (Shares String))
+                              (Role (y)
+                                    (Reacts (Know Int))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)
+                                            (Role (y) (Shares String))))
+                              (Role (y)
+                                    (Reacts (Know Int))))
+      (check-role-not-implements? (Role (x))
+                                  (Role (y)
+                                        (Reacts (Know Int))))
+      (check-role-not-implements? (Role (x)
+                                        (Reacts (Know String)))
+                                  (Role (y)
+                                        (Reacts (Know Int))))
+      ;; these two might need to be reconsidered
+      (check-role-not-implements? (Role (x)
+                                        (Shares (Observe ★/t)))
+                                  (Role (y)
+                                        (Reacts (Know Int))))
+      (check-role-not-implements? (Role (x)
+                                        (Shares (Observe Int)))
+                                  (Role (y)
+                                        (Reacts (Know Int))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts (Know Int)
+                                            (Role (y2) (Shares String)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (¬Know Int)
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts (¬Know Int)
+                                            (Role (y2) (Shares String)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts OnStart
+                                            (Role (y2) (Shares String)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStop
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts OnStop
+                                            (Role (y2) (Shares String)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnDataflow
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts OnDataflow
+                                            (Role (y2) (Shares String)))))
+      (check-role-not-implements? (Role (x)
+                                        (Reacts (Know Int)
+                                                (Role (x2) (Shares String))))
+                                  (Role (y)
+                                        (Reacts (Know Int)
+                                                (Role (y2) (Shares String))
+                                                (Role (y3) (Shares Int)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)
+                                            (Role (x3) (Shares Int))
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts (Know Int)
+                                            (Role (y2) (Shares String))
+                                            (Role (y3) (Shares Int)))))
+      ;; also not sure about this one
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)
+                                            (Role (x2)
+                                                  (Shares String)
+                                                  (Shares Int))))
+                              (Role (y)
+                                    (Reacts (Know Int)
+                                            (Role (y2) (Shares String))
+                                            (Role (y3) (Shares Int)))))
+      ;; Stop
+      ;; these all error when trying to create the Stop type :<
+#|
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Stop x)))
+                              (Role (x)
+                                    (Reacts OnStart (Stop x))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Stop x)))
+                              (Role (y)
+                                    (Reacts OnStart (Stop y))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Stop x (Role (x2) (Shares Int)))))
+                              (Role (y)
+                                    (Reacts OnStart (Stop y) (Role (y2) (Shares Int)))))
+      (check-role-not-implements? (Role (x)
+                                        (Reacts OnStart (Stop x (Role (x2) (Shares String)))))
+                                  (Role (y)
+                                        (Reacts OnStart (Stop y) (Role (y2) (Shares Int)))))
+      (check-role-not-implements? (Role (x)
+                                        (Reacts OnStart))
+                                  (Role (y)
+                                        (Reacts OnStart (Stop y) (Role (y2) (Shares Int)))))
+|#
+      ;; Spawning Actors
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Actor Int)))
+                              (Role (x)
+                                    (Reacts OnStart (Actor Int))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Actor Int)))
+                              (Role (x)
+                                    (Reacts OnStart (Actor (U Int String)))))
+      (check-role-not-implements? (Role (x)
+                                    (Reacts OnStart (Actor Bool)))
+                              (Role (x)
+                                    (Reacts OnStart (Actor (U Int String)))))
+      )))
 
 ;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;; MODIFYING GLOBAL TYPECHECKING STATE!!!!!
@@ -1083,7 +1328,7 @@
    #:fail-unless (pure? #'e-) "expression must be pure"
    #:with x- (generate-temporary #'x)
    --------
-   [⊢ (define/intermediate x x- τ.norm e-) (⇒ : ★/t)]]
+   [⊢ (define/intermediate #,(syntax-local-identifier-as-binding #'x) x- τ.norm e-) (⇒ : ★/t)]]
   [(_ x:id e) ≫
    ;This won't work with mutually recursive definitions
    [⊢ e ≫ e- ⇒ τ]

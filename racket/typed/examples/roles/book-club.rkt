@@ -53,6 +53,13 @@
         (select 1 item)
         stock)))
 
+(define-type-alias seller-role
+  (Role (seller)
+   (Reacts (Know (Observe (BookQuoteT String ★/t)))
+           (Role (_)
+                 ;; nb no mention of retracting this assertion
+                 (Shares (BookQuoteT String Int))))))
+
 (define (spawn-seller [inventory : Inventory])
   (spawn τc
     (start-facet seller
@@ -63,8 +70,38 @@
         ;; TODO - lookup
         (assert (book-quote title (lookup title (ref books))))))))
 
+(define-type-alias leader-role
+  (Role (leader)
+        (Reacts (Know (BookQuoteT String Int))
+                (Role (poll)
+                      (Reacts (Know (BookInterestT String String Bool))
+                              ;; this is actually implemented indirectly through dataflow
+                              (U (Stop leader
+                                       (Role (_)
+                                             (Shares (BookOfTheMonthT String))))
+                                 (Stop poll)))))))
+
+(define-type-alias leader-actual
+  (Role (get-quotes31)
+        (Reacts (Know (BookQuoteT String (Bind Int)))
+                (Stop get-quotes)
+                (Role (poll-members36)
+                      (Reacts OnDataflow
+                              (Stop poll-members
+                                    (Stop get-quotes))
+                              (Stop get-quotes
+                                    (Role (announce39)
+                                          (Shares (BookOfTheMonthT String)))))
+                      (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
+                      (Reacts (Know (BookInterestT String (Bind String) Bool)))
+                      (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
+                      (Reacts (Know (BookInterestT String (Bind String) Bool)))))
+        (Reacts (¬Know (ClubMemberT (Bind String))))
+        (Reacts (Know (ClubMemberT (Bind String))))))
+
 (define (spawn-leader [titles : (List String)])
   (spawn τc
+   (print-role
    (start-facet get-quotes
      (field [book-list (List String) (rest titles)]
             [title String (first titles)])
@@ -103,8 +140,16 @@
                (when (> (set-count (ref nays))
                         (/ (set-count (ref members)) 2))
                  (printf "leader finds enough negative nancys for ~a\n" (ref title))
-                 (stop poll-members (next-book)))))])))))
+                 (stop poll-members (next-book)))))]))))))
 
+(define-type-alias member-role
+  (Role (member)
+        (Shares (ClubMemberT String))
+        ;; should this be the type of the pattern? or lowered to concrete types?
+        (Reacts (Know (Observe (BookInterestT String ★/t ★/t)))
+                (Role (_)
+                      (Shares (BookInterestT String String Bool))))))
+                       
 (define (spawn-club-member [name : String]
                            [titles : (List String)])
   (spawn τc
