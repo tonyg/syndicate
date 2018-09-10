@@ -22,6 +22,15 @@
      (Observe DepositRequest)
      (Observe (Observe DepositRequest))))
 
+(define-type-alias account-manager-role
+  (Role (account-manager)
+        (Shares Account)
+        (Reacts (Know (Deposit Int)))))
+
+(define-type-alias client-role
+  (Role (client)
+        (Reacts (Know Account))))
+
 (dataspace ds-type
 
   (spawn ds-type
