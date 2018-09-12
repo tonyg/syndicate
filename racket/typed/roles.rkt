@@ -12,7 +12,7 @@
          Computation Value Endpoints Roles Spawns
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
-         when unless
+         when unless send!
          ;; Derived Forms
          during define/query-value define/query-set
          ;; endpoints
@@ -67,7 +67,7 @@
 ;; ep key aggregates endpoint affects:
 ;;   `Shares`, `Reacts`, and `MakesField`
 ;; Note thar MakesField is only an effect, not a type
-;; f key aggregates facet effects (starting a facet) as `Role`s
+;; f key aggregates facet effects (starting a facet) as `Role`s and message sends, `Sends`
 ;; s key aggregates spawned actors as `Actor`s
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -76,6 +76,7 @@
 
 (define-binding-type Role #:arity >= 0 #:bvs = 1)
 (define-type-constructor Shares #:arity = 1)
+(define-type-constructor Sends #:arity = 1)
 (define-type-constructor Reacts #:arity >= 1)
 (define-type-constructor Know #:arity = 1)
 (define-type-constructor ¬Know #:arity = 1)
@@ -85,7 +86,6 @@
 (define-type-constructor Bind #:arity = 1)
 (define-base-types OnStart OnStop OnDataflow MakesField)
 (define-for-syntax field-prop-name 'fields)
-
 
 (define-type-constructor Tuple #:arity >= 0)
 (define-type-constructor Observe #:arity = 1)
@@ -301,14 +301,16 @@
   (define-syntax-class kons1
     (pattern (~or (~datum observe)
                   (~datum inbound)
-                  (~datum outbound))))
+                  (~datum outbound)
+                  (~datum message))))
 
   (define (kons1->constructor stx)
     (syntax-parse stx
       #:datum-literals (observe inbound outbound)
       [observe #'syndicate:observe]
       [inbound #'syndicate:inbound]
-      [outbound #'syndicate:outbound]))
+      [outbound #'syndicate:outbound]
+      [message #'syndicate:message]))
 
   (define-syntax-class basic-val
     (pattern (~or boolean
@@ -338,13 +340,25 @@
    (syntax-parse t
      [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
      [~★/t #'★/t]
-     [(~Observe τ) #'τ]
+     ;; since (Observe X) can match (Message X):
+     ;; doing this specifically for the intersection operation in the spawn rule, need to check other
+     ;; uses
+     [(~Observe τ) #'(U τ (Message τ))]
      [_ #'(U*)])))
+
+;; similar to strip- fns, but leave non-message types as they are
+(define-for-syntax (prune-message t)
+  (type-eval
+   (syntax-parse t
+     [(~U* τ ...) #`(U #,@(stx-map prune-message #'(τ ...)))]
+     [~★/t #'★/t]
+     [(~Message τ) #'τ]
+     [_ t])))
 
 (define-for-syntax (strip-inbound t)
   (type-eval
    (syntax-parse t
-     [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [(~U* τ ...) #`(U #,@(stx-map strip-inbound #'(τ ...)))]
      [~★/t #'★/t]
      [(~Inbound τ) #'τ]
      [_ #'(U*)])))
@@ -352,7 +366,7 @@
 (define-for-syntax (strip-outbound t)
   (type-eval
    (syntax-parse t
-     [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [(~U* τ ...) #`(U #,@(stx-map strip-outbound #'(τ ...)))]
      [~★/t #'★/t]
      [(~Outbound τ) #'τ]
      [_ #'(U*)])))
@@ -361,7 +375,7 @@
   (type-eval
    (syntax-parse t
      ;; TODO: probably need to `normalize` the result
-     [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [(~U* τ ...) #`(U #,@(stx-map relay-interests #'(τ ...)))]
      [~★/t #'★/t]
      [(~Observe (~Inbound τ)) #'(Observe τ)]
      [_ #'(U*)])))
@@ -394,8 +408,11 @@
      (values #'τi #'τo #'τa)]
     [(~Actor τc)
      (values (mk-U*- '()) (mk-U*- '()) t)]
+    [(~Sends τ-m)
+     (values (mk-U*- '()) (type-eval #'(Message τ-m)) (mk-U*- '()))]
     [(~Role (name:id)
        (~or (~Shares τ-s)
+            (~Sends τ-m)
             (~Reacts τ-if τ-then ...)) ...
        (~and (~Role _ ...) sub-role) ...)
      (define-values (is os ss)
@@ -407,7 +424,7 @@
          (values (cons i ins) (cons o outs) (cons s spawns))))
      (define pat-types (stx-map event-desc-type #'(τ-if ...)))
      (values (type-eval #`(U #,@is #,@pat-types))
-             (type-eval #`(U τ-s ... #,@os #,@(stx-map pattern-sub-type pat-types)))
+             (type-eval #`(U τ-s ... (Message τ-m) ... #,@os #,@(stx-map pattern-sub-type pat-types)))
              (type-eval #`(U #,@ss)))]))
 
 ;; EventDescriptorType -> Type
@@ -420,8 +437,13 @@
 
 ;; PatternType -> Type
 (define-for-syntax (pattern-sub-type pt)
-  (define t (replace-bind-and-discard-with-★ pt))
-  (type-eval #`(Observe #,t)))
+  (syntax-parse pt
+    [(~Message τ)
+     (define t (replace-bind-and-discard-with-★ #'τ))
+     (type-eval #`(Observe #,t))]
+    [τ
+     (define t (replace-bind-and-discard-with-★ #'τ))
+     (type-eval #`(Observe #,t))]))
 
 (define-for-syntax (replace-bind-and-discard-with-★ t)
   (syntax-parse t
@@ -439,6 +461,8 @@
      (type-eval #`(Inbound #,(replace-bind-and-discard-with-★ #'τ)))]
     [(~Outbound τ)
      (type-eval #`(Outbound #,(replace-bind-and-discard-with-★ #'τ)))]
+    [(~Message τ)
+     (type-eval #`(Message #,(replace-bind-and-discard-with-★ #'τ)))]
     [(~constructor-type _ τ ...)
      (make-cons-type t (stx-map replace-bind-and-discard-with-★ #'(τ ...)))]
     [_ t]))
@@ -474,6 +498,8 @@
     [((~Inbound τ1:type) (~Inbound τ2:type))
      (<: #'τ1 #'τ2)]
     [((~Outbound τ1:type) (~Outbound τ2:type))
+     (<: #'τ1 #'τ2)]
+    [((~Message τ1:type) (~Message τ2:type))
      (<: #'τ1 #'τ2)]
     [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
      #:when (tags-equal? #'t1 #'t2)
@@ -550,12 +576,17 @@
      #:with τ (∩ #'τ1 #'τ2)
      #:fail-when (<: #'τ (type-eval #'(U))) #f
      (type-eval #'(Outbound τ))]
+    [((~Message τ1:type) (~Message τ2:type))
+     #:with τ (∩ #'τ1 #'τ2)
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Message τ))]
     [_ (type-eval #'(U))]))
 
 ;; Type Type -> Bool
-;; first type is the contents of the set
+;; first type is the contents of the set/dataspace
 ;; second type is the type of a pattern
 (define-for-syntax (project-safe? t1 t2)
+  ;; TODO - messages
   (syntax-parse #`(#,t1 #,t2)
     [(_ (~Bind τ2:type))
      (and (finite? t1) (<: t1 #'τ2))]
@@ -578,6 +609,8 @@
     [((~Inbound τ1:type) (~Inbound τ2:type))
      (project-safe? #'τ1 #'τ2)]
     [((~Outbound τ1:type) (~Outbound τ2:type))
+     (project-safe? #'τ1 #'τ2)]
+    [((~Message τ1:type) (~Message τ2:type))
      (project-safe? #'τ1 #'τ2)]
     [_ #t]))
 
@@ -609,6 +642,8 @@
      (overlap? #'τ1 #'τ2)]
     [((~Outbound τ1:type) (~Outbound τ2:type))
      (overlap? #'τ1 #'τ2)]
+    [((~Message τ1:type) (~Message τ2:type))
+     (overlap? #'τ1 #'τ2)]
     [_ (<: t1 t2)]))
 
 ;; Flattish-Type -> Bool
@@ -629,6 +664,8 @@
      (finite? #'τ)]
     [(~Set τ:type)
      (finite? #'τ)]
+    [(~Message τ:type)
+     (finite? #'τ)]
     [_ #t]))
 
 ;; PatternType -> Type
@@ -648,6 +685,8 @@
      (type-eval #`(Inbound #,(pattern-matching-assertions #'τ)))]
     [(~Outbound τ)
      (type-eval #`(Outbound #,(pattern-matching-assertions #'τ)))]
+    [(~Message τ)
+     (type-eval #`(Message #,(pattern-matching-assertions #'τ)))]
     [(~constructor-type _ τ ...)
      (make-cons-type t (stx-map pattern-matching-assertions #'(τ ...)))]
     [_ t]))
@@ -661,7 +700,10 @@
      [((~Know τ1) (~Know τ2))
       (<: (pattern-matching-assertions #'τ2)
           (pattern-matching-assertions #'τ1))]
-     [((~¬Know τ1) (¬Know τ2))
+     [((~¬Know τ1) (~¬Know τ2))
+      (<: (pattern-matching-assertions #'τ2)
+          (pattern-matching-assertions #'τ1))]
+     [((~Message τ1) (~Message τ2))
       (<: (pattern-matching-assertions #'τ2)
           (pattern-matching-assertions #'τ1))]
      [_ #f])))
@@ -671,14 +713,17 @@
 (define-for-syntax (role-implements? r spec)
   (syntax-parse #`(#,r #,spec)
     ;; TODO: cases for unions, stop
-    [((~Role (x:id) (~or (~Shares τ-s1) (~Reacts τ-if1 τ-then1 ...)) ...)
-      (~Role (y:id) (~or (~Shares τ-s2) (~Reacts τ-if2 τ-then2 ...)) ...))
+    [((~Role (x:id) (~or (~Shares τ-s1) (~Sends τ-m1) (~Reacts τ-if1 τ-then1 ...)) ...)
+      (~Role (y:id) (~or (~Shares τ-s2) (~Sends τ-m2) (~Reacts τ-if2 τ-then2 ...)) ...))
      #:when (free-identifier=? #'x #'y)
      (and
       ;; for each assertion in the spec, there must be a suitable assertion in the actual
       ;; TODO: this kinda ignores numerosity, can one assertion in r cover multiple assertions in spec?
       (for/and [(s2 (in-syntax #'(τ-s2 ...)))]
         (stx-ormap (<:l s2) #'(τ-s1 ...)))
+      ;; similar for messages
+      (for/and [(m2 (in-syntax #'(τ-m2 ...)))]
+        (stx-ormap (<:l m2) #'(τ-m1 ...)))
       (for/and [(s2 (in-syntax #'((τ-if2 (τ-then2 ...)) ...)))]
         (define/syntax-parse (τ-if2 (τ-then2 ...)) s2)
         (for/or [(s1 (in-syntax #'((τ-if1 (τ-then1 ...)) ...)))]
@@ -699,6 +744,10 @@
       (for/and ([t2 (in-syntax #'(τ2 ...))])
         (for/or ([t1 (in-syntax #'(τ1 ...))])
           (role-implements? t1 t2))))]
+    ;; seems like this check might be in the wrong place
+    [((~Sends τ-m1)
+      (~Sends τ-m2))
+     (<: #'τ-m1 #'τ-m2)]
     [((~Actor _)
       (~Actor _))
      ;; spawned actor OK in specified dataspace
@@ -995,12 +1044,15 @@
         (unless (and (stx-null? facet-effects) (stx-null? spawn-effects))
           (type-error #:src #'(ep ...) #:msg "only endpoint effects allowed"))]
   #:with ((~or (~and τ-a (~Shares _))
+               ;; untyped syndicate might allow this - TODO
+               #;(~and τ-m (~Sends _))
                (~and τ-r (~Reacts _ ...))
                ~MakesField)
           ...)
          ep-effects
   #:with τ (type-eval #`(Role (#,name--)
                           τ-a ...
+                          ;; τ-m ...
                           τ-r ...))
   --------------------------------------------------------------
   [⊢ (syndicate:react (let- ([#,name-- (syndicate:current-facet-id)])
@@ -1033,6 +1085,14 @@
   [⊢ (syndicate:assert e-) (⇒ : ★/t)
                            (⇒ ep (τs))])
 
+(define-typed-syntax (send! e:expr) ≫
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
+  #:with τm (type-eval #'(Sends τ))
+  --------------------------------------
+  [⊢ (syndicate:send! e-) (⇒ : ★/t)
+                          (⇒ f (τm))])
+
 (define-typed-syntax (stop facet-name:id cont ...) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
   [⊢ (begin #f cont ...) ≫ cont- (⇒ ep (~effs)) (⇒ s (~effs)) (⇒ f (~effs τ-f ...))]
@@ -1042,14 +1102,17 @@
                                               (⇒ f (τ))])
 
 (begin-for-syntax
-  (define-syntax-class asserted-or-retracted
-    #:datum-literals (asserted retracted)
+  (define-syntax-class asserted/retracted/message
+    #:datum-literals (asserted retracted message)
     (pattern (~or (~and asserted
                         (~bind [syndicate-kw #'syndicate:asserted]
                                [react-con #'Know]))
                   (~and retracted
                         (~bind [syndicate-kw #'syndicate:retracted]
-                               [react-con #'¬Know]))))))
+                               [react-con #'¬Know]))
+                  (~and message
+                        (~bind [syndicate-kw #'syndicate:message]
+                               [react-con #'Message]))))))
 
 (define-typed-syntax on
   [(on (~literal start) s ...) ≫
@@ -1068,7 +1131,7 @@
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : ★/t)
       (⇒ ep (τ-r))]]
-  [(on (a/r:asserted-or-retracted p) s ...) ≫
+  [(on (a/r/m:asserted/retracted/message p) s ...) ≫
    [⊢ p ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
    #:with ([x:id τ:type] ...) (pat-bindings #'p)
@@ -1077,9 +1140,9 @@
                  (⇒ f (~effs τ-f ...))
                  (⇒ s (~effs τ-s ...))]
    #:with p- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'p))
-   #:with τ-r (type-eval #'(Reacts (a/r.react-con τp) τ-f ... τ-s ...))
+   #:with τ-r (type-eval #'(Reacts (a/r/m.react-con τp) τ-f ... τ-s ...))
    -----------------------------------
-   [⊢ (syndicate:on (a/r.syndicate-kw p-)
+   [⊢ (syndicate:on (a/r/m.syndicate-kw p-)
                     s-)
       (⇒ : ★/t)
       (⇒ ep (τ-r))]])
@@ -1315,6 +1378,12 @@
   ---------------------------------------------------------------------------
   [⊢ (syndicate:outbound e-) (⇒ : (Outbound τ))])
 
+(define-typed-syntax (message e:expr) ≫
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  ------------------------------
+  [⊢ (syndicate:message e-) (⇒ : (Message τ))])
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Patterns
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1420,7 +1489,7 @@
   ------------------------------------
   [≻ (if e #f (begin s ...))])
 
-;; copied from ext-stlc
+
 (define-typed-syntax begin
   [(_ e_unit ... e) ≫
    #:do [(define-values (e-... τ... ep-effs f-effs s-effs) (walk/bind #'(e_unit ... e)))]
@@ -1774,6 +1843,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(module+ test
+  (check-type (spawn (U (Message (Tuple String Int))
+                        (Observe (Tuple String ★/t)))
+                     (start-facet echo
+                                  (on (message (tuple "ping" (bind x Int)))
+                                      (send! (tuple "pong" x)))))
+              : ★/t)
+  (typecheck-fail (spawn (U (Message (Tuple String Int))
+                            (Message (Tuple String String))
+                            (Observe (Tuple String ★/t)))
+                         (start-facet echo
+                                      (on (message (tuple "ping" (bind x Int)))
+                                          (send! (tuple "pong" x)))))))
 
 ;; local definitions
 #;(module+ test
