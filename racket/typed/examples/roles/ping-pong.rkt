@@ -4,17 +4,17 @@
 ;; pong: 8339
 
 (define-type-alias ds-type
-  (U (Tuple String Int)
+  (U (Message (Tuple String Int))
      (Observe (Tuple String ★/t))))
 
 (dataspace ds-type
   (spawn ds-type
     (start-facet echo
-      (on (asserted (tuple "ping" (bind x Int)))
-          (start-facet _
-            (assert (tuple "pong" x))))))
+      (on (message (tuple "ping" (bind x Int)))
+          (send! (tuple "pong" x)))))
   (spawn ds-type
     (start-facet serve
-      (assert (tuple "ping" 8339))
-      (on (asserted (tuple "pong" (bind x Int)))
+      (on start
+          (send! (tuple "ping" 8339)))
+      (on (message (tuple "pong" (bind x Int)))
           (printf "pong: ~v\n" x)))))
