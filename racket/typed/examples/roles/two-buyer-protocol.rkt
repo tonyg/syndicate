@@ -60,6 +60,12 @@
    OrderRequest
    (Observe OrderInterest)))
 
+(define-type-alias seller-role
+  (Role (seller)
+    (Reacts (Know (Observe (QuoteT String ★/t)))
+            (Role (_)
+              (Shares (QuoteT String Int))))))
+
 (dataspace ds-type
 
 ;; seller

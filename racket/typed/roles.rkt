@@ -21,7 +21,7 @@
          tuple select lambda ref observe inbound outbound
          ;; making types
          define-type-alias
-         define-constructor
+         define-constructor define-constructor*
          ;; values
          #%datum
          ;; patterns
@@ -52,6 +52,12 @@
 (module+ test
   (require rackunit)
   (require turnstile/rackunit-typechecking))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Debugging
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-for-syntax DEBUG-BINDINGS? #f)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Type Checking Conventions
@@ -174,6 +180,14 @@
       (syntax-parse stx
         [(_ e ...)
          #`(#,transformer e ...)]))))
+
+(define-syntax (define-constructor* stx)
+  (syntax-parse stx
+    #:datum-literals (:)
+    [(_ (Cons:id : TyCons:id slot:id ...) clause ...)
+     #'(define-constructor (Cons slot ...)
+         #:type-constructor TyCons
+         clause ...)]))
 
 (define-syntax (define-constructor stx)
   (syntax-parse stx
@@ -691,7 +705,8 @@
      (<: r spec)]))
 
 (module+ test
-  (begin-for-syntax
+  (displayln "skipping commented for-syntax tests because it's slow")
+  #;(begin-for-syntax
     ;; TESTS
     (let ()
       ;; utils
@@ -888,6 +903,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-for-syntax (int-def-ctx-bind-type-rename x x- t ctx)
+  (when DEBUG-BINDINGS?
+    (printf "adding to context ~a\n" (syntax-debug-info x)))
   (syntax-local-bind-syntaxes (list x-) #f ctx)
   (syntax-local-bind-syntaxes (list x)
                               #`(make-rename-transformer
@@ -909,12 +926,17 @@
            (add-bindings-to-ctx e def-ctx))]
         [_ (void)]))
 
+(define-for-syntax (display-ctx-bindings ctx)
+  (printf "context:\n")
+  (for ([x (in-list (internal-definition-context-binding-identifiers ctx))])
+    (printf ">>~a\n" (syntax-debug-info x))))
+
 ;; -> (Values e-... (Listof Type) (Listof EndpointEffects) (Listof FacetEffects) (Listof SpawnEffects))
 ;; recognizes local binding forms
 ;; (field/intermediate [x e] ...
 ;; (define/intermediate x x- τ e)
 (define-for-syntax (walk/bind e...
-                              [def-ctx (syntax-local-make-definition-context #f #f)]
+                              [def-ctx (syntax-local-make-definition-context)]
                               [unique (gensym 'walk/bind)])
   (define-values (rev-e-... rev-τ... ep-effects facet-effects spawn-effects)
     (let loop ([e... (syntax->list e...)]
@@ -927,6 +949,10 @@
         ['()
          (values rev-e-... rev-τ... ep-effects facet-effects spawn-effects)]
         [(cons e more)
+         (when (and DEBUG-BINDINGS?
+                    (identifier? e))
+           (display-ctx-bindings def-ctx)
+           (printf "expanding ~a\n" (syntax-debug-info e)))
          (define e- (local-expand e (list unique) (list #'erased #'begin) def-ctx))
          (syntax-parse e-
            #:literals (begin)
@@ -1327,15 +1353,17 @@
    [⊢ e ≫ e- ⇐ τ.norm]
    #:fail-unless (pure? #'e-) "expression must be pure"
    #:with x- (generate-temporary #'x)
+   #:with x+ (syntax-local-identifier-as-binding #'x)
    --------
-   [⊢ (define/intermediate #,(syntax-local-identifier-as-binding #'x) x- τ.norm e-) (⇒ : ★/t)]]
+   [⊢ (define/intermediate x+ x- τ.norm e-) (⇒ : ★/t)]]
   [(_ x:id e) ≫
    ;This won't work with mutually recursive definitions
    [⊢ e ≫ e- ⇒ τ]
    #:fail-unless (pure? #'e-) "expression must be pure"
    #:with x- (generate-temporary #'x)
+   #:with x+ (syntax-local-identifier-as-binding #'x)
    --------
-   [⊢ (define/intermediate x x- τ e-) (⇒ : ★/t)]]
+   [⊢ (define/intermediate x+ x- τ e-) (⇒ : ★/t)]]
   [(_ (f [x (~optional (~datum :)) ty:type] ...
          (~or (~datum →) (~datum ->)) ty_out:type)
          e ...+) ≫
@@ -1353,7 +1381,7 @@
    [⊢ (define/intermediate f f- fun-ty e-) (⇒ : ★/t)]]
   [(_ (f [x (~optional (~datum :)) ty] ...)
          e ...+) ≫
-   --------
+   ----------------------------
    [≻ (define (f [x ty] ... -> ★/t) e ...)]])
 
 ;; copied from ext-stlc
@@ -1746,3 +1774,30 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; local definitions
+#;(module+ test
+  ;; these cause an error in rackunit-typechecking, don't know why :/
+  #;(check-type (let ()
+                (begin
+                  (define id : Int 1234)
+                  id))
+              : Int
+              -> 1234)
+  #;(check-type (let ()
+                (define (spawn-cell [initial-value : Int])
+                  (define id 1234)
+                  id)
+                (typed-app spawn-cell 42))
+              : Int
+              -> 1234)
+  (check-equal? (let ()
+                  (define id : Int 1234)
+                  id)
+                1234)
+  #;(check-equal? (let ()
+                  (define (spawn-cell [initial-value : Int])
+                    (define id 1234)
+                    id)
+                  (typed-app spawn-cell 42))
+                1234))
