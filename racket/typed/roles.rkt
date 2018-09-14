@@ -37,6 +37,8 @@
          print-type print-role
          ;; Extensions
          match cond
+         ;; require & provides
+         require provide
          )
 
 (require (prefix-in syndicate: syndicate/actor-lang))
@@ -1411,10 +1413,12 @@
 (define-syntax (define/intermediate stx)
   (syntax-parse stx
     [(_ x:id x-:id τ e)
-     ;; typed-variable-rename allows for using at module top level
+     #:with x+ (add-orig (assign-type #'x- #'τ #:wrap? #f) #'x)
+     ;; including a syntax binding for x allows for module-top-level references
+     ;; (where walk/bind won't replace further uses) and subsequent provides
      #'(begin-
-         (define-typed-variable-rename x ≫ x- : τ)
-         (define- x- e))]))
+         (define-syntax x (make-variable-like-transformer #'x+))
+         (define- x+ e))]))
 
 ;; copied from ext-stlc
 (define-typed-syntax define
