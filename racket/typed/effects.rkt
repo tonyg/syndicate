@@ -1,13 +1,27 @@
 #lang turnstile
 
-(provide (for-syntax get-effect
-           effect-free?
-           pure?
-           all-pure?))
+(provide (all-defined-out)
+         (for-syntax (all-defined-out)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Effect Checking
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; for looking at the "effects"
+(begin-for-syntax
+  (define-syntax ~effs
+    (pattern-expander
+     (syntax-parser
+       [(_ eff:id ...)
+        #:with tmp (generate-temporary 'effss)
+        #'(~and tmp
+                (~parse (eff ...) (stx-or #'tmp #'())))])))
+
+  (define (stx-truth? a)
+    (and a (not (and (syntax? a) (false? (syntax-e a))))))
+  (define (stx-or a b)
+    (cond [(stx-truth? a) a]
+          [else b])))
 
 ;; DesugaredSyntax EffectName -> (Syntaxof Effect ...)
 (define-for-syntax (get-effect e- eff)
