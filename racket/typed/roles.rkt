@@ -16,18 +16,20 @@
          ;; expressions
          tuple select lambda ref observe inbound outbound
          ;; making types
-         (all-from-out "user-ctors.rkt")
+         define-type-alias
+         define-constructor define-constructor*
          ;; values
          #%datum
          ;; patterns
          bind discard
          ;; primitives
-         (except-out (all-from-out "define-like-things.rkt") define)
-         (rename-out [define/fun define])
          (all-from-out "prim.rkt")
-         ;; lists, sets
-         (all-from-out "list.rkt")
-         (all-from-out "set.rkt")
+         ;; + - * / and or not > < >= <= = equal? displayln printf define
+         ;; lists
+         list cons first rest member? empty? for for/fold
+         ;; sets
+         Set set set-member? set-add set-remove set-count set-union set-subtract set-intersect
+         list->set set->list
          ;; DEBUG and utilities
          print-type print-role
          ;; Extensions
@@ -40,20 +42,25 @@
 (require "base-types.rkt"
          "effects.rkt"
          "prim.rkt"
-         "judgments.rkt"
-         "user-ctors.rkt"
-         "list.rkt"
-         "set.rkt"
-         "define-like-things.rkt")
+         "judgments/basic.rkt")
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx))
 
 (require macrotypes/postfix-in)
+(require (rename-in racket/math [exact-truncate exact-truncate-]))
+(require (postfix-in - racket/list))
+(require (postfix-in - racket/set))
 (require (postfix-in - racket/match))
 
 (module+ test
   (require rackunit)
   (require turnstile/rackunit-typechecking))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Debugging
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-for-syntax DEBUG-BINDINGS? #f)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Type Checking Conventions
@@ -68,6 +75,163 @@
 
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
+
+;; τ.norm in 1st case causes "not valid type" error when referring to ⊥ in another file.
+;; however, this version expands the type at every reference, incurring a potentially large
+;; overhead---2x in the case of book-club.rkt
+;; (copied from ext-stlc example)
+(define-syntax define-type-alias
+  (syntax-parser
+    [(_ alias:id τ)
+     #'(define-syntax- alias
+         (make-variable-like-transformer #'τ))]
+    [(_ (f:id x:id ...) ty)
+     #'(define-syntax- (f stx)
+         (syntax-parse stx
+           [(_ x ...)
+            #:with τ:any-type #'ty
+            #'τ.norm]))]))
+
+(define-type-alias ⊥ (U*))
+
+;; for looking at the "effects"
+(begin-for-syntax
+  (define-syntax ~effs
+    (pattern-expander
+     (syntax-parser
+       [(_ eff:id ...)
+        #:with tmp (generate-temporary 'effss)
+        #'(~and tmp
+                (~parse (eff ...) (stx-or #'tmp #'())))])))
+
+  (define (stx-truth? a)
+    (and a (not (and (syntax? a) (false? (syntax-e a))))))
+  (define (stx-or a b)
+    (cond [(stx-truth? a) a]
+          [else b])))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; User Defined Types, aka Constructors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(begin-for-syntax
+  (define-splicing-syntax-class type-constructor-decl
+    (pattern (~seq #:type-constructor TypeCons:id))
+    (pattern (~seq) #:attr TypeCons #f))
+
+  (struct user-ctor (typed-ctor untyped-ctor)
+    #:property prop:procedure
+    (lambda (v stx)
+      (define transformer (user-ctor-typed-ctor v))
+      (syntax-parse stx
+        [(_ e ...)
+         #`(#,transformer e ...)]))))
+
+(define-syntax (define-constructor* stx)
+  (syntax-parse stx
+    #:datum-literals (:)
+    [(_ (Cons:id : TyCons:id slot:id ...) clause ...)
+     #'(define-constructor (Cons slot ...)
+         #:type-constructor TyCons
+         clause ...)]))
+
+(define-syntax (define-constructor stx)
+  (syntax-parse stx
+    [(_ (Cons:id slot:id ...)
+        ty-cons:type-constructor-decl
+        (~seq #:with
+              Alias AliasBody) ...)
+     #:with TypeCons (or (attribute ty-cons.TypeCons) (format-id stx "~a/t" (syntax-e #'Cons)))
+     #:with MakeTypeCons (format-id #'TypeCons "make-~a" #'TypeCons)
+     #:with GetTypeParams (format-id #'TypeCons "get-~a-type-params" #'TypeCons)
+     #:with TypeConsExpander (format-id #'TypeCons "~~~a" #'TypeCons)
+     #:with TypeConsExtraInfo (format-id #'TypeCons "~a-extra-info" #'TypeCons)
+     #:with (StructName Cons- type-tag) (generate-temporaries #'(Cons Cons Cons))
+     (define arity (stx-length #'(slot ...)))
+     #`(begin-
+         (struct- StructName (slot ...) #:reflection-name 'Cons #:transparent)
+         (define-syntax (TypeConsExtraInfo stx)
+           (syntax-parse stx
+             [(_ X (... ...)) #'('type-tag 'MakeTypeCons 'GetTypeParams)]))
+         (define-type-constructor TypeCons
+           #:arity = #,arity
+           #:extra-info 'TypeConsExtraInfo)
+         (define-syntax (MakeTypeCons stx)
+           (syntax-parse stx
+             [(_ t (... ...))
+              #:fail-unless (= #,arity (stx-length #'(t (... ...)))) "arity mismatch"
+              #'(TypeCons t (... ...))]))
+         (define-syntax (GetTypeParams stx)
+           (syntax-parse stx
+             [(_ (TypeConsExpander t (... ...)))
+              #'(t (... ...))]))
+         (define-syntax Cons
+           (user-ctor #'Cons- #'StructName))
+         (define-typed-syntax (Cons- e (... ...)) ≫
+           #:fail-unless (= #,arity (stx-length #'(e (... ...)))) "arity mismatch"
+           [⊢ e ≫ e- (⇒ : τ)] (... ...)
+           #:fail-unless (all-pure? #'(e- (... ...))) "expressions must be pure"
+           ----------------------
+           [⊢ (#%app- StructName e- (... ...)) (⇒ : (TypeCons τ (... ...)))])
+         (define-type-alias Alias AliasBody) ...)]))
+
+(begin-for-syntax
+  (define-syntax ~constructor-extra-info
+    (pattern-expander
+     (syntax-parser
+       [(_ tag mk get)
+        #'(_ (_ tag) (_ mk) (_ get))])))
+
+  (define-syntax ~constructor-type
+    (pattern-expander
+     (syntax-parser
+       [(_ tag . rst)
+        #'(~and it
+                (~fail #:unless (user-defined-type? #'it))
+                (~parse tag (get-type-tag #'it))
+                (~Any _ . rst))])))
+
+  (define-syntax ~constructor-exp
+    (pattern-expander
+     (syntax-parser
+       [(_ cons . rst)
+        #'(~and (cons . rst)
+                (~fail #:unless (ctor-id? #'cons)))])))
+
+  (define (inspect t)
+    (syntax-parse t
+      [(~constructor-type tag t ...)
+       (list (syntax-e #'tag) (stx-map type->str #'(t ...)))]))
+
+  (define (tags-equal? t1 t2)
+    (equal? (syntax-e t1) (syntax-e t2)))
+    
+  (define (user-defined-type? t)
+    (get-extra-info (type-eval t)))
+
+  (define (get-type-tag t)
+    (syntax-parse (get-extra-info t)
+      [(~constructor-extra-info tag _ _)
+       (syntax-e #'tag)]))
+
+  (define (get-type-args t)
+    (syntax-parse (get-extra-info t)
+      [(~constructor-extra-info _ _ get)
+       (define f (syntax-local-value #'get))
+       (syntax->list (f #`(get #,t)))]))
+
+  (define (make-cons-type t args)
+    (syntax-parse (get-extra-info t)
+      [(~constructor-extra-info _ mk _)
+       (define f (syntax-local-value #'mk))
+        (type-eval (f #`(mk #,@args)))]))
+
+  (define (ctor-id? stx)
+    (and (identifier? stx)
+         (user-ctor? (syntax-local-value stx (const #f)))))
+
+  (define (untyped-ctor stx)
+    (user-ctor-untyped-ctor (syntax-local-value stx (const #f)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Conveniences
@@ -100,6 +264,26 @@
 
 (define-for-syntax (bot? t)
   (<: t (type-eval #'(U*))))
+
+(define-for-syntax (strip-? t)
+  (type-eval
+   (syntax-parse t
+     [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
+     [~★/t #'★/t]
+     ;; since (Observe X) can match (Message X):
+     ;; doing this specifically for the intersection operation in the spawn rule, need to check other
+     ;; uses
+     [(~Observe τ) #'(U τ (Message τ))]
+     [_ #'(U*)])))
+
+;; similar to strip- fns, but leave non-message types as they are
+(define-for-syntax (prune-message t)
+  (type-eval
+   (syntax-parse t
+     [(~U* τ ...) #`(U #,@(stx-map prune-message #'(τ ...)))]
+     [~★/t #'★/t]
+     [(~Message τ) #'τ]
+     [_ t])))
 
 (define-for-syntax (strip-inbound t)
   (type-eval
@@ -213,6 +397,457 @@
      (make-cons-type t (stx-map replace-bind-and-discard-with-★ #'(τ ...)))]
     [_ t]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Subtyping and Judgments on Types
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Type Type -> Bool
+(define-for-syntax (<: t1 t2)
+  (syntax-parse #`(#,t1 #,t2)
+    [((~U* τ1 ...) _)
+     (stx-andmap (lambda (t) (<: t t2)) #'(τ1 ...))]
+    [(_ (~U* τ2:type ...))
+     (stx-ormap (lambda (t) (<: t1 t)) #'(τ2 ...))]
+    [((~Actor τ1) (~Actor τ2))
+     (and (<: #'τ1 #'τ2)
+          (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
+    [((~AssertionSet τ1) (~AssertionSet τ2))
+     (<: #'τ1 #'τ2)]
+    [((~Set τ1) (~Set τ2))
+     (<: #'τ1 #'τ2)]
+    [((~Patch τ11 τ12) (~Patch τ21 τ22))
+     (and (<: #'τ11 #'τ21)
+          (<: #'τ12 #'τ22))]
+    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
+     #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
+     (stx-andmap <: #'(τ1 ...) #'(τ2 ...))]
+    [(_ ~★/t)
+     (flat-type? t1)]
+    [((~Observe τ1:type) (~Observe τ2:type))
+     (<: #'τ1 #'τ2)]
+    [((~Inbound τ1:type) (~Inbound τ2:type))
+     (<: #'τ1 #'τ2)]
+    [((~Outbound τ1:type) (~Outbound τ2:type))
+     (<: #'τ1 #'τ2)]
+    [((~Message τ1:type) (~Message τ2:type))
+     (<: #'τ1 #'τ2)]
+    [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
+     #:when (tags-equal? #'t1 #'t2)
+     (and (stx-length=? #'(τ1 ...) #'(τ2 ...))
+          (stx-andmap <: #'(τ1 ...) #'(τ2 ...)))]
+    [((~→ τ-in1 ... τ-out1) (~→ τ-in2 ... τ-out2))
+     #:when (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
+     (and (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
+          (<: #'τ-out1 #'τ-out2))]
+    [(~Discard _)
+     #t]
+    ;; TODO: clauses for Roles, and so on
+    ;; should probably put this first.
+    [_ (type=? t1 t2)]))
+
+;; shortcuts for mapping
+(define-for-syntax ((<:l l) r)
+  (<: l r))
+
+(define-for-syntax ((<:r r) l)
+  (<: l r))
+
+;; Flat-Type Flat-Type -> Type
+(define-for-syntax (∩ t1 t2)
+  (unless (and (flat-type? t1) (flat-type? t2))
+    (error '∩ "expected two flat-types"))
+  (syntax-parse #`(#,t1 #,t2)
+    [(_ ~★/t)
+     t1]
+    [(~★/t _)
+     t2]
+    [(_ _)
+     #:when (type=? t1 t2)
+     t1]
+    [((~U* τ1:type ...) _)
+     (type-eval #`(U #,@(stx-map (lambda (t) (∩ t t2)) #'(τ1 ...))))]
+    [(_ (~U* τ2:type ...))
+     (type-eval #`(U #,@(stx-map (lambda (t) (∩ t1 t)) #'(τ2 ...))))]
+    [((~AssertionSet τ1) (~AssertionSet τ2))
+     #:with τ12 (∩ #'τ1 #'τ2)
+     (type-eval #'(AssertionSet τ12))]
+    [((~Set τ1) (~Set τ2))
+     #:with τ12 (∩ #'τ1 #'τ2)
+     (type-eval #'(Set τ12))]
+    [((~Patch τ11 τ12) (~Patch τ21 τ22))
+     #:with τ1 (∩ #'τ11 #'τ12)
+     #:with τ2 (∩ #'τ21 #'τ22)
+     (type-eval #'(Patch τ1 τ2))]
+    ;; all of these fail-when/unless clauses are meant to cause this through to
+    ;; the last case and result in ⊥.
+    ;; Also, using <: is OK, even though <: refers to ∩, because <:'s use of ∩ is only
+    ;; in the Actor case.
+    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
+     #:fail-unless (stx-length=? #'(τ1 ...) #'(τ2 ...)) #f
+     #:with (τ ...) (stx-map ∩ #'(τ1 ...) #'(τ2 ...))
+     ;; I don't think stx-ormap is part of the documented api of turnstile *shrug*
+     #:fail-when (stx-ormap (lambda (t) (<: t (type-eval #'(U)))) #'(τ ...)) #f
+     (type-eval #'(Tuple τ ...))]
+    [((~constructor-type tag1 τ1:type ...) (~constructor-type tag2 τ2:type ...))
+     #:when (tags-equal? #'tag1 #'tag2)
+     #:with (τ ...) (stx-map ∩ #'(τ1 ...) #'(τ2 ...))
+     #:fail-when (stx-ormap (lambda (t) (<: t (type-eval #'(U)))) #'(τ ...)) #f
+     (make-cons-type t1 #'(τ ...))]
+    ;; these three are just the same :(
+    [((~Observe τ1:type) (~Observe τ2:type))
+     #:with τ (∩ #'τ1 #'τ2)
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Observe τ))]
+    [((~Inbound τ1:type) (~Inbound τ2:type))
+     #:with τ (∩ #'τ1 #'τ2)
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Inbound τ))]
+    [((~Outbound τ1:type) (~Outbound τ2:type))
+     #:with τ (∩ #'τ1 #'τ2)
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Outbound τ))]
+    [((~Message τ1:type) (~Message τ2:type))
+     #:with τ (∩ #'τ1 #'τ2)
+     #:fail-when (<: #'τ (type-eval #'(U))) #f
+     (type-eval #'(Message τ))]
+    [_ (type-eval #'(U))]))
+
+;; Type Type -> Bool
+;; first type is the contents of the set/dataspace
+;; second type is the type of a pattern
+(define-for-syntax (project-safe? t1 t2)
+  ;; TODO - messages
+  (syntax-parse #`(#,t1 #,t2)
+    [(_ (~Bind τ2:type))
+     (and (finite? t1) (<: t1 #'τ2))]
+    [(_ ~Discard)
+     #t]
+    [(_ ~★/t)
+     #t]
+    [((~U* τ1:type ...) _)
+     (stx-andmap (lambda (t) (project-safe? t t2)) #'(τ1 ...))]
+    [(_ (~U* τ2:type ...))
+     (stx-andmap (lambda (t) (project-safe? t1 t)) #'(τ2 ...))]
+    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
+     #:when (overlap? t1 t2)
+     (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
+    [((~constructor-type _ τ1:type ...) (~constructor-type _ τ2:type ...))
+     #:when (overlap? t1 t2)
+     (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
+    [((~Observe τ1:type) (~Observe τ2:type))
+     (project-safe? #'τ1 #'τ2)]
+    [((~Inbound τ1:type) (~Inbound τ2:type))
+     (project-safe? #'τ1 #'τ2)]
+    [((~Outbound τ1:type) (~Outbound τ2:type))
+     (project-safe? #'τ1 #'τ2)]
+    [((~Message τ1:type) (~Message τ2:type))
+     (project-safe? #'τ1 #'τ2)]
+    [_ #t]))
+
+;; AssertionType PatternType -> Bool
+;; Is it possible for things of these two types to match each other?
+;; Flattish-Type = Flat-Types + ★/t, Bind, Discard (assertion and pattern types)
+(define-for-syntax (overlap? t1 t2)
+  (syntax-parse #`(#,t1 #,t2)
+    [(~★/t _) #t]
+    [(_ (~Bind _)) #t]
+    [(_ ~Discard) #t]
+    [(_ ~★/t) #t]
+    [((~U* τ1:type ...) _)
+     (stx-ormap (lambda (t) (overlap? t t2)) #'(τ1 ...))]
+    [(_ (~U* τ2:type ...))
+     (stx-ormap (lambda (t) (overlap? t1 t)) #'(τ2 ...))]
+    [((~List _) (~List _))
+     ;; share the empty list
+     #t]
+    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
+     (and (stx-length=? #'(τ1 ...) #'(τ2 ...))
+          (stx-andmap overlap? #'(τ1 ...) #'(τ2 ...)))]
+    [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
+     (and (tags-equal? #'t1 #'t2)
+          (stx-andmap overlap? #'(τ1 ...) #'(τ2 ...)))]
+    [((~Observe τ1:type) (~Observe τ2:type))
+     (overlap? #'τ1 #'τ2)]
+    [((~Inbound τ1:type) (~Inbound τ2:type))
+     (overlap? #'τ1 #'τ2)]
+    [((~Outbound τ1:type) (~Outbound τ2:type))
+     (overlap? #'τ1 #'τ2)]
+    [((~Message τ1:type) (~Message τ2:type))
+     (overlap? #'τ1 #'τ2)]
+    [_ (<: t1 t2)]))
+
+;; Flattish-Type -> Bool
+(define-for-syntax (finite? t)
+  (syntax-parse t
+    [~★/t #f]
+    [(~U* τ:type ...)
+     (stx-andmap finite? #'(τ ...))]
+    [(~Tuple τ:type ...)
+     (stx-andmap finite? #'(τ ...))]
+    [(~constructor-type _ τ:type ...)
+     (stx-andmap finite? #'(τ ...))]
+    [(~Observe τ:type)
+     (finite? #'τ)]
+    [(~Inbound τ:type)
+     (finite? #'τ)]
+    [(~Outbound τ:type)
+     (finite? #'τ)]
+    [(~Set τ:type)
+     (finite? #'τ)]
+    [(~Message τ:type)
+     (finite? #'τ)]
+    [_ #t]))
+
+;; PatternType -> Type
+(define-for-syntax (pattern-matching-assertions t)
+  (syntax-parse t
+    [(~Bind τ)
+     #'τ]
+    [~Discard
+     (type-eval #'★/t)]
+    [(~U* τ ...)
+     (type-eval #`(U #,@(stx-map pattern-matching-assertions #'(τ ...))))]
+    [(~Tuple τ ...)
+     (type-eval #`(Tuple #,@(stx-map pattern-matching-assertions #'(τ ...))))]
+    [(~Observe τ)
+     (type-eval #`(Observe #,(pattern-matching-assertions #'τ)))]
+    [(~Inbound τ)
+     (type-eval #`(Inbound #,(pattern-matching-assertions #'τ)))]
+    [(~Outbound τ)
+     (type-eval #`(Outbound #,(pattern-matching-assertions #'τ)))]
+    [(~Message τ)
+     (type-eval #`(Message #,(pattern-matching-assertions #'τ)))]
+    [(~constructor-type _ τ ...)
+     (make-cons-type t (stx-map pattern-matching-assertions #'(τ ...)))]
+    [_ t]))
+
+;; it's ok for x to respond to strictly more events than y
+(define-for-syntax (condition-covers? x y)
+  (or
+   ;; covers Start,Stop,Dataflow
+   (type=? x y)
+   (syntax-parse #`(#,x #,y)
+     [((~Know τ1) (~Know τ2))
+      (<: (pattern-matching-assertions #'τ2)
+          (pattern-matching-assertions #'τ1))]
+     [((~¬Know τ1) (~¬Know τ2))
+      (<: (pattern-matching-assertions #'τ2)
+          (pattern-matching-assertions #'τ1))]
+     [((~Message τ1) (~Message τ2))
+      (<: (pattern-matching-assertions #'τ2)
+          (pattern-matching-assertions #'τ1))]
+     [_ #f])))
+
+;; RoleType RoleType -> Bool
+;; Check that role r implements role spec (possibly does more)
+(define-for-syntax (role-implements? r spec)
+  (syntax-parse #`(#,r #,spec)
+    ;; TODO: cases for unions, stop
+    [((~Role (x:id) (~or (~Shares τ-s1) (~Sends τ-m1) (~Reacts τ-if1 τ-then1 ...)) ...)
+      (~Role (y:id) (~or (~Shares τ-s2) (~Sends τ-m2) (~Reacts τ-if2 τ-then2 ...)) ...))
+     #:when (free-identifier=? #'x #'y)
+     (and
+      ;; for each assertion in the spec, there must be a suitable assertion in the actual
+      ;; TODO: this kinda ignores numerosity, can one assertion in r cover multiple assertions in spec?
+      (for/and [(s2 (in-syntax #'(τ-s2 ...)))]
+        (stx-ormap (<:l s2) #'(τ-s1 ...)))
+      ;; similar for messages
+      (for/and [(m2 (in-syntax #'(τ-m2 ...)))]
+        (stx-ormap (<:l m2) #'(τ-m1 ...)))
+      (for/and [(s2 (in-syntax #'((τ-if2 (τ-then2 ...)) ...)))]
+        (define/syntax-parse (τ-if2 (τ-then2 ...)) s2)
+        (for/or [(s1 (in-syntax #'((τ-if1 (τ-then1 ...)) ...)))]
+          (define/syntax-parse (τ-if1 (τ-then1 ...)) s1)
+          ;; the event descriptors need to line up
+          (and (condition-covers? #'τ-if1 #'τ-if2)
+               ;; and for each specified response to the event, there needs to be a similar one in the
+               ;; the actual
+               (stx-andmap (lambda (s) (stx-ormap (lambda (r) (role-implements? r s)) #'(τ-then1 ...)))
+                           #'(τ-then2 ...))))))]
+    [((~Role (x:id) _ ...)
+      (~Role (y:id) _ ...))
+     (role-implements? (subst #'y #'x r) spec)]
+    [((~Stop x:id τ1 ...)
+      (~Stop y:id τ2 ...))
+     (and
+      (free-identifier=? #'x #'y)
+      (for/and ([t2 (in-syntax #'(τ2 ...))])
+        (for/or ([t1 (in-syntax #'(τ1 ...))])
+          (role-implements? t1 t2))))]
+    ;; seems like this check might be in the wrong place
+    [((~Sends τ-m1)
+      (~Sends τ-m2))
+     (<: #'τ-m1 #'τ-m2)]
+    [((~Actor _)
+      (~Actor _))
+     ;; spawned actor OK in specified dataspace
+     (<: r spec)]))
+
+(module+ test
+  (displayln "skipping commented for-syntax tests because it's slow")
+  #;(begin-for-syntax
+    ;; TESTS
+    (let ()
+      ;; utils
+      (local-require syntax/parse/define
+                     rackunit)
+      (define te type-eval)
+      (define-syntax-parser check-role-implements?
+        [(_ r1 r2)
+         (quasisyntax/loc this-syntax
+           (check-true (role-implements? (te #'r1) (te #'r2))))])
+      (define-syntax-parser check-role-not-implements?
+        [(_ r1 r2)
+         (quasisyntax/loc this-syntax
+           (check-false (role-implements? (te #'r1) (te #'r2))))])
+      ;; Name Related
+      (check-role-implements? (Role (x)) (Role (x)))
+      (check-role-implements? (Role (x)) (Role (y)))
+      ;; Assertion Related
+      (check-role-not-implements? (Role (x)) (Role (y) (Shares Int)))
+      (check-role-implements? (Role (x) (Shares Int)) (Role (y)))
+      (check-role-implements? (Role (x) (Shares Int)) (Role (y) (Shares Int)))
+      (check-role-implements? (Role (x)
+                                    (Shares Int)
+                                    (Shares String))
+                              (Role (y)
+                                    (Shares Int)
+                                    (Shares String)))
+      (check-role-implements? (Role (x)
+                                    (Shares String)
+                                    (Shares Int))
+                              (Role (y)
+                                    (Shares Int)
+                                    (Shares String)))
+      (check-role-not-implements? (Role (x)
+                                        (Shares Int))
+                                  (Role (y)
+                                        (Shares Int)
+                                        (Shares String)))
+      ;; Reactions
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)))
+                              (Role (y)
+                                    (Reacts (Know Int))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int))
+                                    (Shares String))
+                              (Role (y)
+                                    (Reacts (Know Int))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)
+                                            (Role (y) (Shares String))))
+                              (Role (y)
+                                    (Reacts (Know Int))))
+      (check-role-not-implements? (Role (x))
+                                  (Role (y)
+                                        (Reacts (Know Int))))
+      (check-role-not-implements? (Role (x)
+                                        (Reacts (Know String)))
+                                  (Role (y)
+                                        (Reacts (Know Int))))
+      ;; these two might need to be reconsidered
+      (check-role-not-implements? (Role (x)
+                                        (Shares (Observe ★/t)))
+                                  (Role (y)
+                                        (Reacts (Know Int))))
+      (check-role-not-implements? (Role (x)
+                                        (Shares (Observe Int)))
+                                  (Role (y)
+                                        (Reacts (Know Int))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts (Know Int)
+                                            (Role (y2) (Shares String)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (¬Know Int)
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts (¬Know Int)
+                                            (Role (y2) (Shares String)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts OnStart
+                                            (Role (y2) (Shares String)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStop
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts OnStop
+                                            (Role (y2) (Shares String)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnDataflow
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts OnDataflow
+                                            (Role (y2) (Shares String)))))
+      (check-role-not-implements? (Role (x)
+                                        (Reacts (Know Int)
+                                                (Role (x2) (Shares String))))
+                                  (Role (y)
+                                        (Reacts (Know Int)
+                                                (Role (y2) (Shares String))
+                                                (Role (y3) (Shares Int)))))
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)
+                                            (Role (x3) (Shares Int))
+                                            (Role (x2) (Shares String))))
+                              (Role (y)
+                                    (Reacts (Know Int)
+                                            (Role (y2) (Shares String))
+                                            (Role (y3) (Shares Int)))))
+      ;; also not sure about this one
+      (check-role-implements? (Role (x)
+                                    (Reacts (Know Int)
+                                            (Role (x2)
+                                                  (Shares String)
+                                                  (Shares Int))))
+                              (Role (y)
+                                    (Reacts (Know Int)
+                                            (Role (y2) (Shares String))
+                                            (Role (y3) (Shares Int)))))
+      ;; Stop
+      ;; these all error when trying to create the Stop type :<
+#|
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Stop x)))
+                              (Role (x)
+                                    (Reacts OnStart (Stop x))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Stop x)))
+                              (Role (y)
+                                    (Reacts OnStart (Stop y))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Stop x (Role (x2) (Shares Int)))))
+                              (Role (y)
+                                    (Reacts OnStart (Stop y) (Role (y2) (Shares Int)))))
+      (check-role-not-implements? (Role (x)
+                                        (Reacts OnStart (Stop x (Role (x2) (Shares String)))))
+                                  (Role (y)
+                                        (Reacts OnStart (Stop y) (Role (y2) (Shares Int)))))
+      (check-role-not-implements? (Role (x)
+                                        (Reacts OnStart))
+                                  (Role (y)
+                                        (Reacts OnStart (Stop y) (Role (y2) (Shares Int)))))
+|#
+      ;; Spawning Actors
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Actor Int)))
+                              (Role (x)
+                                    (Reacts OnStart (Actor Int))))
+      (check-role-implements? (Role (x)
+                                    (Reacts OnStart (Actor Int)))
+                              (Role (x)
+                                    (Reacts OnStart (Actor (U Int String)))))
+      (check-role-not-implements? (Role (x)
+                                    (Reacts OnStart (Actor Bool)))
+                              (Role (x)
+                                    (Reacts OnStart (Actor (U Int String)))))
+      )))
 
 ;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;; MODIFYING GLOBAL TYPECHECKING STATE!!!!!
@@ -225,7 +860,85 @@
 ;; Core forms
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define-for-syntax (int-def-ctx-bind-type-rename x x- t ctx)
+  (when DEBUG-BINDINGS?
+    (printf "adding to context ~a\n" (syntax-debug-info x)))
+  (syntax-local-bind-syntaxes (list x-) #f ctx)
+  (syntax-local-bind-syntaxes (list x)
+                              #`(make-rename-transformer
+                                 (add-orig (assign-type #'#,x- #'#,t #:wrap? #f) #'#,x))
+                              ctx))
 
+(define-for-syntax (add-bindings-to-ctx e- def-ctx)
+  (syntax-parse e-
+        #:literals (erased field/intermediate define/intermediate begin-)
+        [(erased (field/intermediate (x:id x-:id τ e-) ...))
+         (for ([orig-name (in-syntax #'(x ... ))]
+               [new-name (in-syntax #'(x- ...))]
+               [field-ty (in-syntax #'(τ ...))])
+           (int-def-ctx-bind-type-rename orig-name new-name field-ty def-ctx))]
+        [(erased (define/intermediate x:id x-:id τ e-))
+         (int-def-ctx-bind-type-rename #'x #'x- #'τ def-ctx)]
+        #;[(erased (begin- e ...))
+         (for ([e (in-syntax #'(e ...))])
+           (add-bindings-to-ctx e def-ctx))]
+        [_ (void)]))
+
+(define-for-syntax (display-ctx-bindings ctx)
+  (printf "context:\n")
+  (for ([x (in-list (internal-definition-context-binding-identifiers ctx))])
+    (printf ">>~a\n" (syntax-debug-info x))))
+
+;; -> (Values e-... (Listof Type) (Listof EndpointEffects) (Listof FacetEffects) (Listof SpawnEffects))
+;; recognizes local binding forms
+;; (field/intermediate [x e] ...
+;; (define/intermediate x x- τ e)
+(define-for-syntax (walk/bind e...
+                              [def-ctx (syntax-local-make-definition-context)]
+                              [unique (gensym 'walk/bind)])
+  (define-values (rev-e-... rev-τ... ep-effects facet-effects spawn-effects)
+    (let loop ([e... (syntax->list e...)]
+               [rev-e-... '()]
+               [rev-τ... '()]
+               [ep-effects '()]
+               [facet-effects '()]
+               [spawn-effects '()])
+      (match e...
+        ['()
+         (values rev-e-... rev-τ... ep-effects facet-effects spawn-effects)]
+        [(cons e more)
+         (when (and DEBUG-BINDINGS?
+                    (identifier? e))
+           (display-ctx-bindings def-ctx)
+           (printf "expanding ~a\n" (syntax-debug-info e)))
+         (define e- (local-expand e (list unique) (list #'erased #'begin) def-ctx))
+         (syntax-parse e-
+           #:literals (begin)
+           [(begin e ...)
+            (loop (append (syntax->list #'(e ...)) more)
+                  rev-e-...
+                  rev-τ...
+                  ep-effects
+                  facet-effects
+                  spawn-effects)]
+           [_
+            (define τ (syntax-property e- ':))
+            (define-values (ep-effs f-effs s-effs)
+              (values (syntax->list (get-effect e- 'ep))
+                      (syntax->list (get-effect e- 'f))
+                      (syntax->list (get-effect e- 's))))
+            (add-bindings-to-ctx e- def-ctx)
+            (loop more
+                  (cons e- rev-e-...)
+                  (cons τ rev-τ...)
+                  (append ep-effs ep-effects)
+                  (append f-effs facet-effects)
+                  (append s-effs spawn-effects))])])))
+  (values (reverse rev-e-...)
+          (reverse rev-τ...)
+          ep-effects
+          facet-effects
+          spawn-effects))
 
 (define-typed-syntax (start-facet name:id ep ...+) ≫
   #:with name- (syntax-local-identifier-as-binding (syntax-local-introduce (generate-temporary #'name)))
@@ -267,6 +980,11 @@
   [⊢ (field/intermediate [x x- τ e-] ...)
      (⇒ : ★/t)
      (⇒ ep (MF))])
+
+(define-syntax (field/intermediate stx)
+  (syntax-parse stx
+    [(_ [x:id x-:id τ e-] ...)
+     #'(syndicate:field [x- e-] ...)]))
 
 (define-typed-syntax (assert e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
@@ -592,9 +1310,40 @@
 ;; Core-ish forms
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; add support for function definitions to define, otherwise falling back to `define` from
-;; "define-like-things.rkt"
-(define-typed-syntax define/fun
+;; copied from stlc
+(define-typed-syntax (ann e (~optional (~datum :)) τ:type) ≫
+  [⊢ e ≫ e- (⇐ : τ.norm)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  ------------------------------------------------
+  [⊢ e- (⇒ : τ.norm) ])
+
+(define-syntax (define/intermediate stx)
+  (syntax-parse stx
+    [(_ x:id x-:id τ e)
+     #:with x+ (add-orig (assign-type #'x- #'τ #:wrap? #f) #'x)
+     ;; including a syntax binding for x allows for module-top-level references
+     ;; (where walk/bind won't replace further uses) and subsequent provides
+     #'(begin-
+         (define-syntax x (make-variable-like-transformer #'x+))
+         (define- x+ e))]))
+
+;; copied from ext-stlc
+(define-typed-syntax define
+  [(_ x:id (~datum :) τ:type e:expr) ≫
+   [⊢ e ≫ e- ⇐ τ.norm]
+   #:fail-unless (pure? #'e-) "expression must be pure"
+   #:with x- (generate-temporary #'x)
+   #:with x+ (syntax-local-identifier-as-binding #'x)
+   --------
+   [⊢ (define/intermediate x+ x- τ.norm e-) (⇒ : ★/t)]]
+  [(_ x:id e) ≫
+   ;This won't work with mutually recursive definitions
+   [⊢ e ≫ e- ⇒ τ]
+   #:fail-unless (pure? #'e-) "expression must be pure"
+   #:with x- (generate-temporary #'x)
+   #:with x+ (syntax-local-identifier-as-binding #'x)
+   --------
+   [⊢ (define/intermediate x+ x- τ e-) (⇒ : ★/t)]]
   [(_ (f [x (~optional (~datum :)) ty:type] ...
          (~or (~datum →) (~datum ->)) ty_out:type)
          e ...+) ≫
@@ -604,25 +1353,16 @@
                                                                               _ ...))))]
    #:fail-unless (<: #'τ-v #'ty_out.norm)
      (format "expected different return type\n got ~a\n expected ~a\n"
-       (type->str #'τ-v)
-       (type->str #'ty_out))
+       #'τ-v #'ty_out
+       #;(type->str #'τ-v)
+       #;(type->str #'ty_out))
    #:with f- (add-orig (generate-temporary #'f) #'f)
    --------
    [⊢ (define/intermediate f f- fun-ty e-) (⇒ : ★/t)]]
   [(_ (f [x (~optional (~datum :)) ty] ...)
          e ...+) ≫
    ----------------------------
-   [≻ (define/fun (f [x ty] ... -> ★/t) e ...)]]
-  [(_ e ...+) ≫
-   ---------------------------------------------
-   [≻ (define e ...)]])
-
-;; copied from stlc
-(define-typed-syntax (ann e (~optional (~datum :)) τ:type) ≫
-  [⊢ e ≫ e- (⇐ : τ.norm)]
-  #:fail-unless (pure? #'e-) "expression must be pure"
-  ------------------------------------------------
-  [⊢ e- (⇒ : τ.norm) ])
+   [≻ (define (f [x ty] ... -> ★/t) e ...)]])
 
 ;; copied from ext-stlc
 (define-typed-syntax if
@@ -659,6 +1399,17 @@
 (define-typed-syntax (unless e s ...+) ≫
   ------------------------------------
   [≻ (if e #f (begin s ...))])
+
+
+(define-typed-syntax begin
+  [(_ e_unit ... e) ≫
+   #:do [(define-values (e-... τ... ep-effs f-effs s-effs) (walk/bind #'(e_unit ... e)))]
+   #:with τ (last τ...)
+   --------
+   [⊢ (begin- #,@e-...) (⇒ : τ)
+      (⇒ ep (#,@ep-effs))
+      (⇒ f (#,@f-effs))
+      (⇒ s (#,@s-effs))]])
 
 ;; copied from ext-stlc
 (define-typed-syntax let
@@ -750,6 +1501,186 @@
           (displayln (type->str r)))]
   ----------------------------------
   [⊢ e- (⇒ : τ) (⇒ ep (eps ...)) (⇒ f (fs ...)) (⇒ s (ss ...))])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Lists
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-typed-syntax (list e ...) ≫
+  [⊢ e ≫ e- ⇒ τ] ...
+  #:fail-unless (all-pure? #'(e- ...)) "expressions must be pure"
+  -------------------
+  [⊢ (list- e- ...) ⇒ (List (U τ ...))])
+
+(define-typed-syntax (cons e1 e2) ≫
+  [⊢ e1 ≫ e1- ⇒ τ1]
+  #:fail-unless (pure? #'e1-) "expression must be pure"
+  [⊢ e2 ≫ e2- ⇒ (~List τ2)]
+  #:fail-unless (pure? #'e2-) "expression must be pure"
+  #:with τ-l (type-eval #'(List (U τ1 τ2)))
+  ----------------------------------------
+  [⊢ (cons- e1- e2-) ⇒ τ-l])
+
+(define-typed-syntax (for/fold [acc:id e-acc]
+                               [x:id e-list]
+                       e-body ...+) ≫
+  [⊢ e-list ≫ e-list- ⇒ (~List τ-l)]
+  #:fail-unless (pure? #'e-list-) "expression must be pure"
+  [⊢ e-acc ≫ e-acc- ⇒ τ-a]
+  #:fail-unless (pure? #'e-acc-) "expression must be pure"
+  [[x ≫ x- : τ-l] [acc ≫ acc- : τ-a] ⊢ (begin e-body ...) ≫ e-body- ⇒ τ-b]
+  #:fail-unless (pure? #'e-body-) "body must be pure"
+  #:fail-unless (<: #'τ-b #'τ-a)
+    "loop body doesn't match accumulator"
+  -------------------------------------------------------
+  [⊢ (for/fold- ([acc- e-acc-])
+                ([x- (in-list- e-list-)])
+       e-body-)
+     ⇒ τ-b])
+
+(define-typed-syntax (for ([x:id e-list] ...)
+                       e-body ...+) ≫
+  [⊢ e-list ≫ e-list- ⇒ (~List τ-l)] ...
+  #:fail-unless (all-pure? #'(e-list- ...)) "expressions must be pure"
+  [[x ≫ x- : τ-l] ... ⊢ (begin e-body ...) ≫ e-body- (⇒ : τ-b)
+                  (⇒ ep (~effs eps ...))
+                  (⇒ f (~effs fs ...))
+                  (⇒ s (~effs ss ...))]
+  -------------------------------------------------------
+  [⊢ (for- ([x- (in-list- e-list-)] ...)
+       e-body-) (⇒ : ★/t)
+                (⇒ ep (eps ...))
+                (⇒ f (fs ...))
+                (⇒ s (ss ...))])
+
+(define-typed-syntax (empty? e) ≫
+  [⊢ e ≫ e- ⇒ (~List _)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  -----------------------
+  [⊢ (empty?- e-) ⇒ Bool])
+
+(define-typed-syntax (first e) ≫
+  [⊢ e ≫ e- ⇒ (~List τ)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  -----------------------
+  [⊢ (first- e-) ⇒ τ])
+
+(define-typed-syntax (rest e) ≫
+  [⊢ e ≫ e- ⇒ (~List τ)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  -----------------------
+  [⊢ (rest- e-) ⇒ (List τ)])
+
+(define-typed-syntax (member? e l) ≫
+  [⊢ e ≫ e- ⇒ τe]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  [⊢ l ≫ l- ⇒ (~List τl)]
+  #:fail-unless (pure? #'l-) "expression must be pure"
+  #:fail-unless (<: #'τe #'τl) "incompatible list"
+  ----------------------------------------
+  [⊢ (member?- e- l-) ⇒ Bool])
+
+(define- (member?- v l)
+  (and- (member- v l) #t))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Sets
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-typed-syntax (set e ...) ≫
+  [⊢ e ≫ e- ⇒ τ] ...
+  #:fail-unless (all-pure? #'(e- ...)) "expressions must be pure"
+  ---------------
+  [⊢ (set- e- ...) ⇒ (Set (U τ ...))])
+
+(define-typed-syntax (set-count e) ≫
+  [⊢ e ≫ e- ⇒ (~Set _)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  ----------------------
+  [⊢ (set-count- e-) ⇒ Int])
+
+(define-typed-syntax (set-add st v) ≫
+  [⊢ st ≫ st- ⇒ (~Set τs)]
+  #:fail-unless (pure? #'st-) "expression must be pure"
+  [⊢ v ≫ v- ⇒ τv]
+  #:fail-unless (pure? #'v-) "expression must be pure"
+  -------------------------
+  [⊢ (set-add- st- v-) ⇒ (Set (U τs τv))])
+
+(define-typed-syntax (set-remove st v) ≫
+  [⊢ st ≫ st- ⇒ (~Set τs)]
+  #:fail-unless (pure? #'st-) "expression must be pure"
+  [⊢ v ≫ v- ⇐ τs]
+  #:fail-unless (pure? #'v-) "expression must be pure"
+  -------------------------
+  [⊢ (set-remove- st- v-) ⇒ (Set τs)])
+
+(define-typed-syntax (set-member? st v) ≫
+  [⊢ st ≫ st- ⇒ (~Set τs)]
+  #:fail-unless (pure? #'st-) "expression must be pure"
+  [⊢ v ≫ v- ⇒ τv]
+  #:fail-unless (pure? #'v-) "expression must be pure"
+  #:fail-unless (<: #'τv #'τs)
+    "type mismatch"
+  -------------------------------------
+  [⊢ (set-member?- st- v-) ⇒ Bool])
+
+(define-typed-syntax (set-union st0 st ...) ≫
+  [⊢ st0 ≫ st0- ⇒ (~Set τ-st0)]
+  #:fail-unless (pure? #'st0-) "expression must be pure"
+  [⊢ st ≫ st- ⇒ (~Set τ-st)] ...
+  #:fail-unless (all-pure? #'(st- ...)) "expressions must be pure"
+  -------------------------------------
+  [⊢ (set-union- st0- st- ...) ⇒ (Set (U τ-st0 τ-st ...))])
+
+(define-typed-syntax (set-intersect st0 st ...) ≫
+  [⊢ st0 ≫ st0- ⇒ (~Set τ-st0)]
+  #:fail-unless (pure? #'st0-) "expression must be pure"
+  [⊢ st ≫ st- ⇒ (~Set τ-st)] ...
+  #:fail-unless (all-pure? #'(st- ...)) "expressions must be pure"
+  #:with τr (∩ #'τ-st0 (type-eval #'(U τ-st ...)))
+  -------------------------------------
+  [⊢ (set-intersect- st0- st- ...) ⇒ (Set τr)])
+
+(define-typed-syntax (set-subtract st0 st ...) ≫
+  [⊢ st0 ≫ st0- ⇒ (~Set τ-st0)]
+  #:fail-unless (pure? #'st0-) "expression must be pure"
+  [⊢ st ≫ st- ⇒ (~Set _)] ...
+  #:fail-unless (all-pure? #'(st- ...)) "expressions must be pure"
+  -------------------------------------
+  [⊢ (set-subtract- st0- st- ...) ⇒ (Set τ-st0)])
+
+(define-typed-syntax (list->set l) ≫
+  [⊢ l ≫ l- ⇒ (~List τ)]
+  #:fail-unless (pure? #'l-) "expression must be pure"
+  -----------------------
+  [⊢ (list->set- l-) ⇒ (Set τ)])
+
+(define-typed-syntax (set->list s) ≫
+  [⊢ s ≫ s- ⇒ (~Set τ)]
+  #:fail-unless (pure? #'s-) "expression must be pure"
+  -----------------------
+  [⊢ (set->list- s-) ⇒ (List τ)])
+
+(module+ test
+  (check-type (set 1 2 3)
+              : (Set Int)
+              -> (set- 2 3 1))
+  (check-type (set 1 "hello" 3)
+              : (Set (U Int String))
+              -> (set- "hello" 3 1))
+  (check-type (set-count (set 1 "hello" 3))
+              : Int
+              -> 3)
+  (check-type (set-union (set 1 2 3) (set "hello" "world"))
+              : (Set (U Int String))
+              -> (set- 1 2 3 "hello" "world"))
+  (check-type (set-intersect (set 1 2 3) (set "hello" "world"))
+              : (Set ⊥)
+              -> (set-))
+  (check-type (set-intersect (set 1 "hello" 3) (set #t "world" #f "hello"))
+              : (Set String)
+              -> (set- "hello")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
