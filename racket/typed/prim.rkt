@@ -5,10 +5,7 @@
 
 (require "base-types.rkt"
          "effects.rkt"
-         "judgments.rkt")
-
-(require macrotypes/postfix-in)
-(require (rename-in racket/math [exact-truncate exact-truncate-]))
+         "judgments/basic.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Basic Values and Their Types
