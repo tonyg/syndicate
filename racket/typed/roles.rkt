@@ -5,7 +5,11 @@
          #%top-interaction
          require only-in
          ;; Types
-         (all-from-out "base-types.rkt")
+         Int Bool String Tuple Bind Discard → List
+         Role Reacts Shares Know ¬Know Message OnDataflow Stop OnStart OnStop
+         FacetName Field ★/t
+         Observe Inbound Outbound Actor U
+         Computation Value Endpoints Roles Spawns
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
          when unless send!
@@ -23,8 +27,7 @@
          ;; patterns
          bind discard
          ;; primitives
-         (all-from-out "prim.rkt")
-         ;; + - * / and or not > < >= <= = equal? displayln printf define
+         + - * / and or not > < >= <= = equal? displayln printf define
          ;; lists
          list cons first rest member? empty? for for/fold
          ;; sets
@@ -39,13 +42,9 @@
          )
 
 (require (prefix-in syndicate: syndicate/actor-lang))
-(require "base-types.rkt"
-         "effects.rkt"
-         "prim.rkt"
-         "judgments/basic.rkt")
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx))
-
+(require (for-syntax turnstile/examples/util/filter-maximal))
 (require macrotypes/postfix-in)
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
 (require (postfix-in - racket/list))
@@ -73,8 +72,49 @@
 ;; f key aggregates facet effects (starting a facet) as `Role`s and message sends, `Sends`
 ;; s key aggregates spawned actors as `Actor`s
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Types
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-binding-type Role #:arity >= 0 #:bvs = 1)
+(define-type-constructor Shares #:arity = 1)
+(define-type-constructor Sends #:arity = 1)
+(define-type-constructor Reacts #:arity >= 1)
+(define-type-constructor Know #:arity = 1)
+(define-type-constructor ¬Know #:arity = 1)
+(define-type-constructor Stop #:arity >= 1)
+(define-type-constructor Message #:arity = 1)
+(define-type-constructor Field #:arity = 1)
+(define-type-constructor Bind #:arity = 1)
+(define-base-types OnStart OnStop OnDataflow MakesField)
+(define-for-syntax field-prop-name 'fields)
+
+(define-type-constructor Tuple #:arity >= 0)
+(define-type-constructor Observe #:arity = 1)
+(define-type-constructor Inbound #:arity = 1)
+(define-type-constructor Outbound #:arity = 1)
+(define-type-constructor Actor #:arity = 1)
+(define-type-constructor AssertionSet #:arity = 1)
+(define-type-constructor Patch #:arity = 2)
+(define-type-constructor List #:arity = 1)
+(define-type-constructor Set #:arity = 1)
+
+(define-type-constructor → #:arity > 0)
+;; for describing the RHS
+;; a value and a description of the effects
+(define-type-constructor Computation #:arity = 4)
+(define-type-constructor Value #:arity = 1)
+(define-type-constructor Endpoints #:arity >= 0)
+(define-type-constructor Roles #:arity >= 0)
+(define-type-constructor Spawns #:arity >= 0)
+
+
+(define-base-types Int Bool String Discard ★/t FacetName)
+
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
+
+(define-type-constructor U* #:arity >= 0)
 
 ;; τ.norm in 1st case causes "not valid type" error when referring to ⊥ in another file.
 ;; however, this version expands the type at every reference, incurring a potentially large
@@ -93,6 +133,22 @@
             #'τ.norm]))]))
 
 (define-type-alias ⊥ (U*))
+
+(define-for-syntax (prune+sort tys)
+  (stx-sort 
+   (filter-maximal 
+    (stx->list tys)
+    typecheck?)))
+  
+(define-syntax (U stx)
+  (syntax-parse stx
+    [(_ . tys)
+     ;; canonicalize by expanding to U*, with only (sorted and pruned) leaf tys
+     #:with ((~or (~U* ty1- ...) ty2-) ...) (stx-map (current-type-eval) #'tys)
+     #:with tys- (prune+sort #'(ty1- ... ... ty2- ...))
+     (if (= 1 (stx-length #'tys-))
+         (stx-car #'tys-)
+         (syntax/loc stx (U* . tys-)))]))
 
 ;; for looking at the "effects"
 (begin-for-syntax
@@ -256,7 +312,17 @@
       [observe #'syndicate:observe]
       [inbound #'syndicate:inbound]
       [outbound #'syndicate:outbound]
-      [message #'syndicate:message])))
+      [message #'syndicate:message]))
+
+  (define-syntax-class basic-val
+    (pattern (~or boolean
+                  integer
+                  string)))
+
+  (define-syntax-class prim-op
+    (pattern (~or (~literal +)
+                  (~literal -)
+                  (~literal displayln)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities Over Types
@@ -264,6 +330,12 @@
 
 (define-for-syntax (bot? t)
   (<: t (type-eval #'(U*))))
+
+(define-for-syntax (flat-type? τ)
+  (syntax-parse τ
+    [(~→ τ ...) #f]
+    [(~Actor τ) #f]
+    [_ #t]))
 
 (define-for-syntax (strip-? t)
   (type-eval
@@ -855,6 +927,27 @@
 
 (begin-for-syntax
   (current-typecheck-relation <:))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Effect Checking
+
+;; DesugaredSyntax EffectName -> (Syntaxof Effect ...)
+(define-for-syntax (get-effect e- eff)
+  (or (syntax-property e- eff) #'()))
+
+;; DesugaredSyntax EffectName -> Bool
+(define-for-syntax (effect-free? e- eff)
+  (define prop (syntax-property e- eff))
+  (or (false? prop) (stx-null? prop)))
+
+;; DesugaredSyntax -> Bool
+(define-for-syntax (pure? e-)
+  (for/and ([key (in-list '(ep f s))])
+    (effect-free? e- key)))
+
+;; (SyntaxOf DesugaredSyntax ...) -> Bool
+(define-for-syntax (all-pure? es)
+  (stx-andmap pure? es))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core forms
@@ -1484,6 +1577,75 @@
      (⇒ ep (eps ... ...))
      (⇒ f (fs ... ...))
      (⇒ s (ss ... ...))])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Primitives
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; hmmm
+(define-primop + (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
+(define-primop - (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
+(define-primop * (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
+#;(define-primop and (→ Bool Bool Bool))
+(define-primop or (→ Bool Bool (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop not (→ Bool (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop < (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop > (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop <= (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop >= (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop = (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+
+(define-typed-syntax (/ e1 e2) ≫
+  [⊢ e1 ≫ e1- (⇐ : Int)]
+  [⊢ e2 ≫ e2- (⇐ : Int)]
+  #:fail-unless (pure? #'e1-) "expression not allowed to have effects"
+  #:fail-unless (pure? #'e2-) "expression not allowed to have effects"
+  ------------------------
+  [⊢ (exact-truncate- (/- e1- e2-)) (⇒ : Int)])
+
+;; for some reason defining `and` as a prim op doesn't work
+(define-typed-syntax (and e ...) ≫
+  [⊢ e ≫ e- (⇐ : Bool)] ...
+  #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions not allowed to have effects"
+  ------------------------
+  [⊢ (and- e- ...) (⇒ : Bool)])
+
+(define-typed-syntax (equal? e1:expr e2:expr) ≫
+  [⊢ e1 ≫ e1- (⇒ : τ1)]
+  #:fail-unless (flat-type? #'τ1)
+  (format "equality only available on flat data; got ~a" (type->str #'τ1))
+  [⊢ e2 ≫ e2- (⇐ : τ1)]
+  #:fail-unless (pure? #'e1-) "expression not allowed to have effects"
+  #:fail-unless (pure? #'e2-) "expression not allowed to have effects"
+  ---------------------------------------------------------------------------
+  [⊢ (equal?- e1- e2-) (⇒ : Bool)])
+
+(define-typed-syntax (displayln e:expr) ≫
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
+  ---------------
+  [⊢ (displayln- e-) (⇒ : ★/t)])
+
+(define-typed-syntax (printf e ...+) ≫
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:fail-unless (stx-andmap pure? #'(e- ...)) "expression not allowed to have effects"
+  ---------------
+  [⊢ (printf- e- ...) (⇒ : ★/t)])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Basic Values
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-typed-syntax #%datum
+  [(_ . n:integer) ≫
+  ----------------
+  [⊢ (#%datum- . n) (⇒ : Int)]]
+  [(_ . b:boolean) ≫
+  ----------------
+  [⊢ (#%datum- . b) (⇒ : Bool)]]
+  [(_ . s:string) ≫
+  ----------------
+  [⊢ (#%datum- . s) (⇒ : String)]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities
