@@ -524,23 +524,23 @@
 
 (define-typed-syntax (actor τ-c:type beh st0 as0) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  [⊢ beh ≫ beh- ⇒ (~→ (~Patch τ-i1:type τ-i2:type)
-                       τ-s:type
-                       (~Instruction τ-s2:type τ-ta:type τ-ts:type))]
-  [⊢ st0 ≫ st0- ⇒ τ-st0:type]
-  [⊢ as0 ≫ as0- ⇒ (~AssertionSet τ-as0:type)]
-  #:with τ-out:type (type-eval #'(U τ-ta τ-as0))
-  #:with τ-in:type (type-eval #'(U τ-i1 τ-i2))
-  #:fail-unless (<: #'τ-st0.norm #'τ-s.norm)
+  [⊢ beh ≫ beh- ⇒ (~→ (~Patch τ-i1 τ-i2)
+                       τ-s
+                       (~Instruction τ-s2 τ-ta τ-ts))]
+  [⊢ st0 ≫ st0- ⇒ τ-st0]
+  [⊢ as0 ≫ as0- ⇒ (~AssertionSet τ-as0)]
+  #:with τ-out (type-eval #'(U τ-ta τ-as0))
+  #:with τ-in (type-eval #'(U τ-i1 τ-i2))
+  #:fail-unless (<: #'τ-st0 #'τ-s)
     "bad initial state"
-  #:fail-unless (<: #'τ-s2.norm #'τ-s.norm)
+  #:fail-unless (<: #'τ-s2 #'τ-s)
     "bad state update"
-  #:fail-unless (<: #'τ-out.norm #'τ-c.norm)
+  #:fail-unless (<: #'τ-out #'τ-c.norm)
     "output not allowed in dataspace"
-  #:fail-unless (<: (type-eval #'(Actor τ-ts.norm))
+  #:fail-unless (<: (type-eval #'(Actor τ-ts))
                     (type-eval #'(Actor τ-c.norm)))
     "spawned actors not valid in dataspace"
-  #:fail-unless (<: (∩ (strip-? #'τ-out.norm) #'τ-c.norm) #'τ-in.norm)
+  #:fail-unless (<: (∩ (strip-? #'τ-out) #'τ-c.norm) #'τ-in)
     "Not prepared to handle all inputs"
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:actor (filter-poll-events beh-)
