@@ -39,17 +39,20 @@
          match cond
          ;; require & provides
          require provide
+         require-struct
          )
 
 (require (prefix-in syndicate: syndicate/actor-lang))
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx))
 (require (for-syntax turnstile/examples/util/filter-maximal))
+(require (for-syntax racket/struct-info))
 (require macrotypes/postfix-in)
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
 (require (postfix-in - racket/list))
 (require (postfix-in - racket/set))
 (require (postfix-in - racket/match))
+
 
 (module+ test
   (require rackunit)
@@ -181,7 +184,8 @@
       (define transformer (user-ctor-typed-ctor v))
       (syntax-parse stx
         [(_ e ...)
-         #`(#,transformer e ...)]))))
+         (quasisyntax/loc stx
+           (#,transformer e ...))]))))
 
 (define-syntax (define-constructor* stx)
   (syntax-parse stx
@@ -230,6 +234,63 @@
            ----------------------
            [⊢ (#%app- StructName e- (... ...)) (⇒ : (TypeCons τ (... ...)))])
          (define-type-alias Alias AliasBody) ...)]))
+
+;; (require-struct chicken #:as Chicken #:from "some-mod.rkt") will
+;;  - extract the struct-info for chicken, and ensure that it is immutable, has a set number of fields
+;;  - determine the number of slots, N, chicken has
+;;  - define the type constructor (Chicken ...N), with the extra info used by define-constructor above
+;;  - define chicken+, a turnstile type rule that checks uses of chicken
+;;  - bind chicken to a user-ctor struct
+;; TODO: this implementation shares a lot with that of define-constructor
+(define-syntax (require-struct stx)
+  (syntax-parse stx
+    [(_ ucons:id #:as ty-cons:id #:from lib)
+     (with-syntax* ([TypeCons #'ty-cons]
+                    [MakeTypeCons (format-id #'TypeCons "make-~a" #'TypeCons)]
+                    [GetTypeParams (format-id #'TypeCons "get-~a-type-params" #'TypeCons)]
+                    [TypeConsExpander (format-id #'TypeCons "~~~a" #'TypeCons)]
+                    [TypeConsExtraInfo (format-id #'TypeCons "~a-extra-info" #'TypeCons)]
+                    [Cons- (format-id #'ucons "~a/checked" #'ucons)]
+                    [orig-struct-info (generate-temporary #'ucons)]
+                    [type-tag (generate-temporary #'ucons)])
+       (quasisyntax/loc stx
+         (begin-
+           (require- (only-in- lib [ucons orig-struct-info]))
+           (begin-for-syntax
+             (define info (syntax-local-value #'orig-struct-info))
+             (unless (struct-info? info)
+               (raise-syntax-error #f "expected struct" #'#,stx #'ucons))
+             (match-define (list desc cons pred accs muts sup) (extract-struct-info info))
+             (when (false? (last accs))
+               (raise-syntax-error #f "number of slots must be exact" #'#,stx #'ucons))
+             (unless (equal? #t sup)
+               (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
+             (define arity (length accs)))
+           (define-syntax (TypeConsExtraInfo stx)
+             (syntax-parse stx
+               [(_ X (... ...)) #'('type-tag 'MakeTypeCons 'GetTypeParams)]))
+           (define-type-constructor TypeCons
+             ;; issue: arity needs to parse as an exact-nonnegative-integer
+             ;; fix: check arity in MakeTypeCons
+             #:arity >= 0
+             #:extra-info 'TypeConsExtraInfo)
+           (define-syntax (MakeTypeCons stx)
+             (syntax-parse stx
+               [(_ t (... ...))
+                #:fail-unless (= arity (stx-length #'(t (... ...)))) "arity mismatch"
+                #'(TypeCons t (... ...))]))
+           (define-syntax (GetTypeParams stx)
+             (syntax-parse stx
+               [(_ (TypeConsExpander t (... ...)))
+                #'(t (... ...))]))
+           (define-typed-syntax (Cons- e (... ...)) ≫
+             #:fail-unless (= arity (stx-length #'(e (... ...)))) "arity mismatch"
+             [⊢ e ≫ e- (⇒ : τ)] (... ...)
+             #:fail-unless (all-pure? #'(e- (... ...))) "expressions must be pure"
+             ----------------------
+             [⊢ (#%app- orig-struct-info e- (... ...)) (⇒ : (TypeCons τ (... ...)))])
+           (define-syntax ucons
+             (user-ctor #'Cons- #'orig-struct-info)))))]))
 
 (begin-for-syntax
   (define-syntax ~constructor-extra-info
