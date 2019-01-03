@@ -39,6 +39,7 @@
          match cond
          ;; require & provides
          require provide
+         require/typed
          require-struct
          )
 
@@ -349,6 +350,37 @@
 
   (define (untyped-ctor stx)
     (user-ctor-untyped-ctor (syntax-local-value stx (const #f)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Require & Provide
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Import and ascribe a type from an untyped module
+;; TODO: this is where contracts would need to go
+(define-syntax (require/typed stx)
+  (syntax-parse stx
+    #:datum-literals (:)
+    [(_ lib [name:id : ty:type] ...)
+     #:with (name- ...) (format-ids "~a-" #'(name ...))
+     #:with (name+ ...) (assign-types #'((name- ty name) ...))
+     (syntax/loc stx
+       (begin-
+         (require (only-in lib [name name+] ...))
+         (define-syntax name (make-variable-like-transformer #'name+)) ...))]))
+
+;; Format identifiers in the same way
+;; FormatString (SyntaxListOf Identifier) -> (Listof Identifier)
+(define-for-syntax (format-ids fmt ids)
+  (for/list ([id (in-syntax ids)])
+    (format-id id fmt id)))
+
+;; (SyntaxListof (SyntaxList Identifier Type Identifier)) -> (Listof Identifier)
+;; For each triple (name- ty name),
+;; assign the ty to name- with the orig name
+(define-for-syntax (assign-types los)
+  (for/list ([iti (in-syntax los)])
+    (match-define (list name- ty name) (syntax->list iti))
+    (add-orig (assign-type name- ty #:wrap? #f) name)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Conveniences
