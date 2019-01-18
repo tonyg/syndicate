@@ -367,11 +367,12 @@
     #:datum-literals (:)
     [(_ lib [name:id : ty:type] ...)
      #:with (name- ...) (format-ids "~a-" #'(name ...))
-     #:with (name+ ...) (assign-types #'((name- ty name) ...))
      (syntax/loc stx
        (begin-
-         (require (only-in lib [name name+] ...))
-         (define-syntax name (make-variable-like-transformer #'name+)) ...))]))
+         (require (only-in lib [name name-] ...))
+         (define-syntax name
+           (make-variable-like-transformer (add-orig (assign-type #'name- #'ty #:wrap? #f) #'name)))
+         ...))]))
 
 ;; Format identifiers in the same way
 ;; FormatString (SyntaxListOf Identifier) -> (Listof Identifier)
@@ -1511,12 +1512,12 @@
 (define-syntax (define/intermediate stx)
   (syntax-parse stx
     [(_ x:id x-:id τ e)
-     #:with x+ (add-orig (assign-type #'x- #'τ #:wrap? #f) #'x)
      ;; including a syntax binding for x allows for module-top-level references
      ;; (where walk/bind won't replace further uses) and subsequent provides
      #'(begin-
-         (define-syntax x (make-variable-like-transformer #'x+))
-         (define- x+ e))]))
+         (define-syntax x
+           (make-variable-like-transformer (add-orig (assign-type #'x- #'τ #:wrap? #f) #'x)))
+         (define- x- e))]))
 
 ;; copied from ext-stlc
 (define-typed-syntax define
