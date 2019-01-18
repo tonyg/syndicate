@@ -13,4 +13,6 @@
        (define stdin-evt (read-bytes-line-evt (current-input-port) 'any))
        (stop-when (message (inbound (external-event stdin-evt (list (? eof-object? _))))))
        (on (message (inbound (external-event stdin-evt (list (? bytes? $line)))))
-           (send! (tcp-out id line))))
+           (send! (tcp-out id line))
+           ;; chat-tcp2 uses the line-reader, so need line separators.
+           (send! (tcp-out id #"\n"))))
