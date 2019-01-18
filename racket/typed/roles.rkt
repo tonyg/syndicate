@@ -2,10 +2,11 @@
 
 (provide (rename-out [syndicate:#%module-begin #%module-begin])
          (rename-out [typed-app #%app])
+         (rename-out [typed-quote quote])
          #%top-interaction
          require only-in
          ;; Types
-         Int Bool String Tuple Bind Discard → List
+         Int Bool String Tuple Bind Discard → List ByteString Symbol
          Role Reacts Shares Know ¬Know Message OnDataflow Stop OnStart OnStop
          FacetName Field ★/t
          Observe Inbound Outbound Actor U
@@ -28,6 +29,8 @@
          bind discard
          ;; primitives
          + - * / and or not > < >= <= = equal? displayln printf define
+         gensym symbol->string string->symbol bytes->string/utf-8 string->bytes/utf-8
+         ~a
          ;; lists
          list cons first rest member? empty? for for/fold
          ;; sets
@@ -39,6 +42,7 @@
          match cond
          ;; require & provides
          require provide
+         submod for-syntax for-meta only-in except-in
          require/typed
          require-struct
          )
@@ -53,6 +57,7 @@
 (require (postfix-in - racket/list))
 (require (postfix-in - racket/set))
 (require (postfix-in - racket/match))
+(require (postfix-in - (only-in racket/format ~a)))
 
 
 (module+ test
@@ -113,7 +118,7 @@
 (define-type-constructor Spawns #:arity >= 0)
 
 
-(define-base-types Int Bool String Discard ★/t FacetName)
+(define-base-types Int Bool String Discard ★/t FacetName ByteString Symbol)
 
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
@@ -1688,6 +1693,12 @@
 (define-primop >= (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
 (define-primop = (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
 
+(define-primop bytes->string/utf-8 (→ ByteString (Computation (Value String) (Endpoints) (Roles) (Spawns))))
+(define-primop string->bytes/utf-8 (→ String (Computation (Value ByteString) (Endpoints) (Roles) (Spawns))))
+(define-primop gensym (→ Symbol (Computation (Value Symbol) (Endpoints) (Roles) (Spawns))))
+(define-primop symbol->string (→ Symbol (Computation (Value String) (Endpoints) (Roles) (Spawns))))
+(define-primop string->symbol (→ String (Computation (Value Symbol) (Endpoints) (Roles) (Spawns))))
+
 (define-typed-syntax (/ e1 e2) ≫
   [⊢ e1 ≫ e1- (⇐ : Int)]
   [⊢ e2 ≫ e2- (⇐ : Int)]
@@ -1725,6 +1736,13 @@
   ---------------
   [⊢ (printf- e- ...) (⇒ : ★/t)])
 
+(define-typed-syntax (~a e ...) ≫
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:fail-unless (stx-andmap flat-type? #'(τ ...))
+                "expressions must be string-able"
+  --------------------------------------------------
+  [⊢ (~a- e- ...) (⇒ : String)])
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Basic Values
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1739,6 +1757,10 @@
   [(_ . s:string) ≫
   ----------------
   [⊢ (#%datum- . s) (⇒ : String)]])
+
+(define-typed-syntax (typed-quote x:id) ≫
+  -------------------------------
+  [⊢ (quote- x) (⇒ : Symbol)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities
