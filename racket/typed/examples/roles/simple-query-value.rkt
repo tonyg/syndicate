@@ -8,7 +8,7 @@
   (U (Tuple String Int)
      (Observe ★/t)))
 
-(dataspace ds-type
+(run-ground-dataspace ds-type
   (spawn ds-type
     (start-facet querier
       (define/query-value key 0 (tuple "key" (bind v Int)) (+ v 1))

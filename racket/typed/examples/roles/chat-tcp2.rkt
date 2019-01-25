@@ -21,11 +21,7 @@
   (U chat-comm
      Tcp2Driver))
 
-;; without this line, there's no check on what type of actors `activate!`
-;; spawns. However, putting these actors in a dataspace interferes with the
-;; ground activity performed by the tcp driver (by making all activity one level
-;; removed)
-;; (dataspace chat-ds
+(run-ground-dataspace chat-ds
   (activate!)
 
   (spawn chat-ds
@@ -43,4 +39,4 @@
                  (on stop
                      (send! (tcp-out id (string->bytes/utf-8 (~a user " left\n")))))
                  (on (message (speak user (bind text String)))
-                     (send! (tcp-out id (string->bytes/utf-8 (~a user " says '" text "'\n"))))))))))
+                     (send! (tcp-out id (string->bytes/utf-8 (~a user " says '" text "'\n")))))))))))

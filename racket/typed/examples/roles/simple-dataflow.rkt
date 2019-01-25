@@ -8,7 +8,7 @@
   (U (Tuple String Int)
      (Observe ★/t)))
 
-(dataspace ds-type
+(run-ground-dataspace ds-type
   (spawn ds-type
     (start-facet server
       (field [f Int 0])

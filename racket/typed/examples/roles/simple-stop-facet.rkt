@@ -12,7 +12,7 @@
   (U (Tuple Int)
      (Observe (Tuple ★/t))))
 
-(dataspace ds-type
+(run-ground-dataspace ds-type
   (spawn ds-type
    (print-role
    (start-facet doomed

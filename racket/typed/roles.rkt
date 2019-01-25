@@ -1,10 +1,12 @@
 #lang turnstile
 
-(provide (rename-out [syndicate:#%module-begin #%module-begin])
+(provide #%module-begin
          (rename-out [typed-app #%app])
          (rename-out [typed-quote quote])
          #%top-interaction
          require only-in
+         ;; Start dataspace programs
+         run-ground-dataspace
          ;; Types
          Int Bool String Tuple Bind Discard → List ByteString Symbol
          Role Reacts Shares Know ¬Know Message OnDataflow Stop OnStart OnStop
@@ -1676,6 +1678,17 @@
      (⇒ ν-ep (eps ... ...))
      (⇒ ν-f (fs ... ...))
      (⇒ ν-s (ss ... ...))])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Ground Dataspace
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; n.b. this is a blocking operation, so an actor that uses this internally
+;; won't necessarily terminate.
+(define-typed-syntax (run-ground-dataspace τ-c:type s ...) ≫
+  [⊢ (dataspace τ-c s ...) ≫ ((~literal erased) ((~literal syndicate:dataspace) s- ...)) (⇒ : t)]
+  -----------------------------------------------------------------------------------
+  [⊢ (syndicate:run-ground s- ...) (⇒ : (AssertionSet τ-c))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Primitives

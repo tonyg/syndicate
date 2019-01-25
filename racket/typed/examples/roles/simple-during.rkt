@@ -9,7 +9,7 @@
 (define-type-alias ds-type
   (U (Tuple String) (Observe (Tuple ★/t))))
 
-(dataspace ds-type
+(run-ground-dataspace ds-type
   (spawn ds-type
     (start-facet _
       (during (tuple "GO")
