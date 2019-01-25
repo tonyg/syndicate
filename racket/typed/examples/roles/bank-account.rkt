@@ -3,6 +3,7 @@
 ;; Expected Output
 ;; 0
 ;; 70
+;; #f
 
 (define-constructor (account balance)
   #:type-constructor AccountT
@@ -31,7 +32,7 @@
   (Role (client)
         (Reacts (Know Account))))
 
-(dataspace ds-type
+(run-ground-dataspace ds-type
 
   (spawn ds-type
     (print-role

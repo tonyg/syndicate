@@ -7,7 +7,7 @@
   (U (Message (Tuple String Int))
      (Observe (Tuple String ★/t))))
 
-(dataspace ds-type
+(run-ground-dataspace ds-type
   (spawn ds-type
     (start-facet echo
       (on (message (tuple "ping" (bind x Int)))

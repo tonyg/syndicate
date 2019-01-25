@@ -162,7 +162,7 @@
        (printf "~a responds to suggested book ~a: ~a\n" name title answer)
        (assert (book-interest title name answer))))))
 
-(dataspace τc
+(run-ground-dataspace τc
   (spawn-seller (list (tuple "The Wind in the Willows" 5)
                       (tuple "Catch 22" 2)
                       (tuple "Candide" 3)))

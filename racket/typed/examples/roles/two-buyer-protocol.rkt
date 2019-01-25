@@ -66,7 +66,7 @@
             (Role (_)
               (Shares (QuoteT String Int))))))
 
-(dataspace ds-type
+(run-ground-dataspace ds-type
 
 ;; seller
 (spawn ds-type
