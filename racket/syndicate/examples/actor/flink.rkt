@@ -13,7 +13,8 @@
 (require (only-in racket/hash
                   hash-union))
 (require (only-in racket/string
-                  string-split))
+                  string-split
+                  string-trim))
 (require (only-in racket/sequence
                   sequence->list))
 
@@ -45,6 +46,24 @@
   (for/fold ([result word-count])
             ([word words])
     (word-count-increment result word)))
+
+;; String -> (Listof String)
+;; Return the white space-separated words, trimming off leading & trailing punctuation
+(define (string->words s)
+  (map (lambda (w) (string-trim w #px"\\p{P}")) (string-split s)))
+
+(module+ test
+  (check-equal? (string->words "good day sir")
+                (list "good" "day" "sir"))
+  (check-equal? (string->words "")
+                (list))
+  (check-equal? (string->words "good eve ma'am")
+                (list "good" "eve" "ma'am"))
+  (check-equal? (string->words "please sir. may I have another?")
+                (list "please" "sir" "may" "I" "have" "another"))
+  ;; TODO - currently fails
+  #;(check-equal? (string->words "but wait---there's more")
+                (list "but" "wait" "there's" "more")))
 
 (assertion-struct task-runner (id status))
 (assertion-struct run-task (id task))
@@ -80,7 +99,7 @@
         (flush!)
         (match desc
           [(map-task data)
-           (word-count (count-new-words (word-count) data))
+           (word-count (count-new-words (word-count) (string->words data)))
            (execution-state (finished (word-count)))
            #;(status IDLE)]
           [(reduce-task left right)
@@ -336,9 +355,7 @@
 (define (create-task-tree lines)
   (define map-tasks
     (for/list ([line (in-list lines)])
-      ;; it may be more realistic to have the task runner do the split,
-      ;; but this is how Jonathan's input looks
-      (map-task (string-split line))))
+      (map-task line)))
   ;; build the tree up from the leaves
   (let loop ([nodes map-tasks])
     (match nodes
@@ -413,8 +430,8 @@
        (check-true (id? left))
        (check-true (id? right))
        (check-equal? (set left right) (set mid1 mid2))
-       (check-equal? (set (list "a" "b" "c") (list "d" "e" "f"))
-                     (set data1 data2))]
+       (check-equal? (set data1 data2)
+                     (set "a b c" "d e f"))]
       [_
        (displayln tasks)]))
   (test-case
