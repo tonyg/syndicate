@@ -389,6 +389,13 @@
 (define (string->job s)
   (create-job (open-input-string s)))
 
+;; PathString -> Job
+(define (file->job path)
+  (define in (open-input-file path))
+  (define j (create-job in))
+  (close-input-port in)
+  j)
+
 (module+ test
   (test-case
       "two-line job parsing"
@@ -440,7 +447,7 @@
 ;; expected:
 ;; #hash((a . 5) (b . 5) (c . 2))
 
-(spawn-client j)
+(spawn-client (file->job "lorem.txt"))
 (spawn-job-manager)
 (spawn-task-manager)
 (spawn-task-runner)
