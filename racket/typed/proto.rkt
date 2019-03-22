@@ -551,6 +551,42 @@
                        (list (stop 'poll))))))
 
 ;; ---------------------------------------------------------------------------
+;; "Simulation"
+
+;; τ τ -> Bool
+;; subtyping on basic types
+(define (<:? τ1 τ2)
+  (cond
+    [(eq? τ1 τ2)
+     #t]
+    [else
+     (match (list τ1 τ2)
+       [(list _ (== ⋆))
+        #t]
+       [(list (== Int) (== Int))
+        #t]
+       [(list (== String) (== String))
+        #t]
+       [(list (== Bool) (== Bool))
+        #t]
+       [(list (U τs) _)
+        (for/and ([τ (in-list τs)])
+          (<:? τ τ2))]
+       [(list _ (U τs))
+        (for/or ([τ (in-list τs)])
+          (<:? τ1 τ))]
+       [(list (Observe τ11) (Observe τ22))
+        (<:? τ11 τ22)]
+       [(list (Struct nm1 τs1) (Struct nm2 τs2))
+        (and (equal? nm1 nm2)
+             (= (length τs1) (length τs2))
+             (for/and ([τ11 (in-list τs1)]
+                       [τ22 (in-list τs2)])
+               (<:? τ11 τ22)))]
+       [_
+        #f])]))
+
+;; ---------------------------------------------------------------------------
 ;; Visualization
 
 (module+ vis
