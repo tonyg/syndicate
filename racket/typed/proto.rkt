@@ -137,7 +137,12 @@
 ;; and each facet's parent. The parent of the root facet is #f.
 (struct facet-tree (down up) #:transparent)
 
-;; Role -> (Hashof StateName State)
+;; a RoleGraph is a
+;;   (role-graph StateName (Hashof StateName State))
+;; describing the initial state and the behavior in each state.
+(struct role-graph (st0 states) #:transparent)
+
+;; Role -> RoleGraph
 ;; in each state, the transitions will include the reactions of the parent
 ;; facet(s)
 (define (compile role)
@@ -170,12 +175,15 @@
        (loop (append more new-work)
              (hash-set states current (state current transitions)))]
       ['()
-       states])))
+       (role-graph (set (Role-nm role)) states)])))
 
 (module+ test
   (test-case
       "compile seller"
-    (define seller# (compile seller))
+    (define rg (compile seller))
+    (check-true (role-graph? rg))
+    (match-define (role-graph sn0 seller#) rg)
+    (check-equal? sn0 (set 'seller))
     (check-true (hash-has-key? seller# (set 'seller)))
     (check-true (hash-has-key? seller# (set 'seller 'fulfill)))
     (check-equal? (hash-keys seller#)
@@ -194,7 +202,11 @@
       (Role 'x
             (list (Reacts (Know Int)
                           (Stop 'x '())))))
-    (define state# (compile r))
+    (define rg (compile r))
+    (check-true (role-graph? rg))
+    (match-define (role-graph sn0 state#) rg)
+    (check-equal? sn0
+                  (set 'x))
     (check-true (hash-has-key? state# (set)))
     (check-true (hash-has-key? state# (set 'x)))
     (define state0 (hash-ref state# (set 'x)))
@@ -544,11 +556,12 @@
 (module+ vis
   ;; TODO - for now, assume there are no names that need escaping
 
-  ;; (Hashof StateName State) -> DotString
+  ;; RoleGraph -> DotString
   ;; name is an optional string
   ;; translate the states to DOT that can be passed to graphviz
-  (define (render st#
+  (define (render rg
                   #:name [name #f])
+    (match-define (role-graph st0 st#) rg)
     (define graph-name (or name "Roles"))
     (define edges
       (for/list ([(sn st) (in-hash st#)])
@@ -564,12 +577,12 @@
                  #:before-first (format "digraph ~a {\n" graph-name)
                  #:after-last "\n}"))
 
-  ;; (Hashof StateName State) PathString -> DotString
+  ;; RoleGraph PathString -> DotString
   ;; Like render but write the output to a file
-  (define (render-to-file st# dest
+  (define (render-to-file rg dest
                           #:name [name #f])
     (with-output-to-file dest
-      (lambda () (write-string (render st#)))
+      (lambda () (write-string (render rg)))
       #:exists 'replace))
 
   ;; StateName -> String
