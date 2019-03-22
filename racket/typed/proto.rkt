@@ -5,21 +5,31 @@
 (module+ test
   (require rackunit))
 
-;; a T is one of
-;;   - (Role FacetName (Listof EP)), also abbreviated as just Role
-;;   - (Spawn τ)
-;;   - (Stop FacetName (Listof T))
-(struct Role (nm eps) #:transparent)
-(struct Spawn (ty) #:transparent)
-(struct Stop (nm tys) #:transparent)
+;; -------------------------------------------------------------------------
+;; Role Type Data Definitions
 
 ;; a FacetName is a symbol
 
+;; a T is one of
+;;   - (Role FacetName (Listof EP)), also abbreviated as just Role
+;;   - (Spawn τ)
+;;   - (Stop FacetName Body)
+(struct Role (nm eps) #:transparent)
+(struct Spawn (ty) #:transparent)
+(struct Stop (nm body) #:transparent)
+
 ;; a EP is one of
-;;   - (Reacts D (Listof T)), describing an event handler
+;;   - (Reacts D Body), describing an event handler
 ;;   - (Shares τ), describing an assertion
 (struct Reacts (evt body) #:transparent)
 (struct Shares (ty) #:transparent)
+
+;; a Body describes actions carried out in response to some event, and
+;; is one of
+;;   - T
+;;   - (Listof Body)
+;;   - (Branch (Listof Body))
+(struct Branch (arms) #:transparent)
 
 ;; a D is one of
 ;;   - (Know τ), reaction to assertion
@@ -65,9 +75,8 @@
   (Role 'seller
         (list
          (Reacts (Know (Observe (Struct 'BookQuoteT (list String ⋆))))
-                 (list
-                  (Role 'fulfill
-                        (list (Shares (Struct 'BookQuoteT (list String Int))))))))))
+                 (Role 'fulfill
+                       (list (Shares (Struct 'BookQuoteT (list String Int)))))))))
 
 ;; τ τ -> τ
 ;; short hand for creating a book quote struct type
@@ -83,19 +92,15 @@
   (Role 'leader
         (list
          (Reacts (Know (book-quote String Int))
-                 (list
-                  (Role 'poll
-                        (list
-                         ;; how to express two possible reactions to the same assertion?
-                         (Reacts (Know (book-interest String String Bool))
+                 (Role 'poll
+                       (list
+                        (Reacts (Know (book-interest String String Bool))
+                                (Branch
                                  (list
                                   (Stop 'leader
-                                        (list
                                          (Role 'announce
                                                (list
-                                                (Shares (Struct 'book-of-the-month String))))))))
-                         (Reacts (Know (book-interest String String Bool))
-                                 (list
+                                                (Shares (Struct 'book-of-the-month String)))))
                                   (Stop 'poll (list)))))))))))
 
 #;(define-type-alias leader-actual
@@ -119,12 +124,11 @@
 ;; -----------------------------------------------------------------------------
 ;; Compiling Roles to state machines
 
-;; a State is a (state StateName (Hashof D StateName))
+;; a State is a (state StateName (Hashof D (Setof StateName)))
 ;; a StateName is a (Setof FacetName)
 ;; let's assume that all FacetNames are unique
 ;; ok, this is also ignoring Spawn actions for now, would show up in the transitions hash
 (struct state (name transitions) #:transparent)
-
 
 ;; a FacetTree is a
 ;;   (facet-tree (Hashof (U #f FacetName) (Listof FacetName))
@@ -150,12 +154,17 @@
          (for/fold ([agg (hash)])
                    ([txns (in-list all-txns)])
            (hash-union agg txns
-                       #:combine append)))
+                       #:combine combine-effect-sets)))
        (define transitions
          (for/hash ([(D effs) (in-hash agg-txn)])
-           (values D (apply-effects effs current ft))))
+           ;; TODO - may want to remove self loops here
+           (define destinations
+             (for/set ([eff* (in-set effs)])
+               (apply-effects eff* current ft)))
+           (values D destinations)))
        (define new-work
-         (for/list ([st (in-hash-values transitions)]
+         (for*/list ([st-set (in-hash-values transitions)]
+                     [st (in-set st-set)]
                     #:unless (hash-has-key? states st))
            st))
        (loop (append more new-work)
@@ -178,7 +187,7 @@
       (Observe (Struct 'BookQuoteT (list String ⋆))))
     (check-true (hash-has-key? transitions (Know quote-request)))
     (check-equal? (hash-ref transitions (Know quote-request))
-                  (set 'seller 'fulfill))))
+                  (set (set 'seller 'fulfill)))))
 
 ;; Role -> FacetTree
 (define (make-facet-tree role)
@@ -203,19 +212,46 @@
           (define more-work*
             (for/list ([ep (in-list eps)]
                        #:when (Reacts? ep))
-              (match-define (Reacts _ acts) ep)
-              (map ((curry cons) nm) acts)))
+              (match-define (Reacts _ body) ep)
+              (map ((curry cons) nm) (Body->actions body))))
           (loop (apply append rest more-work*)
                 downs3
                 ups2)]
-         [(Stop target ks)
+         [(Stop target body)
           (define new-parent (hash-ref ups target))
           (define more-work
-            (for/list ([k (in-list ks)])
+            (for/list ([k (in-list (Body->actions body))])
               (cons new-parent k)))
           (loop (append rest more-work)
                 downs
                 ups)])])))
+
+;; Body -> (Listof T)
+;; extract the list of all Role, Stop, and Spawn types from a Body
+(define (Body->actions body)
+  (match body
+    [(? list?)
+     (apply append (map Body->actions body))]
+    [(Branch arms)
+     (apply append (map Body->actions arms))]
+    [T (list T)]))
+
+(module+ test
+  (test-case
+      "Body->actions Branch"
+    (define body (Branch
+                  (list
+                   (Stop 'leader
+                         (Role 'announce
+                               (list
+                                (Shares (Struct 'book-of-the-month String)))))
+                   (Stop 'poll (list)))))
+    (check-equal? (Body->actions body)
+                  (list (Stop 'leader
+                              (Role 'announce
+                                    (list
+                                     (Shares (Struct 'book-of-the-month String)))))
+                        (Stop 'poll (list))))))
 
 (module+ test
   (test-case
@@ -292,8 +328,8 @@
 (struct start (nm) #:transparent)
 (struct stop (nm) #:transparent)
 
-;; a TransitionDesc is a (Hashof D (Listof RoleEffect)), describing when
-;; transitions occur (+/- of an assertion) and how they alter the facet tree.
+;; a TransitionDesc is a (Hashof D (Setof (Listof RoleEffect)), describing the
+;; possible ways an event (+/- of an assertion) can alter the facet tree
 
 ;; (Listof RoleEffect) StateName FacetTree -> StateName determine the state
 ;; resulting from some effects, given the currently active facets and a
@@ -323,7 +359,7 @@
          (for*/list ([ep (in-list eps)]
                      #:when (Reacts? ep)
                      [body (in-value (Reacts-body ep))]
-                     [act (in-list body)])
+                     [act (in-list (Body->actions body))])
            act))
        ;; need to find references to Roles inside arbitrarily nested Stops
        (let search ([acts acts]
@@ -335,7 +371,8 @@
             (match act
               [(Role _ _)
                (search acts (cons act more-roles))]
-              [(Stop _ more-acts)
+              [(Stop _ body)
+               (define more-acts (Body->actions body))
                (search (append acts more-acts) more-roles)]
               [_
                (search acts more-roles)])]))]
@@ -350,27 +387,29 @@
      (for/fold ([txns (hash)])
                ([ep (in-list eps)]
                 #:when (Reacts? ep))
-       (match-define (Reacts evt acts) ep)
-       (define effects
-         (let loop ([acts acts]
-                    [effs (list)])
-           (match acts
-             ['()
-              effs]
-             [(cons act more)
-              (match act
-                [(Role nm2 _)
-                 (loop more (cons (start nm2) effs))]
-                [(Stop nm2 Ts)
-                 (loop (append more Ts)
-                       (cons (stop nm2) effs))]
-                [_
-                 (loop more effs)])])))
+       (match-define (Reacts evt body) ep)
+       (define effects (Body->effects body))
        (cond
-         [(empty? effects)
+         [(or (set-empty? effects)
+              (equal? effects (set '())))
           txns]
          [else
-          (hash-update txns evt ((curry append) effects) '())]))]))
+          (define (update-effect-set existing)
+            (combine-effect-sets effects existing))
+          (hash-update txns evt update-effect-set (set))]))]))
+
+;; (Setof (Listof X)) (Setof (Listof X)) -> (Setof (Listof X))
+;; two separately analyzed sets of effects may combine in any way
+(define (combine-effect-sets s1 s2)
+  (cond
+    [(set-empty? s1)
+     s2]
+    [(set-empty? s2)
+     s1]
+    [else
+     (for*/set ([e1* (in-set s1)]
+                [e2* (in-set s2)])
+       (append e1* e2*))]))
 
 (module+ test
   (test-case
@@ -391,7 +430,23 @@
       (Observe (Struct 'BookQuoteT (list String ⋆))))
     (check-true (hash-has-key? seller-txns (Know quote-request)))
     (check-equal? (hash-ref seller-txns (Know quote-request))
-                  (list (start 'fulfill))))
+                  (set (list (start 'fulfill)))))
+  (test-case
+      "describe-roles bug"
+    (define role (Role 'poll
+                       (list
+                        (Reacts (Know Int)
+                                (Branch
+                                 (list (Stop 'leader (Role 'announce (list (Shares Int))))
+                                       (Stop 'poll (list))))))))
+    (define desc (describe-roles role))
+    (check-true (hash? desc))
+    (check-true (hash-has-key? desc 'poll))
+    (define txns (hash-ref desc 'poll))
+    (check-true (hash-has-key? txns (Know Int)))
+    (check-equal? (hash-ref txns (Know Int))
+                  (set (list (stop 'leader) (start 'announce))
+                       (list (stop 'poll)))))
   (test-case
       "leader-spec announce"
     (define desc (describe-roles leader-spec))
@@ -403,11 +458,76 @@
     (define desc (describe-roles leader-spec))
     (check-true (hash-has-key? desc 'poll))
     (define poll-txns (hash-ref desc 'poll))
-    (check-true (hash-has-key? poll-txns (Know (book-interest String String Bool))))
-    ;; I'm not sure how this should be represented, but this case is definitely wrong:
-    (check-false (hash-ref poll-txns (Know (book-interest String String Bool)))
-                 (list (stop 'poll) (start 'announce) (stop 'leader)))
-    ))
+    (define evt (Know (book-interest String String Bool)))
+    (check-true (hash-has-key? poll-txns evt))
+    (define effs (hash-ref poll-txns evt))
+    (check-true (set-member? effs (list (stop 'poll))))))
+
+;; Body -> (Setof (Listof RoleEffect))
+(define (Body->effects body)
+  (match body
+    ['()
+     (set)]
+    [(cons b more)
+     (define fst (Body->effects b))
+     (define later (Body->effects more))
+     (cond
+       [(set-empty? fst)
+        later]
+       [(set-empty? later)
+        fst]
+       [else
+        (for*/set ([f (in-set fst)]
+                   [l (in-set later)])
+          (append f l))])]
+    [(Branch (list b ...))
+     (for/fold ([agg (set)])
+               ([b (in-list b)])
+       (set-union agg (Body->effects b)))]
+    [(Role nm _)
+     (set (list (start nm)))]
+    [(Stop nm more)
+     (define effects (Body->effects more))
+     (cond
+       [(set-empty? effects)
+        (set (list (stop nm)))]
+       [else
+        (for/set ([eff* (in-set effects)])
+          (cons (stop nm) eff*))])]
+    [(Spawn _)
+     (error)]))
+
+(module+ test
+  (test-case
+      "Body->effects"
+    (check-equal? (Body->effects '())
+                  (set))
+    (check-equal? (Body->effects (Branch '()))
+                  (set))
+    (check-equal? (Body->effects manager)
+                  (set (list (start 'account-manager))))
+    (check-equal? (Body->effects (list manager))
+                  (set (list (start 'account-manager))))
+    (check-equal? (Body->effects (Branch (list manager)))
+                  (set (list (start 'account-manager))))
+    (check-equal? (Body->effects (list manager client))
+                  (set (list (start 'account-manager)
+                             (start 'client))))
+    (check-equal? (Body->effects (Branch (list manager client)))
+                  (set (list (start 'account-manager))
+                       (list (start 'client))))
+    (check-equal? (Body->effects (list manager
+                                       (Branch (list client seller))))
+                  (set (list (start 'account-manager) (start 'client))
+                       (list (start 'account-manager) (start 'seller)))))
+  (test-case
+      "Body->effects bug?"
+    (define body (Branch
+                  (list (Stop 'leader (Role 'announce (list (Shares Int))))
+                        (Stop 'poll (list)))))
+    (check-equal? (Body->effects body)
+                  (set (list (stop 'leader) (start 'announce))
+                       (list (stop 'poll))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Visualization
@@ -426,7 +546,8 @@
         (define dot-name (state-name->dot-name sn))
         (define txns (state-transitions st))
         (define dot-edges
-          (for/list ([(D target) (in-hash txns)])
+          (for*/list ([(D targets) (in-hash txns)]
+                      [target (in-set targets)])
             (render-edge dot-name D target)))
         (string-join dot-edges "\n")))
     (string-join edges
