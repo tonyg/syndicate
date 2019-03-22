@@ -187,7 +187,21 @@
       (Observe (Struct 'BookQuoteT (list String ⋆))))
     (check-true (hash-has-key? transitions (Know quote-request)))
     (check-equal? (hash-ref transitions (Know quote-request))
-                  (set (set 'seller 'fulfill)))))
+                  (set (set 'seller 'fulfill))))
+  (test-case
+      "compile role that quits"
+    (define r
+      (Role 'x
+            (list (Reacts (Know Int)
+                          (Stop 'x '())))))
+    (define state# (compile r))
+    (check-true (hash-has-key? state# (set)))
+    (check-true (hash-has-key? state# (set 'x)))
+    (define state0 (hash-ref state# (set 'x)))
+    (define transitions (state-transitions state0))
+    (check-true (hash-has-key? transitions (Know Int)))
+    (check-equal? (hash-ref transitions (Know Int))
+                  (set (set)))))
 
 ;; Role -> FacetTree
 (define (make-facet-tree role)
@@ -348,36 +362,31 @@
 ;; Role -> (Hashof FacetName TransitionDesc)
 ;; Extract a description of all roles mentioned in a Role
 (define (describe-roles role)
-  (let loop ([roles (list role)]
-             [desc (hash)])
-    (match roles
-      [(cons role roles)
-       (match-define (Role nm eps) role)
-       (define txn (describe-role role))
-       (define next-desc (hash-set desc nm txn))
-       (define acts
-         (for*/list ([ep (in-list eps)]
-                     #:when (Reacts? ep)
-                     [body (in-value (Reacts-body ep))]
-                     [act (in-list (Body->actions body))])
-           act))
-       ;; need to find references to Roles inside arbitrarily nested Stops
-       (let search ([acts acts]
-                    [more-roles roles])
-         (match acts
-           ['()
-            (loop more-roles next-desc)]
-           [(cons act acts)
-            (match act
-              [(Role _ _)
-               (search acts (cons act more-roles))]
-              [(Stop _ body)
-               (define more-acts (Body->actions body))
-               (search (append acts more-acts) more-roles)]
-              [_
-               (search acts more-roles)])]))]
-      ['()
-       desc])))
+  (define all-roles (enumerate-roles role))
+  (for/hash ([r (in-list all-roles)])
+    (define txn (describe-role r))
+    (values (Role-nm r)
+            txn)))
+
+;; T -> (Listof Role)
+;; Find all nested role descriptions
+(define (enumerate-roles t)
+  (match t
+    [(Role _ eps)
+     (define rs
+       (for*/list ([ep (in-list eps)]
+                   #:when (Reacts? ep)
+                   [body (in-value (Reacts-body ep))]
+                   [act (in-list (Body->actions body))]
+                   [role (in-list (enumerate-roles act))])
+         role))
+     (cons t rs)]
+    [(Stop _ body)
+     (for*/list ([act (in-list (Body->actions body))]
+                 [role (in-list (enumerate-roles act))])
+       role)]
+    [(Spawn _)
+     (error)]))
 
 ;; Role -> TransitionDesc
 ;; determine how the event handlers in a role alter the facet tree
