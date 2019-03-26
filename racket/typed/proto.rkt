@@ -746,6 +746,19 @@
     (define r (Role 'x (list)))
     (check-true (simulates? r r)))
   (test-case
+      "identity simulation"
+    (check-true (simulates? manager manager))
+    (check-true (simulates? client client))
+    (check-true (simulates? seller seller)))
+  (test-case
+      "simulation isn't vacuous"
+    (check-false (simulates? manager client))
+    (check-false (simulates? client manager))
+    (check-false (simulates? manager seller))
+    (check-false (simulates? seller manager))
+    (check-false (simulates? client seller))
+    (check-false (simulates? seller client)))
+  (test-case
       "leader-spec identity simulation"
     (check-true (simulates? leader-spec leader-spec))))
 
