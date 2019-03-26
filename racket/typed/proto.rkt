@@ -719,8 +719,7 @@
              (unless dests1
                (return #f))
              (define combos (make-combinations dests1 dests2))
-             (for/or ([matching (in-set combos)])
-               (verify (one-of matching) (set-add assumptions goal)))))
+             (verify (one-of combos) (set-add assumptions goal))))
          (unless same-on-specified-events?
            (return #f))
          (define extra-evts
@@ -745,7 +744,10 @@
   (test-case
       "simplest simul"
     (define r (Role 'x (list)))
-    (check-true (simulates? r r))))
+    (check-true (simulates? r r)))
+  (test-case
+      "leader-spec identity simulation"
+    (check-true (simulates? leader-spec leader-spec))))
 
 ;; ---------------------------------------------------------------------------
 ;; Visualization
