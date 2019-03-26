@@ -586,6 +586,167 @@
        [_
         #f])]))
 
+;; D D -> Bool
+;; subtyping lifted over event descriptions
+(define (D<:? D1 D2)
+  (match (list D1 D2)
+    [(list (Know τ1) (Know τ2))
+     (<:? τ1 τ2)]
+    [(list (¬Know τ1) (¬Know τ2))
+     (<:? τ1 τ2)]
+    [_
+     #f]))
+
+;; Role -> (Setof τ)
+;; Compute the set of assertions the role contributes (on its own, not
+;; considering parent assertions)
+(define (role-assertions r)
+  (for/set ([ep (in-list (Role-eps r))])
+    (match ep
+      [(Shares τ)
+       τ]
+      [(Reacts evt _)
+       ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
+       (match evt
+         [(Know τ)
+          (Observe τ)]
+         [(¬Know τ)
+          (Observe τ)])])))
+
+;; an Equation is (equiv StateName StateName)
+;;
+;; a Goal is one of
+;;   - Equation
+;;   - (one-of (Setof StateMatch))
+;;
+;; a StateMatch is a (Setof Equation)
+(struct equiv (a b) #:transparent)
+(struct one-of (opts) #:transparent)
+
+;; (Setof StateName) (Setof StateName) -> (Setof (Setof Equation))
+;; Create potential state matchings
+;; In each state matching, each element a of the first set (as) is
+;; matched with an element b of bs, where each b has at least one state
+;; matched with it.
+(define (make-combinations as bs)
+  (define combos (make-combinations* as bs))
+  (define (all-bs? combo)
+    (for/and ([b (in-set bs)])
+      (for/or ([eqn (in-set combo)])
+        (match-define (equiv _ bb) eqn)
+        (equal? b bb))))
+  (for/set ([combo (in-set combos)]
+            #:when (all-bs? combo))
+    combo))
+
+;; (Setof StateName) (Setof StateName) -> (Setof (Setof Equation))
+;; Like make-combinations, but don't enforce that each b occurs at
+;; least once in each combination
+(define (make-combinations* as bs)
+  (cond
+    [(= (set-count as) 1)
+     (for*/set ([a (in-value (set-first as))]
+                [b (in-set bs)])
+       (set (equiv a b)))]
+     [else
+      (for*/fold ([agg (set)])
+                 ([a (in-set as)]
+                  [b (in-set bs)])
+        (define combos (make-combinations* (set-remove as a) bs))
+        (define combos+
+          (for/set ([c (in-set combos)])
+            (set-add c (equiv a b))))
+        (set-union agg combos+))]))
+
+;; Role Role -> Bool
+;; determine if the first role acts suitably like the second role.
+;; at all times, it is asserting a superset of the second's assertions
+;; role1 ~ actual
+;; role2 ~ spec
+(define (simulates? role1 role2)
+  (match-define (role-graph st0-1 st#1) (compile role1))
+  (match-define (role-graph st0-2 st#2) (compile role2))
+  (define ft1 (make-facet-tree role1))
+  (define ft2 (make-facet-tree role2))
+  (define all-roles1 (enumerate-roles role1))
+  (define all-roles2 (enumerate-roles role2))
+  (define assertion#1
+    (for/hash ([role (in-list all-roles1)])
+      (values (Role-nm role)
+              (role-assertions role))))
+  (define assertion#2
+    (for/hash ([role (in-list all-roles2)])
+      (values (Role-nm role)
+              (role-assertions role))))
+  (define state-assertions1
+    (for/hash ([sn (in-hash-keys st#1)])
+      (values sn
+              (for/fold ([assertions (set)])
+                        ([facet-name (in-set sn)])
+                (set-union assertions (hash-ref assertion#1 facet-name (set)))))))
+  (define state-assertions2
+    (for/hash ([sn (in-hash-keys st#2)])
+      (values sn
+              (for/fold ([assertions (set)])
+                        ([facet-name (in-set sn)])
+                (set-union assertions (hash-ref assertion#2 facet-name (set)))))))
+  ;; Goal (Setof Equation) -> Bool
+  (define (verify goal assumptions)
+    (let/ec return
+      (match goal
+        [(equiv sn1 sn2)
+         (when (set-member? assumptions goal)
+           (return #t))
+         (define assertions1 (hash-ref state-assertions1 sn1))
+         (define assertions2 (hash-ref state-assertions2 sn2))
+         (define superset?
+           (for/and ([assertion2 (in-set assertions2)])
+             (for/or ([assertion1 (in-set assertions1)])
+               (<:? assertion1 assertion2))))
+         (unless superset?
+           (return #f))
+         (define transitions1 (state-transitions (hash-ref st#1 sn1)))
+         (define transitions2 (state-transitions (hash-ref st#2 sn2)))
+         (define evts1 (hash-keys transitions1))
+         (define evts2 (hash-keys transitions2))
+         (define same-on-specified-events?
+           (for/and ([(D dests2) (in-hash transitions2)])
+             (define dests1
+               (for/fold ([agg (set)])
+                         ([(D1 dests) (in-hash transitions1)]
+                          #:when (D<:? D D1))
+                 (set-union agg dests)))
+             (unless dests1
+               (return #f))
+             (define combos (make-combinations dests1 dests2))
+             (for/or ([matching (in-set combos)])
+               (verify (one-of matching) (set-add assumptions goal)))))
+         (unless same-on-specified-events?
+           (return #f))
+         (define extra-evts
+           (for/set ([evt1 (in-list evts1)]
+                     #:unless (for/or ([evt2 (in-list evts2)])
+                                (D<:? evt2 evt1)))
+             evt1))
+         (define same-on-extra-evts?
+           (for*/and ([evt (in-set extra-evts)]
+                      [dest (in-set (hash-ref transitions1 evt))])
+             (verify (equiv dest sn2)
+                     (set-add assumptions goal))))
+         same-on-extra-evts?]
+        [(one-of matchings)
+         (for/or ([matching (in-set matchings)])
+           (for/and ([goal (in-set matching)])
+             (define hypotheses (set-remove matching goal))
+             (verify goal (set-union hypotheses assumptions))))])))
+  (verify (equiv st0-1 st0-2) (set)))
+
+(module+ test
+  (test-case
+      "simplest simul"
+    (define r (Role 'x (list)))
+    (check-true (simulates? r r))))
+
 ;; ---------------------------------------------------------------------------
 ;; Visualization
 
