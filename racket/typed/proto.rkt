@@ -100,26 +100,55 @@
                                   (Stop 'leader
                                          (Role 'announce
                                                (list
-                                                (Shares (Struct 'book-of-the-month String)))))
+                                                (Shares (Struct 'book-of-the-month (list String))))))
                                   (Stop 'poll (list)))))))))))
 
-#;(define-type-alias leader-actual
-  (Role (get-quotes31)
-        (Reacts (Know (BookQuoteT String (Bind Int)))
-                (Stop get-quotes)
-                (Role (poll-members36)
-                      (Reacts OnDataflow
-                              (Stop poll-members
-                                    (Stop get-quotes))
-                              (Stop get-quotes
-                                    (Role (announce39)
-                                          (Shares (BookOfTheMonthT String)))))
-                      (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
-                      (Reacts (Know (BookInterestT String (Bind String) Bool)))
-                      (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
-                      (Reacts (Know (BookInterestT String (Bind String) Bool)))))
-        (Reacts (¬Know (ClubMemberT (Bind String))))
-        (Reacts (Know (ClubMemberT (Bind String))))))
+(define leader-actual
+  (Role 'get-quotes
+        (list
+         (Reacts (Know (book-quote String Int))
+                 (Branch (list
+                          ;; problem 1: spec doesn't say actor can give up when running out of books
+                          (Stop 'get-quotes '())
+                          (Role 'poll-members
+                                (list
+                                 (Reacts (Know (book-interest String String ⋆))
+                                         (Branch (list
+                                                  ;; problem 2: combining poll-members and get-quotes here (should be another branch)
+                                                  (Stop 'poll-members
+                                                        (Stop 'get-quotes '()))
+                                                  (Stop 'get-quotes
+                                                        (Role 'announce
+                                                              (list
+                                                               (Shares (Struct 'book-of-the-month (list String)))))))))
+                                 (Reacts (¬Know (book-interest String String Bool)) (list))
+                                 (Reacts (Know (book-interest String String Bool)) (list))
+                                 (Reacts (¬Know (book-interest String String Bool)) (list))
+                                 (Reacts (Know (book-interest String String Bool)) (list)))))))
+         (Reacts (¬Know (Struct 'club-member (list String))) (list))
+         (Reacts (Know (Struct 'club-member (list String))) (list)))))
+
+(define leader-fixed?
+  (Role 'get-quotes
+        (list
+         (Reacts (Know (book-quote String Int))
+                 (Branch (list
+                          (Role 'poll-members
+                                (list
+                                 (Reacts (Know (book-interest String String ⋆))
+                                         (Branch (list
+                                                  (Stop 'poll-members
+                                                        '())
+                                                  (Stop 'get-quotes
+                                                        (Role 'announce
+                                                              (list
+                                                               (Shares (Struct 'book-of-the-month (list String)))))))))
+                                 (Reacts (¬Know (book-interest String String Bool)) (list))
+                                 (Reacts (Know (book-interest String String Bool)) (list))
+                                 (Reacts (¬Know (book-interest String String Bool)) (list))
+                                 (Reacts (Know (book-interest String String Bool)) (list)))))))
+         (Reacts (¬Know (Struct 'club-member (list String))) (list))
+         (Reacts (Know (Struct 'club-member (list String))) (list)))))
 
 ;; -----------------------------------------------------------------------------
 ;; Compiling Roles to state machines
@@ -760,7 +789,11 @@
     (check-false (simulates? seller client)))
   (test-case
       "leader-spec identity simulation"
-    (check-true (simulates? leader-spec leader-spec))))
+    (check-true (simulates? leader-spec leader-spec)))
+  (test-case
+      "things aren't quite right with leader-actual"
+    (check-false (simulates? leader-actual leader-spec))
+    (check-true (simulates? leader-fixed? leader-spec))))
 
 ;; ---------------------------------------------------------------------------
 ;; Visualization
@@ -775,6 +808,7 @@
                   #:name [name #f])
     (match-define (role-graph st0 st#) rg)
     (define graph-name (or name "Roles"))
+    (define entry-node (format "~a;" (state-name->dot-name st0)))
     (define edges
       (for/list ([(sn st) (in-hash st#)])
         (define dot-name (state-name->dot-name sn))
@@ -784,7 +818,7 @@
                       [target (in-set targets)])
             (render-edge dot-name D target)))
         (string-join dot-edges "\n")))
-    (string-join edges
+    (string-join (cons entry-node edges)
                  "\n"
                  #:before-first (format "digraph ~a {\n" graph-name)
                  #:after-last "\n}"))
@@ -794,7 +828,7 @@
   (define (render-to-file rg dest
                           #:name [name #f])
     (with-output-to-file dest
-      (lambda () (write-string (render rg)))
+      (lambda () (write-string (render rg #:name name)))
       #:exists 'replace))
 
   ;; StateName -> String

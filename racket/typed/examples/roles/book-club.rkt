@@ -129,7 +129,20 @@
             (start-facet poll-members
              (define/query-set yays (book-interest (ref title) (bind name String) #t) name)
              (define/query-set nays (book-interest (ref title) (bind name String) #f) name)
-             (begin/dataflow
+             (on (asserted (book-interest (ref title) (bind name String) discard))
+                 ;; count the leader as a 'yay'
+                 (when (>= (set-count (ref yays))
+                           (/ (set-count (ref members)) 2))
+                   (printf "leader finds enough affirmation for ~a\n" (ref title))
+                   (stop get-quotes
+                         (start-facet announce
+                                      (assert (book-of-the-month (ref title))))))
+                 (when (> (set-count (ref nays))
+                          (/ (set-count (ref members)) 2))
+                   (printf "leader finds enough negative nancys for ~a\n" (ref title))
+                   (stop poll-members (next-book))))
+             ;; begin/dataflow is a problem for simulation checking
+             #;(begin/dataflow
                ;; count the leader as a 'yay'
                (when (>= (set-count (ref yays))
                          (/ (set-count (ref members)) 2))

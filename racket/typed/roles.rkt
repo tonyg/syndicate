@@ -1782,14 +1782,14 @@
 
 (define-typed-syntax (print-type e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
-  #:do [(displayln (type->str #'τ))]
+  #:do [(pretty-display (type->str #'τ))]
   ----------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
 
 (define-typed-syntax (print-role e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
   #:do [(for ([r (in-syntax #'(fs ...))])
-          (displayln (type->str r)))]
+          (pretty-display (type->str r)))]
   ----------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
 
