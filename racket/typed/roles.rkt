@@ -80,7 +80,7 @@
 ;; ν-ep key aggregates endpoint affects:
 ;;   `Shares`, `Reacts`, and `MakesField`
 ;; Note thar MakesField is only an effect, not a type
-;; ν-f key aggregates facet effects (starting a facet) as `Role`s and message sends, `Sends`
+;; ν-f key aggregates facet effects (starting/stopping a facet) as `Role`s & `Stop`s and message sends, `Sends`
 ;; ν-s key aggregates spawned actors as `Actor`s
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -97,6 +97,11 @@
 (define-type-constructor Message #:arity = 1)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
+;; keep track of branches for facet effects
+;; (Branch (Listof (Listof Type)))
+(define-type-constructor Branch #:arity >= 0)
+;; sequence of effects
+(define-type-constructor Effs #:arity >= 0)
 (define-base-types OnStart OnStop OnDataflow MakesField)
 (define-for-syntax field-prop-name 'fields)
 
@@ -394,6 +399,19 @@
 ;; Conveniences
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; (SyntaxListof (SyntaxListof Type)) -> (U (SyntaxListof Branch) #'())
+(define-for-syntax (make-Branch tys*)
+  (syntax-parse tys*
+    [()
+     #'()]
+    [(() ...)
+     #'()]
+    [((ty ...) ...)
+     (define effs
+       (for/list ([tys (in-syntax tys*)])
+         (mk-Effs- (syntax->list tys))))
+     #`(#,(mk-Branch- effs))]))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -506,6 +524,9 @@
 ;; RoleType -> (Values InputType OutputType SpawnType)
 (define-for-syntax (analyze-role-input/output t)
   (syntax-parse t
+    [(~Branch (~Effs τ-r ...) ...)
+     #:with (τi τo τa) (analyze-roles #'(τ-r ... ...))
+     (values #'τi #'τo #'τa)]
     [(~Stop name:id τ-r ...)
      #:with (τi τo τa) (analyze-roles #'(τ-r ...))
      (values #'τi #'τo #'τa)]
@@ -1570,7 +1591,7 @@
    --------
    [⊢ (if- e_tst- e1- e2-)
       (⇒ ν-ep (eps1 ... eps2 ...))
-      (⇒ ν-f (fs1 ... fs2 ...))
+      (⇒ ν-f #,(make-Branch #'((fs1 ...) (fs2 ...))))
       (⇒ ν-s (ss1 ... ss2 ...))]]
   [(_ e_tst e1 e2) ≫
    [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
@@ -1583,7 +1604,7 @@
    --------
    [⊢ (if- e_tst- e1- e2-) (⇒ : τ)
       (⇒ ν-ep (eps1 ... eps2 ...))
-      (⇒ ν-f (fs1 ... fs2 ...))
+      (⇒ ν-f #,(make-Branch #'((fs1 ...) (fs2 ...))))
       (⇒ ν-s (ss1 ... ss2 ...))]])
 
 (define-typed-syntax (when e s ...+) ≫
@@ -1651,7 +1672,7 @@
   ------------------------------------------------
   [⊢ (cond- [pred- s-] ...) (⇒ : (U τ-s ...))
      (⇒ ν-ep (eps ... ...))
-     (⇒ ν-f (fs ... ...))
+     (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
      (⇒ ν-s (ss ... ...))])
 
 (define-typed-syntax (match e [p s ...+] ...+) ≫
@@ -1676,7 +1697,7 @@
                 [_ (error "incomplete pattern match")])
      (⇒ : (U τ-s ...))
      (⇒ ν-ep (eps ... ...))
-     (⇒ ν-f (fs ... ...))
+     (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
      (⇒ ν-s (ss ... ...))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
