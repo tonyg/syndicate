@@ -86,7 +86,7 @@
 ;; τ τ τ -> τ
 ;; short hand for creating a book quote interest type
 (define (book-interest ty1 ty2 ty3)
-  (Struct 'book-interest (list ty1 ty2)))
+  (Struct 'book-interest (list ty1 ty2 ty3)))
 
 (define leader-spec
   (Role 'leader
@@ -150,6 +150,41 @@
          (Reacts (¬Know (Struct 'club-member (list String))) (list))
          (Reacts (Know (Struct 'club-member (list String))) (list)))))
 
+(define leader-revised
+  (Role
+   'get-quotes
+   (list
+    (Reacts
+     (Know (book-quote String Int))
+     (Branch
+      (list
+       (Branch (list (Stop 'get-quotes (list)) (list)))
+       (Role
+        'poll-members
+        (list
+         (Reacts
+          (Know (book-interest String String ⋆))
+          (list
+           (Branch
+            (list
+             (Stop 'poll-members
+                   (Branch (list
+                            (Stop 'get-quotes (list))
+                            (list))))
+             (list)))
+           (Branch
+            (list
+             (Stop
+              'get-quotes
+              (Role 'announce (list (Shares (Struct 'book-of-the-month (list String))))))
+             (list)))))
+         (Reacts (¬Know (book-interest String String Bool)) (list))
+         (Reacts (Know (book-interest String String Bool)) (list))
+         (Reacts (¬Know (book-interest String String Bool)) (list))
+         (Reacts (Know (book-interest String String Bool)) (list)))))))
+     (Reacts (¬Know (Struct 'club-member (list String))) (list))
+     (Reacts (Know (Struct 'club-member (list String))) (list)))))
+
 ;; -----------------------------------------------------------------------------
 ;; Compiling Roles to state machines
 
@@ -199,7 +234,8 @@
        (define new-work
          (for*/list ([st-set (in-hash-values transitions)]
                      [st (in-set st-set)]
-                    #:unless (hash-has-key? states st))
+                     #:unless (equal? st current)
+                     #:unless (hash-has-key? states st))
            st))
        (loop (append more new-work)
              (hash-set states current (state current transitions)))]
@@ -242,7 +278,80 @@
     (define transitions (state-transitions state0))
     (check-true (hash-has-key? transitions (Know Int)))
     (check-equal? (hash-ref transitions (Know Int))
-                  (set (set)))))
+                  (set (set))))
+
+  (test-case
+      "leader-revised should have a quote/poll cycle"
+    (define rg (compile leader-revised))
+    (check-true (role-graph? rg))
+    (match-define (role-graph sn0 state#) rg)
+    (check-true (hash? state#))
+    (check-true (hash-has-key? state# (set 'get-quotes)))
+    (define gq-st (hash-ref state# (set 'get-quotes)))
+    (check-true (state? gq-st))
+    (match-define (state _ gq-transitions) gq-st)
+    (define bq (Know (book-quote String Int)))
+    (check-true (hash? gq-transitions))
+    (check-true (hash-has-key? gq-transitions bq))
+    (define dests (hash-ref gq-transitions bq))
+    (check-true (set? dests))
+    (check-true (set-member? dests (set 'get-quotes 'poll-members)))
+    (check-true (hash-has-key? state# (set 'get-quotes 'poll-members)))
+    (define gqpm-st (hash-ref state# (set 'get-quotes 'poll-members)))
+    (check-true (state? gqpm-st))
+    (match-define (state _ gqpm-transitions) gqpm-st)
+    (define bi (Know (book-interest String String ⋆)))
+    (check-true (hash? gqpm-transitions))
+    (check-true (hash-has-key? gqpm-transitions bi))
+    (define dests2 (hash-ref gqpm-transitions bi))
+    (check-true (set? dests2))
+    (check-true (set-member? dests2 (set 'get-quotes))))
+
+  (test-case
+      "simplified poll should quit"
+    (define poll/simpl
+      (Role
+       'poll-members
+       (list
+        (Reacts
+         (Know (book-interest String String ⋆))
+         (list
+          (Branch
+           (list
+            (Stop 'poll-members
+                  (Branch (list
+                           (Stop 'get-quotes (list))
+                           (list))))
+            (list))))))))
+    (define transition# (describe-role poll/simpl))
+    (check-true (hash? transition#))
+    (define bi (Know (book-interest String String ⋆)))
+    (check-true (hash-has-key? transition# bi))
+    (define effs (hash-ref transition# bi))
+    (check-true (set? effs))
+    (check-true (set-member? effs (list (stop 'poll-members))))
+    )
+  (test-case
+      "Body->effects of simplified poll"
+    (define poll/simpl/body
+         (Stop 'poll-members
+               (Branch (list
+                        (Stop 'get-quotes (list))
+                        (list)))))
+    (define effs (Body->effects poll/simpl/body))
+    (check-true (set? effs))
+    (check-true (set-member? effs (list (stop 'poll-members) (stop 'get-quotes))))
+    (check-true (set-member? effs (list (stop 'poll-members)))))
+  (test-case
+      "Body->effects of even more simplified poll"
+    (define poll/simpl/body/simpl
+      (Branch (list
+               (Stop 'get-quotes (list))
+               (list))))
+    (define effs (Body->effects poll/simpl/body/simpl))
+    (check-true (set? effs))
+    (check-equal? effs
+                  (set (list (stop 'get-quotes)) (list)))))
 
 ;; Role -> FacetTree
 (define (make-facet-tree role)
@@ -533,7 +642,13 @@
     [(Branch (list b ...))
      (for/fold ([agg (set)])
                ([b (in-list b)])
-       (set-union agg (Body->effects b)))]
+       (define effs (Body->effects b))
+       ;; it's important to remember when "do nothing" is one of the alternatives of a branch
+       (define effs++
+         (if (set-empty? effs)
+             (set '())
+             effs))
+       (set-union agg effs++))]
     [(Role nm _)
      (set (list (start nm)))]
     [(Stop nm more)
@@ -793,7 +908,10 @@
   (test-case
       "things aren't quite right with leader-actual"
     (check-false (simulates? leader-actual leader-spec))
-    (check-true (simulates? leader-fixed? leader-spec))))
+    (check-true (simulates? leader-fixed? leader-spec)))
+  (test-case
+      "things aren't quite right with leader-revised"
+    (check-false (simulates? leader-revised leader-spec))))
 
 ;; ---------------------------------------------------------------------------
 ;; Visualization
