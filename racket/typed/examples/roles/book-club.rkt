@@ -62,13 +62,14 @@
 
 (define (spawn-seller [inventory : Inventory])
   (spawn τc
+    (begin
     (start-facet seller
       (field [books Inventory inventory])
 
       ;; Give quotes to interested parties.
       (during (observe (book-quote (bind title String) discard))
         ;; TODO - lookup
-        (assert (book-quote title (lookup title (ref books))))))))
+        (assert (book-quote title (lookup title (ref books)))))))))
 
 (define-type-alias leader-role
   (Role (leader)
@@ -101,7 +102,7 @@
 
 (define (spawn-leader [titles : (List String)])
   (spawn τc
-   (print-role
+   (begin
    (start-facet get-quotes
      (field [book-list (List String) (rest titles)]
             [title String (first titles)])
@@ -162,10 +163,11 @@
         (Reacts (Know (Observe (BookInterestT String ★/t ★/t)))
                 (Role (_)
                       (Shares (BookInterestT String String Bool))))))
-                       
+
 (define (spawn-club-member [name : String]
                            [titles : (List String)])
   (spawn τc
+   (begin
    (start-facet member
      ;; assert our presence
      (assert (club-member name))
@@ -173,7 +175,7 @@
      (during (observe (book-interest (bind title String) discard discard))
        (define answer (member? title titles))
        (printf "~a responds to suggested book ~a: ~a\n" name title answer)
-       (assert (book-interest title name answer))))))
+       (assert (book-interest title name answer)))))))
 
 (run-ground-dataspace τc
   (spawn-seller (list (tuple "The Wind in the Willows" 5)

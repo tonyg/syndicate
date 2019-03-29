@@ -61,6 +61,18 @@
 ;; a StructName is a Symbol
 
 ;; --------------------------------------------------------------------------
+;; Derived Types
+
+;; τ (Listof EP) -> EP
+(define (During assertion eps)
+  (define facet-name (gensym 'during-inner))
+  (Reacts (Know assertion)
+          (Role facet-name
+                (cons (Reacts (¬Know assertion)
+                              (Stop facet-name '()))
+                      eps))))
+
+;; --------------------------------------------------------------------------
 ;; Examples
 
 (define manager
@@ -70,13 +82,6 @@
 (define client
   (Role 'client
         (list (Reacts (Know (Struct 'account (list Int))) '()))))
-
-(define seller
-  (Role 'seller
-        (list
-         (Reacts (Know (Observe (Struct 'BookQuoteT (list String ⋆))))
-                 (Role 'fulfill
-                       (list (Shares (Struct 'BookQuoteT (list String Int)))))))))
 
 ;; τ τ -> τ
 ;; short hand for creating a book quote struct type
@@ -88,45 +93,83 @@
 (define (book-interest ty1 ty2 ty3)
   (Struct 'book-interest (list ty1 ty2 ty3)))
 
+;; τ -> τ
+;; short hand for creating a book of the month type
+(define (book-of-the-month ty)
+  (Struct 'book-of-the-month (list ty)))
+
+;; τ -> τ
+;; short hand for creating a club member type
+(define (club-member ty)
+  (Struct 'club-member (list ty)))
+
+(define seller
+  (Role 'seller
+        (list
+         (Reacts (Know (Observe (book-quote String ⋆)))
+                 (Role 'fulfill
+                       (list (Shares (book-quote String Int))))))))
+
+(define seller-actual
+  (Role
+   'seller27
+   (list
+    (Reacts
+     (Know (Observe (book-quote String ⋆)))
+     (Role
+      'during-inner29
+      (list
+       (Shares (book-quote String (U (list Int Int))))
+       (Reacts
+        (¬Know (Observe (book-quote String ⋆)))
+        (Stop 'during-inner29 '()))))))))
+
 (define leader-spec
   (Role 'leader
         (list
-         (Reacts (Know (book-quote String Int))
-                 (Role 'poll
-                       (list
-                        (Reacts (Know (book-interest String String Bool))
-                                (Branch
-                                 (list
-                                  (Stop 'leader
-                                         (Role 'announce
-                                               (list
-                                                (Shares (Struct 'book-of-the-month (list String))))))
-                                  (Stop 'poll (list)))))))))))
+         (Reacts
+          (Know (book-quote String Int))
+          (Role 'poll
+                (list
+                 (Reacts
+                  (Know (book-interest String String Bool))
+                  (Branch
+                   (list
+                    (Stop 'leader
+                          (Role 'announce
+                                (list
+                                 (Shares (book-of-the-month String)))))
+                    (Stop 'poll (list)))))))))))
 
 (define leader-actual
-  (Role 'get-quotes
+  (Role
+   'get-quotes
+   (list
+    (Reacts
+     (Know (book-quote String Int))
+     (Branch
+      (list
+       ;; problem 1: spec doesn't say actor can give up when running out of books
+       (Stop 'get-quotes '())
+       (Role
+        'poll-members
         (list
-         (Reacts (Know (book-quote String Int))
-                 (Branch (list
-                          ;; problem 1: spec doesn't say actor can give up when running out of books
-                          (Stop 'get-quotes '())
-                          (Role 'poll-members
-                                (list
-                                 (Reacts (Know (book-interest String String ⋆))
-                                         (Branch (list
-                                                  ;; problem 2: combining poll-members and get-quotes here (should be another branch)
-                                                  (Stop 'poll-members
-                                                        (Stop 'get-quotes '()))
-                                                  (Stop 'get-quotes
-                                                        (Role 'announce
-                                                              (list
-                                                               (Shares (Struct 'book-of-the-month (list String)))))))))
-                                 (Reacts (¬Know (book-interest String String Bool)) (list))
-                                 (Reacts (Know (book-interest String String Bool)) (list))
-                                 (Reacts (¬Know (book-interest String String Bool)) (list))
-                                 (Reacts (Know (book-interest String String Bool)) (list)))))))
-         (Reacts (¬Know (Struct 'club-member (list String))) (list))
-         (Reacts (Know (Struct 'club-member (list String))) (list)))))
+         (Reacts
+          (Know (book-interest String String ⋆))
+          (Branch (list
+                   ;; problem 2: combining poll-members and get-quotes here (should be another branch)
+                   (Stop 'poll-members
+                         (Stop 'get-quotes '()))
+                   (Stop 'get-quotes
+                         (Role 'announce
+                               (list
+                                (Shares (book-of-the-month String))))))))
+         (Reacts (¬Know (book-interest String String Bool)) (list))
+         (Reacts (Know (book-interest String String Bool)) (list))
+         (Reacts (¬Know (book-interest String String Bool)) (list))
+         (Reacts (Know (book-interest String String Bool)) (list)))))))
+    (Reacts (¬Know (club-member String)) (list))
+    (Reacts (Know (club-member String)) (list)))))
 
 (define leader-fixed?
   (Role 'get-quotes
@@ -142,13 +185,13 @@
                                                   (Stop 'get-quotes
                                                         (Role 'announce
                                                               (list
-                                                               (Shares (Struct 'book-of-the-month (list String)))))))))
+                                                               (Shares (book-of-the-month String))))))))
                                  (Reacts (¬Know (book-interest String String Bool)) (list))
                                  (Reacts (Know (book-interest String String Bool)) (list))
                                  (Reacts (¬Know (book-interest String String Bool)) (list))
                                  (Reacts (Know (book-interest String String Bool)) (list)))))))
-         (Reacts (¬Know (Struct 'club-member (list String))) (list))
-         (Reacts (Know (Struct 'club-member (list String))) (list)))))
+         (Reacts (¬Know (club-member String)) (list))
+         (Reacts (Know (club-member String)) (list)))))
 
 (define leader-revised
   (Role
@@ -176,14 +219,40 @@
             (list
              (Stop
               'get-quotes
-              (Role 'announce (list (Shares (Struct 'book-of-the-month (list String))))))
+              (Role 'announce (list (Shares (book-of-the-month String)))))
              (list)))))
          (Reacts (¬Know (book-interest String String Bool)) (list))
          (Reacts (Know (book-interest String String Bool)) (list))
          (Reacts (¬Know (book-interest String String Bool)) (list))
          (Reacts (Know (book-interest String String Bool)) (list)))))))
-     (Reacts (¬Know (Struct 'club-member (list String))) (list))
-     (Reacts (Know (Struct 'club-member (list String))) (list)))))
+    (Reacts (¬Know (club-member String)) (list))
+    (Reacts (Know (club-member String)) (list)))))
+
+(define member-spec
+  (Role
+   'member
+   (list
+    (Shares (club-member String))
+    (Reacts (Know (Observe (book-interest String ⋆ ⋆)))
+            (Role 'respond
+                  (list
+                   (Shares (book-interest String String Bool))))))))
+
+(define member-actual
+  (Role
+   'member41
+   (list
+   (Shares (club-member String))
+   (Reacts
+    (Know (Observe (book-interest String ⋆ ⋆)))
+    (Role
+     'during-inner42
+     (list
+     (Shares (book-interest String String Bool))
+     (Reacts
+      (¬Know (Observe (book-interest String ⋆ ⋆)))
+      ;; this bit is a noticeable deviation from the spec
+      (Stop 'during-inner42 '()))))))))
 
 ;; -----------------------------------------------------------------------------
 ;; Compiling Roles to state machines
@@ -257,7 +326,7 @@
     (define st0 (hash-ref seller# (set 'seller)))
     (define transitions (state-transitions st0))
     (define quote-request
-      (Observe (Struct 'BookQuoteT (list String ⋆))))
+      (Observe (book-quote String ⋆)))
     (check-true (hash-has-key? transitions (Know quote-request)))
     (check-equal? (hash-ref transitions (Know quote-request))
                   (set (set 'seller 'fulfill))))
@@ -586,7 +655,7 @@
                   (hash))
     (define seller-txns (hash-ref desc 'seller))
     (define quote-request
-      (Observe (Struct 'BookQuoteT (list String ⋆))))
+      (Observe (book-quote String ⋆)))
     (check-true (hash-has-key? seller-txns (Know quote-request)))
     (check-equal? (hash-ref seller-txns (Know quote-request))
                   (set (list (start 'fulfill)))))
@@ -911,7 +980,36 @@
     (check-true (simulates? leader-fixed? leader-spec)))
   (test-case
       "things aren't quite right with leader-revised"
-    (check-false (simulates? leader-revised leader-spec))))
+    (check-false (simulates? leader-revised leader-spec)))
+  (test-case
+      "things aren't quite right with member role"
+    (check-false (simulates? member-actual member-spec))
+    (define member-actual/revised
+      (Role
+       'member41
+       (list
+        (Shares (club-member String))
+        (Reacts
+         (Know (Observe (book-interest String ⋆ ⋆)))
+         (Role
+          'during-inner42
+          (list
+           (Shares (book-interest String String Bool))
+           (Reacts
+            (¬Know (Observe (book-interest String ⋆ ⋆)))
+            ;; removed (Stop 'during-inner42 '()) here
+            '())))))))
+    (check-true (simulates? member-actual/revised member-spec)))
+  (test-case
+      "things aren't quite right with seller role"
+    (check-false (simulates? seller-actual seller))
+    (define seller-spec/revised
+      (Role 'seller
+            ;; change body to a During
+            (list
+             (During (Observe (book-quote String ⋆))
+                     (list (Shares (book-quote String Int)))))))
+    (check-true (simulates? seller-actual seller-spec/revised))))
 
 ;; ---------------------------------------------------------------------------
 ;; Visualization
