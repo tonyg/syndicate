@@ -569,6 +569,7 @@
      (define t (replace-bind-and-discard-with-★ #'τ))
      (type-eval #`(Observe #,t))]))
 
+;; TODO : can potentially use something like `subst` for this
 (define-for-syntax (replace-bind-and-discard-with-★ t)
   (syntax-parse t
     [(~Bind _)
@@ -742,33 +743,8 @@
 ;; Is it possible for things of these two types to match each other?
 ;; Flattish-Type = Flat-Types + ★/t, Bind, Discard (assertion and pattern types)
 (define-for-syntax (overlap? t1 t2)
-  (syntax-parse #`(#,t1 #,t2)
-    [(~★/t _) #t]
-    [(_ (~Bind _)) #t]
-    [(_ ~Discard) #t]
-    [(_ ~★/t) #t]
-    [((~U* τ1:type ...) _)
-     (stx-ormap (lambda (t) (overlap? t t2)) #'(τ1 ...))]
-    [(_ (~U* τ2:type ...))
-     (stx-ormap (lambda (t) (overlap? t1 t)) #'(τ2 ...))]
-    [((~List _) (~List _))
-     ;; share the empty list
-     #t]
-    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
-     (and (stx-length=? #'(τ1 ...) #'(τ2 ...))
-          (stx-andmap overlap? #'(τ1 ...) #'(τ2 ...)))]
-    [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
-     (and (tags-equal? #'t1 #'t2)
-          (stx-andmap overlap? #'(τ1 ...) #'(τ2 ...)))]
-    [((~Observe τ1:type) (~Observe τ2:type))
-     (overlap? #'τ1 #'τ2)]
-    [((~Inbound τ1:type) (~Inbound τ2:type))
-     (overlap? #'τ1 #'τ2)]
-    [((~Outbound τ1:type) (~Outbound τ2:type))
-     (overlap? #'τ1 #'τ2)]
-    [((~Message τ1:type) (~Message τ2:type))
-     (overlap? #'τ1 #'τ2)]
-    [_ (<: t1 t2)]))
+  (define t22 (replace-bind-and-discard-with-★ t2))
+  (not (<: (∩ t1 t22) (mk-U*- '()))))
 
 ;; Flattish-Type -> Bool
 (define-for-syntax (finite? t)
