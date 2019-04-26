@@ -103,7 +103,8 @@
   -----------------------
   [⊢ (set->list- s-) ⇒ (List τ)])
 
-#;(module+ test
+(module+ test
+  (require "prim.rkt")
   (check-type (set 1 2 3)
               : (Set Int)
               -> (set- 2 3 1))
