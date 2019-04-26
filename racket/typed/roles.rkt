@@ -48,10 +48,12 @@
          require/typed
          require-struct
          )
+(require (only-in turnstile
+                  [define-type-constructor define-type-constructor-]))
 
 (require (prefix-in syndicate: syndicate/actor-lang))
 
-(require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx))
+(require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
 (require (for-syntax turnstile/examples/util/filter-maximal))
 (require (for-syntax racket/struct-info))
 (require macrotypes/postfix-in)
@@ -87,6 +89,136 @@
 ;; Types
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; certain metadata needs to be associated with each type, for the purpose of
+;; making certain judgments and metafunctions extensible.
+
+;; a isect-desc describes how a type (constructor) behaves with respect to
+;; intersection, and is one of
+;;   - BASE
+;;   - CONTAINER-LIKE
+;;   - PRODUCT-LIKE
+(begin-for-syntax
+  (define BASE 'base)
+  (define CONTAINER-LIKE 'container-like)
+  (define PRODUCT-LIKE 'product-like)
+
+  ;; syntax property key
+  (define isect-desc-key
+    'isect-desc-key)
+
+  (define-syntax-class isect-desc
+    #:attributes (val)
+    #:datum-literals (BASE CONTAINER-LIKE PRODUCT-LIKE)
+    (pattern BASE
+             #:attr val BASE)
+    (pattern CONTAINER-LIKE
+             #:attr val CONTAINER-LIKE)
+    (pattern PRODUCT-LIKE
+             #:attr val PRODUCT-LIKE))
+
+  ;; Any -> Bool
+  ;; recognize isect-descs
+  (define (isect-desc? x)
+    (member x (list BASE CONTAINER-LIKE PRODUCT-LIKE)))
+
+  ;; syntax property key
+  ;; syntax-transformer value
+  (define type-cons-key
+    'type-cons)
+
+  ;; Type -> Bool
+  ;; check if the type has a syntax property allowing us to create new instances
+  (define (reassemblable? t)
+    (and (syntax-property t type-cons-key) #t))
+
+  ;; Type (Listof Type) -> Type
+  ;; Create a new instance of the type with the given arguments
+  ;; needs to have the type-cons-key
+  (define (reassemble-type ty args)
+    (define tycons (syntax-property ty type-cons-key))
+    (unless tycons
+      (error "expected to find type-cons-key"))
+    (type-eval #`(#,tycons #,@args))))
+
+(define-syntax (define-type-constructor+ stx)
+  (syntax-parse stx
+    [(_ Name:id
+        #:arity op arity
+        #:arg-variances variances
+        #:isect-desc desc:isect-desc
+        (~optional (~seq #:extra-info extra-info)))
+     #:with Name- (mk-- #'Name)
+     #:with NamePat (mk-~ #'Name)
+     #:with NamePat- (mk-~ #'Name-)
+     #:with mk (format-id #'Name "mk-~a-" (syntax-e #'Name))
+     #:with mk- (format-id #'Name- "mk-~a-" (syntax-e #'Name-))
+     (quasisyntax/loc stx
+       (begin-
+         (define-type-constructor- Name-
+           #:arity op arity
+           #:arg-variances variances
+           #,@(if (attribute extra-info)
+                  #'(#:extra-info extra-info)
+                  #'()))
+         (define-syntax (Name stx)
+           (syntax-parse stx
+             [(_ t (... ...))
+              (set-stx-prop/preserved
+               (set-stx-prop/preserved
+                (syntax/loc stx
+                  (Name- t (... ...)))
+                #,isect-desc-key
+                '#,(attribute desc.val))
+               type-cons-key
+               #'Name)]))
+         (begin-for-syntax
+           (define-syntax NamePat
+             (pattern-expander
+              (syntax-parser
+                [(_ p (... ...))
+                 #'(NamePat- p (... ...))]))))
+         (define-for-syntax mk mk-)))]))
+
+(begin-for-syntax
+  ;; Syntax -> (Listof Variant)
+  ;; make a list of the same length as the number of arguments of the given
+  ;; (type) syntax, all covariant
+  (define (mk-covariant ts)
+    (for/list ([_ (sequence-tail (in-syntax ts) 1)])
+      covariant)))
+
+;; Define a type constructor that acts like a container:
+;;   - covariant
+;;   - has an empty element (i.e. intersection always non-empty)
+(define-syntax (define-container-type stx)
+  (syntax-parse stx
+    [(_ Name:id #:arity op arity
+        (~optional (~seq #:extra-info extra-info)))
+     (quasisyntax/loc stx
+       (define-type-constructor+ Name
+         #:arity op arity
+         #:arg-variances mk-covariant
+         #:isect-desc CONTAINER-LIKE
+         #,@(if (attribute extra-info)
+                #'(#:extra-info extra-info)
+                #'())))]))
+
+;; Define a type constructor that acts like a container:
+;;   - covariant
+;;   - does not have an empty element (i.e. intersection may be empty)
+(define-syntax (define-product-type stx)
+  (syntax-parse stx
+    [(_ Name:id #:arity op arity
+        (~optional (~seq #:extra-info extra-info)))
+     (quasisyntax/loc stx
+       (define-type-constructor+ Name
+         #:arity op arity
+         #:arg-variances mk-covariant
+         #:isect-desc PRODUCT-LIKE
+         #,@(if (attribute extra-info)
+                #'(#:extra-info extra-info)
+                #'())))]))
+
 (define-binding-type Role #:arity >= 0 #:bvs = 1)
 (define-type-constructor Shares #:arity = 1)
 (define-type-constructor Sends #:arity = 1)
@@ -94,7 +226,6 @@
 (define-type-constructor Know #:arity = 1)
 (define-type-constructor ¬Know #:arity = 1)
 (define-type-constructor Stop #:arity >= 1)
-(define-type-constructor Message #:arity = 1)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
 ;; keep track of branches for facet effects
@@ -104,16 +235,17 @@
 (define-type-constructor Effs #:arity >= 0)
 (define-base-types OnStart OnStop OnDataflow MakesField)
 (define-for-syntax field-prop-name 'fields)
-
-(define-type-constructor Tuple #:arity >= 0)
-(define-type-constructor Observe #:arity = 1)
-(define-type-constructor Inbound #:arity = 1)
-(define-type-constructor Outbound #:arity = 1)
 (define-type-constructor Actor #:arity = 1)
-(define-type-constructor AssertionSet #:arity = 1)
-(define-type-constructor Patch #:arity = 2)
-(define-type-constructor List #:arity = 1)
-(define-type-constructor Set #:arity = 1)
+
+(define-product-type Message #:arity = 1)
+(define-product-type Tuple #:arity >= 0)
+(define-product-type Observe #:arity = 1)
+(define-product-type Inbound #:arity = 1)
+(define-product-type Outbound #:arity = 1)
+(define-container-type AssertionSet #:arity = 1)
+(define-container-type Patch #:arity = 2)
+(define-container-type List #:arity = 1)
+(define-container-type Set #:arity = 1)
 
 (define-type-constructor → #:arity > 0)
 ;; for describing the RHS
@@ -226,7 +358,7 @@
          (define-syntax (TypeConsExtraInfo stx)
            (syntax-parse stx
              [(_ X (... ...)) #'('type-tag 'MakeTypeCons 'GetTypeParams)]))
-         (define-type-constructor TypeCons
+         (define-product-type TypeCons
            #:arity = #,arity
            #:extra-info 'TypeConsExtraInfo)
          (define-syntax (MakeTypeCons stx)
@@ -448,7 +580,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-for-syntax (bot? t)
-  (<: t (type-eval #'(U*))))
+  ((current-typecheck-relation) t (type-eval #'(U*))))
 
 (define-for-syntax (flat-type? τ)
   (syntax-parse τ
@@ -578,74 +710,79 @@
      (type-eval #'★/t)]
     [(~U* τ ...)
      (type-eval #`(U #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
-    [(~Tuple τ ...)
-     (type-eval #`(Tuple #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
-    [(~Observe τ)
-     (type-eval #`(Observe #,(replace-bind-and-discard-with-★ #'τ)))]
-    [(~Inbound τ)
-     (type-eval #`(Inbound #,(replace-bind-and-discard-with-★ #'τ)))]
-    [(~Outbound τ)
-     (type-eval #`(Outbound #,(replace-bind-and-discard-with-★ #'τ)))]
-    [(~Message τ)
-     (type-eval #`(Message #,(replace-bind-and-discard-with-★ #'τ)))]
-    [(~constructor-type _ τ ...)
-     (make-cons-type t (stx-map replace-bind-and-discard-with-★ #'(τ ...)))]
+    [(~Any/bvs τ-cons () τ ...)
+     #:when (reassemblable? t)
+     (define subitems (for/list ([t (in-syntax #'(τ ...))])
+                        (replace-bind-and-discard-with-★ t)))
+     (reassemble-type t subitems)]
     [_ t]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subtyping and Judgments on Types
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Type Type -> Bool
-(define-for-syntax (<: t1 t2)
-  (syntax-parse #`(#,t1 #,t2)
-    [((~U* τ1 ...) _)
-     (stx-andmap (lambda (t) (<: t t2)) #'(τ1 ...))]
-    [(_ (~U* τ2:type ...))
-     (stx-ormap (lambda (t) (<: t1 t)) #'(τ2 ...))]
-    [((~Actor τ1) (~Actor τ2))
-     (and (<: #'τ1 #'τ2)
-          (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
-    [((~AssertionSet τ1) (~AssertionSet τ2))
-     (<: #'τ1 #'τ2)]
-    [((~Set τ1) (~Set τ2))
-     (<: #'τ1 #'τ2)]
-    [((~Patch τ11 τ12) (~Patch τ21 τ22))
-     (and (<: #'τ11 #'τ21)
-          (<: #'τ12 #'τ22))]
-    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
-     #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
-     (stx-andmap <: #'(τ1 ...) #'(τ2 ...))]
-    [(_ ~★/t)
-     (flat-type? t1)]
-    [((~Observe τ1:type) (~Observe τ2:type))
-     (<: #'τ1 #'τ2)]
-    [((~Inbound τ1:type) (~Inbound τ2:type))
-     (<: #'τ1 #'τ2)]
-    [((~Outbound τ1:type) (~Outbound τ2:type))
-     (<: #'τ1 #'τ2)]
-    [((~Message τ1:type) (~Message τ2:type))
-     (<: #'τ1 #'τ2)]
-    [((~constructor-type t1 τ1:type ...) (~constructor-type t2 τ2:type ...))
-     #:when (tags-equal? #'t1 #'t2)
-     (and (stx-length=? #'(τ1 ...) #'(τ2 ...))
-          (stx-andmap <: #'(τ1 ...) #'(τ2 ...)))]
-    [((~→ τ-in1 ... τ-out1) (~→ τ-in2 ... τ-out2))
-     #:when (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
-     (and (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
-          (<: #'τ-out1 #'τ-out2))]
-    [(~Discard _)
-     #t]
-    ;; TODO: clauses for Roles, and so on
-    ;; should probably put this first.
-    [_ (type=? t1 t2)]))
+(begin-for-syntax
+ (define-syntax ~Base
+   (pattern-expander
+    (syntax-parser
+      [(_ nm:id)
+       #'((~literal #%plain-app) nm)])))
 
-;; shortcuts for mapping
-(define-for-syntax ((<:l l) r)
-  (<: l r))
+ ;; Type Type -> Bool
+ ;; subtyping
+ (define (<: t1 t2)
+   (syntax-parse #`(#,t1 #,t2)
+     [(_ ~★/t)
+      (flat-type? t1)]
+     [((~U* τ1 ...) _)
+      (stx-andmap (lambda (t) (<: t t2)) #'(τ1 ...))]
+     [(_ (~U* τ2:type ...))
+      (stx-ormap (lambda (t) (<: t1 t)) #'(τ2 ...))]
+     [((~Actor τ1) (~Actor τ2))
+      (and (<: #'τ1 #'τ2)
+           (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
+     [((~→ τ-in1 ... τ-out1) (~→ τ-in2 ... τ-out2))
+      #:when (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
+      (and (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
+           (<: #'τ-out1 #'τ-out2))]
+     [(~Discard _)
+      #t]
+     [((~Base τ1:id) (~Base τ2:id))
+      (free-identifier=? #'τ1 #'τ2)]
+     [((~Any/bvs τ-cons1 () τ1 ...) (~Any/bvs τ-cons2 () τ2 ...))
+      #:when (free-identifier=? #'τ-cons1 #'τ-cons2)
+      #:do [(define variances (syntax-property #'τ-cons1 'arg-variances))]
+      #:when variances
+      #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
+      (for/and ([ty1 (in-syntax #'(τ1 ...))]
+                [ty2 (in-syntax #'(τ2 ...))]
+                [var (in-list variances)])
+        (match var
+          [(== covariant)
+           (<: ty1 ty2)]
+          [(== contravariant)
+           (<: ty2 ty1)]
+          [(== invariant)
+           (and (<: ty1 ty2)
+                (<: ty2 ty1))]
+          [(== irrelevant)
+           #t]))]
+     ;; TODO: clauses for Roles, and so on
+     [_ #f]))
 
-(define-for-syntax ((<:r r) l)
-  (<: l r))
+ ;; shortcuts for mapping
+ (define ((<:l l) r)
+   (<: l r))
+
+ (define ((<:r r) l)
+   (<: l r)))
+
+;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;; MODIFYING GLOBAL TYPECHECKING STATE!!!!!
+;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+(begin-for-syntax
+  (current-typecheck-relation <:))
 
 ;; Flat-Type Flat-Type -> Type
 (define-for-syntax (∩ t1 t2)
@@ -656,9 +793,6 @@
      t1]
     [(~★/t _)
      t2]
-    [(_ _)
-     #:when (type=? t1 t2)
-     t1]
     [((~U* τ1:type ...) _)
      (type-eval #`(U #,@(stx-map (lambda (t) (∩ t t2)) #'(τ1 ...))))]
     [(_ (~U* τ2:type ...))
@@ -666,78 +800,54 @@
     [((~AssertionSet τ1) (~AssertionSet τ2))
      #:with τ12 (∩ #'τ1 #'τ2)
      (type-eval #'(AssertionSet τ12))]
-    [((~Set τ1) (~Set τ2))
-     #:with τ12 (∩ #'τ1 #'τ2)
-     (type-eval #'(Set τ12))]
-    [((~Patch τ11 τ12) (~Patch τ21 τ22))
-     #:with τ1 (∩ #'τ11 #'τ12)
-     #:with τ2 (∩ #'τ21 #'τ22)
-     (type-eval #'(Patch τ1 τ2))]
-    ;; all of these fail-when/unless clauses are meant to cause this through to
-    ;; the last case and result in ⊥.
     ;; Also, using <: is OK, even though <: refers to ∩, because <:'s use of ∩ is only
     ;; in the Actor case.
-    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
-     #:fail-unless (stx-length=? #'(τ1 ...) #'(τ2 ...)) #f
-     #:with (τ ...) (stx-map ∩ #'(τ1 ...) #'(τ2 ...))
-     ;; I don't think stx-ormap is part of the documented api of turnstile *shrug*
-     #:fail-when (stx-ormap (lambda (t) (<: t (type-eval #'(U)))) #'(τ ...)) #f
-     (type-eval #'(Tuple τ ...))]
-    [((~constructor-type tag1 τ1:type ...) (~constructor-type tag2 τ2:type ...))
-     #:when (tags-equal? #'tag1 #'tag2)
-     #:with (τ ...) (stx-map ∩ #'(τ1 ...) #'(τ2 ...))
-     #:fail-when (stx-ormap (lambda (t) (<: t (type-eval #'(U)))) #'(τ ...)) #f
-     (make-cons-type t1 #'(τ ...))]
-    ;; these three are just the same :(
-    [((~Observe τ1:type) (~Observe τ2:type))
-     #:with τ (∩ #'τ1 #'τ2)
-     #:fail-when (<: #'τ (type-eval #'(U))) #f
-     (type-eval #'(Observe τ))]
-    [((~Inbound τ1:type) (~Inbound τ2:type))
-     #:with τ (∩ #'τ1 #'τ2)
-     #:fail-when (<: #'τ (type-eval #'(U))) #f
-     (type-eval #'(Inbound τ))]
-    [((~Outbound τ1:type) (~Outbound τ2:type))
-     #:with τ (∩ #'τ1 #'τ2)
-     #:fail-when (<: #'τ (type-eval #'(U))) #f
-     (type-eval #'(Outbound τ))]
-    [((~Message τ1:type) (~Message τ2:type))
-     #:with τ (∩ #'τ1 #'τ2)
-     #:fail-when (<: #'τ (type-eval #'(U))) #f
-     (type-eval #'(Message τ))]
+    [((~Base τ1:id) (~Base τ2:id))
+     #:when (free-identifier=? #'τ1 #'τ2)
+     t1]
+    [((~Any/bvs τ-cons1 () τ1 ...) (~Any/bvs τ-cons2 () τ2 ...))
+     #:when (free-identifier=? #'τ-cons1 #'τ-cons2)
+     #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
+     #:do [(define desc (syntax-property t1 isect-desc-key))]
+     #:when desc
+     (define slots (stx-map ∩ #'(τ1 ...) #'(τ2 ...)))
+     (match desc
+       [(== BASE)
+        (error "this isn't right")]
+       [(== CONTAINER-LIKE)
+        (reassemble-type t1 slots)]
+       [(== PRODUCT-LIKE)
+        (if (ormap bot? slots)
+            (type-eval #'(U))
+            (reassemble-type t1 slots))])]
     [_ (type-eval #'(U))]))
 
 ;; Type Type -> Bool
 ;; first type is the contents of the set/dataspace
 ;; second type is the type of a pattern
 (define-for-syntax (project-safe? t1 t2)
-  ;; TODO - messages
-  (syntax-parse #`(#,t1 #,t2)
-    [(_ (~Bind τ2:type))
-     (and (finite? t1) (<: t1 #'τ2))]
-    [(_ ~Discard)
-     #t]
-    [(_ ~★/t)
-     #t]
-    [((~U* τ1:type ...) _)
-     (stx-andmap (lambda (t) (project-safe? t t2)) #'(τ1 ...))]
-    [(_ (~U* τ2:type ...))
-     (stx-andmap (lambda (t) (project-safe? t1 t)) #'(τ2 ...))]
-    [((~Tuple τ1:type ...) (~Tuple τ2:type ...))
-     #:when (overlap? t1 t2)
-     (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
-    [((~constructor-type _ τ1:type ...) (~constructor-type _ τ2:type ...))
-     #:when (overlap? t1 t2)
-     (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
-    [((~Observe τ1:type) (~Observe τ2:type))
-     (project-safe? #'τ1 #'τ2)]
-    [((~Inbound τ1:type) (~Inbound τ2:type))
-     (project-safe? #'τ1 #'τ2)]
-    [((~Outbound τ1:type) (~Outbound τ2:type))
-     (project-safe? #'τ1 #'τ2)]
-    [((~Message τ1:type) (~Message τ2:type))
-     (project-safe? #'τ1 #'τ2)]
-    [_ #t]))
+  (define (project-safe* t1 t2)
+    (syntax-parse #`(#,t1 #,t2)
+      [(_ (~Bind τ2:type))
+       (and (finite? t1) (<: t1 #'τ2))]
+      [(_ ~Discard)
+       #t]
+      [(_ ~★/t)
+       #t]
+      [((~U* τ1:type ...) _)
+       (stx-andmap (lambda (t) (project-safe? t t2)) #'(τ1 ...))]
+      [(_ (~U* τ2:type ...))
+       (stx-andmap (lambda (t) (project-safe? t1 t)) #'(τ2 ...))]
+      [((~Any/bvs τ-cons1 () τ1 ...) (~Any/bvs τ-cons2 () τ2 ...))
+       #:when (free-identifier=? #'τ-cons1 #'τ-cons2)
+       #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
+       #:do [(define desc (syntax-property t1 isect-desc-key))]
+       #:when (equal? desc PRODUCT-LIKE)
+       (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
+      [_ #t]))
+  (if (overlap? t1 t2)
+      (project-safe* t1 t2)
+      #t))
 
 ;; AssertionType PatternType -> Bool
 ;; Is it possible for things of these two types to match each other?
@@ -752,21 +862,9 @@
     [~★/t #f]
     [(~U* τ:type ...)
      (stx-andmap finite? #'(τ ...))]
-    [(~Tuple τ:type ...)
-     (stx-andmap finite? #'(τ ...))]
-    [(~constructor-type _ τ:type ...)
-     (stx-andmap finite? #'(τ ...))]
-    [(~Observe τ:type)
-     (finite? #'τ)]
-    [(~Inbound τ:type)
-     (finite? #'τ)]
-    [(~Outbound τ:type)
-     (finite? #'τ)]
-    [(~Set τ:type)
-     (finite? #'τ)]
-    [(~Message τ:type)
-     (finite? #'τ)]
-    [_ #t]))
+    [(~Base _) #t]
+    [(~Any/bvs τ-cons () τ ...)
+     (stx-andmap finite? #'(τ ...))]))
 
 ;; PatternType -> Type
 (define-for-syntax (pattern-matching-assertions t)
@@ -777,18 +875,11 @@
      (type-eval #'★/t)]
     [(~U* τ ...)
      (type-eval #`(U #,@(stx-map pattern-matching-assertions #'(τ ...))))]
-    [(~Tuple τ ...)
-     (type-eval #`(Tuple #,@(stx-map pattern-matching-assertions #'(τ ...))))]
-    [(~Observe τ)
-     (type-eval #`(Observe #,(pattern-matching-assertions #'τ)))]
-    [(~Inbound τ)
-     (type-eval #`(Inbound #,(pattern-matching-assertions #'τ)))]
-    [(~Outbound τ)
-     (type-eval #`(Outbound #,(pattern-matching-assertions #'τ)))]
-    [(~Message τ)
-     (type-eval #`(Message #,(pattern-matching-assertions #'τ)))]
-    [(~constructor-type _ τ ...)
-     (make-cons-type t (stx-map pattern-matching-assertions #'(τ ...)))]
+    [(~Any/bvs τ-cons () τ ...)
+     #:when (reassemblable? t)
+     (define subitems (for/list ([t (in-syntax #'(τ ...))])
+                        (pattern-matching-assertions t)))
+     (reassemble-type t subitems)]
     [_ t]))
 
 ;; it's ok for x to respond to strictly more events than y
@@ -1018,13 +1109,6 @@
                               (Role (x)
                                     (Reacts OnStart (Actor (U Int String)))))
       )))
-
-;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-;; MODIFYING GLOBAL TYPECHECKING STATE!!!!!
-;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-(begin-for-syntax
-  (current-typecheck-relation <:))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Effect Checking
