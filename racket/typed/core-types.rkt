@@ -194,7 +194,10 @@
 (define-container-type AssertionSet #:arity = 1)
 (define-container-type Patch #:arity = 2)
 
+;; functions and type abstractions
+(define-binding-type ∀)
 (define-type-constructor → #:arity > 0)
+
 ;; for describing the RHS
 ;; a value and a description of the effects
 (define-type-constructor Computation #:arity = 4)
@@ -230,11 +233,11 @@
 (define-type-alias ⊥ (U*))
 
 (define-for-syntax (prune+sort tys)
-  (stx-sort 
-   (filter-maximal 
+  (stx-sort
+   (filter-maximal
     (stx->list tys)
     typecheck?)))
-  
+
 (define-syntax (U stx)
   (syntax-parse stx
     [(_ . tys)
@@ -244,6 +247,22 @@
      (if (= 1 (stx-length #'tys-))
          (stx-car #'tys-)
          (syntax/loc stx (U* . tys-)))]))
+
+(define-simple-macro (→fn ty-in ... ty-out)
+  (→ ty-in ... (Computation (Value ty-out)
+                            (Endpoints)
+                            (Roles)
+                            (Spawns))))
+
+(begin-for-syntax
+  (define-syntax ~→fn
+    (pattern-expander
+     (syntax-parser
+       [(_ ty-in:id ... ty-out)
+        #'(~→ ty-in ... (~Computation (~Value ty-out)
+                                      (~Endpoints)
+                                      (~Roles)
+                                      (~Spawns)))]))))
 
 ;; for looking at the "effects"
 (begin-for-syntax
@@ -694,6 +713,15 @@
            (<: #'τ-out1 #'τ-out2))]
      [(~Discard _)
       #t]
+     [(X:id Y:id)
+      #;(printf "id case!\n")
+      (free-identifier=? #'X #'Y)]
+     [((~∀ (X:id ...) τ1) (~∀ (Y:id ...) τ2))
+      #:when (stx-length=? #'(X ...) #'(Y ...))
+      #:with τ2-X/Y (substs #'(X ...) #'(Y ...) #'τ2)
+      #;(printf "in ∀!\n")
+      #;(printf "τ2-X/Y = ~a\n" #'τ2-X/Y)
+      (<: #'τ1 #'τ2-X/Y)]
      [((~Base τ1:id) (~Base τ2:id))
       (free-identifier=? #'τ1 #'τ2)]
      [((~Any/bvs τ-cons1 () τ1 ...) (~Any/bvs τ-cons2 () τ2 ...))
@@ -715,7 +743,9 @@
           [(== irrelevant)
            #t]))]
      ;; TODO: clauses for Roles, and so on
-     [_ #f]))
+     [_
+      #;(printf "ids? ~a, ~a\n" (identifier? t1) (identifier? t2))
+      #f]))
 
  ;; shortcuts for mapping
  (define ((<:l l) r)
@@ -1093,6 +1123,27 @@
                                                          (Endpoints τ-ep ...)
                                                          (Roles τ-f ...)
                                                          (Spawns τ-s ...))))])
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Type Abstraction
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-typed-syntax (Λ (tv:id ...) e) ≫
+  [([tv ≫ tv- :: #%type] ...) () ⊢ e ≫ e- ⇒ τ]
+  --------
+  ;; can't use internal mk-∀- constructor here
+  ;; - will cause the bound-id=? quirk to show up
+  ;;   (when subsequent tyvar refs are expanded with `type` stx class)
+  ;; - requires converting type= and subst to use free-id=?
+  ;;   (which is less performant)
+  [⊢ e- ⇒ (∀ (tv- ...) τ)])
+
+(define-typed-syntax inst
+  [(_ e τ:type ...) ≫
+   [⊢ e ≫ e- ⇒ (~∀ tvs τ_body)]
+   #:fail-unless (pure? #'e-) "expression must be pure"
+   --------
+   [⊢ e- ⇒ #,(substs #'(τ.norm ...) #'tvs #'τ_body)]]
+  [(_ e) ≫ --- [≻ e]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Sequencing & Definitions

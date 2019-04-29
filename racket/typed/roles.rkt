@@ -8,11 +8,12 @@
          ;; Start dataspace programs
          run-ground-dataspace
          ;; Types
-         Int Bool String Tuple Bind Discard → ByteString Symbol
+         Int Bool String Tuple Bind Discard → ∀ ByteString Symbol
          Role Reacts Shares Know ¬Know Message OnDataflow Stop OnStart OnStop
          FacetName Field ★/t
          Observe Inbound Outbound Actor U
          Computation Value Endpoints Roles Spawns
+         →fn
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
          when unless send! define
@@ -22,6 +23,7 @@
          assert on field
          ;; expressions
          tuple select lambda ref observe inbound outbound
+         Λ inst
          ;; making types
          define-type-alias
          define-constructor define-constructor*
