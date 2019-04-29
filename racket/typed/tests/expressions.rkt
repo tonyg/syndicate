@@ -34,3 +34,22 @@
 (check-type ((inst poly-first Int String) (tuple 13 "XD"))
             : Int
             ⇒ 13)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Polymorphic Definitions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (∀ (X) (id2 [x : X] -> X))
+  x)
+
+(check-type ((inst id2 Int) 42)
+            : Int
+            ⇒ 42)
+
+(define (∀ (X) (id3 [x : X]))
+  x)
+
+(check-type (+ ((inst id3 Int) 42) 1)
+            : Int
+            ⇒ 43)
+

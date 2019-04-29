@@ -1283,7 +1283,33 @@
   [(_ (f [x (~optional (~datum :)) ty] ...)
          e ...+) ≫
    ----------------------------
-   [≻ (define (f [x ty] ... -> ★/t) e ...)]])
+   [≻ (define (f [x ty] ... -> ★/t) e ...)]]
+  ;; Polymorphic definitions
+  [(_ ((~datum ∀) (X:id ...)
+                  (f [x (~optional (~datum :)) ty] ...
+                     (~or (~datum →) (~datum ->)) ty_out))
+      e ...+) ≫
+   #:with e+ #'(Λ (X ...)
+                  (lambda ([x : ty] ...)
+                    (begin e ...)))
+   [[X ≫ X- :: #%type] ... ⊢ e+ ≫ e-
+                       (⇒ : (~and res-ty
+                                  (~∀ (Y ...)
+                                      (~→ (~not (~Computation _ ...)) ...
+                                          (~Computation (~Value τ-v)
+                                                        _ ...)))))]
+   #:fail-unless (<: (type-eval #'(∀ (Y ...) τ-v))
+                     (type-eval #'(∀ (X ...) ty_out)))
+                 (format "expected different return type\n got ~a\n expected ~a\n"
+                         #'τ-v #'ty_out)
+   #:with f- (add-orig (generate-temporary #'f) #'f)
+   -------------------------------------------------------
+   [⊢ (define/intermediate f f- res-ty e-) (⇒ : ★/t)]]
+  [(_ ((~datum ∀) (X:id ...)
+                  (f [x (~optional (~datum :)) ty] ...))
+      e ...+) ≫
+   --------------------------------------------------
+   [≻ (define (∀ (X ...) (f [x ty] ... -> ★/t)) e ...)]])
 
 (define-typed-syntax begin
   [(_ e_unit ... e) ≫
