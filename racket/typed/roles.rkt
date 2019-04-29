@@ -37,6 +37,8 @@
          (all-from-out "list.rkt")
          ;; sets
          (all-from-out "set.rkt")
+         ;; sequences
+         (all-from-out "sequence.rkt")
          ;; DEBUG and utilities
          print-type print-role
          ;; Extensions
@@ -51,6 +53,7 @@
 (require "list.rkt")
 (require "set.rkt")
 (require "prim.rkt")
+(require "sequence.rkt")
 
 (require (prefix-in syndicate: syndicate/actor-lang))
 
