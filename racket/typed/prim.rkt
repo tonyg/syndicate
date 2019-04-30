@@ -22,6 +22,8 @@
 (define-primop <= (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
 (define-primop >= (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
 (define-primop = (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop even? (→fn Int Bool))
+(define-primop odd? (→fn Int Bool))
 
 (define-primop bytes->string/utf-8 (→ ByteString (Computation (Value String) (Endpoints) (Roles) (Spawns))))
 (define-primop string->bytes/utf-8 (→ String (Computation (Value ByteString) (Endpoints) (Roles) (Spawns))))
