@@ -714,13 +714,10 @@
      [(~Discard _)
       #t]
      [(X:id Y:id)
-      #;(printf "id case!\n")
       (free-identifier=? #'X #'Y)]
      [((~∀ (X:id ...) τ1) (~∀ (Y:id ...) τ2))
       #:when (stx-length=? #'(X ...) #'(Y ...))
       #:with τ2-X/Y (substs #'(X ...) #'(Y ...) #'τ2)
-      #;(printf "in ∀!\n")
-      #;(printf "τ2-X/Y = ~a\n" #'τ2-X/Y)
       (<: #'τ1 #'τ2-X/Y)]
      [((~Base τ1:id) (~Base τ2:id))
       (free-identifier=? #'τ1 #'τ2)]
@@ -744,7 +741,6 @@
            #t]))]
      ;; TODO: clauses for Roles, and so on
      [_
-      #;(printf "ids? ~a, ~a\n" (identifier? t1) (identifier? t2))
       #f]))
 
  ;; shortcuts for mapping

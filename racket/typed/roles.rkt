@@ -39,6 +39,8 @@
          (all-from-out "set.rkt")
          ;; sequences
          (all-from-out "sequence.rkt")
+         ;; hash tables
+         (all-from-out "hash.rkt")
          ;; DEBUG and utilities
          print-type print-role
          ;; Extensions
@@ -54,6 +56,7 @@
 (require "set.rkt")
 (require "prim.rkt")
 (require "sequence.rkt")
+(require "hash.rkt")
 
 (require (prefix-in syndicate: syndicate/actor-lang))
 
