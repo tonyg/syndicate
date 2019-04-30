@@ -41,6 +41,8 @@
          (all-from-out "sequence.rkt")
          ;; hash tables
          (all-from-out "hash.rkt")
+         ;; for loops
+         (all-from-out "for-loops.rkt")
          ;; DEBUG and utilities
          print-type print-role
          ;; Extensions
@@ -57,6 +59,7 @@
 (require "prim.rkt")
 (require "sequence.rkt")
 (require "hash.rkt")
+(require "for-loops.rkt")
 
 (require (prefix-in syndicate: syndicate/actor-lang))
 

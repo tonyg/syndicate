@@ -8,8 +8,7 @@
          rest
          member?
          empty?
-         for
-         for/fold)
+         reverse)
 
 (require "core-types.rkt")
 (require (postfix-in - racket/list))
@@ -34,38 +33,6 @@
   #:with τ-l (type-eval #'(List (U τ1 τ2)))
   ----------------------------------------
   [⊢ (cons- e1- e2-) ⇒ τ-l])
-
-(define-typed-syntax (for/fold [acc:id e-acc]
-                               [x:id e-list]
-                       e-body ...+) ≫
-  [⊢ e-list ≫ e-list- ⇒ (~List τ-l)]
-  #:fail-unless (pure? #'e-list-) "expression must be pure"
-  [⊢ e-acc ≫ e-acc- ⇒ τ-a]
-  #:fail-unless (pure? #'e-acc-) "expression must be pure"
-  [[x ≫ x- : τ-l] [acc ≫ acc- : τ-a] ⊢ (begin e-body ...) ≫ e-body- ⇒ τ-b]
-  #:fail-unless (pure? #'e-body-) "body must be pure"
-  #:fail-unless (<: #'τ-b #'τ-a)
-    "loop body doesn't match accumulator"
-  -------------------------------------------------------
-  [⊢ (for/fold- ([acc- e-acc-])
-                ([x- (in-list- e-list-)])
-       e-body-)
-     ⇒ τ-b])
-
-(define-typed-syntax (for ([x:id e-list] ...)
-                       e-body ...+) ≫
-  [⊢ e-list ≫ e-list- ⇒ (~List τ-l)] ...
-  #:fail-unless (all-pure? #'(e-list- ...)) "expressions must be pure"
-  [[x ≫ x- : τ-l] ... ⊢ (begin e-body ...) ≫ e-body- (⇒ : τ-b)
-                  (⇒ ν-ep (~effs eps ...))
-                  (⇒ ν-f (~effs fs ...))
-                  (⇒ ν-s (~effs ss ...))]
-  -------------------------------------------------------
-  [⊢ (for- ([x- (in-list- e-list-)] ...)
-       e-body-) (⇒ : ★/t)
-                (⇒ ν-ep (eps ...))
-                (⇒ ν-f (fs ...))
-                (⇒ ν-s (ss ...))])
 
 (define-typed-syntax (empty? e) ≫
   [⊢ e ≫ e- ⇒ (~List _)]
@@ -96,3 +63,6 @@
 
 (define- (member?- v l)
   (and- (member- v l) #t))
+
+(require/typed racket/base
+  [reverse : (∀ (X) (→fn (List X) (List X)))])
