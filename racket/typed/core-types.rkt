@@ -707,9 +707,9 @@
      [((~Actor τ1) (~Actor τ2))
       (and (<: #'τ1 #'τ2)
            (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
-     [((~→ τ-in1 ... τ-out1) (~→ τ-in2 ... τ-out2))
-      #:when (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
-      (and (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
+     [((~→fn τ-in1 ... τ-out1) (~→fn τ-in2 ... τ-out2))
+      (and (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
+           (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
            (<: #'τ-out1 #'τ-out2))]
      [(~Discard _)
       #t]
@@ -739,7 +739,7 @@
                 (<: ty2 ty1))]
           [(== irrelevant)
            #t]))]
-     ;; TODO: clauses for Roles, and so on
+     ;; TODO: clauses for Roles, effectful functions, and so on
      [_
       #f]))
 
