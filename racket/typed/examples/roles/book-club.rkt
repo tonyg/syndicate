@@ -47,8 +47,8 @@
 
 (define (lookup [title : String]
                 [inv : Inventory] -> Int)
-  (for/fold [stock 0]
-            [item inv]
+  (for/fold ([stock 0])
+            ([item inv])
     (if (equal? title (select 0 item))
         (select 1 item)
         stock)))
