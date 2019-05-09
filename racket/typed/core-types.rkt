@@ -207,7 +207,7 @@
 (define-type-constructor Spawns #:arity >= 0)
 
 
-(define-base-types Int Bool String Discard ★/t FacetName ByteString Symbol)
+(define-base-types Discard ★/t FacetName)
 
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
@@ -262,7 +262,18 @@
         #'(~→ ty-in ... (~Computation (~Value ty-out)
                                       (~Endpoints)
                                       (~Roles)
-                                      (~Spawns)))]))))
+                                      (~Spawns)))])))
+
+  ;; matching possibly polymorphic types
+  (define-syntax ~?∀
+    (pattern-expander
+     (lambda (stx)
+       (syntax-case stx ()
+         [(?∀ vars-pat body-pat)
+          #'(~or (~∀ vars-pat body-pat)
+                 (~and (~not (~∀ _ _))
+                       (~parse vars-pat #'())
+                       body-pat))])))))
 
 ;; for looking at the "effects"
 (begin-for-syntax

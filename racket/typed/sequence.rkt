@@ -22,6 +22,7 @@
 (require "core-types.rkt")
 (require (only-in "list.rkt" List))
 (require (only-in "set.rkt" Set))
+(require (only-in "prim.rkt" Int Bool))
 #;(require (postfix-in - racket/sequence))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

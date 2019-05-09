@@ -11,6 +11,7 @@
          reverse)
 
 (require "core-types.rkt")
+(require (only-in "prim.rkt" Bool))
 (require (postfix-in - racket/list))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
