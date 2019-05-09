@@ -11,6 +11,8 @@
 ;; Primitives
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define-base-types Int Bool String ByteString Symbol)
+
 ;; hmmm
 (define-primop + (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
 (define-primop - (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))

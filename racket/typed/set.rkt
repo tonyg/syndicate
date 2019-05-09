@@ -14,13 +14,15 @@
          set->list)
 
 (require "core-types.rkt")
+(require (only-in "prim.rkt" Int))
 (require (only-in "list.rkt" ~List))
 
 (require (postfix-in - racket/set))
 
 (module+ test
   (require rackunit)
-  (require rackunit/turnstile))
+  (require rackunit/turnstile)
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Sets

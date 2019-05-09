@@ -8,7 +8,7 @@
          ;; Start dataspace programs
          run-ground-dataspace
          ;; Types
-         Int Bool String Tuple Bind Discard → ∀ ByteString Symbol
+         Tuple Bind Discard → ∀
          Role Reacts Shares Know ¬Know Message OnDataflow Stop OnStart OnStop
          FacetName Field ★/t
          Observe Inbound Outbound Actor U

@@ -19,6 +19,7 @@
 
 (require "core-types.rkt")
 (require (only-in "list.rkt" List))
+(require (only-in "prim.rkt" Int Bool))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Immutable Hash Tables
