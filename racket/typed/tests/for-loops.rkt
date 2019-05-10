@@ -57,7 +57,8 @@
             : (List (Tuple Int Int))
             ⇒ (list (tuple 1 4) (tuple 2 5) (tuple 3 6)))
 
-(define (zip-even [xs : (List Int)]
+;; binding in #:when isn't handled
+#;(define (zip-even [xs : (List Int)]
                   [ys : (List Int)])
   ((inst reverse (Tuple Int Int))
    (for/fold ([acc : (List (Tuple Int Int))

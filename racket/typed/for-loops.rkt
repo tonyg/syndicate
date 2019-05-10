@@ -7,6 +7,7 @@
 (require (only-in "list.rkt" List ~List))
 (require (only-in "set.rkt" Set ~Set))
 (require (only-in "hash.rkt" Hash ~Hash))
+(require (only-in "prim.rkt" Bool))
 
 (begin-for-syntax
   (define-splicing-syntax-class iter-clause
@@ -89,7 +90,7 @@
      (values #`(in-set- #,e) #'t)]
     [_
      (type-error #:src e
-                 #:msg "not an iterable type: " τ)]))
+                 #:msg "not an iterable type: ~a" τ)]))
 
 
 (define-typed-syntax for/fold
