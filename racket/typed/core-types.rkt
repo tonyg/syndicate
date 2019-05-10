@@ -728,7 +728,7 @@
       (free-identifier=? #'X #'Y)]
      [((~∀ (X:id ...) τ1) (~∀ (Y:id ...) τ2))
       #:when (stx-length=? #'(X ...) #'(Y ...))
-      #:with τ2-X/Y (substs #'(Y ...) #'(X ...) #'τ2)
+      #:with τ2-X/Y (substs #'(X ...) #'(Y ...) #'τ2)
       (<: #'τ1 #'τ2-X/Y)]
      [((~Base τ1:id) (~Base τ2:id))
       (free-identifier=? #'τ1 #'τ2)]
