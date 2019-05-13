@@ -24,7 +24,7 @@
   [⊢ e ≫ e- ⇒ τ] ...
   #:fail-unless (all-pure? #'(e- ...)) "expressions must be pure"
   -------------------
-  [⊢ (list- e- ...) ⇒ (List (U τ ...))])
+  [⊢ (#%app- list- e- ...) ⇒ (List (U τ ...))])
 
 (define- (member?- v l)
-  (and- (member- v l) #t))
+  (and- (#%app- member- v l) #t))

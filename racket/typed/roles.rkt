@@ -1,7 +1,7 @@
 #lang turnstile
 
 (provide #%module-begin
-         (rename-out [typed-app #%app])
+         #%app
          (rename-out [typed-quote quote])
          #%top-interaction
          require only-in
@@ -11,7 +11,7 @@
          Tuple Bind Discard → ∀
          Role Reacts Shares Know ¬Know Message OnDataflow Stop OnStart OnStop
          FacetName Field ★/t
-         Observe Inbound Outbound Actor U
+         Observe Inbound Outbound Actor U ⊥
          Computation Value Endpoints Roles Spawns
          →fn
          ;; Statements
@@ -33,6 +33,8 @@
          bind discard
          ;; primitives
          (all-from-out "prim.rkt")
+         ;; expressions
+         (all-from-out "core-expressions.rkt")
          ;; lists
          (all-from-out "list.rkt")
          ;; sets
@@ -54,6 +56,7 @@
          require-struct
          )
 (require "core-types.rkt")
+(require "core-expressions.rkt")
 (require "list.rkt")
 (require "set.rkt")
 (require "prim.rkt")
@@ -64,13 +67,9 @@
 (require (prefix-in syndicate: syndicate/actor-lang))
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
-(require (for-syntax turnstile/examples/util/filter-maximal))
-(require (for-syntax macrotypes/type-constraints macrotypes/variance-constraints))
-(require (for-syntax racket/struct-info))
 (require macrotypes/postfix-in)
 (require (postfix-in - racket/list))
 (require (postfix-in - racket/set))
-(require (postfix-in - racket/match))
 
 (module+ test
   (require rackunit)
@@ -104,7 +103,7 @@
                           ;; τ-m ...
                           τ-r ...))
   --------------------------------------------------------------
-  [⊢ (syndicate:react (let- ([#,name-- (syndicate:current-facet-id)])
+  [⊢ (syndicate:react (let- ([#,name-- (#%app- syndicate:current-facet-id)])
                         #,@ep-...))
      (⇒ : ★/t)
      (⇒ ν-f (τ))])
@@ -203,56 +202,11 @@
      (⇒ : ★/t)
      (⇒ ν-ep (τ-r))])
 
-;; pat -> ([Id Type] ...)
-(define-for-syntax (pat-bindings stx)
-  (syntax-parse stx
-    #:datum-literals (bind tuple)
-    [(bind x:id τ:type)
-     #'([x τ])]
-    [(tuple p ...)
-     #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
-     #'([x τ] ... ...)]
-    [(k:kons1 p)
-     (pat-bindings #'p)]
-    [(~constructor-exp cons p ...)
-     #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
-     #'([x τ] ... ...)]
-    [_
-     #'()]))
-
-;; TODO - figure out why this needs different list identifiers
-(define-for-syntax (compile-pattern pat list-binding bind-id-transformer exp-transformer)
-    (define (l-e stx) (local-expand stx 'expression '()))
-    (let loop ([pat pat])
-      (syntax-parse pat
-        #:datum-literals (tuple discard bind)
-        [(tuple p ...)
-         #`(#,list-binding 'tuple #,@(stx-map loop #'(p ...)))]
-        [(k:kons1 p)
-         #`(#,(kons1->constructor #'k) #,(loop #'p))]
-        [(bind x:id τ:type)
-         (bind-id-transformer #'x)]
-        [discard
-         #'_]
-        [(~constructor-exp ctor p ...)
-         (define/with-syntax uctor (untyped-ctor #'ctor))
-         #`(uctor #,@(stx-map loop #'(p ...)))]
-        [_
-         ;; local expanding "expression-y" syntax allows variable references to transform
-         ;; according to the mappings set up by turnstile.
-         (exp-transformer (l-e pat))])))
-
 (define-for-syntax (compile-syndicate-pattern pat)
   (compile-pattern pat
                    #'list-
                    (lambda (id) #`($ #,id))
                    identity))
-
-(define-for-syntax (compile-match-pattern pat)
-  (compile-pattern pat
-                   #'list
-                   identity
-                   (lambda (exp) #`(==- #,exp))))
 
 (define-typed-syntax (spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
@@ -292,7 +246,7 @@
   [⊢ x ≫ x- (⇒ : (~Field τ-x:type))]
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
   ----------------------------------------------------
-  [⊢ (x- e-) (⇒ : ★/t)])
+  [⊢ (#%app- x- e-) (⇒ : ★/t)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Derived Forms
@@ -356,215 +310,7 @@
 (define-typed-syntax (ref x:id) ≫
   [⊢ x ≫ x- ⇒ (~Field τ)]
   ------------------------
-  [⊢ (x-) (⇒ : τ)])
-
-(define-typed-syntax typed-app
-  ;; Polymorphic, Pure Function - Perform Local Inference
-  [(_ e_fn e_arg ...) ≫
-   ;; compute fn type (ie ∀ and →)
-   [⊢ e_fn ≫ e_fn- ⇒ (~∀ Xs (~→fn tyX_in ... tyX_out))]
-   ;; successfully matched a polymorphic fn type, don't backtrack
-   #:cut
-   #:with tyX_args #'(tyX_in ... tyX_out)
-   ;; solve for type variables Xs
-   #:with [[e_arg- ...] Xs* cs] (solve #'Xs #'tyX_args this-syntax)
-   ;; instantiate polymorphic function type
-   #:with [τ_in ... τ_out] (inst-types/cs #'Xs* #'cs #'tyX_args)
-   #:with (unsolved-X ...) (find-free-Xs #'Xs* #'τ_out)
-   ;; arity check
-   #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
-                 (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
-   ;; purity check
-   #:fail-unless (all-pure? #'(e_fn- e_arg- ...)) "expressions must be pure"
-   ;; compute argument types
-   #:with (τ_arg ...) (stx-map typeof #'(e_arg- ...))
-   ;; typecheck args
-   [τ_arg τ⊑ τ_in #:for e_arg] ...
-   #:with τ_out* (if (stx-null? #'(unsolved-X ...))
-                     #'τ_out
-                     (syntax-parse #'τ_out
-                       [(~?∀ (Y ...) τ_out)
-                        #:fail-unless (→? #'τ_out)
-                        (mk-app-poly-infer-error this-syntax #'(τ_in ...) #'(τ_arg ...) #'e_fn)
-                        (for ([X (in-list (syntax->list #'(unsolved-X ...)))])
-                          (unless (covariant-X? X #'τ_out)
-                            (raise-syntax-error
-                             #f
-                             (mk-app-poly-infer-error this-syntax #'(τ_in ...) #'(τ_arg ...) #'e_fn)
-                             this-syntax)))
-                        (mk-∀- #'(unsolved-X ... Y ...) #'(τ_out))]))
-   --------
-   [⊢ (#%plain-app- e_fn- e_arg- ...) ⇒ τ_out*]]
-  ;; All Other Functions
-  [(_ e_fn e_arg ...) ≫
-   [⊢ e_fn ≫ e_fn- (⇒ : (~→ τ_in ... (~Computation (~Value τ-out)
-                                                   (~Endpoints τ-ep ...)
-                                                   (~Roles τ-f ...)
-                                                   (~Spawns τ-s ...))))]
-   #:fail-unless (pure? #'e_fn-) "expression not allowed to have effects"
-   #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
-   (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
-   [⊢ e_arg ≫ e_arg- (⇐ : τ_in)] ...
-   #:fail-unless (stx-andmap pure? #'(e_arg- ...)) "expressions not allowed to have effects"
-   ------------------------------------------------------------------------
-   [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ-out)
-      (⇒ ν-ep (τ-ep ...))
-      (⇒ ν-s (τ-s ...))
-      (⇒ ν-f (τ-f ...))]])
-
-(begin-for-syntax
-  ;; find-free-Xs : (Stx-Listof Id) Type -> (Listof Id)
-  ;; finds the free Xs in the type
-  (define (find-free-Xs Xs ty)
-    (for/list ([X (in-stx-list Xs)]
-               #:when (stx-contains-id? ty X))
-      X))
-
-  ;; Type -> Bool
-  ;; checks if the type contains any unions
-  (define (contains-union? ty)
-    (syntax-parse ty
-      [(~U* _ ...)
-       #t]
-      [(~Base _) #f]
-      [X:id #f]
-      [(~Any/bvs _ _ τ ...)
-       (stx-ormap contains-union? #'(τ ...))]
-      [_
-       (type-error #:src (get-orig ty)
-                   #:msg "contains-union?: unrecognized-type: ~a"
-                   ty)]))
-
-  ;; solve for Xs by unifying quantified fn type with the concrete types of stx's args
-  ;;   stx = the application stx = (#%app e_fn e_arg ...)
-  ;;   tyXs = input and output types from fn type
-  ;;          ie (typeof e_fn) = (-> . tyXs)
-  ;; It infers the types of arguments from left-to-right,
-  ;; and it expands and returns all of the arguments.
-  ;; It returns list of 3 values if successful, else throws a type error
-  ;;  - a list of all the arguments, expanded
-  ;;  - a list of all the type variables
-  ;;  - the constraints for substituting the types
-  (define (solve Xs tyXs stx)
-    (syntax-parse tyXs
-      [(τ_inX ... τ_outX)
-       ;; generate initial constraints with expected type and τ_outX
-       #:with (~?∀ Vs expected-ty)
-              (and (get-expected-type stx)
-                   ((current-type-eval) (get-expected-type stx)))
-       (define initial-cs
-         (if (and (syntax-e #'expected-ty) (stx-null? #'Vs))
-             (add-constraints Xs '() (list (list #'expected-ty #'τ_outX)))
-             '()))
-       (syntax-parse stx
-         [(_ e_fn . args)
-          (define-values (as- cs)
-              (for/fold ([as- null] [cs initial-cs])
-                        ([a (in-stx-list #'args)]
-                         [tyXin (in-stx-list #'(τ_inX ...))])
-                (define ty_in (inst-type/cs/orig Xs cs tyXin datum=?))
-                (when (contains-union? ty_in)
-                  (type-error #:src a
-                              #:msg (format "can't infer types with unions: ~a\nraw: ~a"
-                                            (type->str ty_in) ty_in)))
-                (define/with-syntax [a- ty_a]
-                  (infer+erase (if (null? (find-free-Xs Xs ty_in))
-                                   (add-expected-type a ty_in)
-                                   a)))
-                (when (contains-union? #'ty_a)
-                  (type-error #:src a
-                              #:msg (format "can't infer types with unions: ~a\nraw: ~a"
-                                            (type->str #'ty_a) #'ty_a)))
-                (values
-                 (cons #'a- as-)
-                 (add-constraints Xs cs (list (list ty_in #'ty_a))
-                                  (list (list (inst-type/cs/orig
-                                               Xs cs ty_in
-                                               datum=?)
-                                              #'ty_a))))))
-
-          (list (reverse as-) Xs cs)])]))
-
-  (define (mk-app-poly-infer-error stx expected-tys given-tys e_fn)
-    (format (string-append
-             "Could not infer instantiation of polymorphic function ~s.\n"
-             "  expected: ~a\n"
-             "  given:    ~a")
-            (syntax->datum (get-orig e_fn))
-            (string-join (stx-map type->str expected-tys) ", ")
-            (string-join (stx-map type->str given-tys) ", ")))
-
-  ;; covariant-Xs? : Type -> Bool
-  ;; Takes a possibly polymorphic type, and returns true if all of the
-  ;; type variables are in covariant positions within the type, false
-  ;; otherwise.
-  (define (covariant-Xs? ty)
-    (syntax-parse ((current-type-eval) ty)
-      [(~?∀ Xs ty)
-       (for/and ([X (in-stx-list #'Xs)])
-         (covariant-X? X #'ty))]))
-
-  ;; find-X-variance : Id Type [Variance] -> Variance
-  ;; Returns the variance of X within the type ty
-  (define (find-X-variance X ty [ctxt-variance covariant])
-    (car (find-variances (list X) ty ctxt-variance)))
-
-  ;; covariant-X? : Id Type -> Bool
-  ;; Returns true if every place X appears in ty is a covariant position, false otherwise.
-  (define (covariant-X? X ty)
-    (variance-covariant? (find-X-variance X ty covariant)))
-
-  ;; contravariant-X? : Id Type -> Bool
-  ;; Returns true if every place X appears in ty is a contravariant position, false otherwise.
-  (define (contravariant-X? X ty)
-    (variance-contravariant? (find-X-variance X ty covariant)))
-
-  ;; find-variances : (Listof Id) Type [Variance] -> (Listof Variance)
-  ;; Returns the variances of each of the Xs within the type ty,
-  ;; where it's already within a context represented by ctxt-variance.
-  (define (find-variances Xs ty [ctxt-variance covariant])
-    (syntax-parse ty
-      [A:id
-       (for/list ([X (in-list Xs)])
-         (cond [(free-identifier=? X #'A) ctxt-variance]
-               [else irrelevant]))]
-      [(~Any tycons)
-       (stx-map (λ _ irrelevant) Xs)]
-      [(~?∀ () (~Any tycons τ ...))
-       #:when (get-arg-variances #'tycons)
-       #:when (stx-length=? #'[τ ...] (get-arg-variances #'tycons))
-       (define τ-ctxt-variances
-         (for/list ([arg-variance (in-list (get-arg-variances #'tycons))])
-           (variance-compose ctxt-variance arg-variance)))
-       (for/fold ([acc (stx-map (λ _ irrelevant) Xs)])
-                 ([τ (in-stx-list #'[τ ...])]
-                  [τ-ctxt-variance (in-list τ-ctxt-variances)])
-         (map variance-join
-              acc
-              (find-variances Xs τ τ-ctxt-variance)))]
-      [ty
-       #:when (not (for/or ([X (in-list Xs)])
-                     (stx-contains-id? #'ty X)))
-       (stx-map (λ _ irrelevant) Xs)]
-      [_ (stx-map (λ _ invariant) Xs)])))
-
-(define-typed-syntax (tuple e:expr ...) ≫
-  [⊢ e ≫ e- (⇒ : τ)] ...
-  #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions not allowed to have effects"
-  -----------------------
-  [⊢ (list- 'tuple e- ...) (⇒ : (Tuple τ ...))])
-
-(define-typed-syntax (select n:nat e:expr) ≫
-  [⊢ e ≫ e- (⇒ : (~Tuple τ ...))]
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  #:do [(define i (syntax->datum #'n))]
-  #:fail-unless (< i (stx-length #'(τ ...))) "index out of range"
-  #:with τr (list-ref (stx->list #'(τ ...)) i)
-  --------------------------------------------------------------
-  [⊢ (tuple-select n e-) (⇒ : τr)])
-
-(define- (tuple-select n t)
-  (list-ref- t (add1 n)))
+  [⊢ (#%app- x-) (⇒ : τ)])
 
 ;; it would be nice to abstract over these three
 (define-typed-syntax (observe e:expr) ≫
@@ -605,127 +351,6 @@
    [⊢ (error- 'discard "escaped") (⇒ : Discard)]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Core-ish forms
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; copied from stlc
-(define-typed-syntax (ann e (~optional (~datum :)) τ:type) ≫
-  [⊢ e ≫ e- (⇐ : τ.norm)]
-  #:fail-unless (pure? #'e-) "expression must be pure"
-  ------------------------------------------------
-  [⊢ e- (⇒ : τ.norm) ])
-
-;; copied from ext-stlc
-(define-typed-syntax if
-  [(_ e_tst e1 e2) ⇐ τ-expected ≫
-   [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
-   #:fail-unless (pure? #'e_tst-) "expression must be pure"
-   [⊢ e1 ≫ e1- (⇐ : τ-expected)
-      (⇒ ν-ep (~effs eps1 ...)) (⇒ ν-f (~effs fs1 ...)) (⇒ ν-s (~effs ss1 ...))]
-   [⊢ e2 ≫ e2- (⇐ : τ-expected)
-      (⇒ ν-ep (~effs eps2 ...)) (⇒ ν-f (~effs fs2 ...)) (⇒ ν-s (~effs ss2 ...))]
-   --------
-   [⊢ (if- e_tst- e1- e2-)
-      (⇒ ν-ep (eps1 ... eps2 ...))
-      (⇒ ν-f #,(make-Branch #'((fs1 ...) (fs2 ...))))
-      (⇒ ν-s (ss1 ... ss2 ...))]]
-  [(_ e_tst e1 e2) ≫
-   [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
-   #:fail-unless (pure? #'e_tst-) "expression must be pure"
-   [⊢ e1 ≫ e1- (⇒ : τ1)
-      (⇒ ν-ep (~effs eps1 ...)) (⇒ ν-f (~effs fs1 ...)) (⇒ ν-s (~effs ss1 ...))]
-   [⊢ e2 ≫ e2- (⇒ : τ2)
-      (⇒ ν-ep (~effs eps2 ...)) (⇒ ν-f (~effs fs2 ...)) (⇒ ν-s (~effs ss2 ...))]
-   #:with τ (type-eval #'(U τ1 τ2))
-   --------
-   [⊢ (if- e_tst- e1- e2-) (⇒ : τ)
-      (⇒ ν-ep (eps1 ... eps2 ...))
-      (⇒ ν-f #,(make-Branch #'((fs1 ...) (fs2 ...))))
-      (⇒ ν-s (ss1 ... ss2 ...))]])
-
-(define-typed-syntax (when e s ...+) ≫
-  ------------------------------------
-  [≻ (if e (begin s ...) #f)])
-
-(define-typed-syntax (unless e s ...+) ≫
-  ------------------------------------
-  [≻ (if e #f (begin s ...))])
-
-;; copied from ext-stlc
-(define-typed-syntax let
-  [(_ ([x e] ...) e_body ...) ⇐ τ_expected ≫
-   [⊢ e ≫ e- ⇒ : τ_x] ...
-   #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
-   [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- (⇐ : τ_expected)
-                   (⇒ ν-ep (~effs eps ...))
-                   (⇒ ν-f (~effs fs ...))
-                   (⇒ ν-s (~effs ss ...))]
-   ----------------------------------------------------------
-   [⊢ (let- ([x- e-] ...) e_body-)
-      (⇒ ν-ep (eps ...))
-      (⇒ ν-f (fs ...))
-      (⇒ ν-s (ss ...))]]
-  [(_ ([x e] ...) e_body ...) ≫
-   [⊢ e ≫ e- ⇒ : τ_x] ...
-   #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
-   [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- (⇒ : τ_body)
-                   (⇒ ν-ep (~effs eps ...))
-                   (⇒ ν-f (~effs fs ...))
-                   (⇒ ν-s (~effs ss ...))]
-   ----------------------------------------------------------
-   [⊢ (let- ([x- e-] ...) e_body-) (⇒ : τ_body)
-      (⇒ ν-ep (eps ...))
-      (⇒ ν-f (fs ...))
-      (⇒ ν-s (ss ...))]])
-
-;; copied from ext-stlc
-(define-typed-syntax let*
-  [(_ () e_body ...) ≫
-   --------
-   [≻ (begin e_body ...)]]
-  [(_ ([x e] [x_rst e_rst] ...) e_body ...) ≫
-   --------
-   [≻ (let ([x e]) (let* ([x_rst e_rst] ...) e_body ...))]])
-
-(define-typed-syntax (cond [pred:expr s ...+] ...+) ≫
-  [⊢ pred ≫ pred- (⇐ : Bool)] ...
-  #:fail-unless (stx-andmap pure? #'(pred- ...)) "predicates must be pure"
-  [⊢ (begin s ...) ≫ s- (⇒ : τ-s)
-                   (⇒ ν-ep (~effs eps ...))
-                   (⇒ ν-f (~effs fs ...))
-                   (⇒ ν-s (~effs ss ...))] ...
-  ------------------------------------------------
-  [⊢ (cond- [pred- s-] ...) (⇒ : (U τ-s ...))
-     (⇒ ν-ep (eps ... ...))
-     (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
-     (⇒ ν-s (ss ... ...))])
-
-(define-typed-syntax (match e [p s ...+] ...+) ≫
-  [⊢ e ≫ e- (⇒ : τ-e)]
-  #:fail-unless (pure? #'e-) "expression must be pure"
-  #:with (([x τ] ...) ...) (stx-map pat-bindings #'(p ...))
-  [[x ≫ x- : τ] ... ⊢ (begin s ...) ≫ s- (⇒ : τ-s)
-                (⇒ ν-ep (~effs eps ...))
-                (⇒ ν-f (~effs fs ...))
-                (⇒ ν-s (~effs ss ...))] ...
-  ;; REALLY not sure how to handle p/p-/p.match-pattern,
-  ;; particularly w.r.t. typed terms that appear in p.match-pattern
-  [⊢ p ≫ p-- ⇒ τ-p] ...
-  #:fail-unless (project-safe? #'τ-e (type-eval #'(U τ-p ...))) "possibly unsafe pattern match"
-  #:fail-unless (stx-andmap pure? #'(p-- ...)) "patterns must be pure"
-  #:with (p- ...) (stx-map (lambda (p x-s xs) (substs x-s xs (compile-match-pattern p)))
-                           #'(p ...)
-                           #'((x- ...) ...)
-                           #'((x ...) ...))
-  --------------------------------------------------------------
-  [⊢ (match- e- [p- s-] ...
-                [_ (error "incomplete pattern match")])
-     (⇒ : (U τ-s ...))
-     (⇒ ν-ep (eps ... ...))
-     (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
-     (⇒ ν-s (ss ... ...))])
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground Dataspace
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -734,7 +359,7 @@
 (define-typed-syntax (run-ground-dataspace τ-c:type s ...) ≫
   [⊢ (dataspace τ-c s ...) ≫ ((~literal erased) ((~literal syndicate:dataspace) s- ...)) (⇒ : t)]
   -----------------------------------------------------------------------------------
-  [⊢ (syndicate:run-ground s- ...) (⇒ : (AssertionSet τ-c))])
+  [⊢ (#%app- syndicate:run-ground s- ...) (⇒ : (AssertionSet τ-c))])
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

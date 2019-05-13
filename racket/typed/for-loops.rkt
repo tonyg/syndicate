@@ -1,13 +1,21 @@
 #lang turnstile
 
-(provide for/fold)
+(provide for/fold
+         for/list
+         for/set
+         for/sum)
 
 (require "core-types.rkt")
 (require "sequence.rkt")
 (require (only-in "list.rkt" List ~List))
 (require (only-in "set.rkt" Set ~Set))
 (require (only-in "hash.rkt" Hash ~Hash))
-(require (only-in "prim.rkt" Bool))
+(require (only-in "prim.rkt" Bool + #%datum))
+(require (only-in "core-expressions.rkt" let))
+
+(require (postfix-in - (only-in racket/set
+                                for/set
+                                in-set)))
 
 (begin-for-syntax
   (define-splicing-syntax-class iter-clause
@@ -120,20 +128,9 @@
                            (⇒ ν-s (~effs τ-s ...))
                            (⇒ ν-f (~effs τ-f ...))]
   #:with e-body-- (substs #'(x- ...) #'(x-- ...) #'e-body- free-identifier=?)
-  ;; #:with y (stx-car #'(x ...))
-  ;; #:with y- (stx-car #'(x- ...))
-  ;; #:with y-- (stx-car #'(x-- ...))
-  ;; #:with (_ (_ dbg1)) #'e-body-
-  ;; #:with (_ (_ dbg2)) #'e-body--
-  ;; #:do [(printf "y/dbg1 ~a, ~a\n" (free-identifier=? #'y #'dbg1) (bound-identifier=? #'y #'dbg1))
-  ;;       (printf "y/dbg2 ~a, ~a\n" (free-identifier=? #'y #'dbg2) (bound-identifier=? #'y #'dbg2))
-  ;;       (printf "y-/dbg1 ~a, ~a\n" (free-identifier=? #'y- #'dbg1) (bound-identifier=? #'y- #'dbg1))
-  ;;       (printf "y-/dbg2 ~a, ~a\n" (free-identifier=? #'y- #'dbg2) (bound-identifier=? #'y- #'dbg2))
-  ;;       (printf "y--/dbg1 ~a, ~a\n" (free-identifier=? #'y-- #'dbg1) (bound-identifier=? #'y-- #'dbg1))
-  ;;       (printf "y--/dbg2 ~a, ~a\n" (free-identifier=? #'y-- #'dbg2) (bound-identifier=? #'y- #'dbg2))]
   -------------------------------------------------------
   [⊢ (for/fold- ([acc- init-])
-                (#,@#'clauses-)
+                clauses-
                 e-body--)
      (⇒ : τ-acc)
      (⇒ ν-ep (τ-ep ...))
@@ -147,3 +144,42 @@
    [≻ (for/fold ([acc τ-acc init])
                 clauses
         e-body ...)]])
+
+(define-typed-syntax (for/list (clause:iter-clause ...)
+                       e-body ...+) ≫
+  #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
+  [[x ≫ x-- : τ] ... ⊢ (begin e-body ...) ≫ e-body-
+                           (⇒ : τ-body)
+                           (⇒ ν-ep (~effs τ-ep ...))
+                           (⇒ ν-s (~effs τ-s ...))
+                           (⇒ ν-f (~effs τ-f ...))]
+  #:with e-body-- (substs #'(x- ...) #'(x-- ...) #'e-body- free-identifier=?)
+  ----------------------------------------------------------------------
+  [⊢ (for/list- clauses-
+                e-body--) (⇒ : (List τ-body))
+                          (⇒ ν-ep (τ-ep ...))
+                          (⇒ ν-s (τ-s ...))
+                          (⇒ ν-f (τ-f ...))])
+
+(define-typed-syntax (for/set (clause:iter-clause ...)
+                       e-body ...+) ≫
+  #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
+  [[x ≫ x-- : τ] ... ⊢ (begin e-body ...) ≫ e-body-
+                           (⇒ : τ-body)
+                           (⇒ ν-ep (~effs τ-ep ...))
+                           (⇒ ν-s (~effs τ-s ...))
+                           (⇒ ν-f (~effs τ-f ...))]
+  #:with e-body-- (substs #'(x- ...) #'(x-- ...) #'e-body- free-identifier=?)
+  ----------------------------------------------------------------------
+  [⊢ (for/set- clauses-
+                e-body--) (⇒ : (Set τ-body))
+                          (⇒ ν-ep (τ-ep ...))
+                          (⇒ ν-s (τ-s ...))
+                          (⇒ ν-f (τ-f ...))])
+
+(define-typed-syntax (for/sum (clause ...)
+                       e-body ...+) ≫
+  ----------------------------------------------------------------------
+  [≻ (for/fold ([acc 0])
+               (clause ...)
+       (+ acc (let () e-body ...)))])

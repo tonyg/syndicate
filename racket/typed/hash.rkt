@@ -42,7 +42,7 @@
   #:fail-unless (all-pure? #'(key- ... val- ...)) "gotta be pure"
   #:with together-again (stx-flatten #'((key- val-) ...))
   --------------------------------------------------
-  [⊢ (hash- #,@#'together-again) (⇒ : (Hash (U τ-k ...) (U τ-val ...)))])
+  [⊢ (#%app- hash- #,@#'together-again) (⇒ : (Hash (U τ-k ...) (U τ-val ...)))])
 
 (require/typed racket/base
   ;; don't have a type for ConsPair
