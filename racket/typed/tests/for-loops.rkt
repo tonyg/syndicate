@@ -71,3 +71,20 @@
 (check-type (zip-even (list 1 2 3) (list 5 6 7))
             : (List (Tuple Int Int))
             ⇒ (list (tuple 2 6)))
+
+(check-type (for/list ([x (list 1 2 3 4 5 6)]
+                       #:when (even? x))
+              (add1 x))
+            : (List Int)
+            ⇒ (list 3 5 7))
+
+(check-type (for/set ([x (set 1 2 3 4 5 6)]
+                       #:when (even? x))
+              (add1 x))
+            : (Set Int)
+            ⇒ (set 5 3 7))
+
+(check-type (for/sum ([x (set 8 7 2)])
+              (* x 2))
+            : Int
+            ⇒ 34)

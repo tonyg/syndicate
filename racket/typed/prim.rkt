@@ -26,6 +26,8 @@
 (define-primop = (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
 (define-primop even? (→fn Int Bool))
 (define-primop odd? (→fn Int Bool))
+(define-primop add1 (→fn Int Int))
+(define-primop sub1 (→fn Int Int))
 
 (define-primop bytes->string/utf-8 (→ ByteString (Computation (Value String) (Endpoints) (Roles) (Spawns))))
 (define-primop string->bytes/utf-8 (→ String (Computation (Value ByteString) (Endpoints) (Roles) (Spawns))))
@@ -39,7 +41,7 @@
   #:fail-unless (pure? #'e1-) "expression not allowed to have effects"
   #:fail-unless (pure? #'e2-) "expression not allowed to have effects"
   ------------------------
-  [⊢ (exact-truncate- (/- e1- e2-)) (⇒ : Int)])
+  [⊢ (#%app- exact-truncate- (#%app- /- e1- e2-)) (⇒ : Int)])
 
 ;; for some reason defining `and` as a prim op doesn't work
 (define-typed-syntax (and e ...) ≫
@@ -56,26 +58,26 @@
   #:fail-unless (pure? #'e1-) "expression not allowed to have effects"
   #:fail-unless (pure? #'e2-) "expression not allowed to have effects"
   ---------------------------------------------------------------------------
-  [⊢ (equal?- e1- e2-) (⇒ : Bool)])
+  [⊢ (#%app- equal?- e1- e2-) (⇒ : Bool)])
 
 (define-typed-syntax (displayln e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   ---------------
-  [⊢ (displayln- e-) (⇒ : ★/t)])
+  [⊢ (#%app- displayln- e-) (⇒ : ★/t)])
 
 (define-typed-syntax (printf e ...+) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
   #:fail-unless (stx-andmap pure? #'(e- ...)) "expression not allowed to have effects"
   ---------------
-  [⊢ (printf- e- ...) (⇒ : ★/t)])
+  [⊢ (#%app- printf- e- ...) (⇒ : ★/t)])
 
 (define-typed-syntax (~a e ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
   #:fail-unless (stx-andmap flat-type? #'(τ ...))
                 "expressions must be string-able"
   --------------------------------------------------
-  [⊢ (~a- e- ...) (⇒ : String)])
+  [⊢ (#%app- ~a- e- ...) (⇒ : String)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Basic Values
