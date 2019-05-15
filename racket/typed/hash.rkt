@@ -51,7 +51,7 @@
   [hash-ref : (∀ (K V) (→fn (Hash K V) K V))]
   ;; TODO hash-ref/failure
   [hash-has-key? : (∀ (K V) (→fn (Hash K V) K Bool))]
-  [hash-update : (∀ (K V) (→fn (Hash K V) (→fn V V) K (Hash K V)))]
+  [hash-update : (∀ (K V) (→fn (Hash K V) K (→fn V V) (Hash K V)))]
   ;; TODO hash-update/failure
   [hash-remove : (∀ (K V) (→fn (Hash K V) K (Hash K V)))]
   [hash-map : (∀ (K V R) (→fn (Hash K V) (→fn K V R) (List R)))]
