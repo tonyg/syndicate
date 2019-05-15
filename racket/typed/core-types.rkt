@@ -676,6 +676,9 @@
      (define t (replace-bind-and-discard-with-★ #'τ))
      (type-eval #`(Observe #,t))]
     [τ
+     #:when (bot? #'τ)
+     #'τ]
+    [τ
      (define t (replace-bind-and-discard-with-★ #'τ))
      (type-eval #`(Observe #,t))]))
 
