@@ -127,10 +127,10 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
 (define (word-count-increment [h : WordCount]
                               [word : String]
                               -> WordCount)
-  (hash-update h
-               word
-               add1
-               #;(λ x 0)))
+  (hash-update/failure h
+                       word
+                       add1
+                       (lambda () 0)))
 
 (define (count-new-words [word-count : WordCount]
                          [words : (List String)]
@@ -168,9 +168,7 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
             (define wc (count-new-words (ann (hash) WordCount) (string->words data)))
             (set! state (finished wc))]
            [(reduce-work (bind left WordCount) (bind right WordCount))
-            ;; TODO - this kind of hash-union
-            #;(define wc (hash-union left right #:combine +))
-            (define wc left)
+            (define wc (hash-union/combine left right +))
             (set! state (finished wc))])
          (set! status IDLE)]
         [#t

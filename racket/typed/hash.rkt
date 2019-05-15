@@ -7,6 +7,8 @@
          hash-ref
          hash-has-key?
          hash-update
+         (typed-out [[hash-update/failure- : (∀ (K V) (→fn (Hash K V) K (→fn V V) (→fn V) (Hash K V)))]
+                     hash-update/failure])
          hash-remove
          hash-map
          hash-keys
@@ -15,6 +17,8 @@
          hash-count
          hash-empty?
          hash-union
+         (typed-out [[hash-union/combine- : (∀ (K V) (→fn (Hash K V) (Hash K V) (→fn V V V) (Hash K V)))]
+                     hash-union/combine])
          )
 
 (require "core-types.rkt")
@@ -67,3 +71,9 @@
   [hash-union : (∀ (K1 V1 K2 V2) (→fn (Hash K1 V1) (Hash K2 V2) (Hash (U K1 K2) (U V1 V2))))]
   ;; TODO - hash-union with #:combine
   )
+
+(define- (hash-update/failure- h k u err)
+  (#%app- hash-update- h k u err))
+
+(define- (hash-union/combine- h1 h2 combine)
+  (#%app- hash-union- h1 h2 #:combine combine))
