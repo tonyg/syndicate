@@ -26,6 +26,7 @@
          Λ inst
          ;; making types
          define-type-alias
+         assertion-struct
          define-constructor define-constructor*
          ;; values
          #%datum
@@ -74,6 +75,14 @@
 (module+ test
   (require rackunit)
   (require rackunit/turnstile))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Creating Communication Types
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-simple-macro (assertion-struct name:id (~datum :) Name:id (slot:id ...))
+  (define-constructor* (name : Name slot ...)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core forms
