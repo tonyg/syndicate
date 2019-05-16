@@ -11,10 +11,14 @@
          set-subtract
          set-intersect
          list->set
-         set->list)
+         set->list
+         (typed-out [[set-first- : (∀ (X) (→fn (Set X) X))]
+                     set-first]
+                    [[set-empty?- : (∀ (X) (→fn (Set X) Bool))]
+                     set-empty?]))
 
 (require "core-types.rkt")
-(require (only-in "prim.rkt" Int))
+(require (only-in "prim.rkt" Int Bool))
 (require (only-in "list.rkt" ~List))
 
 (require (postfix-in - racket/set))
