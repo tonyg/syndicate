@@ -1161,7 +1161,7 @@
    #:do [(define-values (e-... τ... ep-effs f-effs s-effs) (walk/bind #'(e_unit ... e)))]
    #:with τ (last τ...)
    --------
-   [⊢ (begin- #,@e-...) (⇒ : τ)
+   [⊢ (let- () #,@e-...) (⇒ : τ)
       (⇒ ν-ep (#,@ep-effs))
       (⇒ ν-f (#,@f-effs))
       (⇒ ν-s (#,@s-effs))]])
