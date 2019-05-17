@@ -18,7 +18,10 @@
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
          when unless send! define
          ;; Derived Forms
-         during define/query-value define/query-set
+         during
+         define/query-value
+         define/query-set
+         define/query-hash
          ;; endpoints
          assert on field
          ;; expressions
@@ -316,6 +319,24 @@
                 (set! x (set-add (ref x) e)))
             (on (retracted p)
                 (set! x (set-remove (ref x) e))))])
+
+(define-typed-syntax (define/query-hash x:id p e-key e-value) ≫
+  #:with ([y τ] ...) (pat-bindings #'p)
+  ;; e-key and e-value will be re-expanded :/
+  ;; but it's the most straightforward way to keep bindings in sync with
+  ;; pattern
+  [[y ≫ y- : τ] ... ⊢ e-key ≫ e-key- ⇒ τ-key]
+  [[y ≫ y-- : τ] ... ⊢ e-value ≫ e-value- ⇒ τ-value]
+  ;; TODO - this is gross, is there a better way to do this?
+  ;; #:with e-value-- (substs #'(y- ...) #'(y-- ...) #'e-value- free-identifier=?)
+  ;; I thought I could put e-key- and e-value-(-) in the output below, but that
+  ;; gets their references to pattern variables out of sync with `p`
+  ----------------------------------------
+  [≻ (begin (field [x (Hash τ-key τ-value) (hash)])
+            (on (asserted p)
+                (set! x (hash-set (ref x) e-key e-value)))
+            (on (retracted p)
+                (set! x (hash-remove (ref x) e-key))))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
