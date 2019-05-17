@@ -5,9 +5,11 @@
          hash
          hash-set
          hash-ref
+         (typed-out [[hash-ref/failure- : (∀ (K V) (→fn (Hash K V) K V V))]
+                     hash-ref/failure])
          hash-has-key?
          hash-update
-         (typed-out [[hash-update/failure- : (∀ (K V) (→fn (Hash K V) K (→fn V V) (→fn V) (Hash K V)))]
+         (typed-out [[hash-update/failure- : (∀ (K V) (→fn (Hash K V) K (→fn V V) V (Hash K V)))]
                      hash-update/failure])
          hash-remove
          hash-map
@@ -71,6 +73,9 @@
   [hash-union : (∀ (K1 V1 K2 V2) (→fn (Hash K1 V1) (Hash K2 V2) (Hash (U K1 K2) (U V1 V2))))]
   ;; TODO - hash-union with #:combine
   )
+
+(define- (hash-ref/failure- h k err)
+  (#%app- hash-ref- h k err))
 
 (define- (hash-update/failure- h k u err)
   (#%app- hash-update- h k u err))
