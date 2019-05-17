@@ -1,6 +1,8 @@
 #lang turnstile
 
-(provide ann
+(provide bind
+         discard
+         ann
          if
          when
          unless
@@ -15,6 +17,19 @@
 (require "core-types.rkt")
 (require (only-in "prim.rkt" Bool #%datum))
 (require (postfix-in - racket/match))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Patterns
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-typed-syntax (bind x:id τ:type) ≫
+  ----------------------------------------
+  [⊢ (error- 'bind "escaped") (⇒ : (Bind τ))])
+
+(define-typed-syntax discard
+  [_ ≫
+   --------------------
+   [⊢ (error- 'discard "escaped") (⇒ : Discard)]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core-ish forms
