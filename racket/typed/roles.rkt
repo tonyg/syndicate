@@ -46,6 +46,9 @@
          (all-from-out "hash.rkt")
          ;; for loops
          (all-from-out "for-loops.rkt")
+         ;; utility datatypes
+         (all-from-out "maybe.rkt")
+         (all-from-out "either.rkt")
          ;; DEBUG and utilities
          print-type print-role
          ;; Extensions
@@ -64,6 +67,8 @@
 (require "sequence.rkt")
 (require "hash.rkt")
 (require "for-loops.rkt")
+(require "maybe.rkt")
+(require "either.rkt")
 
 (require (prefix-in syndicate: syndicate/actor-lang))
 
