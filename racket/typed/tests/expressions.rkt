@@ -53,3 +53,17 @@
             : Int
             ⇒ 43)
 
+;; test type variable scoping
+
+(define (∀ (X) (id4 [x : X] -> X))
+  (match x
+    [(bind y X) y]))
+
+(check-type ((inst id2 String) "shelly flowers")
+            : String
+            ⇒ "shelly flowers")
+(define id5
+  (Λ [τ]
+     (lambda ([x : τ])
+       (match x
+         [(bind y τ) y]))))

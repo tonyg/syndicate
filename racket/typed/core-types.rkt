@@ -773,6 +773,7 @@
   (current-typecheck-relation <:))
 
 ;; Flat-Type Flat-Type -> Type
+;; Intersection
 (define-for-syntax (∩ t1 t2)
   (unless (and (flat-type? t1) (flat-type? t2))
     (error '∩ "expected two flat-types"))
@@ -785,6 +786,9 @@
      (type-eval #`(U #,@(stx-map (lambda (t) (∩ t t2)) #'(τ1 ...))))]
     [(_ (~U* τ2:type ...))
      (type-eval #`(U #,@(stx-map (lambda (t) (∩ t1 t)) #'(τ2 ...))))]
+    [(X:id Y:id)
+     #:when (free-identifier=? #'X #'Y)
+     #'X]
     [((~AssertionSet τ1) (~AssertionSet τ2))
      #:with τ12 (∩ #'τ1 #'τ2)
      (type-eval #'(AssertionSet τ12))]
@@ -814,9 +818,10 @@
 ;; first type is the contents of the set/dataspace
 ;; second type is the type of a pattern
 (define-for-syntax (project-safe? t1 t2)
+  ;; TODO - not sure how to handle type variables
   (define (project-safe* t1 t2)
     (syntax-parse #`(#,t1 #,t2)
-      [(_ (~Bind τ2:type))
+      [(_ (~Bind τ2))
        (and (finite? t1) (<: t1 #'τ2))]
       [(_ ~Discard)
        #t]
@@ -850,6 +855,9 @@
     [~★/t #f]
     [(~U* τ:type ...)
      (stx-andmap finite? #'(τ ...))]
+    ;; TODO - this is questionable. maybe need a kind for assertions?
+    [X:id
+     #t]
     [(~Base _) #t]
     [(~Any/bvs τ-cons () τ ...)
      (stx-andmap finite? #'(τ ...))]))
