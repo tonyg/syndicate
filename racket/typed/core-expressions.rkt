@@ -131,15 +131,15 @@
 (define-typed-syntax (match e [p s ...+] ...+) ≫
   [⊢ e ≫ e- (⇒ : τ-e)]
   #:fail-unless (pure? #'e-) "expression must be pure"
-  #:with (([x τ] ...) ...) (stx-map pat-bindings #'(p ...))
-  [[x ≫ x- : τ] ... ⊢ (begin s ...) ≫ s- (⇒ : τ-s)
+  #:with (([x τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
+  [[x ≫ x- : τ.norm] ... ⊢ (begin s ...) ≫ s- (⇒ : τ-s)
                 (⇒ ν-ep (~effs eps ...))
                 (⇒ ν-f (~effs fs ...))
                 (⇒ ν-s (~effs ss ...))] ...
   ;; REALLY not sure how to handle p/p-/p.match-pattern,
   ;; particularly w.r.t. typed terms that appear in p.match-pattern
   [⊢ p ≫ p-- ⇒ τ-p] ...
-  #:fail-unless (project-safe? #'τ-e (type-eval #'(U τ-p ...))) "possibly unsafe pattern match"
+  #:fail-unless (project-safe? #'τ-e (mk-U*- #'(τ-p ...))) "possibly unsafe pattern match"
   #:fail-unless (stx-andmap pure? #'(p-- ...)) "patterns must be pure"
   #:with (p- ...) (stx-map (lambda (p x-s xs) (substs x-s xs (compile-match-pattern p)))
                            #'(p ...)
