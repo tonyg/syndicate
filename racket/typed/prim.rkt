@@ -28,6 +28,8 @@
 (define-primop odd? (→fn Int Bool))
 (define-primop add1 (→fn Int Int))
 (define-primop sub1 (→fn Int Int))
+(define-primop max (→fn Int Int Int))
+(define-primop min (→fn Int Int Int))
 
 (define-primop bytes->string/utf-8 (→ ByteString (Computation (Value String) (Endpoints) (Roles) (Spawns))))
 (define-primop string->bytes/utf-8 (→ String (Computation (Value ByteString) (Endpoints) (Roles) (Spawns))))
