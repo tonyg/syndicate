@@ -5,10 +5,12 @@
          list
          (typed-out [[cons- : (∀ (X) (→fn X (List X) (List X)))] cons]
                     [[first- : (∀ (X) (→fn (List X) X))] first]
+                    [[second- : (∀ (X) (→fn (List X) X))] second]
                     [[rest- : (∀ (X) (→fn (List X) (List X)))] rest]
                     [[member?- (∀ (X) (→fn X (List X) Bool))] member?]
                     [[empty?- (∀ (X) (→fn (List X) Bool))] empty?]
-                    [[reverse- (∀ (X) (→fn (List X) (List X)))] reverse]))
+                    [[reverse- (∀ (X) (→fn (List X) (List X)))] reverse]
+                    [[partition- (∀ (X) (→fn (List X) (→fn X Bool) (List X)))] partition]))
 
 (require "core-types.rkt")
 (require (only-in "prim.rkt" Bool))
