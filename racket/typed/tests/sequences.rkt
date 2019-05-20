@@ -4,9 +4,7 @@
 
 (check-type empty-sequence : (Sequence (U)))
 
-(typecheck-fail (sequence-length empty-sequence))
-
-(check-type ((inst sequence-length (U)) empty-sequence)
+(check-type (sequence-length empty-sequence)
             : Int
             ⇒ 0)
 
