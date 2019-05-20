@@ -11,7 +11,8 @@
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
 (require (for-syntax turnstile/examples/util/filter-maximal))
 (require (for-syntax macrotypes/type-constraints macrotypes/variance-constraints))
-(require (for-syntax racket/struct-info))
+(require (for-syntax racket/struct-info
+                     syntax/id-table))
 (require macrotypes/postfix-in)
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
 (require (postfix-in - racket/list))
@@ -42,18 +43,39 @@
 ;; certain metadata needs to be associated with each type, for the purpose of
 ;; making certain judgments and metafunctions extensible.
 
-;; a isect-desc describes how a type (constructor) behaves with respect to
-;; intersection, and is one of
-;;   - BASE
-;;   - CONTAINER-LIKE
-;;   - PRODUCT-LIKE
 (begin-for-syntax
+  (struct type-metadata (isec cons) #:transparent)
+  ;; (IdTable type-metadata)
+  (define TypeInfo# (make-free-id-table))
+  ;; Identifier isect-desc TypeCons -> Void
+  (define (set-type-info! ty-cons isec cons)
+    (free-id-table-set! TypeInfo#
+                        ty-cons
+                        (type-metadata isec cons)))
+  ;; Identifier -> (U #f type-metadata)
+  (define (get-type-info ty-cons)
+    (free-id-table-ref TypeInfo# ty-cons #f))
+
+  ;; Identifier -> (U #f isec-desc)
+  (define (get-type-isec-desc ty-cons)
+    (define result? (get-type-info ty-cons))
+    (and result? (type-metadata-isec result?)))
+  ;; Identifier -> (U #f TypeCons)
+  (define (get-type-cons ty-cons)
+    (define result? (get-type-info ty-cons))
+    (and result? (type-metadata-cons result?)))
+
+  ;; a isect-desc describes how a type (constructor) behaves with respect to
+  ;; intersection, and is one of
+  ;;   - BASE
+  ;;   - CONTAINER-LIKE
+  ;;   - PRODUCT-LIKE
   (define BASE 'base)
   (define CONTAINER-LIKE 'container-like)
   (define PRODUCT-LIKE 'product-like)
 
   ;; syntax property key
-  (define isect-desc-key
+  #;(define isect-desc-key
     'isect-desc-key)
 
   (define-syntax-class isect-desc
@@ -76,19 +98,19 @@
   (define type-cons-key
     'type-cons)
 
-  ;; Type -> Bool
+  ;; Identifier -> Bool
   ;; check if the type has a syntax property allowing us to create new instances
   (define (reassemblable? t)
-    (and (syntax-property t type-cons-key) #t))
+    (and (get-type-cons t) #t))
 
-  ;; Type (Listof Type) -> Type
+  ;; Identifier (Listof Type) -> Type
   ;; Create a new instance of the type with the given arguments
   ;; needs to have the type-cons-key
   (define (reassemble-type ty args)
-    (define tycons (syntax-property ty type-cons-key))
+    (define tycons (get-type-cons ty))
     (unless tycons
       (error "expected to find type-cons-key"))
-    (type-eval #`(#,tycons #,@args))))
+    (tycons args)))
 
 (define-syntax (define-type-constructor+ stx)
   (syntax-parse stx
@@ -113,15 +135,10 @@
          (define-syntax (Name stx)
            (syntax-parse stx
              [(_ t (... ...))
-              (set-stx-prop/preserved
-               (set-stx-prop/preserved
-                (syntax/loc stx
-                  (Name- t (... ...)))
-                #,isect-desc-key
-                '#,(attribute desc.val))
-               type-cons-key
-               #'Name)]))
+              (syntax/loc stx
+                (Name- t (... ...)))]))
          (begin-for-syntax
+           (set-type-info! #'Name- '#,(attribute desc.val) #'mk-)
            (define-syntax NamePat
              (pattern-expander
               (syntax-parser
@@ -701,10 +718,10 @@
     [(~U* τ ...)
      (mk-U- (stx-map replace-bind-and-discard-with-★ #'(τ ...)))]
     [(~Any/bvs τ-cons () τ ...)
-     #:when (reassemblable? t)
+     #:when (reassemblable? #'τ-cons)
      (define subitems (for/list ([t (in-syntax #'(τ ...))])
                         (replace-bind-and-discard-with-★ t)))
-     (reassemble-type t subitems)]
+     (reassemble-type #'τ-cons subitems)]
     [_ t]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -809,18 +826,18 @@
     [((~Any/bvs τ-cons1 () τ1 ...) (~Any/bvs τ-cons2 () τ2 ...))
      #:when (free-identifier=? #'τ-cons1 #'τ-cons2)
      #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
-     #:do [(define desc (syntax-property t1 isect-desc-key))]
+     #:do [(define desc (get-type-isec-desc #'τ-cons1))]
      #:when desc
      (define slots (stx-map ∩ #'(τ1 ...) #'(τ2 ...)))
      (match desc
        [(== BASE)
         (error "this isn't right")]
        [(== CONTAINER-LIKE)
-        (reassemble-type t1 slots)]
+        (reassemble-type #'τ-cons1 slots)]
        [(== PRODUCT-LIKE)
         (if (ormap bot? slots)
             (type-eval #'(U))
-            (reassemble-type t1 slots))])]
+            (reassemble-type #'τ-cons1 slots))])]
     [_ (type-eval #'(U))]))
 
 ;; Type Type -> Bool
@@ -843,7 +860,7 @@
       [((~Any/bvs τ-cons1 () τ1 ...) (~Any/bvs τ-cons2 () τ2 ...))
        #:when (free-identifier=? #'τ-cons1 #'τ-cons2)
        #:when (stx-length=? #'(τ1 ...) #'(τ2 ...))
-       #:do [(define desc (syntax-property t1 isect-desc-key))]
+       #:do [(define desc (get-type-isec-desc #'τ-cons1))]
        #:when (equal? desc PRODUCT-LIKE)
        (stx-andmap project-safe? #'(τ1 ...) #'(τ2 ...))]
       [_ #t]))
@@ -881,10 +898,10 @@
     [(~U* τ ...)
      (type-eval #`(U #,@(stx-map pattern-matching-assertions #'(τ ...))))]
     [(~Any/bvs τ-cons () τ ...)
-     #:when (reassemblable? t)
+     #:when (reassemblable? #'τ-cons)
      (define subitems (for/list ([t (in-syntax #'(τ ...))])
                         (pattern-matching-assertions t)))
-     (reassemble-type t subitems)]
+     (reassemble-type #'τ-cons subitems)]
     [_ t]))
 
 ;; it's ok for x to respond to strictly more events than y
