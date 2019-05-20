@@ -239,6 +239,15 @@
     (stx->list tys)
     typecheck?)))
 
+;; (SyntaxListof Type) -> Type
+;; The input types are already expanded/normalized
+;; avoids namespace module mismatch issue in some cases
+(define-for-syntax (mk-U- tys)
+  (define tys- (prune+sort tys))
+  (if (= 1 (stx-length tys-))
+      (stx-car tys-)
+      (mk-U*- tys-)))
+
 (define-syntax (U stx)
   (syntax-parse stx
     [(_ . tys)
@@ -690,7 +699,7 @@
     [~Discard
      (type-eval #'★/t)]
     [(~U* τ ...)
-     (type-eval #`(U #,@(stx-map replace-bind-and-discard-with-★ #'(τ ...))))]
+     (mk-U- (stx-map replace-bind-and-discard-with-★ #'(τ ...)))]
     [(~Any/bvs τ-cons () τ ...)
      #:when (reassemblable? t)
      (define subitems (for/list ([t (in-syntax #'(τ ...))])
@@ -992,11 +1001,19 @@
 
 (define-typed-syntax inst
   [(_ e τ:type ...) ≫
+   #:fail-unless (stx-andmap instantiable? #'(τ.norm ...))
+                 "types must be instantiable"
    [⊢ e ≫ e- ⇒ (~∀ tvs τ_body)]
    #:fail-unless (pure? #'e-) "expression must be pure"
    --------
    [⊢ e- ⇒ #,(substs #'(τ.norm ...) #'tvs #'τ_body)]]
   [(_ e) ≫ --- [≻ e]])
+
+;; Type -> Bool
+;; determine if a type is suitable for instantiating a variable
+(define-for-syntax (instantiable? ty)
+  (and (flat-type? ty)
+       (finite? ty)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Sequencing & Definitions
@@ -1188,6 +1205,11 @@
    #:with tyX_args #'(tyX_in ... tyX_out)
    ;; solve for type variables Xs
    #:with [[e_arg- ...] Xs* cs] (solve #'Xs #'tyX_args this-syntax)
+   ;; make sure types are legal
+   #:with tyXs (inst-types/cs #'Xs* #'cs #'Xs)
+   #:fail-unless (for/and ([ty (in-syntax #'tyXs)])
+                   (instantiable? ty))
+                 "type variables must be flat and finite"
    ;; instantiate polymorphic function type
    #:with [τ_in ... τ_out] (inst-types/cs #'Xs* #'cs #'tyX_args)
    #:with (unsolved-X ...) (find-free-Xs #'Xs* #'τ_out)
@@ -1240,19 +1262,21 @@
                #:when (stx-contains-id? ty X))
       X))
 
-  ;; Type -> Bool
-  ;; checks if the type contains any unions
-  (define (contains-union? ty)
+  ;; (SyntaxListOf ID) Type -> Bool
+  ;; checks if the type contains any variables under unions
+  (define (tyvar-under-union? Xs ty)
     (syntax-parse ty
       [(~U* _ ...)
-       #t]
+       (for/or ([X (in-syntax Xs)])
+         (stx-contains-id? ty X))]
       [(~Base _) #f]
       [X:id #f]
       [(~Any/bvs _ _ τ ...)
-       (stx-ormap contains-union? #'(τ ...))]
+       (for/or ([ty2 (in-syntax #'(τ ...))])
+         (tyvar-under-union? Xs ty2))]
       [_
        (type-error #:src (get-orig ty)
-                   #:msg "contains-union?: unrecognized-type: ~a"
+                   #:msg "tyvar-under-union?: unrecognized-type: ~a"
                    ty)]))
 
   ;; solve for Xs by unifying quantified fn type with the concrete types of stx's args
@@ -1283,7 +1307,7 @@
                         ([a (in-stx-list #'args)]
                          [tyXin (in-stx-list #'(τ_inX ...))])
                 (define ty_in (inst-type/cs/orig Xs cs tyXin datum=?))
-                (when (contains-union? ty_in)
+                (when (tyvar-under-union? Xs ty_in)
                   (type-error #:src a
                               #:msg (format "can't infer types with unions: ~a\nraw: ~a"
                                             (type->str ty_in) ty_in)))
@@ -1291,7 +1315,7 @@
                   (infer+erase (if (null? (find-free-Xs Xs ty_in))
                                    (add-expected-type a ty_in)
                                    a)))
-                (when (contains-union? #'ty_a)
+                (when (tyvar-under-union? Xs #'ty_a)
                   (type-error #:src a
                               #:msg (format "can't infer types with unions: ~a\nraw: ~a"
                                             (type->str #'ty_a) #'ty_a)))

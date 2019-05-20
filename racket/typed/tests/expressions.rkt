@@ -67,3 +67,6 @@
      (lambda ([x : τ])
        (match x
          [(bind y τ) y]))))
+
+(typecheck-fail (inst id5 (→fn Int Int))
+                #:with-msg "types must be instantiable")
