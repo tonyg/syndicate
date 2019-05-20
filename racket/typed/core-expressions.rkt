@@ -12,10 +12,11 @@
          match
          tuple
          select
+         error
          (for-syntax (all-defined-out)))
 
 (require "core-types.rkt")
-(require (only-in "prim.rkt" Bool #%datum))
+(require (only-in "prim.rkt" Bool String #%datum))
 (require (postfix-in - racket/match))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -147,7 +148,7 @@
                            #'((x ...) ...))
   --------------------------------------------------------------
   [⊢ (match- e- [p- s-] ...
-                [_ (#%app- error "incomplete pattern match")])
+                [_ (#%app- error- "incomplete pattern match")])
      (⇒ : (U τ-s ...))
      (⇒ ν-ep (eps ... ...))
      (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
@@ -170,6 +171,13 @@
 
 (define- (tuple-select n t)
   (#%app- list-ref- t (#%app- add1- n)))
+
+(define-typed-syntax (error msg args ...) ≫
+  [⊢ msg ≫ msg- (⇐ : String)]
+  [⊢ args ≫ args- (⇒ : τ)] ...
+  #:fail-unless (all-pure? #'(msg- args- ...)) "expressions must be pure"
+  ----------------------------------------
+  [⊢ (#%app- error- msg- args- ...) (⇒ : ⊥)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Helpers
