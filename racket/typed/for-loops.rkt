@@ -1,9 +1,11 @@
 #lang turnstile
 
 (provide for/fold
+         for
          for/list
          for/set
-         for/sum)
+         for/sum
+         for/first)
 
 (require "core-types.rkt")
 (require "sequence.rkt")
@@ -11,7 +13,8 @@
 (require (only-in "set.rkt" Set ~Set))
 (require (only-in "hash.rkt" Hash ~Hash))
 (require (only-in "prim.rkt" Bool + #%datum))
-(require (only-in "core-expressions.rkt" let))
+(require (only-in "core-expressions.rkt" let unit))
+(require "maybe.rkt")
 
 (require (postfix-in - (only-in racket/set
                                 for/set
@@ -183,3 +186,34 @@
   [≻ (for/fold ([acc 0])
                (clause ...)
        (+ acc (let () e-body ...)))])
+
+(define-typed-syntax (for (clause ...)
+                       e-body ...+) ≫
+  ----------------------------------------------------------------------
+  [≻ (for/fold ([acc unit])
+               (clause ...)
+       e-body ...
+       acc)])
+
+(define-typed-syntax (for/first (clause:iter-clause ...)
+                       e-body ...+) ≫
+  #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
+  [[x ≫ x-- : τ] ... ⊢ (begin e-body ...) ≫ e-body-
+                 (⇒ : τ-body)
+                 (⇒ ν-ep (~effs τ-ep ...))
+                 (⇒ ν-s (~effs τ-s ...))
+                 (⇒ ν-f (~effs τ-f ...))]
+  #:with e-body-- (substs #'(x- ...) #'(x-- ...) #'e-body- free-identifier=?)
+  [[res ≫ _ : τ-body] ⊢ res  ≫ res- (⇒ : _)]
+  ----------------------------------------------------------------------
+  [⊢ (let- ()
+       (define- res-
+         (for/first- clauses-
+                     e-body--))
+       (if- res-
+            (some res-)
+            none))
+     (⇒ : (Maybe τ-body))
+     (⇒ ν-ep (τ-ep ...))
+     (⇒ ν-s (τ-s ...))
+     (⇒ ν-f (τ-f ...))])

@@ -88,3 +88,16 @@
               (* x 2))
             : Int
             ⇒ 34)
+
+(check-type (for/first ([x (list 1 2 3 4 5)]
+                        #:when (even? x))
+              x)
+            : (Maybe Int)
+            ⇒ (some 2))
+
+(check-type (for/first ([x (list 1 2 3 4 5)]
+                        #:when (and (even? x)
+                                    (< x 2)))
+              x)
+            : (Maybe Int)
+            ⇒ none)
