@@ -249,6 +249,7 @@
             #'τ.norm]))]))
 
 (define-type-alias ⊥ (U*))
+(define-type-alias Unit (Tuple))
 
 (define-for-syntax (prune+sort tys)
   (stx-sort
@@ -1203,7 +1204,7 @@
    #:do [(define-values (e-... τ... ep-effs f-effs s-effs) (walk/bind #'(e_unit ... e)))]
    #:with τ (last τ...)
    --------
-   [⊢ (let- () #,@e-...) (⇒ : τ)
+   [⊢ (begin- #,@e-...) (⇒ : τ)
       (⇒ ν-ep (#,@ep-effs))
       (⇒ ν-f (#,@f-effs))
       (⇒ ν-s (#,@s-effs))]])
