@@ -22,6 +22,7 @@
          define/query-value
          define/query-set
          define/query-hash
+         stop-when
          ;; endpoints
          assert on field
          ;; expressions
@@ -337,6 +338,17 @@
                 (set! x (hash-set (ref x) e-key e-value)))
             (on (retracted p)
                 (set! x (hash-remove (ref x) e-key))))])
+
+(define-typed-syntax (stop-when E script ...) ≫
+  [[forged-name ≫ _ : FacetName] ⊢ forged-name ≫ forged-name-]
+  #:with forged-name (attach #'(#%app- syndicate:current-facet-id)
+                             ':
+                             (type-eval #'FacetName))
+  ----------------------------------------
+  [≻ (on E
+         (let ([x forged-name])
+           (stop x
+                 script ...)))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
