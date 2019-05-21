@@ -9,10 +9,14 @@
          let
          let*
          cond
+         else
          match
          tuple
+         unit
          select
          error
+         define-tuple
+         match-define
          (for-syntax (all-defined-out)))
 
 (require "core-types.rkt")
@@ -74,11 +78,11 @@
 
 (define-typed-syntax (when e s ...+) ≫
   ------------------------------------
-  [≻ (if e (begin s ...) #f)])
+  [≻ (if e (let () s ...) #f)])
 
 (define-typed-syntax (unless e s ...+) ≫
   ------------------------------------
-  [≻ (if e #f (begin s ...))])
+  [≻ (if e #f (let () s ...))])
 
 ;; copied from ext-stlc
 (define-typed-syntax let
@@ -129,6 +133,8 @@
      (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
      (⇒ ν-s (ss ... ...))])
 
+(define else #t)
+
 (define-typed-syntax (match e [p s ...+] ...+) ≫
   [⊢ e ≫ e- (⇒ : τ-e)]
   #:fail-unless (pure? #'e-) "expression must be pure"
@@ -159,6 +165,8 @@
   #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions not allowed to have effects"
   -----------------------
   [⊢ (#%app- list- 'tuple e- ...) (⇒ : (Tuple τ ...))])
+
+(define unit : Unit (tuple))
 
 (define-typed-syntax (select n:nat e:expr) ≫
   [⊢ e ≫ e- (⇒ : (~Tuple τ ...))]
@@ -227,3 +235,42 @@
                    #'list
                    identity
                    (lambda (exp) #`(==- #,exp))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Derived Forms
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-typed-syntax (define-tuple (x:id ...) e:expr) ≫
+  [⊢ e ≫ e- (⇒ (~Tuple τ ...))]
+  #:fail-unless (stx-length=? #'(x ...) #'(τ ...))
+                "mismatched size"
+  #:fail-unless (pure? #'e-) "expr must be pure"
+  #:with (sel ...) (for/list ([y (in-syntax #'(x ...))]
+                              [t (in-syntax #'(τ ...))]
+                              [i (in-naturals)])
+                     (quasisyntax/loc this-syntax
+                       (select #,i it)))
+  ----------------------------------------
+  [≻ (begin
+       (define it e-)
+       (define x : τ sel) ...)])
+
+(define-typed-syntax (match-define pat:expr e:expr) ≫
+  #:with ([x τ] ...) (pat-bindings #'pat)
+  ----------------------------------------
+  [≻ (define-tuple (x ...)
+       (match e
+         [pat
+          (tuple x ...)]))])
+
+;; extremely limited match-define for `define-constructor`-d things
+
+#;(define-typed-syntax (match-define (~constructor-exp ctor x:id ...) e:expr) ≫
+  [⊢ e ≫ e- (⇒ (~constructor-type tag1 τ ...))]
+  #:fail-unless (stx-length=? #'(x ...) #'(τ ...))
+                "mismatched size"
+  [⊢ (ctor (bind x τ) ...) ≫ pat- (⇒ (~constructor-type tag2 _ ...))]
+  #:fail-unless (equal? #'tag1 #'tag2)
+                (~format "type mismatch: ~a, ~a" #'tag1 #'tag2)
+  ------------------------------------------------------------
+  )
