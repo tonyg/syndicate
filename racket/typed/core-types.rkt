@@ -303,6 +303,50 @@
                        (~parse vars-pat #'())
                        body-pat))])))))
 
+;; shorthand for writing function types
+(define-syntax-parser proc
+  [(_ (~optional (~seq #:forall (X:id ...)))
+      ty-in ...
+      (~or (~datum ->) (~datum →))
+      ty-out
+      (~or (~optional (~seq #:spawns (s ...+)))
+           (~optional (~seq #:roles (r ...+)))
+           (~optional (~seq #:endpoints (e ...+))))
+      ...)
+   #:with spawns (if (attribute s) #'(s ...) #'())
+   #:with roles (if (attribute r) #'(r ...) #'())
+   #:with endpoints (if (attribute e) #'(e ...) #'())
+   #:with body #`(→ ty-in ... (Computation (Value ty-out)
+                                           (Endpoints #,@#'endpoints)
+                                           (Roles #,@#'roles)
+                                           (Spawns #,@#'spawns)))
+   (if (attribute X)
+       #'(∀ (X ...) body)
+       #'body)])
+
+(begin-for-syntax
+  (define-syntax ~proc
+    (pattern-expander
+     (syntax-parser
+       [(_ (~optional (~seq #:forall (X:id ...)))
+           ty-in ...
+           (~or (~datum ->) (~datum →))
+           ty-out
+           (~or (~optional (~seq #:spawns s))
+                (~optional (~seq #:roles r))
+                (~optional (~seq #:endpoints e)))
+           ...)
+        #:with spawns (if (attribute s) #'(s) #'())
+        #:with roles (if (attribute r) #'(r) #'())
+        #:with endpoints (if (attribute e) #'(e) #'())
+        #:with body #`(~→ ty-in ... (~Computation (~Value ty-out)
+                                                  (~Endpoints #,@#'endpoints)
+                                                  (~Roles #,@#'roles)
+                                                  (~Spawns #,@#'spawns)))
+        (if (attribute X)
+            #'(~∀ (X ...) body)
+            #'body)]))))
+
 ;; for looking at the "effects"
 (begin-for-syntax
   (define-syntax ~effs
@@ -591,6 +635,7 @@
   (syntax-parse τ
     [(~→ τ ...) #f]
     [(~Actor τ) #f]
+    [(~Role (_) _ ...) #f]
     [_ #t]))
 
 (define-for-syntax (strip-? t)
@@ -736,9 +781,13 @@
       [(_ nm:id)
        #'((~literal #%plain-app) nm)])))
 
+ (define trace-sub? (make-parameter #f))
+
  ;; Type Type -> Bool
  ;; subtyping
  (define (<: t1 t2)
+   (when (trace-sub?)
+     (printf "~a\n<:\n~a\n" t1 t2))
    (syntax-parse #`(#,t1 #,t2)
      [(_ ~★/t)
       (flat-type? t1)]
@@ -749,10 +798,21 @@
      [((~Actor τ1) (~Actor τ2))
       (and (<: #'τ1 #'τ2)
            (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
-     [((~→fn τ-in1 ... τ-out1) (~→fn τ-in2 ... τ-out2))
+     [((~proc τ-in1 ... -> τ-out1 #:spawns (~seq S1 ...)
+                                  #:roles (~seq R1 ...)
+                                  #:endpoints (~seq E1 ...))
+       (~proc τ-in2 ... -> τ-out2 #:spawns (~seq S2 ...)
+                                  #:roles (~seq R2 ...)
+                                  #:endpoints (~seq E2 ...)))
       (and (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
            (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
-           (<: #'τ-out1 #'τ-out2))]
+           (<: #'τ-out1 #'τ-out2)
+           (<: (mk-Actor- (list (mk-U*- #'(S1 ...))))
+               (mk-Actor- (list (mk-U*- #'(S2 ...)))))
+           (<: (mk-U*- #'(R1 ...))
+               (mk-U*- #'(R2 ...)))
+           (<: (mk-U*- #'(E1 ...))
+               (mk-U*- #'(E2 ...))))]
      [(~Discard _)
       #t]
      [(X:id Y:id)
@@ -763,6 +823,10 @@
       (<: #'τ1 #'τ2-X/Y)]
      [((~Base τ1:id) (~Base τ2:id))
       (free-identifier=? #'τ1 #'τ2)]
+     [((~Role (x) _ ...) (~Role (y) _ ...))
+      ;; Extremely Coarse subtyping for Role types
+      (type=? t1 t2)]
+     ;; TODO: clauses for Roles, effectful functions, and so on
      [((~Any/bvs τ-cons1 () τ1 ...) (~Any/bvs τ-cons2 () τ2 ...))
       #:when (free-identifier=? #'τ-cons1 #'τ-cons2)
       #:do [(define variances (syntax-property #'τ-cons1 'arg-variances))]
@@ -781,7 +845,6 @@
                 (<: ty2 ty1))]
           [(== irrelevant)
            #t]))]
-     ;; TODO: clauses for Roles, effectful functions, and so on
      [_
       #f]))
 
@@ -886,7 +949,7 @@
     [X:id
      #t]
     [(~Base _) #t]
-    [(~Any/bvs τ-cons () τ ...)
+    [(~Any/bvs τ-cons (X ...) τ ...)
      (stx-andmap finite? #'(τ ...))]))
 
 ;; PatternType -> Type
@@ -1019,19 +1082,53 @@
 
 (define-typed-syntax inst
   [(_ e τ:type ...) ≫
-   #:fail-unless (stx-andmap instantiable? #'(τ.norm ...))
-                 "types must be instantiable"
+   #:cut
    [⊢ e ≫ e- ⇒ (~∀ tvs τ_body)]
+   #:fail-unless (stx-andmap instantiable? #'(τ.norm ...) #'tvs)
+                 "types must be instantiable"
    #:fail-unless (pure? #'e-) "expression must be pure"
    --------
    [⊢ e- ⇒ #,(substs #'(τ.norm ...) #'tvs #'τ_body)]]
   [(_ e) ≫ --- [≻ e]])
 
-;; Type -> Bool
+;; Identifier Type -> Bool
 ;; determine if a type is suitable for instantiating a variable
-(define-for-syntax (instantiable? ty)
-  (and (flat-type? ty)
-       (finite? ty)))
+;; only row variables may be instantiated with effectful/higher-order types
+(define-for-syntax (instantiable? x ty)
+  (or (row-variable? x)
+      (and (flat-type? ty)
+           (finite? ty))))
+
+(begin-for-syntax
+  ;; CONVENTION: Type variables for effects are prefixed with ρ
+  (define (row-variable? x)
+    (and (identifier? x)
+         (char=? (string-ref (symbol->string (syntax-e x)) 0) #\ρ)))
+
+  (define-syntax-class row-id
+    #:attributes ()
+    (pattern x:id #:when (row-variable? #'x))))
+
+;; instantiate row variables with types from procedure arguments
+;; BRITTLE?
+(define-typed-syntax (call/inst e:expr args:expr ...) ≫
+  [⊢ e ≫ e- (⇒ : (~∀ (X:row-id ...) τ))]
+  [⊢ args ≫ args- (⇒ : τ-a)] ...
+  #:fail-unless (all-pure? #'(e- args- ...))
+                "expressions must be pure"
+  ;; ordering pretty arbitrary
+  #:with ((~or (~proc _ ... -> _
+                      #:spawns (~seq S ...)
+                      #:roles (~seq R ...)
+                      #:endpoints (~seq E ...))
+              _) ...) #'(τ-a ...)
+  #:with (SS ...) (if (attribute S) #'(S ... ...) #'())
+  #:with (RR ...) (if (attribute R) #'(R ... ...) #'())
+  #:with (EE ...) (if (attribute E) #'(E ... ...) #'())
+  #:fail-unless (stx-length=? #'(X ...) #'(SS ... RR ... EE ...))
+                "found the wrong number of effects"
+  -------------------------------------------------------
+  [≻ ((inst e- SS ... RR ... EE ...) args- ...)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Sequencing & Definitions
@@ -1214,6 +1311,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax #%app
+  ;; Polymorphic, Effectful Function - Perform Simple Matching on Argument Types
+  [(_ e_fn e_arg ...) ≫
+   [⊢ e_fn ≫ e_fn- (⇒ : (~∀ (X:row-id ...+) τ))]
+   ---------------------------------------------
+   [≻ (call/inst e_fn- e_arg ...)]]
   ;; Polymorphic, Pure Function - Perform Local Inference
   [(_ e_fn e_arg ...) ≫
    ;; compute fn type (ie ∀ and →)
@@ -1225,8 +1327,9 @@
    #:with [[e_arg- ...] Xs* cs] (solve #'Xs #'tyX_args this-syntax)
    ;; make sure types are legal
    #:with tyXs (inst-types/cs #'Xs* #'cs #'Xs)
-   #:fail-unless (for/and ([ty (in-syntax #'tyXs)])
-                   (instantiable? ty))
+   #:fail-unless (for/and ([ty (in-syntax #'tyXs)]
+                           [x (in-syntax #'Xs)])
+                   (instantiable? x ty))
                  "type variables must be flat and finite"
    ;; instantiate polymorphic function type
    #:with [τ_in ... τ_out] (inst-types/cs #'Xs* #'cs #'tyX_args)
@@ -1263,7 +1366,7 @@
                                                    (~Spawns τ-s ...))))]
    #:fail-unless (pure? #'e_fn-) "expression not allowed to have effects"
    #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
-   (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
+                 (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
    [⊢ e_arg ≫ e_arg- (⇐ : τ_in)] ...
    #:fail-unless (stx-andmap pure? #'(e_arg- ...)) "expressions not allowed to have effects"
    ------------------------------------------------------------------------

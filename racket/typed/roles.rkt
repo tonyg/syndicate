@@ -13,7 +13,7 @@
          FacetName Field ★/t
          Observe Inbound Outbound Actor U ⊥
          Computation Value Endpoints Roles Spawns
-         →fn
+         →fn proc
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
          when unless send! define
@@ -27,7 +27,7 @@
          assert on field
          ;; expressions
          tuple select lambda ref observe inbound outbound
-         Λ inst
+         Λ inst call/inst
          ;; making types
          define-type-alias
          assertion-struct
