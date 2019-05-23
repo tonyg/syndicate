@@ -70,3 +70,24 @@
 
 (typecheck-fail (inst id5 (→fn Int Int))
                 #:with-msg "types must be instantiable")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Shorthands for match
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(check-type (match 5
+              [$x:Int (add1 x)])
+            : Int
+            ⇒ 6)
+
+(check-type (match (tuple 3 "hello")
+              [(tuple _ $str:String)
+               str])
+            : String
+            ⇒ "hello")
+
+(check-type (match (tuple 3 "hello")
+              [(tuple _ $str)
+               str])
+            : String
+            ⇒ "hello")

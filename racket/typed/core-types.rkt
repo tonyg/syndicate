@@ -47,14 +47,32 @@
   (struct type-metadata (isec cons) #:transparent)
   ;; (IdTable type-metadata)
   (define TypeInfo# (make-free-id-table))
+  ;; (MutableHashOf Symbol type-metadata)
+  (define TypeInfo#* (make-hash))
   ;; Identifier isect-desc TypeCons -> Void
   (define (set-type-info! ty-cons isec cons)
     (free-id-table-set! TypeInfo#
                         ty-cons
                         (type-metadata isec cons)))
+  (define (set-type-info!* ty-cons isec cons)
+    (when (hash-has-key? TypeInfo#* ty-cons)
+      ;; TODO
+      #f)
+    (hash-set! TypeInfo#*
+               ty-cons
+               (type-metadata isec cons)))
+  ;; Identifier -> Symbol
+  ;; XYZ-.*
+  (define (un- id)
+    (define match?
+      (regexp-match #px"^(\\S*)-\\S*$" (symbol->string (syntax-e id))))
+    (string->symbol (second match?)))
+
   ;; Identifier -> (U #f type-metadata)
   (define (get-type-info ty-cons)
     (free-id-table-ref TypeInfo# ty-cons #f))
+  (define (get-type-info* ty-cons)
+    (hash-ref TypeInfo#* (un- ty-cons) #f))
 
   ;; Identifier -> (U #f isec-desc)
   (define (get-type-isec-desc ty-cons)
@@ -63,6 +81,14 @@
   ;; Identifier -> (U #f TypeCons)
   (define (get-type-cons ty-cons)
     (define result? (get-type-info ty-cons))
+    (and result? (type-metadata-cons result?)))
+  ;; Identifier -> (U #f isec-desc)
+  (define (get-type-isec-desc* ty-cons)
+    (define result? (get-type-info* ty-cons))
+    (and result? (type-metadata-isec result?)))
+  ;; Identifier -> (U #f TypeCons)
+  (define (get-type-cons* ty-cons)
+    (define result? (get-type-info* ty-cons))
     (and result? (type-metadata-cons result?)))
 
   ;; a isect-desc describes how a type (constructor) behaves with respect to
@@ -101,13 +127,13 @@
   ;; Identifier -> Bool
   ;; check if the type has a syntax property allowing us to create new instances
   (define (reassemblable? t)
-    (and (get-type-cons t) #t))
+    (and (get-type-cons* t) #t))
 
   ;; Identifier (Listof Type) -> Type
   ;; Create a new instance of the type with the given arguments
   ;; needs to have the type-cons-key
   (define (reassemble-type ty args)
-    (define tycons (get-type-cons ty))
+    (define tycons (get-type-cons* ty))
     (unless tycons
       (error "expected to find type-cons-key"))
     (tycons args)))
@@ -138,7 +164,8 @@
               (syntax/loc stx
                 (Name- t (... ...)))]))
          (begin-for-syntax
-           (set-type-info! #'Name- '#,(attribute desc.val) #'mk-)
+           #;(set-type-info! #'Name- '#,(attribute desc.val) #'mk-)
+           (set-type-info!* 'Name '#,(attribute desc.val) mk-)
            (define-syntax NamePat
              (pattern-expander
               (syntax-parser
@@ -204,11 +231,11 @@
 (define-for-syntax field-prop-name 'fields)
 (define-type-constructor Actor #:arity = 1)
 
-(define-product-type Message #:arity = 1)
+#;(define-product-type Message #:arity = 1)
 (define-product-type Tuple #:arity >= 0)
-(define-product-type Observe #:arity = 1)
-(define-product-type Inbound #:arity = 1)
-(define-product-type Outbound #:arity = 1)
+#;(define-product-type Observe #:arity = 1)
+#;(define-product-type Inbound #:arity = 1)
+#;(define-product-type Outbound #:arity = 1)
 (define-container-type AssertionSet #:arity = 1)
 (define-container-type Patch #:arity = 2)
 
@@ -372,7 +399,7 @@
     (pattern (~seq #:type-constructor TypeCons:id))
     (pattern (~seq) #:attr TypeCons #f))
 
-  (struct user-ctor (typed-ctor untyped-ctor)
+  (struct user-ctor (typed-ctor untyped-ctor type-tag)
     #:property prop:procedure
     (lambda (v stx)
       (define transformer (user-ctor-typed-ctor v))
@@ -406,7 +433,7 @@
          (struct- StructName (slot ...) #:reflection-name 'Cons #:transparent)
          (define-syntax (TypeConsExtraInfo stx)
            (syntax-parse stx
-             [(_ X (... ...)) #'('type-tag 'MakeTypeCons 'GetTypeParams)]))
+             [(_ X (... ...)) #'(#%app- 'type-tag 'MakeTypeCons 'GetTypeParams)]))
          (define-product-type TypeCons
            #:arity = #,arity
            #:extra-info 'TypeConsExtraInfo)
@@ -420,7 +447,7 @@
              [(_ (TypeConsExpander t (... ...)))
               #'(t (... ...))]))
          (define-syntax Cons
-           (user-ctor #'Cons- #'StructName))
+           (user-ctor #'Cons- #'StructName 'type-tag))
          (define-typed-syntax (Cons- e (... ...)) ≫
            #:fail-unless (= #,arity (stx-length #'(e (... ...)))) "arity mismatch"
            [⊢ e ≫ e- (⇒ : τ)] (... ...)
@@ -462,8 +489,8 @@
              (define arity (length accs)))
            (define-syntax (TypeConsExtraInfo stx)
              (syntax-parse stx
-               [(_ X (... ...)) #'('type-tag 'MakeTypeCons 'GetTypeParams)]))
-           (define-type-constructor TypeCons
+               [(_ X (... ...)) #'(#%app- 'type-tag 'MakeTypeCons 'GetTypeParams)]))
+           (define-product-type TypeCons
              ;; issue: arity needs to parse as an exact-nonnegative-integer
              ;; fix: check arity in MakeTypeCons
              #:arity >= 0
@@ -484,7 +511,7 @@
              ----------------------
              [⊢ (#%app- orig-struct-info e- (... ...)) (⇒ : (TypeCons τ (... ...)))])
            (define-syntax ucons
-             (user-ctor #'Cons- #'orig-struct-info)))))]))
+             (user-ctor #'Cons- #'orig-struct-info 'type-tag)))))]))
 
 (begin-for-syntax
   (define-syntax ~constructor-extra-info
@@ -542,7 +569,12 @@
          (user-ctor? (syntax-local-value stx (const #f)))))
 
   (define (untyped-ctor stx)
-    (user-ctor-untyped-ctor (syntax-local-value stx (const #f)))))
+    (user-ctor-untyped-ctor (syntax-local-value stx (const #f))))
+
+  ;; requires (ctor-id? stx)
+  ;; fetch the type tag
+  (define (ctor-type-tag stx)
+    (user-ctor-type-tag (syntax-local-value stx (const #f)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Require & Provide
@@ -596,6 +628,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Syntax
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(require-struct observe #:as Observe #:from syndicate/actor-lang)
+(require-struct inbound #:as Inbound #:from syndicate/actor-lang)
+(require-struct outbound #:as Outbound #:from syndicate/actor-lang)
+(require-struct message #:as Message #:from syndicate/actor-lang)
 
 (begin-for-syntax
 
@@ -1084,7 +1121,7 @@
   [(_ e τ:type ...) ≫
    #:cut
    [⊢ e ≫ e- ⇒ (~∀ tvs τ_body)]
-   #:fail-unless (stx-andmap instantiable? #'(τ.norm ...) #'tvs)
+   #:fail-unless (stx-andmap instantiable? #'tvs #'(τ.norm ...))
                  "types must be instantiable"
    #:fail-unless (pure? #'e-) "expression must be pure"
    --------
@@ -1512,3 +1549,14 @@
                      (stx-contains-id? #'ty X)))
        (stx-map (λ _ irrelevant) Xs)]
       [_ (stx-map (λ _ invariant) Xs)])))
+
+#;(begin-for-syntax
+  (define k (sixth (free-id-table-keys TypeInfo#)))
+  (define t
+    (syntax-parse (type-eval #'(Observe (Bind (Tuple))))
+      [(~Any/bvs cons () tt ...)
+       #'cons]))
+  (displayln k)
+  (displayln (hash-ref (syntax-debug-info k) 'bindings))
+  (displayln t)
+  (displayln (hash-ref (syntax-debug-info t) 'bindings)))

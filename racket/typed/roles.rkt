@@ -360,25 +360,26 @@
   [⊢ (#%app- x-) (⇒ : τ)])
 
 ;; it would be nice to abstract over these three
-(define-typed-syntax (observe e:expr) ≫
+;; TODO - make the constructors
+#;(define-typed-syntax (observe e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   ---------------------------------------------------------------------------
   [⊢ (syndicate:observe e-) (⇒ : (Observe τ))])
 
-(define-typed-syntax (inbound e:expr) ≫
+#;(define-typed-syntax (inbound e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   ---------------------------------------------------------------------------
   [⊢ (syndicate:inbound e-) (⇒ : (Inbound τ))])
 
-(define-typed-syntax (outbound e:expr) ≫
+#;(define-typed-syntax (outbound e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   ---------------------------------------------------------------------------
   [⊢ (syndicate:outbound e-) (⇒ : (Outbound τ))])
 
-(define-typed-syntax (message e:expr) ≫
+#;(define-typed-syntax (message e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression must be pure"
   ------------------------------
