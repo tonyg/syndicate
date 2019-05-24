@@ -67,7 +67,7 @@
       (field [books Inventory inventory])
 
       ;; Give quotes to interested parties.
-      (during (observe (book-quote (bind title String) discard))
+      (during (observe (book-quote $title _))
         ;; TODO - lookup
         (assert (book-quote title (lookup title (ref books)))))))))
 
@@ -116,10 +116,10 @@
           (set! book-list (rest (ref book-list)))]))
 
      ;; keep track of book club members
-     (define/query-set members (club-member (bind name String)) name
+     (define/query-set members (club-member $name) name
          #;#:on-add #;(printf "leader acknowledges member ~a\n" name))
 
-     (on (asserted (book-quote (ref title) (bind quantity Int)))
+     (on (asserted (book-quote (ref title) $quantity))
          (printf "leader learns that there are ~a copies of ~a\n" quantity (ref title))
          (cond
            [(< quantity (+ 1 (set-count (ref members))))
@@ -128,9 +128,9 @@
            [#t
             ;; find out if at least half of the members want to read the book
             (start-facet poll-members
-             (define/query-set yays (book-interest (ref title) (bind name String) #t) name)
-             (define/query-set nays (book-interest (ref title) (bind name String) #f) name)
-             (on (asserted (book-interest (ref title) (bind name String) discard))
+             (define/query-set yays (book-interest (ref title) $name #t) name)
+             (define/query-set nays (book-interest (ref title) $name #f) name)
+             (on (asserted (book-interest (ref title) $name _))
                  ;; count the leader as a 'yay'
                  (when (>= (set-count (ref yays))
                            (/ (set-count (ref members)) 2))
@@ -172,7 +172,7 @@
      ;; assert our presence
      (assert (club-member name))
      ;; respond to polls
-     (during (observe (book-interest (bind title String) discard discard))
+     (during (observe (book-interest $title _ _))
        (define answer (member? title titles))
        (printf "~a responds to suggested book ~a: ~a\n" name title answer)
        (assert (book-interest title name answer)))))))
