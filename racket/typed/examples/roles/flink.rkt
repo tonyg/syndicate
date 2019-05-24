@@ -210,11 +210,11 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
     (during (job-manager-alive)
      (log "TM learns about JM")
      (define/query-set task-runners (task-runner $id _) id
-       #;#:on-add #;(log "TM learns about task-runner ~a" id))
+       #:on-add (log "TM learns about task-runner ~a" id))
      ;; I wonder just how inefficient this is
      (define/query-set idle-runners (task-runner $id IDLE) id
-       #;#:on-add #;(log "TM learns that task-runner ~a is IDLE" id)
-       #;#:on-remove #;(log "TM learns that task-runner ~a is NOT IDLE" id))
+       #:on-add (log "TM learns that task-runner ~a is IDLE" id)
+       #:on-remove (log "TM learns that task-runner ~a is NOT IDLE" id))
      (assert (task-manager id (set-count (ref idle-runners))))
      (field [busy-runners (List ID) (list)])
      (define (can-accept?)
@@ -312,14 +312,16 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
 
     ;; keep track of task managers, how many slots they say are open, and how many tasks we have assigned.
     (define/query-hash task-managers (task-manager $id $slots) id slots
-      #;#:on-add #;(log "JM learns that ~a has ~v slots" id slots))
+      #:on-add (log "JM learns that ~a has ~v slots" id (hash-ref (ref task-managers) id)))
 
     ;; (Hashof TaskManagerID Nat)
     ;; to better understand the supply of slots for each task manager, keep track of the number
     ;; of requested tasks that we have yet to hear back about
     (field [requests-in-flight (Hash ID Int) (hash)])
     (define (slots-available)
+      #;(printf "slots available!\n")
       (for/sum ([(id v) (ref task-managers)])
+        #;(printf "(slots-available) ~a :: ~a\n" id v)
         (max 0 (- v (hash-ref/failure (ref requests-in-flight) id 0)))))
 
     ;; ID -> Void
@@ -441,13 +443,14 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
         (define slots (slots-available))
         (define-tuple (ts readys)
           (split-at/lenient (ref ready-tasks) slots))
+        #;(printf "slots: ~a\n" slots)
+        #;(printf "ts: ~a\n" ts)
+        #;(printf "readys: ~a\n" readys)
         (for ([t ts])
           (perform-task t push-results))
         (unless (empty? ts)
           ;; the empty? check may be necessary to avoid a dataflow loop
-          (set! ready-tasks readys)))
-
-      #f))))
+          (set! ready-tasks readys)))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Client
@@ -477,4 +480,5 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
   (spawn-task-manager)
   (spawn-task-runner)
   (spawn-task-runner)
+  (spawn-client (file->job "lorem.txt"))
   (spawn-client (string->job INPUT)))
