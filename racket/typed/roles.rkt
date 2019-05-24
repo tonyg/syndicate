@@ -75,6 +75,7 @@
 (require "either.rkt")
 
 (require (prefix-in syndicate: syndicate/actor-lang))
+(require (submod syndicate/actor priorities))
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
 (require macrotypes/postfix-in)
@@ -190,7 +191,28 @@
                                [react-con #'¬Know]))
                   (~and message
                         (~bind [syndicate-kw #'syndicate:message]
-                               [react-con #'Message]))))))
+                               [react-con #'Message])))))
+  (define-syntax-class priority-level
+    #:literals (*query-priority-high*
+                *query-priority*
+                *query-handler-priority*
+                *normal-priority*
+                *gc-priority*
+                *idle-priority*)
+    (pattern (~and level
+                   (~or *query-priority-high*
+                        *query-priority*
+                        *query-handler-priority*
+                        *normal-priority*
+                        *gc-priority*
+                        *idle-priority*))))
+  (define-splicing-syntax-class priority
+    #:attributes (level)
+    (pattern (~seq #:priority l:priority-level)
+             #:attr level #'l.level)
+    (pattern (~seq)
+             #:attr level #'*normal-priority*))
+  )
 
 (define-typed-syntax on
   [(on (~literal start) s ...) ≫
@@ -209,7 +231,9 @@
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : ★/t)
       (⇒ ν-ep (τ-r))]]
-  [(on (a/r/m:asserted/retracted/message p) s ...) ≫
+  [(on (a/r/m:asserted/retracted/message p)
+       priority:priority
+       s ...) ≫
    #:with p/e (elaborate-pattern/with-com-ty #'p)
    [⊢ p/e ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
@@ -222,6 +246,7 @@
    #:with τ-r (type-eval #'(Reacts (a/r/m.react-con τp) τ-f ... τ-s ...))
    -----------------------------------
    [⊢ (syndicate:on (a/r/m.syndicate-kw p-)
+                    #:priority priority.level
                     s-)
       (⇒ : ★/t)
       (⇒ ν-ep (τ-r))]])
@@ -330,18 +355,42 @@
       [_
        pat])))
 
-(define-typed-syntax (define/query-value x:id e0 p e) ≫
+(begin-for-syntax
+  (define-splicing-syntax-class on-add
+    #:attributes (expr)
+    (pattern (~seq #:on-add add-e)
+             #:attr expr #'add-e)
+    (pattern (~seq)
+             #:attr expr #'#f))
+
+  (define-splicing-syntax-class on-remove
+    #:attributes (expr)
+    (pattern (~seq #:on-remove remove-e)
+             #:attr expr #'remove-e)
+    (pattern (~seq)
+             #:attr expr #'#f)))
+
+
+(define-typed-syntax (define/query-value x:id e0 p e
+                       (~optional add:on-add)
+                       (~optional remove:on-remove)) ≫
   [⊢ e0 ≫ e0- (⇒ : τ)]
   #:fail-unless (pure? #'e0-) "expression must be pure"
   ----------------------------------------
   [≻ (begin (field [x τ e0-])
             (on (asserted p)
-                (set! x e))
+                #:priority *query-priority*
+                (set! x e)
+                add.expr)
             (on (retracted p)
-                (set! x e0-)))])
+                #:priority *query-priority-high*
+                (set! x e0-)
+                remove.expr))])
 
 ;; TODO: #:on-add
-(define-typed-syntax (define/query-set x:id p e) ≫
+(define-typed-syntax (define/query-set x:id p e
+                       (~optional add:on-add)
+                       (~optional remove:on-remove)) ≫
   #:with p+ (elaborate-pattern/with-com-ty #'p)
   #:with ([y τ] ...) (pat-bindings #'p+)
   ;; e will be re-expanded :/
@@ -349,11 +398,17 @@
   ----------------------------------------
   [≻ (begin (field [x (Set τ-e) (set)])
             (on (asserted p+)
-                (set! x (set-add (ref x) e)))
+                #:priority *query-priority*
+                (set! x (set-add (ref x) e))
+                add.expr)
             (on (retracted p+)
-                (set! x (set-remove (ref x) e))))])
+                #:priority *query-priority-high*
+                (set! x (set-remove (ref x) e))
+                remove.expr))])
 
-(define-typed-syntax (define/query-hash x:id p e-key e-value) ≫
+(define-typed-syntax (define/query-hash x:id p e-key e-value
+                       (~optional add:on-add)
+                       (~optional remove:on-remove)) ≫
   #:with p+ (elaborate-pattern/with-com-ty #'p)
   #:with ([y τ] ...) (pat-bindings #'p+)
   ;; e-key and e-value will be re-expanded :/
@@ -368,9 +423,13 @@
   ----------------------------------------
   [≻ (begin (field [x (Hash τ-key τ-value) (hash)])
             (on (asserted p+)
-                (set! x (hash-set (ref x) e-key e-value)))
+                #:priority *query-priority*
+                (set! x (hash-set (ref x) e-key e-value))
+                add.expr)
             (on (retracted p+)
-                (set! x (hash-remove (ref x) e-key))))])
+                #:priority *query-priority-high*
+                (set! x (hash-remove (ref x) e-key))
+                remove.expr))])
 
 (define-typed-syntax (stop-when E script ...) ≫
   [[forged-name ≫ _ : FacetName] ⊢ forged-name ≫ forged-name-]
