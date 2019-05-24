@@ -64,19 +64,23 @@ A TaskID is a natural number
 
 A TaskResult is a (Hashof String Natural), counting the occurrences of words
 |#
-(define-constructor* (task : Task id desc))
-(define-constructor* (map-work : MapWork data))
-(define-constructor* (reduce-work : ReduceWork left right))
+(require-struct task #:as Task #:from "flink-support.rkt")
+(require-struct map-work #:as MapWork #:from "flink-support.rkt")
+(require-struct reduce-work #:as ReduceWork #:from "flink-support.rkt")
 (define-type-alias WordCount (Hash String Int))
 (define-type-alias TaskResult WordCount)
 (define-type-alias Reduce
   (ReduceWork (Either TaskID TaskResult)
               (Either TaskID TaskResult)))
+(define-type-alias ReduceInput
+  (ReduceWork TaskID TaskID))
 (define-type-alias Work
   (U Reduce (MapWork String)))
 (define-type-alias ConcreteWork
   (U (ReduceWork TaskResult TaskResult)
      (MapWork String)))
+(define-type-alias InputTask
+  (Task TaskID (U ReduceInput (MapWork String))))
 (define-type-alias PendingTask
   (Task TaskID Work))
 (define-type-alias ConcreteTask
@@ -115,8 +119,9 @@ Job Submission Protocol
 Finally, Clients submit their jobs to the JobManager by asserting a Job, which is a (job ID (Listof Task)).
 The JobManager then performs the job and, when finished, asserts (job-finished ID TaskResult)
 |#
-(assertion-struct job : Job (id tasks))
+(require-struct job #:as Job #:from "flink-support.rkt")
 (assertion-struct job-finished : JobFinished (id data))
+(define-type-alias JobDesc (Job ID (List InputTask)))
 
 (define-type-alias τc
   (U (TaskRunner ID Status)
@@ -129,9 +134,10 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
      (Observe (TaskRunner ★/t ★/t))
      (TaskManager ID Int)
      (Observe (TaskManager ★/t ★/t))
-     (Job ID (List PendingTask))
+     JobDesc
      (Observe (Job ★/t ★/t))
-     (JobFinished ID TaskResult)))
+     (JobFinished ID TaskResult)
+     (Observe (JobFinished ID ★/t))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Util Macros
@@ -291,6 +297,13 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
             [none
              (left t)]))))
 
+(define (input->pending-task [t : InputTask] -> PendingTask)
+  (match t
+    [(task $id (map-work $s))
+     (task id (map-work s))]
+    [(task $id (reduce-work $l $r))
+     (task id (reduce-work (left l) (left r)))]))
+
 (define (spawn-job-manager)
   (spawn τc
    (start-facet jm
@@ -321,7 +334,9 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
 
     (during (job $job-id $tasks)
       (log "JM receives job ~a" job-id)
-      (define-tuple (not-ready ready) (partition-ready-tasks tasks))
+      (define pending (for/list ([t tasks])
+                        (input->pending-task t)))
+      (define-tuple (not-ready ready) (partition-ready-tasks pending #;(map input->pending-task tasks)))
       (field [ready-tasks (List ConcreteTask) ready]
              [waiting-tasks (List PendingTask) not-ready]
              [tasks-in-progress Int 0])
@@ -433,3 +448,33 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
           (set! ready-tasks readys)))
 
       #f))))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Client
+
+;; Job -> Void
+(define (spawn-client [j : JobDesc])
+  (spawn τc
+   (start-facet _
+    (match-define (job $id _) j)
+    (assert j)
+    (on (asserted (job-finished id $data))
+        (printf "job done!\n~a\n" data)))))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Main
+
+(require/typed "flink-support.rkt"
+  [string->job : (→fn String JobDesc)]
+  [file->job : (→fn String JobDesc)])
+
+(define INPUT "a b c a b c\na b\n a b\na b")
+;; expected:
+;; #hash((a . 5) (b . 5) (c . 2))
+
+(run-ground-dataspace τc
+  (spawn-job-manager)
+  (spawn-task-manager)
+  (spawn-task-runner)
+  (spawn-task-runner)
+  (spawn-client (string->job INPUT)))
