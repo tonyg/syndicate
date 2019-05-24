@@ -386,11 +386,13 @@
        (define x : τ sel) ...)])
 
 (define-typed-syntax (match-define pat:expr e:expr) ≫
-  #:with ([x τ] ...) (pat-bindings #'pat)
+  [⊢ e ≫ e- (⇒ : τ-e)]
+  #:with pat+ (elaborate-pattern/with-type #'pat #'τ-e)
+  #:with ([x τ] ...) (pat-bindings #'pat+)
   ----------------------------------------
   [≻ (define-tuple (x ...)
-       (match e
-         [pat
+       (match e-
+         [pat+
           (tuple x ...)]))])
 
 ;; extremely limited match-define for `define-constructor`-d things

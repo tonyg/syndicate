@@ -193,14 +193,15 @@
    [⊢ (syndicate:on-stop s-) (⇒ : ★/t)
       (⇒ ν-ep (τ-r))]]
   [(on (a/r/m:asserted/retracted/message p) s ...) ≫
-   [⊢ p ≫ p-- (⇒ : τp)]
+   #:with p/e (elaborate-pattern #'p)
+   [⊢ p/e ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
-   #:with ([x:id τ:type] ...) (pat-bindings #'p)
+   #:with ([x:id τ:type] ...) (pat-bindings #'p/e)
    [[x ≫ x- : τ] ... ⊢ (begin s ...) ≫ s-
                  (⇒ ν-ep (~effs))
                  (⇒ ν-f (~effs τ-f ...))
                  (⇒ ν-s (~effs τ-s ...))]
-   #:with p- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'p))
+   #:with p- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'p/e))
    #:with τ-r (type-eval #'(Reacts (a/r/m.react-con τp) τ-f ... τ-s ...))
    -----------------------------------
    [⊢ (syndicate:on (a/r/m.syndicate-kw p-)
@@ -271,9 +272,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax (during p s ...) ≫
-  #:with inst-p (instantiate-pattern #'p)
+  #:with p+ (elaborate-pattern #'p)
+  #:with inst-p (instantiate-pattern #'p+)
   ----------------------------------------
-  [≻ (on (asserted p)
+  [≻ (on (asserted p+)
          (start-facet during-inner
            (on (retracted inst-p)
                (stop during-inner))
@@ -311,18 +313,20 @@
 
 ;; TODO: #:on-add
 (define-typed-syntax (define/query-set x:id p e) ≫
-  #:with ([y τ] ...) (pat-bindings #'p)
+  #:with p+ (elaborate-pattern #'p)
+  #:with ([y τ] ...) (pat-bindings #'p+)
   ;; e will be re-expanded :/
   [[y ≫ y- : τ] ... ⊢ e ≫ e- ⇒ τ-e]
   ----------------------------------------
   [≻ (begin (field [x (Set τ-e) (set)])
-            (on (asserted p)
+            (on (asserted p+)
                 (set! x (set-add (ref x) e)))
-            (on (retracted p)
+            (on (retracted p+)
                 (set! x (set-remove (ref x) e))))])
 
 (define-typed-syntax (define/query-hash x:id p e-key e-value) ≫
-  #:with ([y τ] ...) (pat-bindings #'p)
+  #:with p+ (elaborate-pattern #'p)
+  #:with ([y τ] ...) (pat-bindings #'p+)
   ;; e-key and e-value will be re-expanded :/
   ;; but it's the most straightforward way to keep bindings in sync with
   ;; pattern
@@ -334,9 +338,9 @@
   ;; gets their references to pattern variables out of sync with `p`
   ----------------------------------------
   [≻ (begin (field [x (Hash τ-key τ-value) (hash)])
-            (on (asserted p)
+            (on (asserted p+)
                 (set! x (hash-set (ref x) e-key e-value)))
-            (on (retracted p)
+            (on (retracted p+)
                 (set! x (hash-remove (ref x) e-key))))])
 
 (define-typed-syntax (stop-when E script ...) ≫
