@@ -78,6 +78,7 @@
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
 (require macrotypes/postfix-in)
+(require (for-syntax turnstile/mode))
 (require (postfix-in - racket/list))
 (require (postfix-in - racket/set))
 
@@ -92,6 +93,22 @@
 
 (define-simple-macro (assertion-struct name:id (~datum :) Name:id (slot:id ...))
   (define-constructor* (name : Name slot ...)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Compile-time State
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(begin-for-syntax
+  (define current-communication-type (make-parameter #f))
+  ;; Type -> Mode
+  (define (communication-type-mode ty)
+    (make-param-mode current-communication-type ty))
+
+  (define (elaborate-pattern/with-com-ty pat)
+    (define τ? (current-communication-type))
+    (if τ?
+        (elaborate-pattern/with-type pat τ?)
+        (elaborate-pattern pat))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core forms
@@ -193,7 +210,7 @@
    [⊢ (syndicate:on-stop s-) (⇒ : ★/t)
       (⇒ ν-ep (τ-r))]]
   [(on (a/r/m:asserted/retracted/message p) s ...) ≫
-   #:with p/e (elaborate-pattern #'p)
+   #:with p/e (elaborate-pattern/with-com-ty #'p)
    [⊢ p/e ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
    #:with ([x:id τ:type] ...) (pat-bindings #'p/e)
@@ -227,10 +244,14 @@
                    (lambda (id) #`($ #,id))
                    identity))
 
-(define-typed-syntax (spawn τ-c:type s) ≫
+(define-typed-syntax spawn
+  [(spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   ;; TODO: check that each τ-f is a Role
-  [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
+  #:mode (communication-type-mode #'τ-c.norm)
+    [
+     [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
+    ]
   ;; TODO: s shouldn't refer to facets or fields!
   #:with (τ-i τ-o τ-a) (analyze-roles #'(τ-f ...))
   #:fail-unless (<: #'τ-o #'τ-c.norm)
@@ -244,11 +265,19 @@
   #:with τ-final (type-eval #'(Actor τ-c.norm))
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
-                                               (⇒ ν-s (τ-final))])
+                                               (⇒ ν-s (τ-final))]]
+  [(spawn s) ≫
+   #:do [(define τc (current-communication-type))]
+   #:when τc
+   ----------------------------------------
+   [≻ (spawn #,τc s)]])
 
 (define-typed-syntax (dataspace τ-c:type s ...) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs τ-s ...)) (⇒ ν-f (~effs))] ...
+  #:mode (communication-type-mode #'τ-c.norm)
+    [
+     [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs τ-s ...)) (⇒ ν-f (~effs))] ...
+    ]
   #:with τ-actor (type-eval #'(Actor τ-c.norm))
   #:fail-unless (stx-andmap (lambda (t) (<: t #'τ-actor)) #'(τ-s ... ...))
                 "Not all actors conform to communication type"
@@ -272,7 +301,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax (during p s ...) ≫
-  #:with p+ (elaborate-pattern #'p)
+  #:with p+ (elaborate-pattern/with-com-ty #'p)
   #:with inst-p (instantiate-pattern #'p+)
   ----------------------------------------
   [≻ (on (asserted p+)
@@ -313,7 +342,7 @@
 
 ;; TODO: #:on-add
 (define-typed-syntax (define/query-set x:id p e) ≫
-  #:with p+ (elaborate-pattern #'p)
+  #:with p+ (elaborate-pattern/with-com-ty #'p)
   #:with ([y τ] ...) (pat-bindings #'p+)
   ;; e will be re-expanded :/
   [[y ≫ y- : τ] ... ⊢ e ≫ e- ⇒ τ-e]
@@ -325,7 +354,7 @@
                 (set! x (set-remove (ref x) e))))])
 
 (define-typed-syntax (define/query-hash x:id p e-key e-value) ≫
-  #:with p+ (elaborate-pattern #'p)
+  #:with p+ (elaborate-pattern/with-com-ty #'p)
   #:with ([y τ] ...) (pat-bindings #'p+)
   ;; e-key and e-value will be re-expanded :/
   ;; but it's the most straightforward way to keep bindings in sync with
@@ -426,7 +455,7 @@
   (check-type (spawn (U (Message (Tuple String Int))
                         (Observe (Tuple String ★/t)))
                      (start-facet echo
-                                  (on (message (tuple "ping" (bind x Int)))
+                                  (on (message (tuple "ping" $x))
                                       (send! (tuple "pong" x)))))
               : ★/t)
   (typecheck-fail (spawn (U (Message (Tuple String Int))
