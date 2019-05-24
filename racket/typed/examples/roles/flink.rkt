@@ -319,9 +319,7 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
     ;; of requested tasks that we have yet to hear back about
     (field [requests-in-flight (Hash ID Int) (hash)])
     (define (slots-available)
-      #;(printf "slots available!\n")
       (for/sum ([(id v) (ref task-managers)])
-        #;(printf "(slots-available) ~a :: ~a\n" id v)
         (max 0 (- v (hash-ref/failure (ref requests-in-flight) id 0)))))
 
     ;; ID -> Void
@@ -338,7 +336,7 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
       (log "JM receives job ~a" job-id)
       (define pending (for/list ([t tasks])
                         (input->pending-task t)))
-      (define-tuple (not-ready ready) (partition-ready-tasks pending #;(map input->pending-task tasks)))
+      (define-tuple (not-ready ready) (partition-ready-tasks pending))
       (field [ready-tasks (List ConcreteTask) ready]
              [waiting-tasks (List PendingTask) not-ready]
              [tasks-in-progress Int 0])
@@ -443,9 +441,6 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
         (define slots (slots-available))
         (define-tuple (ts readys)
           (split-at/lenient (ref ready-tasks) slots))
-        #;(printf "slots: ~a\n" slots)
-        #;(printf "ts: ~a\n" ts)
-        #;(printf "readys: ~a\n" readys)
         (for ([t ts])
           (perform-task t push-results))
         (unless (empty? ts)
