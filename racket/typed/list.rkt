@@ -10,7 +10,8 @@
                     [[member?- (∀ (X) (→fn X (List X) Bool))] member?]
                     [[empty?- (∀ (X) (→fn (List X) Bool))] empty?]
                     [[reverse- (∀ (X) (→fn (List X) (List X)))] reverse]
-                    [[partition- (∀ (X) (→fn (List X) (→fn X Bool) (List X)))] partition]))
+                    [[partition- (∀ (X) (→fn (List X) (→fn X Bool) (List X)))] partition]
+                    [[map- (∀ (X Y) (→fn (→fn X Y) (List X) (List Y)))] map]))
 
 (require "core-types.rkt")
 (require (only-in "prim.rkt" Bool))
