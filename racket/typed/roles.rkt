@@ -121,7 +121,8 @@
   #:with facet-name-ty (type-eval #'FacetName)
   #:do [(define ctx (syntax-local-make-definition-context))
         (define unique (gensym 'start-facet))
-        (define name-- (internal-definition-context-introduce ctx #'name- 'add))
+        (define name-- (add-orig (internal-definition-context-introduce ctx #'name- 'add)
+                                 #'name))
         (int-def-ctx-bind-type-rename #'name+ #'name- #'facet-name-ty ctx)
         (define-values (ep-... τ... ep-effects facet-effects spawn-effects)
           (walk/bind #'(ep ...) ctx unique))
@@ -502,7 +503,7 @@
 (define-typed-syntax (print-role e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
   #:do [(for ([r (in-syntax #'(fs ...))])
-          (pretty-display (type->str r)))]
+          (pretty-display (type->strX r)))]
   ----------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
 
