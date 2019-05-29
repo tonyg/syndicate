@@ -42,21 +42,18 @@
 ;;   - (Struct StructName (Listof τ ...))
 ;;   - (Observe τ)
 ;;   - ⋆
-;;   - Int
-;;   - String
-;;   - Bool
+;;   - (Base Symbol)
 (struct U (tys) #:transparent)
 (struct Struct (nm tys) #:transparent)
 (struct Observe (ty) #:transparent)
 (struct Mk⋆ () #:transparent)
 ;; TODO this might be a problem when used as a match pattern
 (define ⋆ (Mk⋆))
-(struct MkInt () #:transparent)
-(define Int (MkInt))
-(struct MkString () #:transparent)
-(define String (MkString))
-(struct MkBool () #:transparent)
-(define Bool (MkBool))
+(struct Base (name) #:transparent)
+(define Int (Base 'Int))
+(define String (Base 'String))
+(define Bool (Base 'Bool))
+(define Symbol (Base 'Symbol))
 
 ;; a StructName is a Symbol
 
@@ -86,22 +83,22 @@
 ;; τ τ -> τ
 ;; short hand for creating a book quote struct type
 (define (book-quote ty1 ty2)
-  (Struct 'book-quote (list ty1 ty2)))
+  (Struct 'BookQuoteT (list ty1 ty2)))
 
 ;; τ τ τ -> τ
 ;; short hand for creating a book quote interest type
 (define (book-interest ty1 ty2 ty3)
-  (Struct 'book-interest (list ty1 ty2 ty3)))
+  (Struct 'BookInterestT (list ty1 ty2 ty3)))
 
 ;; τ -> τ
 ;; short hand for creating a book of the month type
 (define (book-of-the-month ty)
-  (Struct 'book-of-the-month (list ty)))
+  (Struct 'BookOfTheMonthT (list ty)))
 
 ;; τ -> τ
 ;; short hand for creating a club member type
 (define (club-member ty)
-  (Struct 'club-member (list ty)))
+  (Struct 'ClubMemberT (list ty)))
 
 (define seller
   (Role 'seller
@@ -1100,3 +1097,187 @@
                       slots
                       ")")]))
   )
+
+;; ---------------------------------------------------------------------------
+;; Flink Examples
+
+(define job-manager-actual
+  '(Role
+    (jm89)
+    (Shares (JobManagerAlive))
+    (Reacts
+     (Know (Job (Bind Symbol) (Bind (List- InputTask))))
+     (Role (during-inner97)
+      (Reacts OnDataflow
+       (Role (perform114)
+        (Reacts OnStart
+                (Role (this-facet123)
+                  (Reacts OnDataflow
+                          (Branch
+                           (Effs (Branch (Effs
+                                          (Role (this-facet120)
+                                            (Shares (TaskAssignment ID Symbol ConcreteTask))
+                                            (Reacts (Know (TaskState ID Symbol Int (Bind (U* (Finished TaskResult) Symbol))))
+                                                    (Branch (Effs) (Effs)
+                                                            (Effs (Stop this-facet))
+                                                            ;; TODO - why is there a ρ here?
+                                                            (Effs (Stop perform ρ))))
+                                            (Reacts OnStart
+                                                    (Role (take-slot121)
+                                                          (Reacts (Know (TaskState ID Symbol Int Discard))
+                                                                  (Stop take-slot))))
+                                            (Reacts (¬Know (TaskManager ID Discard))
+                                                    (Stop this-facet))))
+                                         (Effs)))
+                           (Effs)))))
+        (Reacts OnStop)
+        (Reacts OnStart)))
+      (Reacts (¬Know (Job Symbol (List- InputTask)))
+              (Stop during-inner))))
+    (Reacts (¬Know (TaskManager (Bind Symbol) (Bind Int))))
+    (Reacts (Know (TaskManager (Bind Symbol) (Bind Int))))))
+
+;; ---------------------------------------------------------------------------
+;; Converting types from the turnstile implementation
+
+;; QuotedType -> T
+(define (parse-T ty)
+  (match ty
+    [(list 'Role (list name) eps ...)
+     (define parsed-eps (map parse-EP eps))
+     (Role name parsed-eps)]
+    [(list 'Spawn t)
+     (Spawn (parse-T t))]
+    [(list 'Stop name body ...)
+     (define bdy (if (= (length body) 1)
+                     (first body)
+                     body))
+     (Stop name (parse-Body bdy))]
+    ))
+
+;; Sexp -> EP
+(define (parse-EP ep)
+  (match ep
+    [(list 'Shares ty)
+     (define parsed-ty (parse-τ ty))
+     (Shares parsed-ty)]
+    [(list 'Reacts D b ...)
+     (define bdy (if (= (length b) 1)
+                     (first b)
+                     (cons 'Effs b)))
+     (Reacts (parse-D D) (parse-Body bdy))]))
+
+(define (parse-Body b)
+  (match b
+    [(list 'Branch bs ...)
+     (Branch (map parse-Body bs))]
+    [(list 'Effs bs ...)
+     (list (map parse-Body bs))]
+    [(list)
+     (list)]
+    [_
+     (parse-T b)]))
+
+(define (parse-D d)
+  (match d
+    [(list 'Know t)
+     (Know (parse-τ t))]
+    [(list '¬Know t)
+     (¬Know (parse-τ t))]))
+
+;; Sexp -> τ
+(define (parse-τ ty)
+  (match ty
+    [(list 'Observe t)
+     (Observe (parse-τ t))]
+    ['★/t
+     ⋆]
+    [(list (or 'U* 'U) t ...)
+     (U (map parse-τ t))]
+    [(list 'Bind t)
+     ;; TODO : questionable
+     (parse-τ t)]
+    ['Discard
+     ⋆]
+    [(list struct-name tys ...)
+     (Struct struct-name (map parse-τ tys))]
+    [(? symbol?)
+     (Base ty)])
+  )
+
+(module+ test
+  (check-equal? (parse-T '(Stop during-inner))
+                (Stop 'during-inner (list)))
+  (test-case
+      "real seller type"
+    (check-true (Role? (parse-T real-seller-ty))))
+  (test-case
+      "Stop with a single continuation effect"
+    (check-true (Stop? (parse-T '(Stop poll-members
+                                       (Branch (Effs (Stop get-quotes)) (Effs)))))))
+  (test-case
+      "parsed types are the same as my manual conversions"
+    (check-true (simulates? (parse-T real-seller-ty) seller-actual))
+    (check-true (simulates? seller-actual (parse-T real-seller-ty)))
+
+    (check-true (simulates? (parse-T real-member-ty) member-actual))
+    (check-true (simulates? member-actual (parse-T real-member-ty)))
+
+    (check-true (simulates? (parse-T real-leader-ty) leader-actual))
+    ;; interestingly, this doesn't work because leader-actual is less precise
+    ;; than real-leader-ty (I don't remember how leader-actual lost that
+    ;; precision)
+    #;(check-true (simulates? leader-actual (parse-T real-leader-ty)))
+    (check-true (simulates? (parse-T real-leader-ty) leader-revised))
+    (check-true (simulates? leader-revised (parse-T real-leader-ty)))))
+
+(define real-seller-ty
+  '(Role
+    (seller)
+    (Reacts
+     (Know (Observe (BookQuoteT (Bind String) Discard)))
+     (Role
+      (during-inner)
+      (Shares (BookQuoteT String Int))
+      (Reacts
+       (¬Know (Observe (BookQuoteT String Discard)))
+       (Stop during-inner))))))
+
+(define real-member-ty
+  '(Role
+    (member)
+    (Shares (ClubMemberT String))
+    (Reacts
+     (Know (Observe (BookInterestT (Bind String) Discard Discard)))
+     (Role
+      (during-inner)
+      (Shares (BookInterestT String String Bool))
+      (Reacts
+       (¬Know (Observe (BookInterestT String Discard Discard)))
+       (Stop during-inner))))))
+
+(define real-leader-ty
+  '(Role
+    (get-quotes)
+    (Reacts
+     (Know (BookQuoteT String (Bind Int)))
+     (Branch
+      (Effs (Branch (Effs (Stop get-quotes)) (Effs)))
+      (Effs
+       (Role
+        (poll-members)
+        (Reacts
+         (Know (BookInterestT String (Bind String) Discard))
+         (Branch
+          (Effs (Stop poll-members (Branch (Effs (Stop get-quotes)) (Effs))))
+          (Effs))
+         (Branch
+          (Effs
+           (Stop get-quotes (Role (announce) (Shares (BookOfTheMonthT String)))))
+          (Effs)))
+        (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
+        (Reacts (Know (BookInterestT String (Bind String) Bool)))
+        (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
+        (Reacts (Know (BookInterestT String (Bind String) Bool)))))))
+    (Reacts (¬Know (ClubMemberT (Bind String))))
+    (Reacts (Know (ClubMemberT (Bind String))))))
