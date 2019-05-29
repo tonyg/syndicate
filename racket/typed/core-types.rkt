@@ -11,6 +11,7 @@
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
 (require (for-syntax turnstile/examples/util/filter-maximal))
 (require (for-syntax macrotypes/type-constraints macrotypes/variance-constraints))
+#;(require (only-in (for-syntax macrotypes/typecheck-core) get-orig))
 (require (for-syntax racket/struct-info
                      syntax/id-table))
 (require macrotypes/postfix-in)
@@ -806,6 +807,24 @@
                         (replace-bind-and-discard-with-★ t)))
      (reassemble-type #'τ-cons subitems)]
     [_ t]))
+
+;; Copied and modified from turnstile
+;; try to handle type variables for Stop references and polymorphic effects
+;; better
+(define-for-syntax (type->strX ty)
+  (define τ (get-orig ty))
+  (cond
+    [(and (row-variable? τ)
+          (stx-list? ty))
+     (string-join (stx-map type->strX ty)
+                  #:before-first "("
+                  #:after-last ")")]
+    [(identifier? τ)
+     (symbol->string (syntax->datum τ))]
+    [(stx-list? τ) (string-join (stx-map type->strX τ)
+                                #:before-first "("
+                                #:after-last ")")]
+    [else (format "~s" (syntax->datum τ))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subtyping and Judgments on Types
