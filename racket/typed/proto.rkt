@@ -773,12 +773,8 @@
      (match (list τ1 τ2)
        [(list _ (== ⋆))
         #t]
-       [(list (== Int) (== Int))
-        #t]
-       [(list (== String) (== String))
-        #t]
-       [(list (== Bool) (== Bool))
-        #t]
+       [(list (Base t1) (Base t2))
+        (equal? t1 t2)]
        [(list (U τs) _)
         (for/and ([τ (in-list τs)])
           (<:? τ τ2))]
@@ -1078,9 +1074,8 @@
   ;; τ -> String
   (define (τ->string τ)
     (match τ
-      [(== Int) "Int"]
-      [(== String) "String"]
-      [(== Bool) "Bool"]
+      [(Base name)
+       (symbol->string name)]
       [(== ⋆) "⋆"]
       [(Observe τ2)
        (string-append "?" (τ->string τ2))]
