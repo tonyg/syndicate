@@ -34,8 +34,12 @@
 ;; a D is one of
 ;;   - (Know τ), reaction to assertion
 ;;   - (¬Know τ), reaction to retraction
+;;   - StartEvt, reaction to facet startup
+;;   - StopEvt, reaction to facet shutdown
 (struct Know (ty) #:transparent)
 (struct ¬Know (ty) #:transparent)
+(define StartEvt 'Start)
+(define StopEvt 'Stop)
 
 ;; a τ is one of
 ;;   - (U (Listof τ))
@@ -255,6 +259,7 @@
 ;; Compiling Roles to state machines
 
 ;; a State is a (state StateName (Hashof D (Setof StateName)))
+;;   where each D in the hash satisfies external-evt?
 ;; a StateName is a (Setof FacetName)
 ;; let's assume that all FacetNames are unique
 ;; ok, this is also ignoring Spawn actions for now, would show up in the transitions hash
@@ -291,11 +296,13 @@
            (hash-union agg txns
                        #:combine combine-effect-sets)))
        (define transitions
-         (for/hash ([(D effs) (in-hash agg-txn)])
+         (for/hash ([(D effs) (in-hash agg-txn)]
+                    #:when (external-evt? D))
            ;; TODO - may want to remove self loops here
            (define destinations
-             (for/set ([eff* (in-set effs)])
-               (apply-effects eff* current ft)))
+             (for*/set ([eff* (in-set effs)]
+                        [dst (in-set (apply-effects eff* current ft roles#))])
+               dst))
            (values D destinations)))
        (define new-work
          (for*/list ([st-set (in-hash-values transitions)]
@@ -307,6 +314,11 @@
              (hash-set states current (state current transitions)))]
       ['()
        (role-graph (set (Role-nm role)) states)])))
+
+;; D -> Bool
+;; test if D corresponds to an external event (assertion, message)
+(define (external-evt? D)
+  (or (Know? D) (¬Know? D)))
 
 (module+ test
   (test-case
@@ -541,6 +553,19 @@
      (and parent
           (ancestor? parent ansc ft))]))
 
+;; FacetName FacetName FacetTree -> (U #f Nat)
+;; determine if the first argument is a child*, or equal to, the second; if so,
+;; return their distance from one another in the tree
+(define (ancestor?/dist desc ansc ft)
+  (cond
+    [(equal? desc ansc)
+     0]
+    [else
+     (define parent (hash-ref (facet-tree-up ft) desc))
+     (define ans? (and parent (ancestor?/dist parent ansc ft)))
+     (and ans?
+          (add1 ans?))]))
+
 
 (module+ test
   (test-case
@@ -549,7 +574,14 @@
     (check-true (ancestor? 'leader 'leader ft))
     (check-true (ancestor? 'poll 'leader ft))
     (check-false (ancestor? 'leader 'poll ft))
-    (check-false (ancestor? 'announce 'leader ft))))
+    (check-false (ancestor? 'announce 'leader ft)))
+  (test-case
+      "ancestor?/dist in leader-spec facet tree"
+    (define ft (make-facet-tree leader-spec))
+    (check-equal? (ancestor?/dist 'leader 'leader ft) 0)
+    (check-equal? (ancestor?/dist 'poll 'leader ft) 1)
+    (check-false (ancestor?/dist 'leader 'poll ft))
+    (check-false (ancestor?/dist 'announce 'leader ft))))
 
 ;; a RoleEffect is one of
 ;;   - (start RoleName)
@@ -559,21 +591,66 @@
 (struct stop (nm) #:transparent)
 
 ;; a TransitionDesc is a (Hashof D (Setof (Listof RoleEffect)), describing the
-;; possible ways an event (+/- of an assertion) can alter the facet tree
+;; possible ways an event (+/- of an assertion) can alter the facet tree.
+;; It always includes the keys StartEvt and StopEvt.
+(define txn-desc0 (hash StartEvt (set) StopEvt (set)))
 
-;; (Listof RoleEffect) StateName FacetTree -> StateName determine the state
-;; resulting from some effects, given the currently active facets and a
-;; description of possible facet locations.
-(define (apply-effects effs st ft)
-  (for/fold ([st st])
-            ([eff (in-list effs)])
-    (match eff
-      [(start nm)
-       (set-add st nm)]
-      [(stop nm)
-       (for/set ([f-name (in-set st)]
-                 #:unless (ancestor? f-name nm ft))
-         f-name)])))
+;; (Listof RoleEffect) StateName
+;; FacetTree
+;; (Hashof FacetName TransitionDesc)
+;; -> (Setof StateName)
+;; determine the state resulting from some effects, given the currently active
+;; facets and a description of possible facet locations and behavior.
+(define (apply-effects effs st ft txn#)
+  #;(printf "apply-effects: ~a\n" effs)
+  (let loop ([st st]
+             [effs effs])
+    (match effs
+      ['()
+       (set st)]
+      [(cons eff rest)
+       (match eff
+         [(start nm)
+          (define st+ (set-add st nm))
+          (define start-effs (hash-ref (hash-ref txn# nm) StartEvt))
+          (cond
+            [(set-empty? start-effs)
+             (loop st+ rest)]
+            [else
+             (for/set ([eff* (in-set start-effs)])
+               (loop st+ (append rest eff*)))])]
+         [(stop nm)
+          ;; better include nm
+          (define children (find-children ft nm st))
+          (define st-
+            (for/fold ([st st])
+                      ([c (in-list children)])
+              (set-remove st c)))
+          (for/fold ([sts (set st-)])
+                    ([f-name (in-list children)])
+            (define stop-effs (hash-ref (hash-ref txn# f-name) StopEvt))
+            (cond
+              [(set-empty? stop-effs)
+               (for*/set ([st (in-set sts)]
+                          [result (in-set (loop st rest))])
+                 result)]
+              [else
+               (for*/set ([st (in-set sts)]
+                          [effs* (in-set stop-effs)]
+                          [result (in-set (loop st (append rest effs*)))])
+                 result)]))])])))
+
+;; FacetTree FacetName (Setof FacetName) -> (List FacetName)
+;; return the facets in names that are children of the given facet nm, ordered
+;; by their distance (farthest children first etc.)
+(define (find-children ft nm names)
+  (define relations
+    (for*/list ([n (in-set names)]
+                [ans? (in-value (ancestor?/dist n nm ft))]
+                #:when ans?)
+      (list n ans?)))
+  (define farthest-to-nearest (sort relations > #:key second))
+  (map first farthest-to-nearest))
 
 ;; Role -> (Hashof FacetName TransitionDesc)
 ;; Extract a description of all roles mentioned in a Role
@@ -609,11 +686,21 @@
 (define (describe-role role)
   (match role
     [(Role nm eps)
-     (for/fold ([txns (hash)])
+     (for/fold ([txns txn-desc0])
                ([ep (in-list eps)]
                 #:when (Reacts? ep))
        (match-define (Reacts evt body) ep)
        (define effects (Body->effects body))
+       (when (equal? StopEvt evt)
+         ;; facets that start inside a stop handler will get shutdown.
+         (define effects+
+           (for/set ([effs* (in-set effects)])
+             (define extra-stops
+               (for/list ([eff (in-list effs*)]
+                        #:when (start? eff))
+                 (stop (start-nm eff))))
+             (append effs* extra-stops)))
+         (set! effects effects+))
        (cond
          [(or (set-empty? effects)
               (equal? effects (set '())))
@@ -642,14 +729,14 @@
     (define desc (describe-roles manager))
     (check-true (hash-has-key? desc 'account-manager))
     (check-equal? (hash-ref desc 'account-manager)
-                  (hash)))
+                  txn-desc0))
   (test-case
       "describe nested role"
     (define desc (describe-roles seller))
     (check-true (hash-has-key? desc 'seller))
     (check-true (hash-has-key? desc 'fulfill))
     (check-equal? (hash-ref desc 'fulfill)
-                  (hash))
+                  txn-desc0)
     (define seller-txns (hash-ref desc 'seller))
     (define quote-request
       (Observe (book-quote String ⋆)))
@@ -677,7 +764,7 @@
     (define desc (describe-roles leader-spec))
     (check-true (hash-has-key? desc 'announce))
     (check-equal? (hash-ref desc 'announce)
-                  (hash)))
+                  txn-desc0))
   (test-case
       "leader-spec transitions from {leader,poll} to {leader}"
     (define desc (describe-roles leader-spec))
@@ -1063,7 +1150,11 @@
       [(Know τ)
        (string-append "+" (τ->string τ))]
       [(¬Know τ)
-       (string-append "-" (τ->string τ))]))
+       (string-append "-" (τ->string τ))]
+      [(== StartEvt)
+       "Start"]
+      [(== StopEvt)
+       "Stop"]))
 
   ;;   - (U (Listof τ))
   ;;   - (Struct StructName (Listof τ ...))
@@ -1178,7 +1269,11 @@
     [(list 'Know t)
      (Know (parse-τ t))]
     [(list '¬Know t)
-     (¬Know (parse-τ t))]))
+     (¬Know (parse-τ t))]
+    ['OnStart
+     StartEvt]
+    ['OnStop
+     StopEvt]))
 
 ;; Sexp -> τ
 (define (parse-τ ty)
