@@ -46,24 +46,19 @@
 
 (begin-for-syntax
   (struct type-metadata (isec cons) #:transparent)
-  ;; (IdTable type-metadata)
-  (define TypeInfo# (make-free-id-table))
   ;; (MutableHashOf Symbol type-metadata)
-  (define TypeInfo#* (make-hash))
+  (define TypeInfo# (make-hash))
   ;; Identifier isect-desc TypeCons -> Void
   (define (set-type-info! ty-cons isec cons)
-    (free-id-table-set! TypeInfo#
-                        ty-cons
-                        (type-metadata isec cons)))
-  (define (set-type-info!* ty-cons isec cons)
-    (when (hash-has-key? TypeInfo#* ty-cons)
+    (when (hash-has-key? TypeInfo# ty-cons)
       ;; TODO
       #f)
-    (hash-set! TypeInfo#*
+    (hash-set! TypeInfo#
                ty-cons
                (type-metadata isec cons)))
   ;; Identifier -> Symbol
   ;; XYZ-.*
+  ;; based on the convention used by turnstile *shrug*
   (define (un- id)
     (define match?
       (regexp-match #px"^(\\S*)-\\S*$" (symbol->string (syntax-e id))))
@@ -71,9 +66,7 @@
 
   ;; Identifier -> (U #f type-metadata)
   (define (get-type-info ty-cons)
-    (free-id-table-ref TypeInfo# ty-cons #f))
-  (define (get-type-info* ty-cons)
-    (hash-ref TypeInfo#* (un- ty-cons) #f))
+    (hash-ref TypeInfo# (un- ty-cons) #f))
 
   ;; Identifier -> (U #f isec-desc)
   (define (get-type-isec-desc ty-cons)
@@ -82,14 +75,6 @@
   ;; Identifier -> (U #f TypeCons)
   (define (get-type-cons ty-cons)
     (define result? (get-type-info ty-cons))
-    (and result? (type-metadata-cons result?)))
-  ;; Identifier -> (U #f isec-desc)
-  (define (get-type-isec-desc* ty-cons)
-    (define result? (get-type-info* ty-cons))
-    (and result? (type-metadata-isec result?)))
-  ;; Identifier -> (U #f TypeCons)
-  (define (get-type-cons* ty-cons)
-    (define result? (get-type-info* ty-cons))
     (and result? (type-metadata-cons result?)))
 
   ;; a isect-desc describes how a type (constructor) behaves with respect to
@@ -128,13 +113,13 @@
   ;; Identifier -> Bool
   ;; check if the type has a syntax property allowing us to create new instances
   (define (reassemblable? t)
-    (and (get-type-cons* t) #t))
+    (and (get-type-cons t) #t))
 
   ;; Identifier (Listof Type) -> Type
   ;; Create a new instance of the type with the given arguments
   ;; needs to have the type-cons-key
   (define (reassemble-type ty args)
-    (define tycons (get-type-cons* ty))
+    (define tycons (get-type-cons ty))
     (unless tycons
       (error "expected to find type-cons-key"))
     (tycons args)))
@@ -165,8 +150,7 @@
               (syntax/loc stx
                 (Name- t (... ...)))]))
          (begin-for-syntax
-           #;(set-type-info! #'Name- '#,(attribute desc.val) #'mk-)
-           (set-type-info!* 'Name '#,(attribute desc.val) mk-)
+           (set-type-info! 'Name '#,(attribute desc.val) mk-)
            (define-syntax NamePat
              (pattern-expander
               (syntax-parser
@@ -667,7 +651,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-for-syntax (bot? t)
-  ((current-typecheck-relation) t (type-eval #'(U*))))
+  ((current-typecheck-relation) t (mk-U*- '())))
 
 (define-for-syntax (flat-type? τ)
   (syntax-parse τ
@@ -677,49 +661,44 @@
     [_ #t]))
 
 (define-for-syntax (strip-? t)
-  (type-eval
-   (syntax-parse t
-     [(~U* τ ...) #`(U #,@(stx-map strip-? #'(τ ...)))]
-     [~★/t #'★/t]
-     ;; since (Observe X) can match (Message X):
-     ;; doing this specifically for the intersection operation in the spawn rule, need to check other
-     ;; uses
-     [(~Observe τ) #'(U τ (Message τ))]
-     [_ #'(U*)])))
+  (syntax-parse t
+    [(~U* τ ...) (mk-U- (stx-map strip-? #'(τ ...)))]
+    [~★/t (type-eval #'★/t)]
+    ;; since (Observe X) can match (Message X):
+    ;; doing this specifically for the intersection operation in the spawn rule, need to check other
+    ;; uses
+    [(~Observe τ) (mk-U- (list #'τ (mk-Message- #'(τ))))]
+    [_ (mk-U*- '())]))
 
 ;; similar to strip- fns, but leave non-message types as they are
 (define-for-syntax (prune-message t)
-  (type-eval
-   (syntax-parse t
-     [(~U* τ ...) #`(U #,@(stx-map prune-message #'(τ ...)))]
-     [~★/t #'★/t]
-     [(~Message τ) #'τ]
-     [_ t])))
+  (syntax-parse t
+    [(~U* τ ...) (mk-U- (stx-map prune-message #'(τ ...)))]
+    [~★/t (type-eval #'★/t)]
+    [(~Message τ) #'τ]
+    [_ t]))
 
 (define-for-syntax (strip-inbound t)
-  (type-eval
-   (syntax-parse t
-     [(~U* τ ...) #`(U #,@(stx-map strip-inbound #'(τ ...)))]
-     [~★/t #'★/t]
-     [(~Inbound τ) #'τ]
-     [_ #'(U*)])))
+  (syntax-parse t
+    [(~U* τ ...) (mk-U- (stx-map strip-inbound #'(τ ...)))]
+    [~★/t (type-eval #'★/t)]
+    [(~Inbound τ) #'τ]
+    [_ (mk-U*- '())]))
 
 (define-for-syntax (strip-outbound t)
-  (type-eval
-   (syntax-parse t
-     [(~U* τ ...) #`(U #,@(stx-map strip-outbound #'(τ ...)))]
-     [~★/t #'★/t]
-     [(~Outbound τ) #'τ]
-     [_ #'(U*)])))
+  (syntax-parse t
+    [(~U* τ ...) (mk-U- (stx-map strip-outbound #'(τ ...)))]
+    [~★/t (type-eval #'★/t)]
+    [(~Outbound τ) #'τ]
+    [_ (mk-U*- '())]))
 
 (define-for-syntax (relay-interests t)
-  (type-eval
-   (syntax-parse t
-     ;; TODO: probably need to `normalize` the result
-     [(~U* τ ...) #`(U #,@(stx-map relay-interests #'(τ ...)))]
-     [~★/t #'★/t]
-     [(~Observe (~Inbound τ)) #'(Observe τ)]
-     [_ #'(U*)])))
+  (syntax-parse t
+    ;; TODO: probably need to `normalize` the result
+    [(~U* τ ...) (mk-U- (stx-map relay-interests #'(τ ...)))]
+    [~★/t (type-eval #'★/t)]
+    [(~Observe (~Inbound τ)) (mk-Observe- #'(τ))]
+    [_ (mk-U*- '())]))
 
 ;; (SyntaxOf RoleType ...) -> (Syntaxof InputType OutputType SpawnType)
 (define-for-syntax (analyze-roles rs)
@@ -730,9 +709,9 @@
               ([r (in-syntax rs)])
       (define-values (i o s) (analyze-role-input/output r))
       (values (cons i is) (cons o os) (cons s ss))))
-  #`(#,(type-eval #`(U #,@lis))
-     #,(type-eval #`(U #,@los))
-     #,(type-eval #`(U #,@lss))))
+  #`(#,(mk-U- lis)
+     #,(mk-U- los)
+     #,(mk-U- lss)))
 
 ;; Wanted test case, but can't use it bc it uses things defined for-syntax
 #;(module+ test
@@ -753,12 +732,14 @@
     [(~Actor τc)
      (values (mk-U*- '()) (mk-U*- '()) t)]
     [(~Sends τ-m)
-     (values (mk-U*- '()) (type-eval #'(Message τ-m)) (mk-U*- '()))]
+     (values (mk-U*- '()) (mk-Message- #'(τ-m)) (mk-U*- '()))]
     [(~Role (name:id)
        (~or (~Shares τ-s)
             (~Sends τ-m)
             (~Reacts τ-if τ-then ...)) ...
        (~and (~Role _ ...) sub-role) ...)
+     #:with (msg ...) (for/list ([m (in-syntax #'(τ-m ...))])
+                        (mk-Message- (list m)))
      (define-values (is os ss)
        (for/fold ([ins '()]
                   [outs '()]
@@ -767,9 +748,9 @@
          (define-values (i o s) (analyze-role-input/output t))
          (values (cons i ins) (cons o outs) (cons s spawns))))
      (define pat-types (stx-map event-desc-type #'(τ-if ...)))
-     (values (type-eval #`(U #,@is #,@pat-types))
-             (type-eval #`(U τ-s ... (Message τ-m) ... #,@os #,@(stx-map pattern-sub-type pat-types)))
-             (type-eval #`(U #,@ss)))]))
+     (values (mk-U- #`(#,@is #,@pat-types))
+             (mk-U- #`(τ-s ... msg ... #,@os #,@(stx-map pattern-sub-type pat-types)))
+             (mk-U- ss))]))
 
 ;; EventDescriptorType -> Type
 (define-for-syntax (event-desc-type desc)
@@ -777,20 +758,20 @@
     [(~Know τ) #'τ]
     [(~¬Know τ) #'τ]
     [(~Message τ) desc]
-    [_ (type-eval #'(U*))]))
+    [_ (mk-U*- '())]))
 
 ;; PatternType -> Type
 (define-for-syntax (pattern-sub-type pt)
   (syntax-parse pt
     [(~Message τ)
      (define t (replace-bind-and-discard-with-★ #'τ))
-     (type-eval #`(Observe #,t))]
+     (mk-Observe- (list t))]
     [τ
      #:when (bot? #'τ)
      #'τ]
     [τ
      (define t (replace-bind-and-discard-with-★ #'τ))
-     (type-eval #`(Observe #,t))]))
+     (mk-Observe- (list t))]))
 
 ;; TODO : can potentially use something like `subst` for this
 (define-for-syntax (replace-bind-and-discard-with-★ t)
@@ -929,15 +910,12 @@
     [(~★/t _)
      t2]
     [((~U* τ1:type ...) _)
-     (type-eval #`(U #,@(stx-map (lambda (t) (∩ t t2)) #'(τ1 ...))))]
+     (mk-U- (stx-map (lambda (t) (∩ t t2)) #'(τ1 ...)))]
     [(_ (~U* τ2:type ...))
-     (type-eval #`(U #,@(stx-map (lambda (t) (∩ t1 t)) #'(τ2 ...))))]
+     (mk-U- (stx-map (lambda (t) (∩ t1 t)) #'(τ2 ...)))]
     [(X:id Y:id)
      #:when (free-identifier=? #'X #'Y)
      #'X]
-    [((~AssertionSet τ1) (~AssertionSet τ2))
-     #:with τ12 (∩ #'τ1 #'τ2)
-     (type-eval #'(AssertionSet τ12))]
     ;; Also, using <: is OK, even though <: refers to ∩, because <:'s use of ∩ is only
     ;; in the Actor case.
     [((~Base τ1:id) (~Base τ2:id))
@@ -956,9 +934,9 @@
         (reassemble-type #'τ-cons1 slots)]
        [(== PRODUCT-LIKE)
         (if (ormap bot? slots)
-            (type-eval #'(U))
+            (mk-U*- '())
             (reassemble-type #'τ-cons1 slots))])]
-    [_ (type-eval #'(U))]))
+    [_ (mk-U*- '())]))
 
 ;; Type Type -> Bool
 ;; first type is the contents of the set/dataspace
@@ -1016,7 +994,7 @@
     [~Discard
      (type-eval #'★/t)]
     [(~U* τ ...)
-     (type-eval #`(U #,@(stx-map pattern-matching-assertions #'(τ ...))))]
+     (mk-U- (stx-map pattern-matching-assertions #'(τ ...)))]
     [(~Any/bvs τ-cons () τ ...)
      #:when (reassemblable? #'τ-cons)
      (define subitems (for/list ([t (in-syntax #'(τ ...))])
@@ -1568,14 +1546,3 @@
                      (stx-contains-id? #'ty X)))
        (stx-map (λ _ irrelevant) Xs)]
       [_ (stx-map (λ _ invariant) Xs)])))
-
-#;(begin-for-syntax
-  (define k (sixth (free-id-table-keys TypeInfo#)))
-  (define t
-    (syntax-parse (type-eval #'(Observe (Bind (Tuple))))
-      [(~Any/bvs cons () tt ...)
-       #'cons]))
-  (displayln k)
-  (displayln (hash-ref (syntax-debug-info k) 'bindings))
-  (displayln t)
-  (displayln (hash-ref (syntax-debug-info t) 'bindings)))

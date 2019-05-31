@@ -69,7 +69,7 @@
       (⇒ ν-ep (~effs eps1 ...)) (⇒ ν-f (~effs fs1 ...)) (⇒ ν-s (~effs ss1 ...))]
    [⊢ e2 ≫ e2- (⇒ : τ2)
       (⇒ ν-ep (~effs eps2 ...)) (⇒ ν-f (~effs fs2 ...)) (⇒ ν-s (~effs ss2 ...))]
-   #:with τ (type-eval #'(U τ1 τ2))
+   #:with τ (mk-U- #'(τ1 τ2))
    --------
    [⊢ (if- e_tst- e1- e2-) (⇒ : τ)
       (⇒ ν-ep (eps1 ... eps2 ...))
@@ -286,20 +286,18 @@
             #:when (stx-length=? #'(p ...) #'(tt ...))
             #t]
            [_ #f]))
-       (define selected
-         (syntax-parse ty
-           [tt
-            #:when (matching? ty)
-            #'tt]
-           [(~U* (~or (~and tt (~fail #:unless (matching? #'tt)))
-                      _) ...)
-            (mk-U- #'(tt ...))]))
        (define (proj t i)
          (syntax-parse t
            [(~Tuple tt ...)
-            (stx-list-ref #'(tt ...) i)]
-           [(~U* tt ...)
-            (mk-U- (stx-map (lambda (x) (proj x i)) #'(tt ...)))]))
+            (if (= i -1)
+                t
+                (stx-list-ref #'(tt ...) i))]
+           [(~U* (~or (~and tt (~fail #:unless (or (U*? #'tt) (matching? #'tt))))
+                      _) ...)
+            (mk-U- (stx-map (lambda (x) (proj x i)) #'(tt ...)))]
+           [_
+            (mk-U*- '())]))
+       (define selected (proj ty -1))
        (define sub-pats
          (for/list ([pat (in-syntax #'(p ...))]
                     [i (in-naturals)])
@@ -315,20 +313,18 @@
             #:when (stx-length=? #'(p ...) #'(tt ...))
             #t]
            [_ #f]))
-       (define selected
-         (syntax-parse ty
-           [tt
-            #:when (matching? ty)
-            #'tt]
-           [(~U* (~or (~and tt (~fail #:unless (matching? #'tt)))
-                      _) ...)
-            (mk-U- #'(tt ...))]))
        (define (proj t i)
          (syntax-parse t
            [(~constructor-type _ tt ...)
-            (stx-list-ref #'(tt ...) i)]
-           [(~U* tt ...)
-            (mk-U- (stx-map (lambda (x) (proj x i)) #'(tt ...)))]))
+            (if (= i -1)
+                t
+                (stx-list-ref #'(tt ...) i))]
+           [(~U* (~or (~and tt (~fail #:unless (or (U*? #'tt) (matching? #'tt))))
+                      _) ...)
+            (mk-U- (stx-map (lambda (x) (proj x i)) #'(tt ...)))]
+           [_
+            (mk-U*- '())]))
+       (define selected (proj ty -1))
        (define sub-pats
          (for/list ([pat (in-syntax #'(p ...))]
                     [i (in-naturals)])

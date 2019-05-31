@@ -159,7 +159,7 @@
 (define-typed-syntax (assert e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  #:with τs (type-eval #'(Shares τ))
+  #:with τs (mk-Shares- #'(τ))
   -------------------------------------
   [⊢ (syndicate:assert e-) (⇒ : ★/t)
                            (⇒ ν-ep (τs))])
@@ -167,10 +167,10 @@
 (define-typed-syntax (send! e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  #:with τm (type-eval #'(Sends τ))
+  #:with τm (mk-Sends- #'(τ))
   --------------------------------------
-  [⊢ (syndicate:send! e-) (⇒ : ★/t)
-                          (⇒ ν-f (τm))])
+  [⊢ (#%app- syndicate:send! e-) (⇒ : ★/t)
+                                 (⇒ ν-f (τm))])
 
 (define-typed-syntax (stop facet-name:id cont ...) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
@@ -234,7 +234,10 @@
   [(on (a/r/m:asserted/retracted/message p)
        priority:priority
        s ...) ≫
-   #:with p/e (elaborate-pattern/with-com-ty #'p)
+   #:do [(define msg? (free-identifier=? #'syndicate:message (attribute a/r/m.syndicate-kw)))
+         (define elab
+           (elaborate-pattern/with-com-ty (if msg? #'(message p) #'p)))]
+   #:with p/e (if msg? (stx-cadr elab) elab)
    [⊢ p/e ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
    #:with ([x:id τ:type] ...) (pat-bindings #'p/e)
@@ -281,13 +284,12 @@
   #:with (τ-i τ-o τ-a) (analyze-roles #'(τ-f ...))
   #:fail-unless (<: #'τ-o #'τ-c.norm)
                 (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o) (type->str #'τ-c.norm))
-  #:fail-unless (<: #'τ-a
-                    (type-eval #'(Actor τ-c.norm)))
+  #:with τ-final (mk-Actor- #'(τ-c.norm))
+  #:fail-unless (<: #'τ-a #'τ-final)
                 "Spawned actors not valid in dataspace"
   #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c.norm)
                                #'τ-i)
                 "Not prepared to handle all inputs"
-  #:with τ-final (type-eval #'(Actor τ-c.norm))
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ ν-s (τ-final))]]
@@ -303,7 +305,7 @@
     [
      [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs τ-s ...)) (⇒ ν-f (~effs))] ...
     ]
-  #:with τ-actor (type-eval #'(Actor τ-c.norm))
+  #:with τ-actor (mk-Actor- #'(τ-c.norm))
   #:fail-unless (stx-andmap (lambda (t) (<: t #'τ-actor)) #'(τ-s ... ...))
                 "Not all actors conform to communication type"
   #:with τ-ds-i (strip-inbound #'τ-c.norm)
@@ -387,7 +389,6 @@
                 (set! x e0-)
                 remove.expr))])
 
-;; TODO: #:on-add
 (define-typed-syntax (define/query-set x:id p e
                        (~optional add:on-add)
                        (~optional remove:on-remove)) ≫
@@ -439,32 +440,6 @@
   [⊢ x ≫ x- ⇒ (~Field τ)]
   ------------------------
   [⊢ (#%app- x-) (⇒ : τ)])
-
-;; it would be nice to abstract over these three
-;; TODO - make the constructors
-#;(define-typed-syntax (observe e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ)]
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  ---------------------------------------------------------------------------
-  [⊢ (syndicate:observe e-) (⇒ : (Observe τ))])
-
-#;(define-typed-syntax (inbound e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ)]
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  ---------------------------------------------------------------------------
-  [⊢ (syndicate:inbound e-) (⇒ : (Inbound τ))])
-
-#;(define-typed-syntax (outbound e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ)]
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
-  ---------------------------------------------------------------------------
-  [⊢ (syndicate:outbound e-) (⇒ : (Outbound τ))])
-
-#;(define-typed-syntax (message e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ)]
-  #:fail-unless (pure? #'e-) "expression must be pure"
-  ------------------------------
-  [⊢ (syndicate:message e-) (⇒ : (Message τ))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground Dataspace
