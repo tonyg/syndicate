@@ -45,11 +45,17 @@
 ;;   - (U (Listof τ))
 ;;   - (Struct StructName (Listof τ ...))
 ;;   - (Observe τ)
+;;   - (List τ)
+;;   - (Set τ)
+;;   - (Hash τ τ)
 ;;   - ⋆
 ;;   - (Base Symbol)
 (struct U (tys) #:transparent)
 (struct Struct (nm tys) #:transparent)
 (struct Observe (ty) #:transparent)
+(struct List (ty) #:transparent)
+(struct Set (ty) #:transparent)
+(struct Hash (ty-k ty-v) #:transparent)
 (struct Mk⋆ () #:transparent)
 ;; TODO this might be a problem when used as a match pattern
 (define ⋆ (Mk⋆))
@@ -870,6 +876,13 @@
           (<:? τ1 τ))]
        [(list (Observe τ11) (Observe τ22))
         (<:? τ11 τ22)]
+       [(list (List τ11) (List τ22))
+        (<:? τ11 τ22)]
+       [(list (Set τ11) (Set τ22))
+        (<:? τ11 τ22)]
+       [(list (Hash τk1 τv1) (Hash τk2 τv2))
+        (and (<:? τk1 τk2)
+             (<:? τv1 τv2))]
        [(list (Struct nm1 τs1) (Struct nm2 τs2))
         (and (equal? nm1 nm2)
              (= (length τs1) (length τs2))
@@ -887,6 +900,10 @@
      (<:? τ1 τ2)]
     [(list (¬Know τ1) (¬Know τ2))
      (<:? τ1 τ2)]
+    [(list (== StartEvt) (== StartEvt))
+     #t]
+    [(list (== StopEvt) (== StopEvt))
+     #t]
     [_
      #f]))
 
@@ -1164,24 +1181,29 @@
   ;;   - String
   ;; τ -> String
   (define (τ->string τ)
+    ;; (Listof String) -> String
+    (define (paren-join xs)
+      (string-join xs
+                   #:before-first "("
+                   #:after-last ")"))
     (match τ
       [(Base name)
        (symbol->string name)]
       [(== ⋆) "⋆"]
       [(Observe τ2)
        (string-append "?" (τ->string τ2))]
+      [(List τ2)
+       (τ->string (Struct 'List (list τ2)))]
+      [(Set τ2)
+       (τ->string (Struct 'Set (list τ2)))]
+      [(Hash τk τv)
+       (τ->string (Struct 'Hash (list τk τv)))]
       [(Struct nm τs)
-       (define slots (string-join (map τ->string τs) " "))
-       (string-append "("
-                      (~a nm)
-                      (if (empty? slots) "" " ")
-                      slots
-                      ")")]
+       (define slots (map τ->string τs))
+       (paren-join (cons (~a nm) slots))]
       [(U τs)
-       (define slots (string-join (map τ->string τs) " "))
-       (string-append "(U"
-                      slots
-                      ")")]))
+       (define slots (map τ->string τs))
+       (paren-join (cons "U" slots))]))
   )
 
 ;; ---------------------------------------------------------------------------
@@ -1280,6 +1302,12 @@
   (match ty
     [(list 'Observe t)
      (Observe (parse-τ t))]
+    [(list 'List t)
+     (List (parse-τ t))]
+    [(list 'Set t)
+     (Set (parse-τ t))]
+    [(list 'Hash t-k t-v)
+     (Hash (parse-τ t-k) (parse-τ t-v))]
     ['★/t
      ⋆]
     [(list (or 'U* 'U) t ...)
