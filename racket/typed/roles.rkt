@@ -53,7 +53,7 @@
          (all-from-out "maybe.rkt")
          (all-from-out "either.rkt")
          ;; DEBUG and utilities
-         print-type print-role
+         print-type print-role role-strings
          ;; Extensions
          match cond
          ;; require & provides
@@ -469,6 +469,14 @@
           (pretty-display (type->strX r)))]
   ----------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
+
+;; this is mainly for testing
+(define-typed-syntax (role-strings e) ≫
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν-f (~effs fs ...))]
+  #:with (s ...) (for/list ([r (in-syntax #'(fs ...))])
+                   (type->strX r))
+  ----------------------------------------
+  [⊢ (#%app- list- (#%datum- . s) ...) (⇒ : (List String))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
