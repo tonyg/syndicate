@@ -1211,37 +1211,78 @@
 
 (define job-manager-actual
   '(Role
-    (jm89)
+    (jm)
     (Shares (JobManagerAlive))
     (Reacts
-     (Know (Job (Bind Symbol) (Bind (List- InputTask))))
-     (Role (during-inner97)
-      (Reacts OnDataflow
-       (Role (perform114)
-        (Reacts OnStart
-                (Role (this-facet123)
-                  (Reacts OnDataflow
-                          (Branch
-                           (Effs (Branch (Effs
-                                          (Role (this-facet120)
-                                            (Shares (TaskAssignment ID Symbol ConcreteTask))
-                                            (Reacts (Know (TaskState ID Symbol Int (Bind (U* (Finished TaskResult) Symbol))))
-                                                    (Branch (Effs) (Effs)
-                                                            (Effs (Stop this-facet))
-                                                            ;; TODO - why is there a ρ here?
-                                                            (Effs (Stop perform ρ))))
-                                            (Reacts OnStart
-                                                    (Role (take-slot121)
-                                                          (Reacts (Know (TaskState ID Symbol Int Discard))
-                                                                  (Stop take-slot))))
-                                            (Reacts (¬Know (TaskManager ID Discard))
-                                                    (Stop this-facet))))
-                                         (Effs)))
-                           (Effs)))))
+     (Know
+      (Job
+       (Bind Symbol)
+       (Bind (List (Task Int (U (MapWork String) (ReduceWork Int Int)))))))
+     (Role
+      (during-inner)
+      (Reacts
+       OnDataflow
+       (Role
+        (perform)
+        (Reacts
+         OnStart
+         (Role
+          (this-facet)
+          (Reacts
+           OnDataflow
+           (Branch
+            (Effs
+             (Branch
+              (Effs
+               (Role
+                (this-facet)
+                (Shares
+                 (TaskAssignment
+                  Symbol
+                  Symbol
+                  (Task
+                   Int
+                   (U
+                    (MapWork String)
+                    (ReduceWork (Hash String Int) (Hash String Int))))))
+                (Reacts
+                 (Know
+                  (TaskState
+                   Symbol
+                   Symbol
+                   Int
+                   (Bind (U (Finished (Hash String Int)) Symbol))))
+                 (Branch
+                  (Effs)
+                  (Effs)
+                  (Effs (Stop this-facet))
+                  (Effs
+                   (Stop
+                    perform
+                    (Branch
+                     (Effs
+                      (Role
+                       (done)
+                       (Shares (JobFinished Symbol (Hash String Int)))))
+                     (Effs))))))
+                (Reacts
+                 OnStart
+                 (Role
+                  (take-slot)
+                  (Reacts
+                   (Know (TaskState Symbol Symbol Int Discard))
+                   (Stop take-slot))))
+                (Reacts (¬Know (TaskManager Symbol Discard)) (Stop this-facet))))
+              (Effs)))
+            (Effs)))))
         (Reacts OnStop)
         (Reacts OnStart)))
-      (Reacts (¬Know (Job Symbol (List- InputTask)))
-              (Stop during-inner))))
+      (Reacts
+       (¬Know
+        (Job
+         Symbol
+         (List (Task Int (U (MapWork String) (ReduceWork Int Int))))))
+       (Stop during-inner))))
     (Reacts (¬Know (TaskManager (Bind Symbol) (Bind Int))))
     (Reacts (Know (TaskManager (Bind Symbol) (Bind Int))))))
 
