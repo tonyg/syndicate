@@ -295,6 +295,13 @@
                             (Spawns))))
 
 (begin-for-syntax
+  (define-syntax ~Base
+    (pattern-expander
+     (syntax-parser
+       [(_ nm:id)
+        #'((~literal #%plain-app) nm)])))
+
+
   (define-syntax ~→fn
     (pattern-expander
      (syntax-parser
@@ -789,36 +796,44 @@
      (reassemble-type #'τ-cons subitems)]
     [_ t]))
 
-;; Copied and modified from turnstile
-;; try to handle type variables for Stop references and polymorphic effects
-;; better
+;; Type -> String
 (define-for-syntax (type->strX ty)
-  (define τ (get-orig ty))
-  (cond
-    [(and (row-variable? τ)
-          (stx-list? ty))
-     (string-join (stx-map type->strX ty)
-                  #:before-first "("
-                  #:after-last ")")]
-    [(identifier? τ)
-     (symbol->string (syntax->datum τ))]
-    [(stx-list? τ) (string-join (stx-map type->strX τ)
-                                #:before-first "("
-                                #:after-last ")")]
-    [else (format "~s" (syntax->datum τ))]))
+  ;; Identifier -> String
+  ;; this won't work for any names with numbers in them :\
+  (define (un-gensym x)
+    (define GENSYMED #px"^(\\D*)\\d*$")
+    (second (regexp-match GENSYMED (symbol->string (syntax-e x)))))
+  ;; (Listof String) -> String
+  (define (paren-join xs)
+    (string-join xs
+                 #:before-first "("
+                 #:after-last ")"))
+  (syntax-parse ty
+    [X:id
+     (un-gensym #'X)]
+    [(~U* τ ...)
+     (paren-join (cons "U" (stx-map type->strX #'(τ ...))))]
+    [(~Base x)
+     (un-gensym #'x)]
+    [(~Any/bvs τ-cons (X ...) τ ...)
+     (define ctor (un-gensym #'τ-cons))
+     (define body (stx-map type->strX #'(τ ...)))
+     (define desc
+       (cond
+         [(empty? (syntax->list #'(X ...)))
+          (list* ctor body)]
+         [else
+          (define vars
+            (paren-join (stx-map type->strX #'(X ...))))
+          (list* ctor vars body)]))
+     (paren-join desc)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subtyping and Judgments on Types
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (begin-for-syntax
- (define-syntax ~Base
-   (pattern-expander
-    (syntax-parser
-      [(_ nm:id)
-       #'((~literal #%plain-app) nm)])))
-
- (define trace-sub? (make-parameter #f))
+  (define trace-sub? (make-parameter #f))
 
  ;; Type Type -> Bool
  ;; subtyping
