@@ -36,10 +36,12 @@
 ;;   - (¬Know τ), reaction to retraction
 ;;   - StartEvt, reaction to facet startup
 ;;   - StopEvt, reaction to facet shutdown
+;;   - DataflowEvt, reaction to field updates
 (struct Know (ty) #:transparent)
 (struct ¬Know (ty) #:transparent)
 (define StartEvt 'Start)
 (define StopEvt 'Stop)
+(define DataflowEvt 'Dataflow)
 
 ;; a τ is one of
 ;;   - (U (Listof τ))
@@ -324,7 +326,14 @@
 ;; D -> Bool
 ;; test if D corresponds to an external event (assertion, message)
 (define (external-evt? D)
-  (or (Know? D) (¬Know? D)))
+  (match D
+    [(or (Know _)
+         (¬Know _))
+     #t]
+    [(== DataflowEvt)
+     #t]
+    [_
+     #f]))
 
 (module+ test
   (test-case
@@ -608,7 +617,6 @@
 ;; determine the state resulting from some effects, given the currently active
 ;; facets and a description of possible facet locations and behavior.
 (define (apply-effects effs st ft txn#)
-  #;(printf "apply-effects: ~a\n" effs)
   (let loop ([st st]
              [effs effs])
     (match effs
@@ -623,8 +631,9 @@
             [(set-empty? start-effs)
              (loop st+ rest)]
             [else
-             (for/set ([eff* (in-set start-effs)])
-               (loop st+ (append rest eff*)))])]
+             (for*/set ([eff* (in-set start-effs)]
+                        [result (in-set (loop st+ (append rest eff*)))])
+               result)])]
          [(stop nm)
           ;; better include nm
           (define children (find-children ft nm st))
@@ -896,6 +905,10 @@
 ;; subtyping lifted over event descriptions
 (define (D<:? D1 D2)
   (match (list D1 D2)
+    [(list _ (== DataflowEvt))
+     ;; TODO - sketchy, intuition "dataflow can happen at any time", though it
+     ;; might actually take the place of multiple transitions
+     #t]
     [(list (Know τ1) (Know τ2))
      (<:? τ1 τ2)]
     [(list (¬Know τ1) (¬Know τ2))
@@ -911,17 +924,33 @@
 ;; Compute the set of assertions the role contributes (on its own, not
 ;; considering parent assertions)
 (define (role-assertions r)
-  (for/set ([ep (in-list (Role-eps r))])
-    (match ep
-      [(Shares τ)
-       τ]
-      [(Reacts evt _)
-       ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
-       (match evt
-         [(Know τ)
-          (Observe τ)]
-         [(¬Know τ)
-          (Observe τ)])])))
+  (for*/set ([ep (in-list (Role-eps r))]
+             [τ? (in-value (EP-assertion ep))]
+             #:when τ?)
+    τ?))
+
+;; EP -> (U #f τ)
+;; the type of assertion and endpoint contributes, otherwise #f for
+;; dataflow/start/stop
+(define (EP-assertion EP)
+  (match EP
+    [(Shares τ)
+     τ]
+    [(Reacts D _)
+     (match D
+       [(or (Know τ)
+            (¬Know τ))
+        ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
+        (Observe τ)]
+       [_
+        #f])]))
+
+(module+ test
+  ;; make sure the or pattern above works the way I think it does
+  (check-equal? (EP-assertion (Reacts (Know Int) #f))
+                (Observe Int))
+  (check-equal? (EP-assertion (Reacts (¬Know String) #f))
+                (Observe String)))
 
 ;; an Equation is (equiv StateName StateName)
 ;;
@@ -939,34 +968,51 @@
 ;; matched with an element b of bs, where each b has at least one state
 ;; matched with it.
 (define (make-combinations as bs)
-  (define combos (make-combinations* as bs))
-  (define (all-bs? combo)
+  (define (all-as? xs)
+    (for/and ([a (in-set as)])
+      (for/or ([x (in-list xs)])
+        (match-define (equiv xa _) x)
+        (equal? a xa))))
+  (define (all-bs? xs)
     (for/and ([b (in-set bs)])
-      (for/or ([eqn (in-set combo)])
-        (match-define (equiv _ bb) eqn)
-        (equal? b bb))))
-  (for/set ([combo (in-set combos)]
-            #:when (all-bs? combo))
-    combo))
-
-;; (Setof StateName) (Setof StateName) -> (Setof (Setof Equation))
-;; Like make-combinations, but don't enforce that each b occurs at
-;; least once in each combination
-(define (make-combinations* as bs)
-  (cond
-    [(= (set-count as) 1)
-     (for*/set ([a (in-value (set-first as))]
+      (for/or ([x (in-list xs)])
+        (match-define (equiv _ xb) x)
+        (equal? b xb))))
+  (define all-matches
+    (for*/list ([a (in-set as)]
                 [b (in-set bs)])
-       (set (equiv a b)))]
-     [else
-      (for*/fold ([agg (set)])
-                 ([a (in-set as)]
-                  [b (in-set bs)])
-        (define combos (make-combinations* (set-remove as a) bs))
-        (define combos+
-          (for/set ([c (in-set combos)])
-            (set-add c (equiv a b))))
-        (set-union agg combos+))]))
+      (equiv a b)))
+  (define combo-size (max (set-count as) (set-count bs)))
+  (for/set ([l-o-m (in-combinations all-matches combo-size)]
+            #:when (all-as? l-o-m)
+            #:when (all-bs? l-o-m))
+    (list->set l-o-m)))
+
+(module+ test
+  (test-case
+      "potential combinations bug"
+    ;; confirmed bug
+    (define dests1 (set (set 'A)))
+    (define dests2 (set (set 'B) (set 'C)))
+    (check-equal? (make-combinations dests1 dests2)
+                  (set (set (equiv (set 'A) (set 'B))
+                            (equiv (set 'A) (set 'C))))))
+  (test-case
+      "potential combinations bug"
+    (define dests1 (set (set 'B) (set 'C)))
+    (define dests2 (set (set 'A)))
+    (check-equal? (make-combinations dests1 dests2)
+                  (set (set (equiv (set 'B) (set 'A))
+                            (equiv (set 'C) (set 'A))))))
+  (test-case
+      "another combinations bug"
+    ;; returning matches with 3 elements
+    (define dests1 (set (set 'A) (set 'L)))
+    (define dests2  (set (set 'A) (set 'L)))
+    (check-equal? (make-combinations dests1 dests2)
+                  (set
+                   (set (equiv (set 'L) (set 'A)) (equiv (set 'A) (set 'L)))
+                   (set (equiv (set 'L) (set 'L)) (equiv (set 'A) (set 'A)))))))
 
 ;; Role Role -> Bool
 ;; determine if the first role acts suitably like the second role.
@@ -976,39 +1022,25 @@
 (define (simulates? role1 role2)
   (match-define (role-graph st0-1 st#1) (compile role1))
   (match-define (role-graph st0-2 st#2) (compile role2))
-  (define ft1 (make-facet-tree role1))
-  (define ft2 (make-facet-tree role2))
-  (define all-roles1 (enumerate-roles role1))
-  (define all-roles2 (enumerate-roles role2))
-  (define assertion#1
-    (for/hash ([role (in-list all-roles1)])
-      (values (Role-nm role)
-              (role-assertions role))))
-  (define assertion#2
-    (for/hash ([role (in-list all-roles2)])
-      (values (Role-nm role)
-              (role-assertions role))))
-  (define state-assertions1
-    (for/hash ([sn (in-hash-keys st#1)])
-      (values sn
-              (for/fold ([assertions (set)])
-                        ([facet-name (in-set sn)])
-                (set-union assertions (hash-ref assertion#1 facet-name (set)))))))
-  (define state-assertions2
-    (for/hash ([sn (in-hash-keys st#2)])
-      (values sn
-              (for/fold ([assertions (set)])
-                        ([facet-name (in-set sn)])
-                (set-union assertions (hash-ref assertion#2 facet-name (set)))))))
+  (define assertion#1 (all-states-assertions (in-hash-keys st#1) role1))
+  (define assertion#2 (all-states-assertions (in-hash-keys st#2) role2))
   ;; Goal (Setof Equation) -> Bool
+  (define not-equiv (mutable-set))
   (define (verify goal assumptions)
-    (let/ec return
+    (let/ec esc
+      (define (return ans)
+        (when (and (equiv? goal)
+                   (not ans))
+          (set-add! not-equiv goal))
+        (esc ans))
       (match goal
         [(equiv sn1 sn2)
          (when (set-member? assumptions goal)
            (return #t))
-         (define assertions1 (hash-ref state-assertions1 sn1))
-         (define assertions2 (hash-ref state-assertions2 sn2))
+         (when (set-member? not-equiv goal)
+           (esc #f))
+         (define assertions1 (hash-ref assertion#1 sn1))
+         (define assertions2 (hash-ref assertion#2 sn2))
          (define superset?
            (for/and ([assertion2 (in-set assertions2)])
              (for/or ([assertion1 (in-set assertions1)])
@@ -1020,13 +1052,18 @@
          (define evts1 (hash-keys transitions1))
          (define evts2 (hash-keys transitions2))
          (define same-on-specified-events?
-           (for/and ([(D dests2) (in-hash transitions2)])
+           (for/and ([(D2 dests2) (in-hash transitions2)])
              (define dests1
                (for/fold ([agg (set)])
                          ([(D1 dests) (in-hash transitions1)]
-                          #:when (D<:? D D1))
+                          #:when (D<:? D2 D1)
+                          ;; only consider dataflow events vs. non-dataflow when
+                          ;; there is not a dataflow edge in the spec (HACK)
+                          #:unless (and (equal? D1 DataflowEvt)
+                                        (not (equal? D2 DataflowEvt))
+                                        (hash-has-key? transitions2 D1)))
                  (set-union agg dests)))
-             (unless dests1
+             (when (set-empty? dests1)
                (return #f))
              (define combos (make-combinations dests1 dests2))
              (verify (one-of combos) (set-add assumptions goal))))
@@ -1042,13 +1079,31 @@
                       [dest (in-set (hash-ref transitions1 evt))])
              (verify (equiv dest sn2)
                      (set-add assumptions goal))))
-         same-on-extra-evts?]
+         (return same-on-extra-evts?)]
         [(one-of matchings)
          (for/or ([matching (in-set matchings)])
            (for/and ([goal (in-set matching)])
              (define hypotheses (set-remove matching goal))
              (verify goal (set-union hypotheses assumptions))))])))
-  (verify (equiv st0-1 st0-2) (set)))
+    (verify (equiv st0-1 st0-2) (set)))
+
+;; (Sequenceof StateName) Role -> (Hashof StateName (Setof τ))
+;; map each state name to its active assertions
+(define (all-states-assertions state-seq role)
+  (define all-roles (enumerate-roles role))
+  (define assertion# (all-roles-assertions all-roles))
+  (for/hash ([sn state-seq])
+    (values sn
+            (for/fold ([assertions (set)])
+                      ([facet-name (in-set sn)])
+              (set-union assertions (hash-ref assertion# facet-name (set)))))))
+
+;; (List Role) -> (Hashof RoleName (Setof τ))
+;; map each role's name to the assertions it contributes
+(define (all-roles-assertions roles)
+  (for/hash ([role (in-list roles)])
+    (values (Role-nm role)
+            (role-assertions role))))
 
 (module+ test
   (test-case
@@ -1171,14 +1226,10 @@
       [(== StartEvt)
        "Start"]
       [(== StopEvt)
-       "Stop"]))
+       "Stop"]
+      [(== DataflowEvt)
+       "Dataflow"]))
 
-  ;;   - (U (Listof τ))
-  ;;   - (Struct StructName (Listof τ ...))
-  ;;   - (Observe τ)
-  ;;   - ⋆
-  ;;   - Int
-  ;;   - String
   ;; τ -> String
   (define (τ->string τ)
     ;; (Listof String) -> String
@@ -1205,86 +1256,6 @@
        (define slots (map τ->string τs))
        (paren-join (cons "U" slots))]))
   )
-
-;; ---------------------------------------------------------------------------
-;; Flink Examples
-
-(define job-manager-actual
-  '(Role
-    (jm)
-    (Shares (JobManagerAlive))
-    (Reacts
-     (Know
-      (Job
-       (Bind Symbol)
-       (Bind (List (Task Int (U (MapWork String) (ReduceWork Int Int)))))))
-     (Role
-      (during-inner)
-      (Reacts
-       OnDataflow
-       (Role
-        (perform)
-        (Reacts
-         OnStart
-         (Role
-          (this-facet)
-          (Reacts
-           OnDataflow
-           (Branch
-            (Effs
-             (Branch
-              (Effs
-               (Role
-                (this-facet)
-                (Shares
-                 (TaskAssignment
-                  Symbol
-                  Symbol
-                  (Task
-                   Int
-                   (U
-                    (MapWork String)
-                    (ReduceWork (Hash String Int) (Hash String Int))))))
-                (Reacts
-                 (Know
-                  (TaskState
-                   Symbol
-                   Symbol
-                   Int
-                   (Bind (U (Finished (Hash String Int)) Symbol))))
-                 (Branch
-                  (Effs)
-                  (Effs)
-                  (Effs (Stop this-facet))
-                  (Effs
-                   (Stop
-                    perform
-                    (Branch
-                     (Effs
-                      (Role
-                       (done)
-                       (Shares (JobFinished Symbol (Hash String Int)))))
-                     (Effs))))))
-                (Reacts
-                 OnStart
-                 (Role
-                  (take-slot)
-                  (Reacts
-                   (Know (TaskState Symbol Symbol Int Discard))
-                   (Stop take-slot))))
-                (Reacts (¬Know (TaskManager Symbol Discard)) (Stop this-facet))))
-              (Effs)))
-            (Effs)))))
-        (Reacts OnStop)
-        (Reacts OnStart)))
-      (Reacts
-       (¬Know
-        (Job
-         Symbol
-         (List (Task Int (U (MapWork String) (ReduceWork Int Int))))))
-       (Stop during-inner))))
-    (Reacts (¬Know (TaskManager (Bind Symbol) (Bind Int))))
-    (Reacts (Know (TaskManager (Bind Symbol) (Bind Int))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Converting types from the turnstile implementation
@@ -1336,7 +1307,9 @@
     ['OnStart
      StartEvt]
     ['OnStop
-     StopEvt]))
+     StopEvt]
+    ['OnDataflow
+     DataflowEvt]))
 
 ;; Sexp -> τ
 (define (parse-τ ty)
@@ -1355,7 +1328,8 @@
      (U (map parse-τ t))]
     [(list 'Bind t)
      ;; TODO : questionable
-     (parse-τ t)]
+     ⋆
+     #;(parse-τ t)]
     ['Discard
      ⋆]
     [(list struct-name tys ...)
@@ -1375,20 +1349,18 @@
     (check-true (Stop? (parse-T '(Stop poll-members
                                        (Branch (Effs (Stop get-quotes)) (Effs)))))))
   (test-case
-      "parsed types are the same as my manual conversions"
-    (check-true (simulates? (parse-T real-seller-ty) seller-actual))
-    (check-true (simulates? seller-actual (parse-T real-seller-ty)))
+      "parsed types are (not) the same as my manual conversions"
+    ;; because I parse (Bind τ) as ⋆, whereas my manual conversions use τ
+    (check-false (simulates? (parse-T real-seller-ty) seller-actual))
+    (check-false (simulates? seller-actual (parse-T real-seller-ty)))
 
-    (check-true (simulates? (parse-T real-member-ty) member-actual))
-    (check-true (simulates? member-actual (parse-T real-member-ty)))
+    (check-false (simulates? (parse-T real-member-ty) member-actual))
+    (check-false (simulates? member-actual (parse-T real-member-ty)))
 
-    (check-true (simulates? (parse-T real-leader-ty) leader-actual))
-    ;; interestingly, this doesn't work because leader-actual is less precise
-    ;; than real-leader-ty (I don't remember how leader-actual lost that
-    ;; precision)
-    #;(check-true (simulates? leader-actual (parse-T real-leader-ty)))
-    (check-true (simulates? (parse-T real-leader-ty) leader-revised))
-    (check-true (simulates? leader-revised (parse-T real-leader-ty)))))
+    (check-false (simulates? (parse-T real-leader-ty) leader-actual))
+    (check-false (simulates? leader-actual (parse-T real-leader-ty)))
+    (check-false (simulates? (parse-T real-leader-ty) leader-revised))
+    (check-false (simulates? leader-revised (parse-T real-leader-ty)))))
 
 (define real-seller-ty
   '(Role
@@ -1440,3 +1412,92 @@
         (Reacts (Know (BookInterestT String (Bind String) Bool)))))))
     (Reacts (¬Know (ClubMemberT (Bind String))))
     (Reacts (Know (ClubMemberT (Bind String))))))
+
+;; ---------------------------------------------------------------------------
+;; Flink Examples
+
+(define job-manager-actual
+  '(Role
+ (jm)
+ (Shares (JobManagerAlive))
+ (Reacts
+  (Know
+   (Job
+    (Bind Symbol)
+    (Bind (List (Task Int (U (MapWork String) (ReduceWork Int Int)))))))
+  (Role
+   (during-inner)
+   (Reacts
+    OnDataflow
+    (Role
+     (perform)
+     (Reacts
+      OnStart
+      (Role
+       (select)
+       (Reacts
+        OnDataflow
+        (Branch
+         (Effs
+          (Branch
+           (Effs
+            (Role
+             (assign)
+             (Shares
+              (TaskAssignment
+               Symbol
+               Symbol
+               (Task
+                Int
+                (U
+                 (MapWork String)
+                 (ReduceWork (Hash String Int) (Hash String Int))))))
+             (Reacts
+              (Know
+               (TaskState
+                Symbol
+                Symbol
+                Int
+                (Bind (U (Finished (Hash String Int)) Symbol))))
+              (Branch
+               (Effs)
+               (Effs)
+               (Effs (Stop assign))
+               (Effs
+                (Stop
+                 perform
+                 (Branch
+                  (Effs
+                   (Role
+                    (done)
+                    (Shares (JobFinished Symbol (Hash String Int)))))
+                  (Effs))))))
+             (Reacts
+              OnStart
+              (Role
+               (take-slot)
+               (Reacts
+                (Know (TaskState Symbol Symbol Int Discard))
+                (Stop take-slot))))
+             (Reacts (¬Know (TaskManager Symbol Discard)) (Stop assign))))
+           (Effs)))
+         (Effs)))))
+     (Reacts OnStop)
+     (Reacts OnStart)))
+   (Reacts
+    (¬Know
+     (Job
+      Symbol
+      (List (Task Int (U (MapWork String) (ReduceWork Int Int))))))
+    (Stop during-inner))))
+ (Reacts (¬Know (TaskManager (Bind Symbol) (Bind Int))))
+ (Reacts (Know (TaskManager (Bind Symbol) (Bind Int))))))
+
+(module+ test
+  (test-case
+      "job manager reads and compiles"
+    (define jmr (parse-T job-manager-actual))
+    (check-true (Role? jmr))
+    (define jm (compile jmr))
+    (check-true (role-graph? jm))
+    (check-true (simulates? jmr jmr))))
