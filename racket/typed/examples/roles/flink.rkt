@@ -112,6 +112,19 @@ JobManager and the TaskManager, and one between the TaskManager and its
 TaskRunners.
 |#
 
+(define-type-alias TaskAssigner
+  (Role (assign)
+    (Shares (TaskAssignment ID ID ConcreteTask))
+    ;; would be nice to say how the IDs relate to each other (first two are the same)
+    (Reacts (Know (TaskState ID ID ID ★/t))
+            (Branch (Stop assign)
+                    (Effs)))))
+
+(define-type-alias TaskPerformer
+  (Role (listen)
+    (During (TaskAssignment ID ID ConcreteTask)
+      (Shares (TaskState ID ID TaskID TaskStateDesc)))))
+
 #|
 Job Submission Protocol
 -----------------------
@@ -389,11 +402,11 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
 
          ;; ID -> ...
          (define (assign-task [mngr : ID])
-           (start-facet this-facet
+           (start-facet assign
             (assert (task-assignment mngr job-id t))
             (on (retracted (task-manager mngr discard))
                 ;; our task manager has crashed
-                (stop this-facet
+                (stop assign
                       (set! task-mngr not-a-real-task-manager)))
             (on start
                 ;; N.B. when this line was here, and not after `(when mngr ...)` above,
@@ -413,14 +426,14 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
                    ;; don't think we need a release-slot! here, because if we've heard back from a task manager,
                    ;; they should have told us a different slot count since we tried to give them work
                    (log "JM overloaded manager ~a with task ~a" mngr this-id)
-                   (stop this-facet
+                   (stop assign
                          (set! task-mngr not-a-real-task-manager))]
                   [(finished $results)
                    (log "JM receives the results of task ~a" this-id)
                    (stop perform (k this-id results))]))))
 
            (define (select-a-task-manager)
-             (start-facet this-facet
+             (start-facet select
               (begin/dataflow
                 (when (equal? (ref task-mngr) not-a-real-task-manager)
                   (define mngr?
