@@ -18,7 +18,7 @@
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
          when unless send! define
          ;; Derived Forms
-         during
+         during During
          define/query-value
          define/query-set
          define/query-hash
@@ -337,6 +337,14 @@
                (stop during-inner))
            s ...))])
 
+(define-simple-macro (During τ:type EP ...)
+  #:with τ/inst (instantiate-pattern-type #'τ.norm)
+  (Reacts (Know τ)
+          (Role (during-inner)
+                (Reacts (¬Know τ/inst)
+                        (Stop during-inner))
+                EP ...)))
+
 ;; TODO - reconcile this with `compile-pattern`
 (define-for-syntax (instantiate-pattern pat)
   (let loop ([pat pat])
@@ -356,6 +364,23 @@
        #`(ctor #,@(stx-map loop #'(p ...)))]
       [_
        pat])))
+
+;; Type -> Type
+;; replace occurrences of (Bind τ) with τ in a type, in much the same way
+;; instantiate-pattern does for patterns
+;; TODO - this is almost exactly the same as replace-bind-and-discard-with-★
+(define-for-syntax (instantiate-pattern-type ty)
+  (syntax-parse ty
+    [(~Bind τ)
+     #'τ]
+    [(~U* τ ...)
+     (mk-U- (stx-map instantiate-pattern-type #'(τ ...)))]
+    [(~Any/bvs τ-cons () τ ...)
+     #:when (reassemblable? #'τ-cons)
+     (define subitems (for/list ([t (in-syntax #'(τ ...))])
+                        (instantiate-pattern-type t)))
+     (reassemble-type #'τ-cons subitems)]
+    [_ ty]))
 
 (begin-for-syntax
   (define-splicing-syntax-class on-add
@@ -459,7 +484,7 @@
 
 (define-typed-syntax (print-type e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
-  #:do [(pretty-display (type->str #'τ))]
+  #:do [(pretty-display (type->strX #'τ))]
   ----------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
 
