@@ -1041,11 +1041,7 @@
            (esc #f))
          (define assertions1 (hash-ref assertion#1 sn1))
          (define assertions2 (hash-ref assertion#2 sn2))
-         (define superset?
-           (for/and ([assertion2 (in-set assertions2)])
-             (for/or ([assertion1 (in-set assertions1)])
-               (<:? assertion1 assertion2))))
-         (unless superset?
+         (unless (assertion-superset? assertions1 assertions2)
            (return #f))
          (define transitions1 (state-transitions (hash-ref st#1 sn1)))
          (define transitions2 (state-transitions (hash-ref st#2 sn2)))
@@ -1085,7 +1081,7 @@
            (for/and ([goal (in-set matching)])
              (define hypotheses (set-remove matching goal))
              (verify goal (set-union hypotheses assumptions))))])))
-    (verify (equiv st0-1 st0-2) (set)))
+  (verify (equiv st0-1 st0-2) (set)))
 
 ;; (Sequenceof StateName) Role -> (Hashof StateName (Setof τ))
 ;; map each state name to its active assertions
@@ -1104,6 +1100,13 @@
   (for/hash ([role (in-list roles)])
     (values (Role-nm role)
             (role-assertions role))))
+
+;; (Setof τ) (Setof τ) -> Bool
+;; is as1 a superset of as2?
+(define (assertion-superset? as1 as2)
+  (for/and ([assertion2 (in-set as2)])
+    (for/or ([assertion1 (in-set as1)])
+      (<:? assertion2 assertion1))))
 
 (module+ test
   (test-case
@@ -1350,16 +1353,18 @@
                                        (Branch (Effs (Stop get-quotes)) (Effs)))))))
   (test-case
       "parsed types are (not) the same as my manual conversions"
-    ;; because I parse (Bind τ) as ⋆, whereas my manual conversions use τ
-    (check-false (simulates? (parse-T real-seller-ty) seller-actual))
+    ;; because I parse (Bind τ) as ⋆, whereas my manual conversions use τ thus
+    ;; the "real" types are more specialized and implement the manual
+    ;; conversions, but not vice versa
+    (check-true (simulates? (parse-T real-seller-ty) seller-actual))
     (check-false (simulates? seller-actual (parse-T real-seller-ty)))
 
-    (check-false (simulates? (parse-T real-member-ty) member-actual))
+    (check-true (simulates? (parse-T real-member-ty) member-actual))
     (check-false (simulates? member-actual (parse-T real-member-ty)))
 
-    (check-false (simulates? (parse-T real-leader-ty) leader-actual))
+    (check-true (simulates? (parse-T real-leader-ty) leader-actual))
     (check-false (simulates? leader-actual (parse-T real-leader-ty)))
-    (check-false (simulates? (parse-T real-leader-ty) leader-revised))
+    (check-true (simulates? (parse-T real-leader-ty) leader-revised))
     (check-false (simulates? leader-revised (parse-T real-leader-ty)))))
 
 (define real-seller-ty
@@ -1501,3 +1506,80 @@
     (define jm (compile jmr))
     (check-true (role-graph? jm))
     (check-true (simulates? jmr jmr))))
+
+(define task-performer-spec
+  '(Role
+    (listen)
+    (Reacts
+     (Know
+      (TaskAssignment
+       Symbol
+       Symbol
+       (Task
+        Int
+        (U
+         (MapWork String)
+         (ReduceWork (Hash String Int) (Hash String Int))))))
+     (Role
+      (during-inner)
+      (Reacts
+       (¬Know
+        (TaskAssignment
+         Symbol
+         Symbol
+         (Task
+          Int
+          (U
+           (MapWork String)
+           (ReduceWork (Hash String Int) (Hash String Int))))))
+       (Stop during-inner))
+      (Shares
+       (TaskState
+        Symbol
+        Symbol
+        Int
+        (U (Finished (Hash String Int)) Symbol)))))))
+
+(module+ test
+  (test-case "parse and compile task-performer-spec"
+    (check-true (Role? (parse-T task-performer-spec)))
+    (check-true (role-graph? (compile (parse-T task-performer-spec))))))
+
+(define task-runner-ty
+  '(Role
+    (runner)
+    (Shares (TaskRunner Symbol (U (Executing Int) Symbol)))
+    (Reacts
+     (Know
+      (TaskAssignment
+       Symbol
+       (Bind Symbol)
+       (Task
+        (Bind Int)
+        (Bind
+         (U
+          (MapWork String)
+          (ReduceWork (Hash String Int) (Hash String Int)))))))
+     (Role
+      (during-inner)
+      (Shares
+       (TaskState Symbol Symbol Int (U (Finished (Hash String Int)) Symbol)))
+      (Reacts
+       (¬Know
+        (TaskAssignment
+         Symbol
+         Symbol
+         (Task
+          Int
+          (U
+           (MapWork String)
+           (ReduceWork (Hash String Int) (Hash String Int))))))
+       (Stop during-inner))))
+    (Reacts OnDataflow)))
+
+(module+ test
+  (test-case "parse and compile task-runner-ty"
+    (check-true (Role? (parse-T task-runner-ty)))
+    (check-true (role-graph? (compile (parse-T task-runner-ty))))
+    (check-true (simulates? (parse-T task-runner-ty)
+                            (parse-T task-performer-spec)))))
