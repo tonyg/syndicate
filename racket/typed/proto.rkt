@@ -1045,37 +1045,16 @@
            (return #f))
          (define transitions1 (state-transitions (hash-ref st#1 sn1)))
          (define transitions2 (state-transitions (hash-ref st#2 sn2)))
-         (define evts1 (hash-keys transitions1))
-         (define evts2 (hash-keys transitions2))
-         (define same-on-specified-events?
-           (for/and ([(D2 dests2) (in-hash transitions2)])
-             (define dests1
-               (for/fold ([agg (set)])
-                         ([(D1 dests) (in-hash transitions1)]
-                          #:when (D<:? D2 D1)
-                          ;; only consider dataflow events vs. non-dataflow when
-                          ;; there is not a dataflow edge in the spec (HACK)
-                          #:unless (and (equal? D1 DataflowEvt)
-                                        (not (equal? D2 DataflowEvt))
-                                        (hash-has-key? transitions2 D1)))
-                 (set-union agg dests)))
-             (when (set-empty? dests1)
-               (return #f))
-             (define combos (make-combinations dests1 dests2))
-             (verify (one-of combos) (set-add assumptions goal))))
-         (unless same-on-specified-events?
+         (define (verify/with-current-assumed g)
+           (verify g (set-add assumptions goal)))
+         (unless (same-on-specified-events? transitions1
+                                            transitions2
+                                            verify/with-current-assumed)
            (return #f))
-         (define extra-evts
-           (for/set ([evt1 (in-list evts1)]
-                     #:unless (for/or ([evt2 (in-list evts2)])
-                                (D<:? evt2 evt1)))
-             evt1))
-         (define same-on-extra-evts?
-           (for*/and ([evt (in-set extra-evts)]
-                      [dest (in-set (hash-ref transitions1 evt))])
-             (verify (equiv dest sn2)
-                     (set-add assumptions goal))))
-         (return same-on-extra-evts?)]
+         (return (same-on-extra-events? transitions1
+                                        transitions2
+                                        sn2
+                                        verify/with-current-assumed))]
         [(one-of matchings)
          (for/or ([matching (in-set matchings)])
            (for/and ([goal (in-set matching)])
@@ -1107,6 +1086,59 @@
   (for/and ([assertion2 (in-set as2)])
     (for/or ([assertion1 (in-set as1)])
       (<:? assertion2 assertion1))))
+
+;; (Hashof D (Setof StateName))
+;; (Hashof D (Setof StateName))
+;; (Goal -> Bool) -> Bool
+;; Determine if:
+;;   for each event D going from sn2,
+;;   for each event E, D <: E, going from sn1,
+;;   (with the exception of the Dataflow HACK below)
+;;   for the set of states X connected to sn2 by D,
+;;   for the set of states Y connected to sn1 by E,
+;;   it is possible to pair the states of X and Y such that they are in simulation,
+;;   as determined by the verify procedure
+(define (same-on-specified-events? transitions1 transitions2 verify)
+  (for/and ([(D2 dests2) (in-hash transitions2)])
+    (define dests1
+      (for/fold ([agg (set)])
+                ([(D1 dests) (in-hash transitions1)]
+                 #:when (D<:? D2 D1)
+                 ;; only consider dataflow events vs. non-dataflow when
+                 ;; there is not a dataflow edge in the spec (HACK)
+                 #:unless (and (equal? D1 DataflowEvt)
+                               (not (equal? D2 DataflowEvt))
+                               (hash-has-key? transitions2 D1)))
+        (set-union agg dests)))
+    (cond
+      [(set-empty? dests1)
+       #f]
+      [else
+       (define combos (make-combinations dests1 dests2))
+       (verify (one-of combos))])))
+
+
+;; (Hashof D (Setof StateName))
+;; (Hashof D (Setof StateName))
+;; StateName
+;; (Goal -> Bool) -> Bool
+;; Determine if:
+;;   for each event E, going from sn1,
+;;   such that for each event D going from sn2, ¬ D <: E,
+;;   for the set of states X connected to sn1 by E,
+;;   each state in X is equivalent to sn2,
+;;   as determined by the verify procedure
+(define (same-on-extra-events? transitions1 transitions2 sn2 verify)
+  (define evts1 (hash-keys transitions1))
+  (define evts2 (hash-keys transitions2))
+  (define extra-evts
+    (for/set ([evt1 (in-list evts1)]
+              #:unless (for/or ([evt2 (in-list evts2)])
+                         (D<:? evt2 evt1)))
+      evt1))
+  (for*/and ([evt (in-set extra-evts)]
+             [dest (in-set (hash-ref transitions1 evt))])
+    (verify (equiv dest sn2))))
 
 (module+ test
   (test-case
