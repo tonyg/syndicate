@@ -1,6 +1,7 @@
 #lang racket
 
 (require (only-in racket/hash hash-union))
+(require racket/generator)
 
 (module+ test
   (require rackunit))
@@ -1020,8 +1021,21 @@
 ;; role1 ~ actual
 ;; role2 ~ spec
 (define (simulates? role1 role2)
-  (match-define (role-graph st0-1 st#1) (compile role1))
-  (match-define (role-graph st0-2 st#2) (compile role2))
+  (define rg1 (compile role1))
+  (define rg2 (compile role2))
+  (simulates?/rg rg1 role1 rg2 role2))
+
+;; RoleGraph Role RoleGraph Role -> Bool
+;; determine if the first role acts suitably like the second role.
+;; at all times, it is asserting a superset of the second's assertions
+;; rg1 ~ actual
+;; rg2 ~ spec
+;; like simulates?, but take in and use the compiled role graph; the role1 and
+;; role2 arguments are just for determining the assertions in each state
+;; useful when checking subgraphs
+(define (simulates?/rg rg1 role1 rg2 role2)
+  (match-define (role-graph st0-1 st#1) rg1)
+  (match-define (role-graph st0-2 st#2) rg2)
   (define assertion#1 (all-states-assertions (in-hash-keys st#1) role1))
   (define assertion#2 (all-states-assertions (in-hash-keys st#2) role2))
   ;; Goal (Setof Equation) -> Bool
@@ -1197,6 +1211,55 @@
              (During (Observe (book-quote String ⋆))
                      (list (Shares (book-quote String Int)))))))
     (check-true (simulates? seller-actual seller-spec/revised))))
+
+;; ---------------------------------------------------------------------------
+;; SubGraphs
+
+;; RoleGraph (Setof τ) -> (Sequenceof RoleGraph)
+;; generate non-empty subgraphs, where at least the given assertions are enabled
+(define (subgraphs rg as)
+  (match-define (role-graph _ state#) rg)
+  ;; (Setof (U τ DataflowEvt))
+  (define all-events
+    (for*/set ([st (in-hash-values state#)]
+               [txn# (in-value (state-transitions st))]
+               [D (in-hash-keys txn#)])
+    (match D
+      [(or (Know τ) (¬Know τ))
+       τ]
+      [_ D])))
+  (in-generator
+    (for* ([states* (in-combinations (hash-keys state#))]
+           [events* (in-combinations (set->list all-events))]
+           [event-set (in-value (list->set events*))]
+           #:when (assertion-superset? (set-remove event-set DataflowEvt) as))
+      (define states (list->set states*))
+      (define (event-enabled? D)
+        (for/or ([e (in-set event-set)])
+          (or (equal? DataflowEvt e)
+              (D<:? D (Know e))
+              (D<:? D (¬Know e)))))
+      #;(define implied-events
+        (for*/set ([evt (in-list events*)]
+                   [evt+ (in-set all-events)]
+                   #:when (D<:? evt evt+))
+          evt+))
+      ;; TODO - difference between Know and ¬Know should be ignored
+      #;(define active-events (set-union implied-events (list->set events*)))
+      (define st#
+        (for/hash ([st (in-list states*)])
+          (define orig-txn# (state-transitions (hash-ref state# st)))
+          (define txn#
+            (for*/hash ([(D dests) (in-hash orig-txn#)]
+                        #:when (event-enabled? D)
+                        [dests+ (in-value (set-intersect dests states))]
+                        ;; empty dests+ might mean want to ignore this set of
+                        ;; events? TODO
+                        #:unless (set-empty? dests+))
+            (values D dests+)))
+          (values st (state st txn#))))
+      (for ([st0 (in-list states*)])
+        (yield (role-graph st0 st#))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Visualization
@@ -1630,7 +1693,7 @@
         (ReduceWork (Hash String Int) (Hash String Int))))))
     (Reacts
      (Know (TaskState Symbol Symbol Int ★/t))
-     (Branch (Stop assign) (Effs)))))
+     ())))
 
 (module+ test
   (test-case "parse and compile task-assigner-spec"
