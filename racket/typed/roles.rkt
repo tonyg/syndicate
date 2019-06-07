@@ -10,6 +10,7 @@
          ;; Types
          Tuple Bind Discard → ∀
          Role Reacts Shares Know ¬Know Message OnDataflow Stop OnStart OnStop
+         Branch Effs
          FacetName Field ★/t
          Observe Inbound Outbound Actor U ⊥
          Computation Value Endpoints Roles Spawns
