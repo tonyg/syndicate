@@ -1615,3 +1615,93 @@
     (check-true (role-graph? (compile (parse-T task-runner-ty))))
     (check-true (simulates? (parse-T task-runner-ty)
                             (parse-T task-performer-spec)))))
+
+(define task-assigner-spec
+  '(Role
+    (assign)
+    (Shares
+     (TaskAssignment
+      Symbol
+      Symbol
+      (Task
+       Int
+       (U
+        (MapWork String)
+        (ReduceWork (Hash String Int) (Hash String Int))))))
+    (Reacts
+     (Know (TaskState Symbol Symbol Int ★/t))
+     (Branch (Stop assign) (Effs)))))
+
+(module+ test
+  (test-case "parse and compile task-assigner-spec"
+    (check-true (Role? (parse-T task-assigner-spec)))
+    (check-true (role-graph? (compile (parse-T task-assigner-spec))))))
+
+(define task-manager-ty
+  '(Role
+ (tm)
+ (Reacts
+  (Know (JobManagerAlive))
+  (Role
+   (during-inner1)
+   (Shares (TaskManager Symbol Int))
+   (Reacts
+    (Know
+     (TaskAssignment
+      Symbol
+      (Bind Symbol)
+      (Task
+       (Bind Int)
+       (Bind
+        (U
+         (MapWork String)
+         (ReduceWork (Hash String Int) (Hash String Int)))))))
+    (Role
+     (during-inner2)
+     (Shares
+      (TaskAssignment
+       Symbol
+       Symbol
+       (Task
+        Int
+        (U
+         (MapWork String)
+         (ReduceWork (Hash String Int) (Hash String Int))))))
+     (Shares
+      (TaskState Symbol Symbol Int (U (Finished (Hash String Int)) Symbol)))
+     (Reacts
+      (Know
+       (TaskState
+        Symbol
+        Symbol
+        Int
+        (Bind (U (Finished (Hash String Int)) Symbol)))))
+     (Reacts OnStop)
+     (Reacts
+      (¬Know
+       (TaskAssignment
+        Symbol
+        Symbol
+        (Task
+         Int
+         (U
+          (MapWork String)
+          (ReduceWork (Hash String Int) (Hash String Int))))))
+      (Stop during-inner2))))
+   (Reacts (¬Know (TaskRunner (Bind Symbol) (U (Executing Int) Symbol))))
+   (Reacts (Know (TaskRunner (Bind Symbol) (U (Executing Int) Symbol))))
+   (Reacts (¬Know (TaskRunner (Bind Symbol) Discard)))
+   (Reacts (Know (TaskRunner (Bind Symbol) Discard)))
+   (Reacts (¬Know (JobManagerAlive)) (Stop during-inner1))))))
+
+(module+ test
+  (test-case "parse and compile task-manager-ty"
+    (check-true (Role? (parse-T task-manager-ty)))
+    (check-true (role-graph? (compile (parse-T task-manager-ty)))))
+  (test-case
+      "work needs to be done"
+    ;; even though the task manager plays both the TaskPerformer and TaskAssigner roles,
+    ;; it does so situationally, so shouldn't directly simulate either
+    (define tm (parse-T task-manager-ty))
+    (check-false (simulates? tm (parse-T task-assigner-spec)))
+    (check-false (simulates? tm (parse-T task-performer-spec)))))
