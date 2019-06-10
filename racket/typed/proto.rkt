@@ -1215,6 +1215,29 @@
 ;; ---------------------------------------------------------------------------
 ;; SubGraphs
 
+;; Role Role -> (Listof RoleGraph)
+;; Find all subgraphs of the implementation role that simulate the spec role
+(define (simulating-subgraphs impl spec)
+  (define spec-rg (compile spec))
+  (define impl-rg (compile impl))
+  (define evts (relevant-events spec-rg))
+  (for/list ([srg (subgraphs impl-rg evts)]
+             #:when (simulates?/rg srg impl spec-rg spec))
+    srg))
+
+(module+ test
+  (test-case
+      "task manager has task performer subgraphs"
+    (define tpr (parse-T task-performer-spec))
+    (define tmr (parse-T task-manager-ty))
+    (define ans (simulating-subgraphs tmr tpr))
+    (check-equal? (length ans) 4)
+    (define tprg (compile tpr))
+    (check-true (simulates?/rg (first ans) tmr tprg tpr))
+    (check-true (simulates?/rg (second ans) tmr tprg tpr))
+    (check-true (simulates?/rg (third ans) tmr tprg tpr))
+    (check-true (simulates?/rg (fourth ans) tmr tprg tpr))))
+
 ;; RoleGraph (Setof τ) -> (Sequenceof RoleGraph)
 ;; generate non-empty subgraphs, where at least the given assertions are enabled
 (define (subgraphs rg as)
@@ -1229,37 +1252,113 @@
        τ]
       [_ D])))
   (in-generator
-    (for* ([states* (in-combinations (hash-keys state#))]
-           [events* (in-combinations (set->list all-events))]
-           [event-set (in-value (list->set events*))]
-           #:when (assertion-superset? (set-remove event-set DataflowEvt) as))
-      (define states (list->set states*))
-      (define (event-enabled? D)
-        (for/or ([e (in-set event-set)])
-          (or (equal? DataflowEvt e)
-              (D<:? D (Know e))
-              (D<:? D (¬Know e)))))
-      #;(define implied-events
-        (for*/set ([evt (in-list events*)]
-                   [evt+ (in-set all-events)]
-                   #:when (D<:? evt evt+))
-          evt+))
-      ;; TODO - difference between Know and ¬Know should be ignored
-      #;(define active-events (set-union implied-events (list->set events*)))
-      (define st#
-        (for/hash ([st (in-list states*)])
-          (define orig-txn# (state-transitions (hash-ref state# st)))
-          (define txn#
-            (for*/hash ([(D dests) (in-hash orig-txn#)]
-                        #:when (event-enabled? D)
-                        [dests+ (in-value (set-intersect dests states))]
-                        ;; empty dests+ might mean want to ignore this set of
-                        ;; events? TODO
-                        #:unless (set-empty? dests+))
-            (values D dests+)))
-          (values st (state st txn#))))
-      (for ([st0 (in-list states*)])
-        (yield (role-graph st0 st#))))))
+   (define cache (mutable-set))
+   (for* ([states* (in-combinations (hash-keys state#))]
+          [events* (in-combinations (set->list all-events))]
+          [event-set (in-value (list->set events*))]
+          #:when (assertion-superset? (set-remove event-set DataflowEvt) as))
+     (define states (list->set states*))
+     (define (event-enabled? D)
+       (for/or ([e (in-set event-set)])
+         (or (equal? DataflowEvt e)
+             (D<:? D (Know e))
+             (D<:? D (¬Know e)))))
+     (define st#
+       (for/hash ([st (in-list states*)])
+         (define orig-txn# (state-transitions (hash-ref state# st)))
+         (define txn#
+           (for*/hash ([(D dests) (in-hash orig-txn#)]
+                       #:when (event-enabled? D)
+                       [dests+ (in-value (set-intersect dests states))]
+                       ;; empty dests+ might mean want to ignore this set of
+                       ;; events? TODO
+                       #:unless (set-empty? dests+))
+             (values D dests+)))
+         (values st (state st txn#))))
+     (for ([st0 (in-list states*)])
+       (define rg (role-graph st0 st#))
+       (unless (set-member? cache rg)
+         (define reachable (reachable-states rg))
+         (define all-inc?
+           (for/and ([st (in-set states)])
+             (set-member? reachable st)))
+         (when all-inc?
+           (yield rg))
+         (set-add! cache rg))))))
+
+;; RoleGraph -> (Setof StateName)
+;; Determine the set of states reachable from the starting state
+(define (reachable-states rg)
+  (match-define (role-graph st0 state#) rg)
+  (let search ([work (list st0)]
+               [seen (set)])
+    (match work
+      ['() seen]
+      [(cons current more)
+       (match-define (state name txn#) (hash-ref state# current))
+       (cond
+         [(set-member? seen name)
+          (search more seen)]
+         [else
+          (define connections
+            (for*/list ([dests (in-hash-values txn#)]
+                        [d (in-set dests)])
+              d))
+          (search (append more connections)
+                  (set-add seen name))])])))
+
+(module+ test
+  (test-case
+      "reachable states"
+    (define rg
+      (role-graph (set 'X 'Y 'Z)
+                  (hash (set 'X 'Y 'Z) (state (set 'X 'Y 'Z) (hash (Know Int) (set (set 'X 'Y 'Z))
+                                                                   (¬Know Int) (set (set 'X 'Y))))
+                        (set 'X) (state (set 'X) '#hash())
+                        (set 'X 'Y) (state (set 'X 'Y) (hash (Know Int) (set (set 'X 'Y 'Z)))))))
+      (define reachable (reachable-states rg))
+      (check-true (set-member? reachable (set 'X 'Y 'Z)))
+      (check-true (set-member? reachable (set 'X 'Y)))
+      (check-false (set-member? reachable (set 'X))))
+  (test-case
+      "struct seems to make a difference?"
+    (define rg
+      (role-graph
+       (set 'during-inner2 'during-inner1 'tm)
+       (hash
+        (set 'during-inner2 'during-inner1 'tm)
+        (state
+         (set 'during-inner2 'during-inner1 'tm)
+         (hash
+          (Know (Struct 'TaskAssignment (list)))
+          (set (set 'during-inner2 'during-inner1 'tm))
+          (¬Know (Struct 'TaskAssignment (list)))
+          (set (set 'during-inner1 'tm))))
+        (set 'tm)
+        (state (set 'tm) '#hash())
+        (set 'during-inner1 'tm)
+        (state
+         (set 'during-inner1 'tm)
+         (hash
+          (Know (Struct 'TaskAssignment (list)))
+          (set (set 'during-inner2 'during-inner1 'tm)))))))
+    (define reachable (reachable-states rg))
+    (check-true (set-member? reachable (set 'during-inner2 'during-inner1 'tm)))
+    (check-true (set-member? reachable (set 'during-inner1 'tm)))
+    (check-false (set-member? reachable (set 'tm)))))
+
+;; RoleGraph -> (Setof (U τ DataflowEvt))
+;; extract the assertions that cause transitions, and dataflow events if they
+;; occur
+(define (relevant-events rg)
+  (match-define (role-graph _ state#) rg)
+  (for*/set ([st (in-hash-values state#)]
+             [txn# (in-value (state-transitions st))]
+             [D (in-hash-keys txn#)])
+    (match D
+      [(or (Know τ) (¬Know τ))
+       τ]
+      [_ D])))
 
 ;; ---------------------------------------------------------------------------
 ;; Visualization
@@ -1274,7 +1373,7 @@
                   #:name [name #f])
     (match-define (role-graph st0 st#) rg)
     (define graph-name (or name "Roles"))
-    (define entry-node (format "~a;" (state-name->dot-name st0)))
+    (define entry-node (format "~a [style=bold];" (state-name->dot-name st0)))
     (define edges
       (for/list ([(sn st) (in-hash st#)])
         (define dot-name (state-name->dot-name sn))
