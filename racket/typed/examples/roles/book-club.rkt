@@ -102,7 +102,7 @@
 
 (define (spawn-leader [titles : (List String)])
   (spawn τc
-   (begin
+   (print-role
    (start-facet get-quotes
      (field [book-list (List String) (rest titles)]
             [title String (first titles)])
@@ -167,7 +167,7 @@
 (define (spawn-club-member [name : String]
                            [titles : (List String)])
   (spawn τc
-   (begin
+   (print-role
    (start-facet member
      ;; assert our presence
      (assert (club-member name))

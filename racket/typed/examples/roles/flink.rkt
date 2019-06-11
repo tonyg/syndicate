@@ -116,7 +116,7 @@ TaskRunners.
   (Role (assign)
     (Shares (TaskAssignment ID ID ConcreteTask))
     ;; would be nice to say how the IDs relate to each other (first two are the same)
-    (Reacts (Know (TaskState ID ID ID ★/t))
+    (Reacts (Know (TaskState ID ID TaskID ★/t))
             (Branch (Stop assign)
                     (Effs)))))
 
@@ -186,6 +186,7 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
 (define (spawn-task-runner)
   (define id (gensym 'task-runner))
   (spawn τc
+   (begin
    (start-facet runner
     (field [status Status IDLE])
     (define (idle?) (equal? IDLE (ref status)))
@@ -210,7 +211,7 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
             (set! state (finished wc))])
          (set! status IDLE)]
         [#t
-         (set! status OVERLOAD)])))))
+         (set! status OVERLOAD)]))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; TaskManager
@@ -218,6 +219,7 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
 (define (spawn-task-manager)
   (define id (gensym 'task-manager))
   (spawn τc
+   (print-role
    (start-facet tm
     (log "Task Manager (TM) ~a is running" id)
     (during (job-manager-alive)
@@ -257,7 +259,7 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
                [OVERLOAD/ts
                 (set! status OVERLOAD/ts)]
                [(finished discard)
-                (set! status st)]))))))))
+                (set! status st)])))))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; JobManager
@@ -313,12 +315,14 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
 (define (input->pending-task [t : InputTask] -> PendingTask)
   (match t
     [(task $id (map-work $s))
+     ;; with occurrence typing, could just return t
      (task id (map-work s))]
     [(task $id (reduce-work $l $r))
      (task id (reduce-work (left l) (left r)))]))
 
 (define (spawn-job-manager)
   (spawn τc
+   (begin
    (start-facet jm
     (assert (job-manager-alive))
     (log "Job Manager Up")
@@ -458,7 +462,7 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
           (perform-task t push-results))
         (unless (empty? ts)
           ;; the empty? check may be necessary to avoid a dataflow loop
-          (set! ready-tasks readys)))))))
+          (set! ready-tasks readys))))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Client
@@ -488,5 +492,5 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
   (spawn-task-manager)
   (spawn-task-runner)
   (spawn-task-runner)
-  (spawn-client (file->job "lorem.txt"))
+  #;(spawn-client (file->job "lorem.txt"))
   (spawn-client (string->job INPUT)))
