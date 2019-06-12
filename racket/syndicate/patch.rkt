@@ -14,6 +14,7 @@
          limit-patch
          patch-step
          patch-step*
+         patch-prepend
          compute-aggregate-patch
          apply-patch
          update-interests
@@ -124,6 +125,13 @@
 
 (define (patch-step* p keys)
   (foldl (lambda (key p) (patch-step p key)) p keys))
+
+;; (U Sigma OpenParenthesis) Trie -> Trie
+;; Prepend both added and removed sets
+(define (patch-prepend key p)
+  (match-define (patch added removed) p)
+  (patch (trie-prepend key added)
+         (trie-prepend key removed)))
 
 ;; Entries labelled with `label` may already exist in `base`; the
 ;; patch `p` MUST already have been limited to add only where no
