@@ -62,7 +62,7 @@
 
 (define-type-alias seller-role
   (Role (seller)
-    (Reacts (Know (Observe (QuoteT String ★/t)))
+    (Reacts (Asserted (Observe (QuoteT String ★/t)))
             (Role (_)
               (Shares (QuoteT String Int))))))
 

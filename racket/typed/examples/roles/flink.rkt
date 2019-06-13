@@ -116,7 +116,7 @@ TaskRunners.
   (Role (assign)
     (Shares (TaskAssignment ID ID ConcreteTask))
     ;; would be nice to say how the IDs relate to each other (first two are the same)
-    (Reacts (Know (TaskState ID ID TaskID ★/t))
+    (Reacts (Asserted (TaskState ID ID TaskID ★/t))
             (Branch (Stop assign)
                     (Effs)))))
 

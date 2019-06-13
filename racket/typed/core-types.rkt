@@ -202,8 +202,8 @@
 (define-type-constructor Shares #:arity = 1)
 (define-type-constructor Sends #:arity = 1)
 (define-type-constructor Reacts #:arity >= 1)
-(define-type-constructor Know #:arity = 1)
-(define-type-constructor ¬Know #:arity = 1)
+(define-type-constructor Asserted #:arity = 1)
+(define-type-constructor Retracted #:arity = 1)
 (define-type-constructor Stop #:arity >= 1)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
@@ -762,8 +762,8 @@
 ;; EventDescriptorType -> Type
 (define-for-syntax (event-desc-type desc)
   (syntax-parse desc
-    [(~Know τ) #'τ]
-    [(~¬Know τ) #'τ]
+    [(~Asserted τ) #'τ]
+    [(~Retracted τ) #'τ]
     [(~Message τ) desc]
     [_ (mk-U*- '())]))
 
@@ -1023,10 +1023,10 @@
    ;; covers Start,Stop,Dataflow
    (type=? x y)
    (syntax-parse #`(#,x #,y)
-     [((~Know τ1) (~Know τ2))
+     [((~Asserted τ1) (~Asserted τ2))
       (<: (pattern-matching-assertions #'τ2)
           (pattern-matching-assertions #'τ1))]
-     [((~¬Know τ1) (~¬Know τ2))
+     [((~Retracted τ1) (~Retracted τ2))
       (<: (pattern-matching-assertions #'τ2)
           (pattern-matching-assertions #'τ1))]
      [((~Message τ1) (~Message τ2))

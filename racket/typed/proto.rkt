@@ -33,13 +33,13 @@
 (struct Branch (arms) #:transparent)
 
 ;; a D is one of
-;;   - (Know τ), reaction to assertion
-;;   - (¬Know τ), reaction to retraction
+;;   - (Asserted τ), reaction to assertion
+;;   - (Retracted τ), reaction to retraction
 ;;   - StartEvt, reaction to facet startup
 ;;   - StopEvt, reaction to facet shutdown
 ;;   - DataflowEvt, reaction to field updates
-(struct Know (ty) #:transparent)
-(struct ¬Know (ty) #:transparent)
+(struct Asserted (ty) #:transparent)
+(struct Retracted (ty) #:transparent)
 (define StartEvt 'Start)
 (define StopEvt 'Stop)
 (define DataflowEvt 'Dataflow)
@@ -76,9 +76,9 @@
 ;; τ (Listof EP) -> EP
 (define (During assertion eps)
   (define facet-name (gensym 'during-inner))
-  (Reacts (Know assertion)
+  (Reacts (Asserted assertion)
           (Role facet-name
-                (cons (Reacts (¬Know assertion)
+                (cons (Reacts (Retracted assertion)
                               (Stop facet-name '()))
                       eps))))
 
@@ -88,10 +88,10 @@
 (define manager
   (Role 'account-manager
         (list (Shares (Struct 'account (list Int)))
-              (Reacts (Know (Struct 'deposit '())) '()))))
+              (Reacts (Asserted (Struct 'deposit '())) '()))))
 (define client
   (Role 'client
-        (list (Reacts (Know (Struct 'account (list Int))) '()))))
+        (list (Reacts (Asserted (Struct 'account (list Int))) '()))))
 
 ;; τ τ -> τ
 ;; short hand for creating a book quote struct type
@@ -116,7 +116,7 @@
 (define seller
   (Role 'seller
         (list
-         (Reacts (Know (Observe (book-quote String ⋆)))
+         (Reacts (Asserted (Observe (book-quote String ⋆)))
                  (Role 'fulfill
                        (list (Shares (book-quote String Int))))))))
 
@@ -125,24 +125,24 @@
    'seller27
    (list
     (Reacts
-     (Know (Observe (book-quote String ⋆)))
+     (Asserted (Observe (book-quote String ⋆)))
      (Role
       'during-inner29
       (list
        (Shares (book-quote String (U (list Int Int))))
        (Reacts
-        (¬Know (Observe (book-quote String ⋆)))
+        (Retracted (Observe (book-quote String ⋆)))
         (Stop 'during-inner29 '()))))))))
 
 (define leader-spec
   (Role 'leader
         (list
          (Reacts
-          (Know (book-quote String Int))
+          (Asserted (book-quote String Int))
           (Role 'poll
                 (list
                  (Reacts
-                  (Know (book-interest String String Bool))
+                  (Asserted (book-interest String String Bool))
                   (Branch
                    (list
                     (Stop 'leader
@@ -156,7 +156,7 @@
    'get-quotes
    (list
     (Reacts
-     (Know (book-quote String Int))
+     (Asserted (book-quote String Int))
      (Branch
       (list
        ;; problem 1: spec doesn't say actor can give up when running out of books
@@ -165,7 +165,7 @@
         'poll-members
         (list
          (Reacts
-          (Know (book-interest String String ⋆))
+          (Asserted (book-interest String String ⋆))
           (Branch (list
                    ;; problem 2: combining poll-members and get-quotes here (should be another branch)
                    (Stop 'poll-members
@@ -174,21 +174,21 @@
                          (Role 'announce
                                (list
                                 (Shares (book-of-the-month String))))))))
-         (Reacts (¬Know (book-interest String String Bool)) (list))
-         (Reacts (Know (book-interest String String Bool)) (list))
-         (Reacts (¬Know (book-interest String String Bool)) (list))
-         (Reacts (Know (book-interest String String Bool)) (list)))))))
-    (Reacts (¬Know (club-member String)) (list))
-    (Reacts (Know (club-member String)) (list)))))
+         (Reacts (Retracted (book-interest String String Bool)) (list))
+         (Reacts (Asserted (book-interest String String Bool)) (list))
+         (Reacts (Retracted (book-interest String String Bool)) (list))
+         (Reacts (Asserted (book-interest String String Bool)) (list)))))))
+    (Reacts (Retracted (club-member String)) (list))
+    (Reacts (Asserted (club-member String)) (list)))))
 
 (define leader-fixed?
   (Role 'get-quotes
         (list
-         (Reacts (Know (book-quote String Int))
+         (Reacts (Asserted (book-quote String Int))
                  (Branch (list
                           (Role 'poll-members
                                 (list
-                                 (Reacts (Know (book-interest String String ⋆))
+                                 (Reacts (Asserted (book-interest String String ⋆))
                                          (Branch (list
                                                   (Stop 'poll-members
                                                         '())
@@ -196,19 +196,19 @@
                                                         (Role 'announce
                                                               (list
                                                                (Shares (book-of-the-month String))))))))
-                                 (Reacts (¬Know (book-interest String String Bool)) (list))
-                                 (Reacts (Know (book-interest String String Bool)) (list))
-                                 (Reacts (¬Know (book-interest String String Bool)) (list))
-                                 (Reacts (Know (book-interest String String Bool)) (list)))))))
-         (Reacts (¬Know (club-member String)) (list))
-         (Reacts (Know (club-member String)) (list)))))
+                                 (Reacts (Retracted (book-interest String String Bool)) (list))
+                                 (Reacts (Asserted (book-interest String String Bool)) (list))
+                                 (Reacts (Retracted (book-interest String String Bool)) (list))
+                                 (Reacts (Asserted (book-interest String String Bool)) (list)))))))
+         (Reacts (Retracted (club-member String)) (list))
+         (Reacts (Asserted (club-member String)) (list)))))
 
 (define leader-revised
   (Role
    'get-quotes
    (list
     (Reacts
-     (Know (book-quote String Int))
+     (Asserted (book-quote String Int))
      (Branch
       (list
        (Branch (list (Stop 'get-quotes (list)) (list)))
@@ -216,7 +216,7 @@
         'poll-members
         (list
          (Reacts
-          (Know (book-interest String String ⋆))
+          (Asserted (book-interest String String ⋆))
           (list
            (Branch
             (list
@@ -231,19 +231,19 @@
               'get-quotes
               (Role 'announce (list (Shares (book-of-the-month String)))))
              (list)))))
-         (Reacts (¬Know (book-interest String String Bool)) (list))
-         (Reacts (Know (book-interest String String Bool)) (list))
-         (Reacts (¬Know (book-interest String String Bool)) (list))
-         (Reacts (Know (book-interest String String Bool)) (list)))))))
-    (Reacts (¬Know (club-member String)) (list))
-    (Reacts (Know (club-member String)) (list)))))
+         (Reacts (Retracted (book-interest String String Bool)) (list))
+         (Reacts (Asserted (book-interest String String Bool)) (list))
+         (Reacts (Retracted (book-interest String String Bool)) (list))
+         (Reacts (Asserted (book-interest String String Bool)) (list)))))))
+    (Reacts (Retracted (club-member String)) (list))
+    (Reacts (Asserted (club-member String)) (list)))))
 
 (define member-spec
   (Role
    'member
    (list
     (Shares (club-member String))
-    (Reacts (Know (Observe (book-interest String ⋆ ⋆)))
+    (Reacts (Asserted (Observe (book-interest String ⋆ ⋆)))
             (Role 'respond
                   (list
                    (Shares (book-interest String String Bool))))))))
@@ -254,13 +254,13 @@
    (list
    (Shares (club-member String))
    (Reacts
-    (Know (Observe (book-interest String ⋆ ⋆)))
+    (Asserted (Observe (book-interest String ⋆ ⋆)))
     (Role
      'during-inner42
      (list
      (Shares (book-interest String String Bool))
      (Reacts
-      (¬Know (Observe (book-interest String ⋆ ⋆)))
+      (Retracted (Observe (book-interest String ⋆ ⋆)))
       ;; this bit is a noticeable deviation from the spec
       (Stop 'during-inner42 '()))))))))
 
@@ -328,8 +328,8 @@
 ;; test if D corresponds to an external event (assertion, message)
 (define (external-evt? D)
   (match D
-    [(or (Know _)
-         (¬Know _))
+    [(or (Asserted _)
+         (Retracted _))
      #t]
     [(== DataflowEvt)
      #t]
@@ -352,14 +352,14 @@
     (define transitions (state-transitions st0))
     (define quote-request
       (Observe (book-quote String ⋆)))
-    (check-true (hash-has-key? transitions (Know quote-request)))
-    (check-equal? (hash-ref transitions (Know quote-request))
+    (check-true (hash-has-key? transitions (Asserted quote-request)))
+    (check-equal? (hash-ref transitions (Asserted quote-request))
                   (set (set 'seller 'fulfill))))
   (test-case
       "compile role that quits"
     (define r
       (Role 'x
-            (list (Reacts (Know Int)
+            (list (Reacts (Asserted Int)
                           (Stop 'x '())))))
     (define rg (compile r))
     (check-true (role-graph? rg))
@@ -370,8 +370,8 @@
     (check-true (hash-has-key? state# (set 'x)))
     (define state0 (hash-ref state# (set 'x)))
     (define transitions (state-transitions state0))
-    (check-true (hash-has-key? transitions (Know Int)))
-    (check-equal? (hash-ref transitions (Know Int))
+    (check-true (hash-has-key? transitions (Asserted Int)))
+    (check-equal? (hash-ref transitions (Asserted Int))
                   (set (set))))
 
   (test-case
@@ -384,7 +384,7 @@
     (define gq-st (hash-ref state# (set 'get-quotes)))
     (check-true (state? gq-st))
     (match-define (state _ gq-transitions) gq-st)
-    (define bq (Know (book-quote String Int)))
+    (define bq (Asserted (book-quote String Int)))
     (check-true (hash? gq-transitions))
     (check-true (hash-has-key? gq-transitions bq))
     (define dests (hash-ref gq-transitions bq))
@@ -394,7 +394,7 @@
     (define gqpm-st (hash-ref state# (set 'get-quotes 'poll-members)))
     (check-true (state? gqpm-st))
     (match-define (state _ gqpm-transitions) gqpm-st)
-    (define bi (Know (book-interest String String ⋆)))
+    (define bi (Asserted (book-interest String String ⋆)))
     (check-true (hash? gqpm-transitions))
     (check-true (hash-has-key? gqpm-transitions bi))
     (define dests2 (hash-ref gqpm-transitions bi))
@@ -408,7 +408,7 @@
        'poll-members
        (list
         (Reacts
-         (Know (book-interest String String ⋆))
+         (Asserted (book-interest String String ⋆))
          (list
           (Branch
            (list
@@ -419,7 +419,7 @@
             (list))))))))
     (define transition# (describe-role poll/simpl))
     (check-true (hash? transition#))
-    (define bi (Know (book-interest String String ⋆)))
+    (define bi (Asserted (book-interest String String ⋆)))
     (check-true (hash-has-key? transition# bi))
     (define effs (hash-ref transition# bi))
     (check-true (set? effs))
@@ -756,14 +756,14 @@
     (define seller-txns (hash-ref desc 'seller))
     (define quote-request
       (Observe (book-quote String ⋆)))
-    (check-true (hash-has-key? seller-txns (Know quote-request)))
-    (check-equal? (hash-ref seller-txns (Know quote-request))
+    (check-true (hash-has-key? seller-txns (Asserted quote-request)))
+    (check-equal? (hash-ref seller-txns (Asserted quote-request))
                   (set (list (start 'fulfill)))))
   (test-case
       "describe-roles bug"
     (define role (Role 'poll
                        (list
-                        (Reacts (Know Int)
+                        (Reacts (Asserted Int)
                                 (Branch
                                  (list (Stop 'leader (Role 'announce (list (Shares Int))))
                                        (Stop 'poll (list))))))))
@@ -771,8 +771,8 @@
     (check-true (hash? desc))
     (check-true (hash-has-key? desc 'poll))
     (define txns (hash-ref desc 'poll))
-    (check-true (hash-has-key? txns (Know Int)))
-    (check-equal? (hash-ref txns (Know Int))
+    (check-true (hash-has-key? txns (Asserted Int)))
+    (check-equal? (hash-ref txns (Asserted Int))
                   (set (list (stop 'leader) (start 'announce))
                        (list (stop 'poll)))))
   (test-case
@@ -786,7 +786,7 @@
     (define desc (describe-roles leader-spec))
     (check-true (hash-has-key? desc 'poll))
     (define poll-txns (hash-ref desc 'poll))
-    (define evt (Know (book-interest String String Bool)))
+    (define evt (Asserted (book-interest String String Bool)))
     (check-true (hash-has-key? poll-txns evt))
     (define effs (hash-ref poll-txns evt))
     (check-true (set-member? effs (list (stop 'poll))))))
@@ -910,9 +910,9 @@
      ;; TODO - sketchy, intuition "dataflow can happen at any time", though it
      ;; might actually take the place of multiple transitions
      #t]
-    [(list (Know τ1) (Know τ2))
+    [(list (Asserted τ1) (Asserted τ2))
      (<:? τ1 τ2)]
-    [(list (¬Know τ1) (¬Know τ2))
+    [(list (Retracted τ1) (Retracted τ2))
      (<:? τ1 τ2)]
     [(list (== StartEvt) (== StartEvt))
      #t]
@@ -939,8 +939,8 @@
      τ]
     [(Reacts D _)
      (match D
-       [(or (Know τ)
-            (¬Know τ))
+       [(or (Asserted τ)
+            (Retracted τ))
         ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
         (Observe τ)]
        [_
@@ -948,9 +948,9 @@
 
 (module+ test
   ;; make sure the or pattern above works the way I think it does
-  (check-equal? (EP-assertion (Reacts (Know Int) #f))
+  (check-equal? (EP-assertion (Reacts (Asserted Int) #f))
                 (Observe Int))
-  (check-equal? (EP-assertion (Reacts (¬Know String) #f))
+  (check-equal? (EP-assertion (Reacts (Retracted String) #f))
                 (Observe String)))
 
 ;; an Equation is (equiv StateName StateName)
@@ -1191,13 +1191,13 @@
        (list
         (Shares (club-member String))
         (Reacts
-         (Know (Observe (book-interest String ⋆ ⋆)))
+         (Asserted (Observe (book-interest String ⋆ ⋆)))
          (Role
           'during-inner42
           (list
            (Shares (book-interest String String Bool))
            (Reacts
-            (¬Know (Observe (book-interest String ⋆ ⋆)))
+            (Retracted (Observe (book-interest String ⋆ ⋆)))
             ;; removed (Stop 'during-inner42 '()) here
             '())))))))
     (check-true (simulates? member-actual/revised member-spec)))
@@ -1248,7 +1248,7 @@
                [txn# (in-value (state-transitions st))]
                [D (in-hash-keys txn#)])
     (match D
-      [(or (Know τ) (¬Know τ))
+      [(or (Asserted τ) (Retracted τ))
        τ]
       [_ D])))
   (in-generator
@@ -1261,8 +1261,8 @@
      (define (event-enabled? D)
        (for/or ([e (in-set event-set)])
          (or (equal? DataflowEvt e)
-             (D<:? D (Know e))
-             (D<:? D (¬Know e)))))
+             (D<:? D (Asserted e))
+             (D<:? D (Retracted e)))))
      (define st#
        (for/hash ([st (in-list states*)])
          (define orig-txn# (state-transitions (hash-ref state# st)))
@@ -1312,10 +1312,10 @@
       "reachable states"
     (define rg
       (role-graph (set 'X 'Y 'Z)
-                  (hash (set 'X 'Y 'Z) (state (set 'X 'Y 'Z) (hash (Know Int) (set (set 'X 'Y 'Z))
-                                                                   (¬Know Int) (set (set 'X 'Y))))
+                  (hash (set 'X 'Y 'Z) (state (set 'X 'Y 'Z) (hash (Asserted Int) (set (set 'X 'Y 'Z))
+                                                                   (Retracted Int) (set (set 'X 'Y))))
                         (set 'X) (state (set 'X) '#hash())
-                        (set 'X 'Y) (state (set 'X 'Y) (hash (Know Int) (set (set 'X 'Y 'Z)))))))
+                        (set 'X 'Y) (state (set 'X 'Y) (hash (Asserted Int) (set (set 'X 'Y 'Z)))))))
       (define reachable (reachable-states rg))
       (check-true (set-member? reachable (set 'X 'Y 'Z)))
       (check-true (set-member? reachable (set 'X 'Y)))
@@ -1330,9 +1330,9 @@
         (state
          (set 'during-inner2 'during-inner1 'tm)
          (hash
-          (Know (Struct 'TaskAssignment (list)))
+          (Asserted (Struct 'TaskAssignment (list)))
           (set (set 'during-inner2 'during-inner1 'tm))
-          (¬Know (Struct 'TaskAssignment (list)))
+          (Retracted (Struct 'TaskAssignment (list)))
           (set (set 'during-inner1 'tm))))
         (set 'tm)
         (state (set 'tm) '#hash())
@@ -1340,7 +1340,7 @@
         (state
          (set 'during-inner1 'tm)
          (hash
-          (Know (Struct 'TaskAssignment (list)))
+          (Asserted (Struct 'TaskAssignment (list)))
           (set (set 'during-inner2 'during-inner1 'tm)))))))
     (define reachable (reachable-states rg))
     (check-true (set-member? reachable (set 'during-inner2 'during-inner1 'tm)))
@@ -1356,7 +1356,7 @@
              [txn# (in-value (state-transitions st))]
              [D (in-hash-keys txn#)])
     (match D
-      [(or (Know τ) (¬Know τ))
+      [(or (Asserted τ) (Retracted τ))
        τ]
       [_ D])))
 
@@ -1416,9 +1416,9 @@
   ;; give a description of an event suitable for rendering
   (define (D->label evt)
     (match evt
-      [(Know τ)
+      [(Asserted τ)
        (string-append "+" (τ->string τ))]
-      [(¬Know τ)
+      [(Retracted τ)
        (string-append "-" (τ->string τ))]
       [(== StartEvt)
        "Start"]
@@ -1497,10 +1497,10 @@
 
 (define (parse-D d)
   (match d
-    [(list 'Know t)
-     (Know (parse-τ t))]
-    [(list '¬Know t)
-     (¬Know (parse-τ t))]
+    [(list 'Asserted t)
+     (Asserted (parse-τ t))]
+    [(list 'Retracted t)
+     (Retracted (parse-τ t))]
     ['OnStart
      StartEvt]
     ['OnStop
@@ -1565,12 +1565,12 @@
   '(Role
     (seller)
     (Reacts
-     (Know (Observe (BookQuoteT (Bind String) Discard)))
+     (Asserted (Observe (BookQuoteT (Bind String) Discard)))
      (Role
       (during-inner)
       (Shares (BookQuoteT String Int))
       (Reacts
-       (¬Know (Observe (BookQuoteT String Discard)))
+       (Retracted (Observe (BookQuoteT String Discard)))
        (Stop during-inner))))))
 
 (define real-member-ty
@@ -1578,26 +1578,26 @@
     (member)
     (Shares (ClubMemberT String))
     (Reacts
-     (Know (Observe (BookInterestT (Bind String) Discard Discard)))
+     (Asserted (Observe (BookInterestT (Bind String) Discard Discard)))
      (Role
       (during-inner)
       (Shares (BookInterestT String String Bool))
       (Reacts
-       (¬Know (Observe (BookInterestT String Discard Discard)))
+       (Retracted (Observe (BookInterestT String Discard Discard)))
        (Stop during-inner))))))
 
 (define real-leader-ty
   '(Role
     (get-quotes)
     (Reacts
-     (Know (BookQuoteT String (Bind Int)))
+     (Asserted (BookQuoteT String (Bind Int)))
      (Branch
       (Effs (Branch (Effs (Stop get-quotes)) (Effs)))
       (Effs
        (Role
         (poll-members)
         (Reacts
-         (Know (BookInterestT String (Bind String) Discard))
+         (Asserted (BookInterestT String (Bind String) Discard))
          (Branch
           (Effs (Stop poll-members (Branch (Effs (Stop get-quotes)) (Effs))))
           (Effs))
@@ -1605,12 +1605,12 @@
           (Effs
            (Stop get-quotes (Role (announce) (Shares (BookOfTheMonthT String)))))
           (Effs)))
-        (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
-        (Reacts (Know (BookInterestT String (Bind String) Bool)))
-        (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
-        (Reacts (Know (BookInterestT String (Bind String) Bool)))))))
-    (Reacts (¬Know (ClubMemberT (Bind String))))
-    (Reacts (Know (ClubMemberT (Bind String))))))
+        (Reacts (Retracted (BookInterestT String (Bind String) Bool)))
+        (Reacts (Asserted (BookInterestT String (Bind String) Bool)))
+        (Reacts (Retracted (BookInterestT String (Bind String) Bool)))
+        (Reacts (Asserted (BookInterestT String (Bind String) Bool)))))))
+    (Reacts (Retracted (ClubMemberT (Bind String))))
+    (Reacts (Asserted (ClubMemberT (Bind String))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Flink Examples
@@ -1620,7 +1620,7 @@
  (jm)
  (Shares (JobManagerAlive))
  (Reacts
-  (Know
+  (Asserted
    (Job
     (Bind Symbol)
     (Bind (List (Task Int (U (MapWork String) (ReduceWork Int Int)))))))
@@ -1652,7 +1652,7 @@
                  (MapWork String)
                  (ReduceWork (Hash String Int) (Hash String Int))))))
              (Reacts
-              (Know
+              (Asserted
                (TaskState
                 Symbol
                 Symbol
@@ -1676,21 +1676,21 @@
               (Role
                (take-slot)
                (Reacts
-                (Know (TaskState Symbol Symbol Int Discard))
+                (Asserted (TaskState Symbol Symbol Int Discard))
                 (Stop take-slot))))
-             (Reacts (¬Know (TaskManager Symbol Discard)) (Stop assign))))
+             (Reacts (Retracted (TaskManager Symbol Discard)) (Stop assign))))
            (Effs)))
          (Effs)))))
      (Reacts OnStop)
      (Reacts OnStart)))
    (Reacts
-    (¬Know
+    (Retracted
      (Job
       Symbol
       (List (Task Int (U (MapWork String) (ReduceWork Int Int))))))
     (Stop during-inner))))
- (Reacts (¬Know (TaskManager (Bind Symbol) (Bind Int))))
- (Reacts (Know (TaskManager (Bind Symbol) (Bind Int))))))
+ (Reacts (Retracted (TaskManager (Bind Symbol) (Bind Int))))
+ (Reacts (Asserted (TaskManager (Bind Symbol) (Bind Int))))))
 
 (module+ test
   (test-case
@@ -1705,7 +1705,7 @@
   '(Role
     (listen)
     (Reacts
-     (Know
+     (Asserted
       (TaskAssignment
        Symbol
        Symbol
@@ -1717,7 +1717,7 @@
      (Role
       (during-inner)
       (Reacts
-       (¬Know
+       (Retracted
         (TaskAssignment
          Symbol
          Symbol
@@ -1744,7 +1744,7 @@
     (runner)
     (Shares (TaskRunner Symbol (U (Executing Int) Symbol)))
     (Reacts
-     (Know
+     (Asserted
       (TaskAssignment
        Symbol
        (Bind Symbol)
@@ -1759,7 +1759,7 @@
       (Shares
        (TaskState Symbol Symbol Int (U (Finished (Hash String Int)) Symbol)))
       (Reacts
-       (¬Know
+       (Retracted
         (TaskAssignment
          Symbol
          Symbol
@@ -1791,7 +1791,7 @@
         (MapWork String)
         (ReduceWork (Hash String Int) (Hash String Int))))))
     (Reacts
-     (Know (TaskState Symbol Symbol Int ★/t))
+     (Asserted (TaskState Symbol Symbol Int ★/t))
      ())))
 
 (module+ test
@@ -1803,12 +1803,12 @@
   '(Role
  (tm)
  (Reacts
-  (Know (JobManagerAlive))
+  (Asserted (JobManagerAlive))
   (Role
    (during-inner1)
    (Shares (TaskManager Symbol Int))
    (Reacts
-    (Know
+    (Asserted
      (TaskAssignment
       Symbol
       (Bind Symbol)
@@ -1832,7 +1832,7 @@
      (Shares
       (TaskState Symbol Symbol Int (U (Finished (Hash String Int)) Symbol)))
      (Reacts
-      (Know
+      (Asserted
        (TaskState
         Symbol
         Symbol
@@ -1840,7 +1840,7 @@
         (Bind (U (Finished (Hash String Int)) Symbol)))))
      (Reacts OnStop)
      (Reacts
-      (¬Know
+      (Retracted
        (TaskAssignment
         Symbol
         Symbol
@@ -1850,11 +1850,11 @@
           (MapWork String)
           (ReduceWork (Hash String Int) (Hash String Int))))))
       (Stop during-inner2))))
-   (Reacts (¬Know (TaskRunner (Bind Symbol) (U (Executing Int) Symbol))))
-   (Reacts (Know (TaskRunner (Bind Symbol) (U (Executing Int) Symbol))))
-   (Reacts (¬Know (TaskRunner (Bind Symbol) Discard)))
-   (Reacts (Know (TaskRunner (Bind Symbol) Discard)))
-   (Reacts (¬Know (JobManagerAlive)) (Stop during-inner1))))))
+   (Reacts (Retracted (TaskRunner (Bind Symbol) (U (Executing Int) Symbol))))
+   (Reacts (Asserted (TaskRunner (Bind Symbol) (U (Executing Int) Symbol))))
+   (Reacts (Retracted (TaskRunner (Bind Symbol) Discard)))
+   (Reacts (Asserted (TaskRunner (Bind Symbol) Discard)))
+   (Reacts (Retracted (JobManagerAlive)) (Stop during-inner1))))))
 
 (module+ test
   (test-case "parse and compile task-manager-ty"
