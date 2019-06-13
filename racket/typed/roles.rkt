@@ -9,7 +9,7 @@
          run-ground-dataspace
          ;; Types
          Tuple Bind Discard → ∀
-         Role Reacts Shares Know ¬Know Message OnDataflow Stop OnStart OnStop
+         Role Reacts Shares Asserted Retracted Message OnDataflow Stop OnStart OnStop
          Branch Effs
          FacetName Field ★/t
          Observe Inbound Outbound Actor U ⊥
@@ -186,10 +186,10 @@
     #:datum-literals (asserted retracted message)
     (pattern (~or (~and asserted
                         (~bind [syndicate-kw #'syndicate:asserted]
-                               [react-con #'Know]))
+                               [react-con #'Asserted]))
                   (~and retracted
                         (~bind [syndicate-kw #'syndicate:retracted]
-                               [react-con #'¬Know]))
+                               [react-con #'Retracted]))
                   (~and message
                         (~bind [syndicate-kw #'syndicate:message]
                                [react-con #'Message])))))
@@ -340,9 +340,9 @@
 
 (define-simple-macro (During τ:type EP ...)
   #:with τ/inst (instantiate-pattern-type #'τ.norm)
-  (Reacts (Know τ)
+  (Reacts (Asserted τ)
           (Role (during-inner)
-                (Reacts (¬Know τ/inst)
+                (Reacts (Retracted τ/inst)
                         (Stop during-inner))
                 EP ...)))
 

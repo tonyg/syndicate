@@ -55,7 +55,7 @@
 
 (define-type-alias seller-role
   (Role (seller)
-   (Reacts (Know (Observe (BookQuoteT String ★/t)))
+   (Reacts (Asserted (Observe (BookQuoteT String ★/t)))
            (Role (_)
                  ;; nb no mention of retracting this assertion
                  (Shares (BookQuoteT String Int))))))
@@ -73,9 +73,9 @@
 
 (define-type-alias leader-role
   (Role (leader)
-        (Reacts (Know (BookQuoteT String Int))
+        (Reacts (Asserted (BookQuoteT String Int))
                 (Role (poll)
-                      (Reacts (Know (BookInterestT String String Bool))
+                      (Reacts (Asserted (BookInterestT String String Bool))
                               ;; this is actually implemented indirectly through dataflow
                               (U (Stop leader
                                        (Role (_)
@@ -84,7 +84,7 @@
 
 (define-type-alias leader-actual
   (Role (get-quotes31)
-        (Reacts (Know (BookQuoteT String (Bind Int)))
+        (Reacts (Asserted (BookQuoteT String (Bind Int)))
                 (Stop get-quotes)
                 (Role (poll-members36)
                       (Reacts OnDataflow
@@ -93,12 +93,12 @@
                               (Stop get-quotes
                                     (Role (announce39)
                                           (Shares (BookOfTheMonthT String)))))
-                      (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
-                      (Reacts (Know (BookInterestT String (Bind String) Bool)))
-                      (Reacts (¬Know (BookInterestT String (Bind String) Bool)))
-                      (Reacts (Know (BookInterestT String (Bind String) Bool)))))
-        (Reacts (¬Know (ClubMemberT (Bind String))))
-        (Reacts (Know (ClubMemberT (Bind String))))))
+                      (Reacts (Retracted (BookInterestT String (Bind String) Bool)))
+                      (Reacts (Asserted (BookInterestT String (Bind String) Bool)))
+                      (Reacts (Retracted (BookInterestT String (Bind String) Bool)))
+                      (Reacts (Asserted (BookInterestT String (Bind String) Bool)))))
+        (Reacts (Retracted (ClubMemberT (Bind String))))
+        (Reacts (Asserted (ClubMemberT (Bind String))))))
 
 (define (spawn-leader [titles : (List String)])
   (spawn τc
@@ -160,7 +160,7 @@
   (Role (member)
         (Shares (ClubMemberT String))
         ;; should this be the type of the pattern? or lowered to concrete types?
-        (Reacts (Know (Observe (BookInterestT String ★/t ★/t)))
+        (Reacts (Asserted (Observe (BookInterestT String ★/t ★/t)))
                 (Role (_)
                       (Shares (BookInterestT String String Bool))))))
 
