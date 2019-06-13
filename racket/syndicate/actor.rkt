@@ -523,14 +523,18 @@
 
 (define-syntax (during stx)
   (syntax-parse stx
-    [(_ P O ...)
-     (define E-stx (syntax/loc #'P (asserted P)))
+    #:literals (know)
+    [(_ (~or (~and K (know P)) P) O ...)
+     (define E-stx  (quasisyntax/loc #'P #,(if (attribute K)
+                                               #'K
+                                               #'(asserted P))))
+     (define R-stx (if (attribute K) #'forget #'retracted))
      (define-values (_proj _pat _bindings instantiated)
        (analyze-pattern E-stx #'P))
      (quasisyntax/loc stx
        (on #,E-stx
            (let ((p #,instantiated))
-             (react (stop-when (retracted p))
+             (react (stop-when (#,R-stx p))
                     O ...))))]))
 
 (define-syntax (during/spawn stx)

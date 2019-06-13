@@ -41,10 +41,9 @@ balance = 8
             (when (not (negative? new))
               (stop-current-facet))))))
 
- (on (know (overdraft))
-     (printf "know overdraft!\n"))
- (on (forget (overdraft))
-     (printf "no longer in overdraft\n")))
+ (during (know (overdraft))
+   (on-start (printf "know overdraft!\n"))
+   (on-stop (printf "no longer in overdraft\n"))))
 
 (spawn
  (on (asserted (balance $v))
