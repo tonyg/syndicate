@@ -1212,7 +1212,7 @@
           (lambda ()
             (define a (current-actor-state))
             (define new-knowledge
-              (update-interests (actor-state-knowledge a) internal))
+              (apply-patch (actor-state-knowledge a) internal))
             (current-actor-state (struct-copy actor-state a
                                               [knowledge new-knowledge]))))
 
@@ -1295,6 +1295,10 @@
   (define a (current-actor-state))
   (for* ([e (in-list pending)]
          [(fid f) (in-hash (actor-state-facets a))])
+    (when (patch? e)
+      (define a (current-actor-state))
+      (current-actor-state (struct-copy actor-state a
+                                        [knowledge (apply-patch (actor-state-knowledge a) e)])))
     (facet-handle-event! fid f e #f)))
 
 (define (refresh-facet-assertions!)
@@ -1332,7 +1336,7 @@
                      (if (patch? e)
                          (struct-copy actor-state a
                                       [previous-knowledge (actor-state-knowledge a)]
-                                      [knowledge (update-interests (actor-state-knowledge a) e)])
+                                      [knowledge (apply-patch (actor-state-knowledge a) e)])
                          a))
                     (current-pending-patch patch-empty)
                     (current-pending-actions '())
