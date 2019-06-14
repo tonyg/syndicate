@@ -10,6 +10,7 @@
          ;; Types
          Tuple Bind Discard → ∀
          Role Reacts Shares Asserted Retracted Message OnDataflow Stop OnStart OnStop
+         Know Forget Realize
          Branch Effs
          FacetName Field ★/t
          Observe Inbound Outbound Actor U ⊥
@@ -17,20 +18,22 @@
          →fn proc
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
-         when unless send! define
+         when unless send! realize! define
          ;; Derived Forms
          during During
          define/query-value
          define/query-set
          define/query-hash
+         on-start on-stop
          ;; endpoints
-         assert on field
+         assert know on field
          ;; expressions
          tuple select lambda ref observe inbound outbound
          Λ inst call/inst
          ;; making types
          define-type-alias
          assertion-struct
+         message-struct
          define-constructor define-constructor*
          ;; values
          #%datum
@@ -95,6 +98,9 @@
 (define-simple-macro (assertion-struct name:id (~datum :) Name:id (slot:id ...))
   (define-constructor* (name : Name slot ...)))
 
+(define-simple-macro (message-struct name:id (~datum :) Name:id (slot:id ...))
+  (define-constructor* (name : Name slot ...)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compile-time State
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -129,6 +135,7 @@
         (unless (and (stx-null? facet-effects) (stx-null? spawn-effects))
           (type-error #:src #'(ep ...) #:msg "only endpoint effects allowed"))]
   #:with ((~or (~and τ-a (~Shares _))
+               (~and τ-k (~Know _))
                ;; untyped syndicate might allow this - TODO
                #;(~and τ-m (~Sends _))
                (~and τ-r (~Reacts _ ...))
@@ -137,6 +144,7 @@
          ep-effects
   #:with τ (type-eval #`(Role (#,name--)
                           τ-a ...
+                          τ-k ...
                           ;; τ-m ...
                           τ-r ...))
   --------------------------------------------------------------
@@ -165,6 +173,14 @@
   [⊢ (syndicate:assert e-) (⇒ : ★/t)
                            (⇒ ν-ep (τs))])
 
+(define-typed-syntax (know e:expr) ≫
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
+  #:with τs (mk-Know- #'(τ))
+  -------------------------------------
+  [⊢ (syndicate:know e-) (⇒ : ★/t)
+     (⇒ ν-ep (τs))])
+
 (define-typed-syntax (send! e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
@@ -172,6 +188,14 @@
   --------------------------------------
   [⊢ (#%app- syndicate:send! e-) (⇒ : ★/t)
                                  (⇒ ν-f (τm))])
+
+(define-typed-syntax (realize! e:expr) ≫
+  [⊢ e ≫ e- (⇒ : τ)]
+  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
+  #:with τm (mk-Realizes- #'(τ))
+  --------------------------------------
+  [⊢ (#%app- syndicate:realize! e-) (⇒ : ★/t)
+     (⇒ ν-f (τm))])
 
 (define-typed-syntax (stop facet-name:id cont ...) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
@@ -182,17 +206,27 @@
                                               (⇒ ν-f (τ))])
 
 (begin-for-syntax
-  (define-syntax-class asserted/retracted/message
-    #:datum-literals (asserted retracted message)
+  (define-syntax-class event-cons
+    #:attributes (syndicate-kw ty-cons)
+    #:datum-literals (asserted retracted message know forget realize)
     (pattern (~or (~and asserted
                         (~bind [syndicate-kw #'syndicate:asserted]
-                               [react-con #'Asserted]))
+                               [ty-cons #'Asserted]))
                   (~and retracted
                         (~bind [syndicate-kw #'syndicate:retracted]
-                               [react-con #'Retracted]))
+                               [ty-cons #'Retracted]))
                   (~and message
                         (~bind [syndicate-kw #'syndicate:message]
-                               [react-con #'Message])))))
+                               [ty-cons #'Message]))
+                  (~and know
+                        (~bind [syndicate-kw #'syndicate:know]
+                               [ty-cons #'Know]))
+                  (~and forget
+                        (~bind [syndicate-kw #'syndicate:forget]
+                               [ty-cons #'Forget]))
+                  (~and realize
+                        (~bind [syndicate-kw #'syndicate:realize]
+                               [ty-cons #'Realize])))))
   (define-syntax-class priority-level
     #:literals (*query-priority-high*
                 *query-priority*
@@ -216,7 +250,8 @@
   )
 
 (define-typed-syntax on
-  [(on (~literal start) s ...) ≫
+  #:datum-literals (start stop)
+  [(on start s ...) ≫
    [⊢ (begin s ...) ≫ s- (⇒ ν-ep (~effs))
                           (⇒ ν-f (~effs τ-f ...))
                           (⇒ ν-s (~effs τ-s ...))]
@@ -224,7 +259,7 @@
    -----------------------------------
    [⊢ (syndicate:on-start s-) (⇒ : ★/t)
       (⇒ ν-ep (τ-r))]]
-  [(on (~literal stop) s ...) ≫
+  [(on stop s ...) ≫
    [⊢ (begin s ...) ≫ s- (⇒ ν-ep (~effs))
                           (⇒ ν-f (~effs τ-f ...))
                           (⇒ ν-s (~effs τ-s ...))]
@@ -232,10 +267,10 @@
    -----------------------------------
    [⊢ (syndicate:on-stop s-) (⇒ : ★/t)
       (⇒ ν-ep (τ-r))]]
-  [(on (a/r/m:asserted/retracted/message p)
+  [(on (evt:event-cons p)
        priority:priority
        s ...) ≫
-   #:do [(define msg? (free-identifier=? #'syndicate:message (attribute a/r/m.syndicate-kw)))
+   #:do [(define msg? (free-identifier=? #'syndicate:message (attribute evt.syndicate-kw)))
          (define elab
            (elaborate-pattern/with-com-ty (if msg? #'(message p) #'p)))]
    #:with p/e (if msg? (stx-cadr elab) elab)
@@ -247,9 +282,9 @@
                  (⇒ ν-f (~effs τ-f ...))
                  (⇒ ν-s (~effs τ-s ...))]
    #:with p- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'p/e))
-   #:with τ-r (type-eval #'(Reacts (a/r/m.react-con τp) τ-f ... τ-s ...))
+   #:with τ-r (type-eval #'(Reacts (evt.ty-cons τp) τ-f ... τ-s ...))
    -----------------------------------
-   [⊢ (syndicate:on (a/r/m.syndicate-kw p-)
+   [⊢ (syndicate:on (evt.syndicate-kw p-)
                     #:priority priority.level
                     s-)
       (⇒ : ★/t)
@@ -282,7 +317,7 @@
      [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
     ]
   ;; TODO: s shouldn't refer to facets or fields!
-  #:with (τ-i τ-o τ-a) (analyze-roles #'(τ-f ...))
+  #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
   #:fail-unless (<: #'τ-o #'τ-c.norm)
                 (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o) (type->str #'τ-c.norm))
   #:with τ-final (mk-Actor- #'(τ-c.norm))
@@ -291,6 +326,8 @@
   #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c.norm)
                                #'τ-i)
                 "Not prepared to handle all inputs"
+  #:fail-unless (project-safe? #'τ-o/i #'τ-i/i)
+                "Not prepared to handle internal events"
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ ν-s (τ-final))]]
@@ -328,21 +365,33 @@
 ;; Derived Forms
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-typed-syntax (during p s ...) ≫
+(define-typed-syntax during
+  #:literals (know)
+  [(_ (~or (~and k (know p)) p) s ...) ≫
   #:with p+ (elaborate-pattern/with-com-ty #'p)
   #:with inst-p (instantiate-pattern #'p+)
+  #:with start-e (if (attribute k) #'know #'asserted)
+  #:with stop-e (if (attribute k) #'forget #'retracted)
+  #:with res #'(on (start-e p+)
+                   (start-facet during-inner
+                                (on (stop-e inst-p)
+                                    (stop during-inner))
+                                s ...))
   ----------------------------------------
-  [≻ (on (asserted p+)
+  [≻ (on (start-e p+)
          (start-facet during-inner
-           (on (retracted inst-p)
+           (on (stop-e inst-p)
                (stop during-inner))
-           s ...))])
+           s ...))]])
 
-(define-simple-macro (During τ:type EP ...)
+(define-simple-macro (During (~or (~and K ((~literal Know) τ:type)) τ:type)
+                       EP ...)
   #:with τ/inst (instantiate-pattern-type #'τ.norm)
-  (Reacts (Asserted τ)
+  #:with start-e (if (attribute K) #'Know #'Asserted)
+  #:with stop-e (if (attribute K) #'Forget #'Retracted)
+  (Reacts (start-e τ)
           (Role (during-inner)
-                (Reacts (Retracted τ/inst)
+                (Reacts (stop-e τ/inst)
                         (Stop during-inner))
                 EP ...)))
 
@@ -457,6 +506,12 @@
                 #:priority *query-priority-high*
                 (set! x (hash-remove (ref x) e-key))
                 remove.expr))])
+
+(define-simple-macro (on-start e ...)
+  (on start e ...))
+
+(define-simple-macro (on-stop e ...)
+  (on stop e ...))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions

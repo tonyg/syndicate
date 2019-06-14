@@ -201,9 +201,13 @@
 (define-binding-type Role #:arity >= 0 #:bvs = 1)
 (define-type-constructor Shares #:arity = 1)
 (define-type-constructor Sends #:arity = 1)
+(define-type-constructor Realizes #:arity = 1)
 (define-type-constructor Reacts #:arity >= 1)
 (define-type-constructor Asserted #:arity = 1)
 (define-type-constructor Retracted #:arity = 1)
+(define-type-constructor Know #:arity = 1)
+(define-type-constructor Forget #:arity = 1)
+(define-product-type Realize #:arity = 1)
 (define-type-constructor Stop #:arity >= 1)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
@@ -660,6 +664,9 @@
 (define-for-syntax (bot? t)
   ((current-typecheck-relation) t (mk-U*- '())))
 
+(define-for-syntax bot
+  (mk-U*- '()))
+
 (define-for-syntax (flat-type? τ)
   (syntax-parse τ
     [(~→ τ ...) #f]
@@ -701,7 +708,6 @@
 
 (define-for-syntax (relay-interests t)
   (syntax-parse t
-    ;; TODO: probably need to `normalize` the result
     [(~U* τ ...) (mk-U- (stx-map relay-interests #'(τ ...)))]
     [~★/t (type-eval #'★/t)]
     [(~Observe (~Inbound τ)) (mk-Observe- #'(τ))]
@@ -709,15 +715,19 @@
 
 ;; (SyntaxOf RoleType ...) -> (Syntaxof InputType OutputType SpawnType)
 (define-for-syntax (analyze-roles rs)
-  (define-values (lis los lss)
+  (define-values (lis los lis/i los/i lss)
     (for/fold ([is '()]
                [os '()]
+               [is/i '()]
+               [os/i '()]
                [ss '()])
               ([r (in-syntax rs)])
-      (define-values (i o s) (analyze-role-input/output r))
-      (values (cons i is) (cons o os) (cons s ss))))
+      (define-values (i o i/i o/i s) (analyze-role-input/output r))
+      (values (cons i is) (cons o os) (cons i/i is/i) (cons o/i os/i) (cons s ss))))
   #`(#,(mk-U- lis)
      #,(mk-U- los)
+     #,(mk-U- lis/i)
+     #,(mk-U- los/i)
      #,(mk-U- lss)))
 
 ;; Wanted test case, but can't use it bc it uses things defined for-syntax
@@ -727,37 +737,60 @@
      [(τ-i τ-o)
       (check-true (type=? #'τ-o (type-eval #'Int)))])))
 
-;; RoleType -> (Values InputType OutputType SpawnType)
+;; RoleType -> (Values ExternalInputType ExternalOutputType
+;;                     InternalInputType InternalOutputType
+;;                     SpawnType)
 (define-for-syntax (analyze-role-input/output t)
   (syntax-parse t
     [(~Branch (~Effs τ-r ...) ...)
-     #:with (τi τo τa) (analyze-roles #'(τ-r ... ...))
-     (values #'τi #'τo #'τa)]
+     #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-r ... ...))
+     (values #'τ-i #'τ-o #'τ-i/i #'τ-o/i #'τ-a)]
     [(~Stop name:id τ-r ...)
-     #:with (τi τo τa) (analyze-roles #'(τ-r ...))
-     (values #'τi #'τo #'τa)]
+     #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-r ...))
+     (values #'τ-i #'τ-o #'τ-i/i #'τ-o/i #'τ-a)]
     [(~Actor τc)
-     (values (mk-U*- '()) (mk-U*- '()) t)]
+     (values bot bot bot bot t)]
     [(~Sends τ-m)
-     (values (mk-U*- '()) (mk-Message- #'(τ-m)) (mk-U*- '()))]
+     (values bot (mk-Message- #'(τ-m)) bot bot bot)]
+    [(~Realizes τ-m)
+     (values bot bot bot (mk-Realize- #'(τ-m)) bot)]
     [(~Role (name:id)
        (~or (~Shares τ-s)
+            (~Know τ-k)
             (~Sends τ-m)
+            (~Realizes τ-rlz)
             (~Reacts τ-if τ-then ...)) ...
        (~and (~Role _ ...) sub-role) ...)
      #:with (msg ...) (for/list ([m (in-syntax #'(τ-m ...))])
                         (mk-Message- (list m)))
-     (define-values (is os ss)
+     #:with (rlz ...) (for/list ([r (in-syntax #'(τ-rlz ...))])
+                        (mk-Realize- (list r)))
+     (define-values (is/e os/e is/i os/i ss)
        (for/fold ([ins '()]
                   [outs '()]
+                  [ins/int '()]
+                  [outs/int '()]
                   [spawns '()])
                  ([t (in-syntax #'(τ-then ... ... sub-role ...))])
-         (define-values (i o s) (analyze-role-input/output t))
-         (values (cons i ins) (cons o outs) (cons s spawns))))
-     (define pat-types (stx-map event-desc-type #'(τ-if ...)))
-     (values (mk-U- #`(#,@is #,@pat-types))
-             (mk-U- #`(τ-s ... msg ... #,@os #,@(stx-map pattern-sub-type pat-types)))
+         (define-values (i o i/i o/i s) (analyze-role-input/output t))
+         (values (cons i ins) (cons o outs) (cons i/i ins/int) (cons o/i outs/int) (cons s spawns))))
+     (define-values (ifs/ext ifs/int) (partition external-evt? (stx->list #'(τ-if ...))))
+     (define pat-types/ext (map event-desc-type ifs/ext))
+     (define pat-types/int (map event-desc-type ifs/int))
+     (values (mk-U- #`(#,@is/e #,@pat-types/ext))
+             (mk-U- #`(τ-s ... msg ... #,@os/e #,@(map pattern-sub-type pat-types/ext)))
+             (mk-U- #`(#,@is/i #,@pat-types/int))
+             (mk-U- #`(τ-k ... rlz ... #,@os/i #,@(map pattern-sub-type pat-types/int)))
              (mk-U- ss))]))
+
+;; EventType -> Bool
+;; recognize external events (assertions and messages)
+(define-for-syntax (external-evt? evt)
+  (syntax-parse evt
+    [(~Asserted τ) #t]
+    [(~Retracted τ) #t]
+    [(~Message τ) #t]
+    [_ #f]))
 
 ;; EventDescriptorType -> Type
 (define-for-syntax (event-desc-type desc)
@@ -765,12 +798,16 @@
     [(~Asserted τ) #'τ]
     [(~Retracted τ) #'τ]
     [(~Message τ) desc]
+    [(~Know τ) #'τ]
+    [(~Forget τ) #'τ]
+    [(~Realize τ) desc]
     [_ (mk-U*- '())]))
 
 ;; PatternType -> Type
 (define-for-syntax (pattern-sub-type pt)
   (syntax-parse pt
-    [(~Message τ)
+    [(~or (~Message τ)
+          (~Realize τ))
      (define t (replace-bind-and-discard-with-★ #'τ))
      (mk-Observe- (list t))]
     [τ
@@ -957,7 +994,6 @@
 ;; first type is the contents of the set/dataspace
 ;; second type is the type of a pattern
 (define-for-syntax (project-safe? t1 t2)
-  ;; TODO - not sure how to handle type variables
   (define (project-safe* t1 t2)
     (syntax-parse #`(#,t1 #,t2)
       [(_ (~Bind τ2))
@@ -994,7 +1030,6 @@
     [~★/t #f]
     [(~U* τ:type ...)
      (stx-andmap finite? #'(τ ...))]
-    ;; TODO - this is questionable. maybe need a kind for assertions?
     [X:id
      #t]
     [(~Base _) #t]
@@ -1016,68 +1051,6 @@
                         (pattern-matching-assertions t)))
      (reassemble-type #'τ-cons subitems)]
     [_ t]))
-
-;; it's ok for x to respond to strictly more events than y
-(define-for-syntax (condition-covers? x y)
-  (or
-   ;; covers Start,Stop,Dataflow
-   (type=? x y)
-   (syntax-parse #`(#,x #,y)
-     [((~Asserted τ1) (~Asserted τ2))
-      (<: (pattern-matching-assertions #'τ2)
-          (pattern-matching-assertions #'τ1))]
-     [((~Retracted τ1) (~Retracted τ2))
-      (<: (pattern-matching-assertions #'τ2)
-          (pattern-matching-assertions #'τ1))]
-     [((~Message τ1) (~Message τ2))
-      (<: (pattern-matching-assertions #'τ2)
-          (pattern-matching-assertions #'τ1))]
-     [_ #f])))
-
-;; RoleType RoleType -> Bool
-;; Check that role r implements role spec (possibly does more)
-(define-for-syntax (role-implements? r spec)
-  (syntax-parse #`(#,r #,spec)
-    ;; TODO: cases for unions, stop
-    [((~Role (x:id) (~or (~Shares τ-s1) (~Sends τ-m1) (~Reacts τ-if1 τ-then1 ...)) ...)
-      (~Role (y:id) (~or (~Shares τ-s2) (~Sends τ-m2) (~Reacts τ-if2 τ-then2 ...)) ...))
-     #:when (free-identifier=? #'x #'y)
-     (and
-      ;; for each assertion in the spec, there must be a suitable assertion in the actual
-      ;; TODO: this kinda ignores numerosity, can one assertion in r cover multiple assertions in spec?
-      (for/and [(s2 (in-syntax #'(τ-s2 ...)))]
-        (stx-ormap (<:l s2) #'(τ-s1 ...)))
-      ;; similar for messages
-      (for/and [(m2 (in-syntax #'(τ-m2 ...)))]
-        (stx-ormap (<:l m2) #'(τ-m1 ...)))
-      (for/and [(s2 (in-syntax #'((τ-if2 (τ-then2 ...)) ...)))]
-        (define/syntax-parse (τ-if2 (τ-then2 ...)) s2)
-        (for/or [(s1 (in-syntax #'((τ-if1 (τ-then1 ...)) ...)))]
-          (define/syntax-parse (τ-if1 (τ-then1 ...)) s1)
-          ;; the event descriptors need to line up
-          (and (condition-covers? #'τ-if1 #'τ-if2)
-               ;; and for each specified response to the event, there needs to be a similar one in the
-               ;; the actual
-               (stx-andmap (lambda (s) (stx-ormap (lambda (r) (role-implements? r s)) #'(τ-then1 ...)))
-                           #'(τ-then2 ...))))))]
-    [((~Role (x:id) _ ...)
-      (~Role (y:id) _ ...))
-     (role-implements? (subst #'y #'x r) spec)]
-    [((~Stop x:id τ1 ...)
-      (~Stop y:id τ2 ...))
-     (and
-      (free-identifier=? #'x #'y)
-      (for/and ([t2 (in-syntax #'(τ2 ...))])
-        (for/or ([t1 (in-syntax #'(τ1 ...))])
-          (role-implements? t1 t2))))]
-    ;; seems like this check might be in the wrong place
-    [((~Sends τ-m1)
-      (~Sends τ-m2))
-     (<: #'τ-m1 #'τ-m2)]
-    [((~Actor _)
-      (~Actor _))
-     ;; spawned actor OK in specified dataspace
-     (<: r spec)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Effect Checking
