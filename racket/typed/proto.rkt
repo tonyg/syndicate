@@ -122,14 +122,11 @@
              [states (hash)])
     (match work-list
       [(cons current more)
-       (define all-txns
-         (for/list ([nm (in-set current)])
-           (hash-ref roles# nm)))
        (define agg-txn
          (for/fold ([agg (hash)])
-                   ([txns (in-list all-txns)])
-           (hash-union agg txns
-                       #:combine combine-effect-sets)))
+                   ([nm (in-set current)])
+           (define txns (hash-ref roles# nm))
+           (hash-union agg txns #:combine combine-effect-sets)))
        (define transitions
          (for/hash ([(D effs) (in-hash agg-txn)]
                     #:when (external-evt? D))
