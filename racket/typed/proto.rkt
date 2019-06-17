@@ -14,9 +14,11 @@
 ;; a T is one of
 ;;   - (Role FacetName (Listof EP)), also abbreviated as just Role
 ;;   - (Spawn τ)
+;;   - (Sends τ)
 ;;   - (Stop FacetName Body)
 (struct Role (nm eps) #:transparent)
 (struct Spawn (ty) #:transparent)
+(struct Sends (ty) #:transparent)
 (struct Stop (nm body) #:transparent)
 
 ;; a EP is one of
@@ -93,10 +95,15 @@
 ;; -----------------------------------------------------------------------------
 ;; Compiling Roles to state machines
 
-;; a State is a (state StateName (Hashof D (Setof StateName)))
+;; a State is a (state StateName (Hashof D (Setof Transition)))
 ;;   where each D in the hash satisfies external-evt?
 ;; a StateName is a (Setof FacetName)
 ;; let's assume that all FacetNames are unique
+;; a Transition is a (transition (Listof TransitionEffect) StateName)
+(struct transition (effs dest) #:transparent)
+;; a TransitionEffect is one of
+;;   - (send τ)
+(struct send (ty) #:transparent)
 ;; ok, this is also ignoring Spawn actions for now, would show up in the transitions hash
 (struct state (name transitions) #:transparent)
 
@@ -131,14 +138,15 @@
          (for/hash ([(D effs) (in-hash agg-txn)]
                     #:when (external-evt? D))
            ;; TODO - may want to remove self loops here
-           (define destinations
+           (define txns
              (for*/set ([eff* (in-set effs)]
-                        [dst (in-set (apply-effects eff* current ft roles#))])
-               dst))
-           (values D destinations)))
+                        [txn (in-set (apply-effects eff* current ft roles#))])
+               txn))
+           (values D txns)))
        (define new-work
-         (for*/list ([st-set (in-hash-values transitions)]
-                     [st (in-set st-set)]
+         (for*/list ([txns (in-hash-values transitions)]
+                     [txn (in-set txns)]
+                     [st (in-value (transition-dest txn))]
                      #:unless (equal? st current)
                      #:unless (hash-has-key? states st))
            st))
@@ -179,7 +187,7 @@
       (Observe (book-quote String ⋆)))
     (check-true (hash-has-key? transitions (Asserted quote-request)))
     (check-equal? (hash-ref transitions (Asserted quote-request))
-                  (set (set 'seller 'fulfill))))
+                  (set (transition '() (set 'seller 'fulfill)))))
   (test-case
       "compile role that quits"
     (define r
@@ -197,7 +205,7 @@
     (define transitions (state-transitions state0))
     (check-true (hash-has-key? transitions (Asserted Int)))
     (check-equal? (hash-ref transitions (Asserted Int))
-                  (set (set))))
+                  (set (transition '() (set)))))
 
   (test-case
       "leader-revised should have a quote/poll cycle"
@@ -212,8 +220,11 @@
     (define bq (Asserted (book-quote String Int)))
     (check-true (hash? gq-transitions))
     (check-true (hash-has-key? gq-transitions bq))
-    (define dests (hash-ref gq-transitions bq))
-    (check-true (set? dests))
+    (define txns (hash-ref gq-transitions bq))
+    (check-true (set? txns))
+    (define dests (for/set ([t (in-set txns)])
+                    (transition-dest t)))
+    (check-true (set? txns))
     (check-true (set-member? dests (set 'get-quotes 'poll-members)))
     (check-true (hash-has-key? state# (set 'get-quotes 'poll-members)))
     (define gqpm-st (hash-ref state# (set 'get-quotes 'poll-members)))
@@ -222,7 +233,10 @@
     (define bi (Asserted (book-interest String String ⋆)))
     (check-true (hash? gqpm-transitions))
     (check-true (hash-has-key? gqpm-transitions bi))
-    (define dests2 (hash-ref gqpm-transitions bi))
+    (define txns2 (hash-ref gqpm-transitions bi))
+    (check-true (set? txns2))
+    (define dests2 (for/set ([t (in-set txns2)])
+                     (transition-dest t)))
     (check-true (set? dests2))
     (check-true (set-member? dests2 (set 'get-quotes))))
 
@@ -284,6 +298,8 @@
       [(cons (cons parent T) rest)
        (match T
          ;; TODO - handle Spawn
+         [(Sends _)
+          (loop rest downs ups)]
          [(Role nm eps)
           ;; record the parent/child relationship
           (define downs2 (hash-update downs
@@ -427,6 +443,7 @@
 ;; a RoleEffect is one of
 ;;   - (start RoleName)
 ;;   - (stop RoleName)
+;;   - (send τ)
 ;; TODO - leaving out Spawn here
 (struct start (nm) #:transparent)
 (struct stop (nm) #:transparent)
@@ -436,10 +453,11 @@
 ;; It always includes the keys StartEvt and StopEvt.
 (define txn-desc0 (hash StartEvt (set) StopEvt (set)))
 
-;; (Listof RoleEffect) StateName
+;; (Listof RoleEffect)
+;; StateName
 ;; FacetTree
 ;; (Hashof FacetName TransitionDesc)
-;; -> (Setof StateName)
+;; -> (Setof Transition)
 ;; determine the state resulting from some effects, given the currently active
 ;; facets and a description of possible facet locations and behavior.
 (define (apply-effects effs st ft txn#)
@@ -447,9 +465,11 @@
              [effs effs])
     (match effs
       ['()
-       (set st)]
+       (set (transition '() st))]
       [(cons eff rest)
        (match eff
+         [(send _)
+          (set (transition (list eff) st))]
          [(start nm)
           (define st+ (set-add st nm))
           (define start-effs (hash-ref (hash-ref txn# nm) StartEvt))
@@ -461,25 +481,24 @@
                         [result (in-set (loop st+ (append rest eff*)))])
                result)])]
          [(stop nm)
-          ;; better include nm
           (define children (find-children ft nm st))
           (define st-
             (for/fold ([st st])
                       ([c (in-list children)])
               (set-remove st c)))
-          (for/fold ([sts (set st-)])
+          (for/fold ([txns (set (transition '() st-))])
                     ([f-name (in-list children)])
             (define stop-effs (hash-ref (hash-ref txn# f-name) StopEvt))
-            (cond
-              [(set-empty? stop-effs)
-               (for*/set ([st (in-set sts)]
-                          [result (in-set (loop st rest))])
-                 result)]
-              [else
-               (for*/set ([st (in-set sts)]
-                          [effs* (in-set stop-effs)]
-                          [result (in-set (loop st (append rest effs*)))])
-                 result)]))])])))
+            (define stop-effs+ (if (set-empty? stop-effs)
+                                   (set '())
+                                   stop-effs))
+            (for*/set ([txn (in-set txns)]
+                       [st (in-value (transition-dest txn))]
+                       [effs* (in-set stop-effs+)]
+                       [next-txn (in-set (loop st (append effs* rest)))])
+              (transition (append (transition-effs txn)
+                                  (transition-effs next-txn))
+                          (transition-dest next-txn))))])])))
 
 ;; FacetTree FacetName (Setof FacetName) -> (List FacetName)
 ;; return the facets in names that are children of the given facet nm, ordered
@@ -519,8 +538,10 @@
      (for*/list ([act (in-list (Body->actions body))]
                  [role (in-list (enumerate-roles act))])
        role)]
+    [(Sends _)
+     '()]
     [(Spawn _)
-     (error)]))
+     (error 'enumerate-roles "Spawn not yet implemented")]))
 
 ;; Role -> TransitionDesc
 ;; determine how the event handlers in a role alter the facet tree
@@ -645,6 +666,8 @@
        (set-union agg effs++))]
     [(Role nm _)
      (set (list (start nm)))]
+    [(Sends τ)
+     (set (list (send τ)))]
     [(Stop nm more)
      (define effects (Body->effects more))
      (cond
@@ -754,6 +777,15 @@
     [_
      #f]))
 
+;; TransitionEffect TransitionEffect -> Bool
+;; subtyping lifted over transition effects
+(define (eff<:? e1 e2)
+  (match (list e1 e2)
+    [(list (send t1) (send t2))
+     (<:? t1 t2)]
+    [_
+     #f]))
+
 ;; Role -> (Setof τ)
 ;; Compute the set of assertions the role contributes (on its own, not
 ;; considering parent assertions)
@@ -788,17 +820,18 @@
                 (Observe String)))
 
 ;; an Equation is (equiv StateName StateName)
+;; INVARIANT: lhs is "implementation", rhs is "specification"
 ;;
 ;; a Goal is one of
 ;;   - Equation
 ;;   - (one-of (Setof StateMatch))
 ;;
-;; a StateMatch is a (Setof Equation)
+;; a StateMatch is a (Setof (equiv Transition Transition))
 (struct equiv (a b) #:transparent)
 (struct one-of (opts) #:transparent)
 
-;; (Setof StateName) (Setof StateName) -> (Setof (Setof Equation))
-;; Create potential state matchings
+;; (Setof Transition) (Setof Transition) -> (Setof StateMatch)
+;; Create potential edge matchings
 ;; In each state matching, each element a of the first set (as) is
 ;; matched with an element b of bs, where each b has at least one state
 ;; matched with it.
@@ -905,9 +938,22 @@
                                         verify/with-current-assumed))]
         [(one-of matchings)
          (for/or ([matching (in-set matchings)])
+           (define matching-hypos
+             (for/set ([eq (in-set matching)])
+               (match-define (equiv t1 t2) eq)
+               (equiv (transition-dest t1) (transition-dest t2))))
            (for/and ([goal (in-set matching)])
-             (define hypotheses (set-remove matching goal))
-             (verify goal (set-union hypotheses assumptions))))])))
+             (match-define (equiv (transition effs1 dest1)
+                                  (transition effs2 dest2)) goal)
+             (cond
+               [(effects-subsequence? effs2 effs1)
+                (define local-goal (equiv dest1 dest2))
+                (define hypotheses
+                  (set-remove matching-hypos local-goal))
+                (verify local-goal (set-union hypotheses assumptions))]
+               [else
+                #f])
+             ))])))
   (verify (equiv st0-1 st0-2) (set)))
 
 ;; (Sequenceof StateName) Role -> (Hashof StateName (Setof τ))
@@ -935,8 +981,8 @@
     (for/or ([assertion1 (in-set as1)])
       (<:? assertion2 assertion1))))
 
-;; (Hashof D (Setof StateName))
-;; (Hashof D (Setof StateName))
+;; (Hashof D (Setof Transition))
+;; (Hashof D (Setof Transition))
 ;; (Goal -> Bool) -> Bool
 ;; Determine if:
 ;;   for each event D going from sn2,
@@ -946,28 +992,45 @@
 ;;   for the set of states Y connected to sn1 by E,
 ;;   it is possible to pair the states of X and Y such that they are in simulation,
 ;;   as determined by the verify procedure
+;;   and the effects on the edge going to Y are a supersequence of the effects
+;;   on the edge to Y
 (define (same-on-specified-events? transitions1 transitions2 verify)
-  (for/and ([(D2 dests2) (in-hash transitions2)])
-    (define dests1
+  (for/and ([(D2 edges2) (in-hash transitions2)])
+    (define edges1
       (for/fold ([agg (set)])
-                ([(D1 dests) (in-hash transitions1)]
+                ([(D1 txns1) (in-hash transitions1)]
                  #:when (D<:? D2 D1)
                  ;; only consider dataflow events vs. non-dataflow when
                  ;; there is not a dataflow edge in the spec (HACK)
                  #:unless (and (equal? D1 DataflowEvt)
                                (not (equal? D2 DataflowEvt))
                                (hash-has-key? transitions2 D1)))
-        (set-union agg dests)))
+        (set-union agg txns1)))
     (cond
-      [(set-empty? dests1)
+      [(set-empty? edges1)
        #f]
       [else
-       (define combos (make-combinations dests1 dests2))
+       (define combos (make-combinations edges1 edges2))
        (verify (one-of combos))])))
 
+;; (Listof TransitionEffect) (Listof TransitionEffect) -> Bool
+;; determine if actual includes (supertypes of) the effects of spec in the same
+;; order
+(define (effects-subsequence? spec actual)
+    (match spec
+      ['()
+       #t]
+      [(cons eff1 more-spec)
+       (match actual
+         ['()
+          #f]
+         [(cons eff2 more-actual)
+          (if (eff<:? eff1 eff2)
+              (effects-subsequence? more-spec more-actual)
+              (effects-subsequence? spec more-actual))])]))
 
-;; (Hashof D (Setof StateName))
-;; (Hashof D (Setof StateName))
+;; (Hashof D (Setof Transition))
+;; (Hashof D (Setof Transition))
 ;; StateName
 ;; (Goal -> Bool) -> Bool
 ;; Determine if:
@@ -985,8 +1048,8 @@
                          (D<:? evt2 evt1)))
       evt1))
   (for*/and ([evt (in-set extra-evts)]
-             [dest (in-set (hash-ref transitions1 evt))])
-    (verify (equiv dest sn2))))
+             [txn (in-set (hash-ref transitions1 evt))])
+    (verify (equiv (transition-dest txn) sn2))))
 
 (module+ test
   (test-case
@@ -1108,13 +1171,15 @@
        (for/hash ([st (in-list states*)])
          (define orig-txn# (state-transitions (hash-ref state# st)))
          (define txn#
-           (for*/hash ([(D dests) (in-hash orig-txn#)]
-                       #:when (event-enabled? D)
-                       [dests+ (in-value (set-intersect dests states))]
-                       ;; empty dests+ might mean want to ignore this set of
-                       ;; events? TODO
-                       #:unless (set-empty? dests+))
-             (values D dests+)))
+           (for/hash ([D (in-hash-keys orig-txn#)]
+                      #:when (event-enabled? D))
+             (define orig-txns (hash-ref orig-txn# D))
+             (define new-txns
+               (for/set ([txn (in-set orig-txns)]
+                         #:when (set-member? states (transition-dest txn)))
+                 txn))
+             ;; TODO - what if new-txns is empty?
+             (values D new-txns)))
          (values st (state st txn#))))
      (for ([st0 (in-list states*)])
        (define rg (role-graph st0 st#))
@@ -1142,9 +1207,9 @@
           (search more seen)]
          [else
           (define connections
-            (for*/list ([dests (in-hash-values txn#)]
-                        [d (in-set dests)])
-              d))
+            (for*/list ([txn* (in-hash-values txn#)]
+                        [txn (in-set txn*)])
+              (transition-dest txn)))
           (search (append more connections)
                   (set-add seen name))])])))
 
@@ -1153,10 +1218,10 @@
       "reachable states"
     (define rg
       (role-graph (set 'X 'Y 'Z)
-                  (hash (set 'X 'Y 'Z) (state (set 'X 'Y 'Z) (hash (Asserted Int) (set (set 'X 'Y 'Z))
-                                                                   (Retracted Int) (set (set 'X 'Y))))
+                  (hash (set 'X 'Y 'Z) (state (set 'X 'Y 'Z) (hash (Asserted Int) (set (transition '() (set 'X 'Y 'Z)))
+                                                                   (Retracted Int) (set (transition '() (set 'X 'Y)))))
                         (set 'X) (state (set 'X) '#hash())
-                        (set 'X 'Y) (state (set 'X 'Y) (hash (Asserted Int) (set (set 'X 'Y 'Z)))))))
+                        (set 'X 'Y) (state (set 'X 'Y) (hash (Asserted Int) (set (transition '() (set 'X 'Y 'Z))))))))
       (define reachable (reachable-states rg))
       (check-true (set-member? reachable (set 'X 'Y 'Z)))
       (check-true (set-member? reachable (set 'X 'Y)))
@@ -1172,9 +1237,9 @@
          (set 'during-inner2 'during-inner1 'tm)
          (hash
           (Asserted (Struct 'TaskAssignment (list)))
-          (set (set 'during-inner2 'during-inner1 'tm))
+          (set (transition '() (set 'during-inner2 'during-inner1 'tm)))
           (Retracted (Struct 'TaskAssignment (list)))
-          (set (set 'during-inner1 'tm))))
+          (set (transition '() (set 'during-inner1 'tm)))))
         (set 'tm)
         (state (set 'tm) '#hash())
         (set 'during-inner1 'tm)
@@ -1182,7 +1247,7 @@
          (set 'during-inner1 'tm)
          (hash
           (Asserted (Struct 'TaskAssignment (list)))
-          (set (set 'during-inner2 'during-inner1 'tm)))))))
+          (set (transition '() (set 'during-inner2 'during-inner1 'tm))))))))
     (define reachable (reachable-states rg))
     (check-true (set-member? reachable (set 'during-inner2 'during-inner1 'tm)))
     (check-true (set-member? reachable (set 'during-inner1 'tm)))
@@ -1205,104 +1270,108 @@
 ;; ---------------------------------------------------------------------------
 ;; Visualization
 
-(module+ vis
-  ;; TODO - for now, assume there are no names that need escaping
+;; TODO - for now, assume there are no names that need escaping
 
-  ;; RoleGraph -> DotString
-  ;; name is an optional string
-  ;; translate the states to DOT that can be passed to graphviz
-  (define (render rg
-                  #:name [name #f])
-    (match-define (role-graph st0 st#) rg)
-    (define graph-name (or name "Roles"))
-    (define entry-node (format "~a [style=bold];" (state-name->dot-name st0)))
-    (define edges
-      (for/list ([(sn st) (in-hash st#)])
-        (define dot-name (state-name->dot-name sn))
-        (define txns (state-transitions st))
-        (define dot-edges
-          (for*/list ([(D targets) (in-hash txns)]
-                      [target (in-set targets)])
-            (render-edge dot-name D target)))
-        (string-join dot-edges "\n")))
-    (string-join (cons entry-node edges)
-                 "\n"
-                 #:before-first (format "digraph ~a {\n" graph-name)
-                 #:after-last "\n}"))
+;; RoleGraph -> DotString
+;; name is an optional string
+;; translate the states to DOT that can be passed to graphviz
+(define (render rg
+                #:name [name #f])
+  (match-define (role-graph st0 st#) rg)
+  (define graph-name (or name "Roles"))
+  (define entry-node (format "~a [style=bold];" (state-name->dot-name st0)))
+  (define edges
+    (for/list ([(sn st) (in-hash st#)])
+      (define dot-name (state-name->dot-name sn))
+      (define txns (state-transitions st))
+      (define dot-edges
+        (for*/list ([(D targets) (in-hash txns)]
+                    [target (in-set targets)])
+          (render-edge dot-name D target)))
+      (string-join dot-edges "\n")))
+  (string-join (cons entry-node edges)
+               "\n"
+               #:before-first (format "digraph ~a {\n" graph-name)
+               #:after-last "\n}"))
 
-  ;; RoleGraph PathString -> DotString
-  ;; Like render but write the output to a file
-  (define (render-to-file rg dest
-                          #:name [name #f])
-    (with-output-to-file dest
-      (lambda () (write-string (render rg #:name name)))
-      #:exists 'replace))
+;; RoleGraph PathString -> DotString
+;; Like render but write the output to a file
+(define (render-to-file rg dest
+                        #:name [name #f])
+  (with-output-to-file dest
+    (lambda () (write-string (render rg #:name name)))
+    #:exists 'replace))
 
-  ;; StateName -> String
-  (define (state-name->dot-name sn)
-    (define nms
-      (for/list ([nm (in-set sn)])
-        (~a nm)))
-    (string-join nms ","
-                 #:before-first "\"{"
-                 #:after-last "}\""))
+;; StateName -> String
+(define (state-name->dot-name sn)
+  (define nms
+    (for/list ([nm (in-set sn)])
+      (~a nm)))
+  (string-join nms ","
+               #:before-first "\"{"
+               #:after-last "}\""))
 
-  ;; String D StateName -> DotString
-  ;; describe an edge between the states with the corresponding label
-  (define (render-edge from evt to)
-    (define target-dot (state-name->dot-name to))
-    (define edge-label (D->label evt))
-    (format "~a -> ~a [label=\"~a\"];" from target-dot edge-label))
+;; String D Transition -> DotString
+;; describe an edge between the states with the corresponding label
+(define (render-edge from evt txn)
+  (match-define (transition effs to) txn)
+  (define target-dot (state-name->dot-name to))
+  (define evt-label (D->label evt))
+  (define edge-label
+    ;; TODO - better presentation of effects
+    (if (empty? effs)
+        evt-label
+        (string-append evt-label "[...]")))
+  (format "~a -> ~a [label=\"~a\"];" from target-dot edge-label))
 
-  ;; D -> DotString
-  ;; give a description of an event suitable for rendering
-  (define (D->label evt)
-    (match evt
-      [(Asserted τ)
-       (string-append "+" (τ->string τ))]
-      [(Retracted τ)
-       (string-append "-" (τ->string τ))]
-      [(Message τ)
-       (string-append "!" (τ->string τ))]
-      [(Know τ)
-       (string-append "~+" (τ->string τ))]
-      [(Forget τ)
-       (string-append "~-" (τ->string τ))]
-      [(Realize τ)
-       (string-append "~!" (τ->string τ))]
-      [(== StartEvt)
-       "Start"]
-      [(== StopEvt)
-       "Stop"]
-      [(== DataflowEvt)
-       "Dataflow"]))
+;; D -> DotString
+;; give a description of an event suitable for rendering
+(define (D->label evt)
+  (match evt
+    [(Asserted τ)
+     (string-append "+" (τ->string τ))]
+    [(Retracted τ)
+     (string-append "-" (τ->string τ))]
+    [(Message τ)
+     (string-append "!" (τ->string τ))]
+    [(Know τ)
+     (string-append "~+" (τ->string τ))]
+    [(Forget τ)
+     (string-append "~-" (τ->string τ))]
+    [(Realize τ)
+     (string-append "~!" (τ->string τ))]
+    [(== StartEvt)
+     "Start"]
+    [(== StopEvt)
+     "Stop"]
+    [(== DataflowEvt)
+     "Dataflow"]))
 
-  ;; τ -> String
-  (define (τ->string τ)
-    ;; (Listof String) -> String
-    (define (paren-join xs)
-      (string-join xs
-                   #:before-first "("
-                   #:after-last ")"))
-    (match τ
-      [(Base name)
-       (symbol->string name)]
-      [(== ⋆) "⋆"]
-      [(Observe τ2)
-       (string-append "?" (τ->string τ2))]
-      [(List τ2)
-       (τ->string (Struct 'List (list τ2)))]
-      [(Set τ2)
-       (τ->string (Struct 'Set (list τ2)))]
-      [(Hash τk τv)
-       (τ->string (Struct 'Hash (list τk τv)))]
-      [(Struct nm τs)
-       (define slots (map τ->string τs))
-       (paren-join (cons (~a nm) slots))]
-      [(U τs)
-       (define slots (map τ->string τs))
-       (paren-join (cons "U" slots))]))
-  )
+;; τ -> String
+(define (τ->string τ)
+  ;; (Listof String) -> String
+  (define (paren-join xs)
+    (string-join xs
+                 #:before-first "("
+                 #:after-last ")"))
+  (match τ
+    [(Base name)
+     (symbol->string name)]
+    [(== ⋆) "⋆"]
+    [(Observe τ2)
+     (string-append "?" (τ->string τ2))]
+    [(List τ2)
+     (τ->string (Struct 'List (list τ2)))]
+    [(Set τ2)
+     (τ->string (Struct 'Set (list τ2)))]
+    [(Hash τk τv)
+     (τ->string (Struct 'Hash (list τk τv)))]
+    [(Struct nm τs)
+     (define slots (map τ->string τs))
+     (paren-join (cons (~a nm) slots))]
+    [(U τs)
+     (define slots (map τ->string τs))
+     (paren-join (cons "U" slots))]))
 
 ;; ---------------------------------------------------------------------------
 ;; Converting types from the turnstile implementation
@@ -1315,6 +1384,8 @@
      (Role name parsed-eps)]
     [(list 'Spawn t)
      (Spawn (parse-T t))]
+    [(list 'Sends t)
+     (Sends (parse-τ t))]
     [(list 'Stop name body ...)
      (define bdy (if (= (length body) 1)
                      (first body)
@@ -1994,3 +2065,47 @@
     (Stop during-inner))))
  (Reacts (Retracted (TaskManager (Bind Symbol) (Bind Int))))
  (Reacts (Asserted (TaskManager (Bind Symbol) (Bind Int))))))
+
+;; ---------------------------------------------------------------------------
+;; Message Examples/Tests
+
+(define msgy-r1
+  '(Role (m)
+     (Reacts (Asserted Int)
+             (Sends String)
+             (Role (m2)
+               (Shares (x))))))
+
+(define msgy-r2
+  '(Role (m)
+         (Reacts (Asserted Int)
+                 (Role (m2)
+                       (Shares (x))))))
+
+(define msgy-spec
+  '(Role (n)
+         (Reacts (Asserted Int)
+                 (Sends String)
+                 (Role (n2)
+                       (Shares (x))))))
+
+(module+ test
+  (test-case
+      "basic functionality of roles with messages"
+    (define mr1 (parse-T msgy-r1))
+    (check-true (Role? mr1))
+    (define mr2 (parse-T msgy-r2))
+    (check-true (Role? mr2))
+    (define mrs (parse-T msgy-spec))
+    (check-true (Role? mrs))
+    (define rg1 (compile mr1))
+    (check-true (role-graph? rg1))
+    (define rg2 (compile mr2))
+    (check-true (role-graph? rg2))
+    (define rgs (compile mrs))
+    (check-true (role-graph? rgs))
+    (check-true (simulates? mr1 mr1))
+    (check-true (simulates? mr2 mr2))
+    (check-true (simulates? mrs mrs))
+    (check-true (simulates? mr1 mrs))
+    (check-false (simulates? mr2 mrs))))
