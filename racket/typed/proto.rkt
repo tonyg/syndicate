@@ -1910,3 +1910,90 @@
     (define tm (parse-T task-manager-ty))
     (check-false (simulates? tm (parse-T task-assigner-spec)))
     (check-false (simulates? tm (parse-T task-performer-spec)))))
+
+(define job-manager-v2
+  '(Role
+ (jm)
+ (Shares (JobManagerAlive))
+ (Reacts
+  (Asserted
+   (Job
+    (Bind Symbol)
+    (Bind (List (Task Int (U (MapWork String) (ReduceWork Int Int)))))))
+  (Role
+   (during-inner)
+   (Reacts
+    OnStart
+    (Role
+     (delegate-tasks)
+     (Reacts
+      OnDataflow
+      (Role
+       (perform)
+       (Reacts
+        OnStart
+        (Role
+         (select)
+         (Reacts (Forget (SelectedTM (Bind Symbol))))
+         (Reacts
+          OnDataflow
+          (Branch
+           (Effs
+            (Branch
+             (Effs
+              (Role
+               (assign)
+               (Shares
+                (TaskAssignment
+                 Symbol
+                 Symbol
+                 (Task
+                  Int
+                  (U
+                   (MapWork String)
+                   (ReduceWork (Hash String Int) (Hash String Int))))))
+               (Know (SelectedTM Symbol))
+               (Reacts
+                (Asserted
+                 (TaskState
+                  Symbol
+                  Symbol
+                  Int
+                  (Bind (U (Finished (Hash String Int)) Symbol))))
+                (Branch
+                 (Effs)
+                 (Effs)
+                 (Effs (Stop assign))
+                 (Effs
+                  (Stop
+                   perform
+                   (Branch
+                    (Effs
+                     (Role
+                      (done)
+                      (Shares (JobFinished Symbol (Hash String Int))))
+                     (Realizes (TasksFinished Symbol)))
+                    (Effs))))))
+               (Reacts
+                OnStart
+                (Role
+                 (take-slot)
+                 (Reacts
+                  (Asserted (TaskState Symbol Symbol Int Discard))
+                  (Stop take-slot))))
+               (Reacts
+                (Retracted (TaskManager Symbol Discard))
+                (Stop assign))))
+             (Effs)))
+           (Effs)))))
+       (Reacts OnStop)
+       (Reacts OnStart)))
+     (Reacts (Realize (TasksFinished Symbol)) (Stop delegate-tasks))))
+   (Reacts
+    (Retracted
+     (Job
+      Symbol
+      (List (Task Int (U (MapWork String) (ReduceWork Int Int))))))
+    (Stop during-inner))))
+ (Reacts (Retracted (TaskManager (Bind Symbol) (Bind Int))))
+ (Reacts (Asserted (TaskManager (Bind Symbol) (Bind Int))))))
