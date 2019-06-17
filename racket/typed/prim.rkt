@@ -57,9 +57,14 @@
 
 (define-typed-syntax (equal? e1:expr e2:expr) ≫
   [⊢ e1 ≫ e1- (⇒ : τ1)]
+  [⊢ e2 ≫ e2- (⇒ : τ2)]
   #:fail-unless (flat-type? #'τ1)
-  (format "equality only available on flat data; got ~a" (type->str #'τ1))
-  [⊢ e2 ≫ e2- (⇐ : τ1)]
+    (format "equality only available on flat data; got ~a" (type->str #'τ1))
+  #:fail-unless (flat-type? #'τ2)
+    (format "equality only available on flat data; got ~a" (type->str #'τ2))
+  #:with int (∩ #'τ1 #'τ2)
+  #:fail-unless (not (bot? #'int))
+    (format "empty overlap between types ~a and ~a" (type->str #'τ1) (type->str #'τ2))
   #:fail-unless (pure? #'e1-) "expression not allowed to have effects"
   #:fail-unless (pure? #'e2-) "expression not allowed to have effects"
   ---------------------------------------------------------------------------
