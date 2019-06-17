@@ -35,11 +35,19 @@
 ;; a D is one of
 ;;   - (Asserted τ), reaction to assertion
 ;;   - (Retracted τ), reaction to retraction
+;;   - (Message τ), reaction to message
+;;   - (Know τ), reaction to internal assertion
+;;   - (Forget τ), reaction to internal retraction
+;;   - (Realize τ), reaction to internal message
 ;;   - StartEvt, reaction to facet startup
 ;;   - StopEvt, reaction to facet shutdown
 ;;   - DataflowEvt, reaction to field updates
 (struct Asserted (ty) #:transparent)
 (struct Retracted (ty) #:transparent)
+(struct Message (ty) #:transparent)
+(struct Know (ty) #:transparent)
+(struct Forget (ty) #:transparent)
+(struct Realize (ty) #:transparent)
 (define StartEvt 'Start)
 (define StopEvt 'Stop)
 (define DataflowEvt 'Dataflow)
@@ -329,8 +337,10 @@
 (define (external-evt? D)
   (match D
     [(or (Asserted _)
-         (Retracted _))
+         (Retracted _)
+         (Message _))
      #t]
+    ;; TODO - hacky
     [(== DataflowEvt)
      #t]
     [_
@@ -914,6 +924,14 @@
      (<:? τ1 τ2)]
     [(list (Retracted τ1) (Retracted τ2))
      (<:? τ1 τ2)]
+    [(list (Message τ1) (Message τ2))
+     (<:? τ1 τ2)]
+    [(list (Know τ1) (Know τ2))
+     (<:? τ1 τ2)]
+    [(list (Forget τ1) (Forget τ2))
+     (<:? τ1 τ2)]
+    [(list (Realize τ1) (Realize τ2))
+     (<:? τ1 τ2)]
     [(list (== StartEvt) (== StartEvt))
      #t]
     [(list (== StopEvt) (== StopEvt))
@@ -940,7 +958,8 @@
     [(Reacts D _)
      (match D
        [(or (Asserted τ)
-            (Retracted τ))
+            (Retracted τ)
+            (Message τ))
         ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
         (Observe τ)]
        [_
@@ -1248,7 +1267,13 @@
                [txn# (in-value (state-transitions st))]
                [D (in-hash-keys txn#)])
     (match D
-      [(or (Asserted τ) (Retracted τ))
+      ;; TODO - might not make as much sense w/ internal events
+      [(or (Asserted τ)
+           (Retracted τ)
+           (Message τ)
+           (Know τ)
+           (Forget τ)
+           (Realize τ))
        τ]
       [_ D])))
   (in-generator
@@ -1259,6 +1284,7 @@
           #:when (assertion-superset? (set-remove event-set DataflowEvt) as))
      (define states (list->set states*))
      (define (event-enabled? D)
+       ;; TODO - include internal events
        (for/or ([e (in-set event-set)])
          (or (equal? DataflowEvt e)
              (D<:? D (Asserted e))
@@ -1354,7 +1380,8 @@
   (match-define (role-graph _ state#) rg)
   (for*/set ([st (in-hash-values state#)]
              [txn# (in-value (state-transitions st))]
-             [D (in-hash-keys txn#)])
+             [D (in-hash-keys txn#)]
+             #:when (external-evt? D))
     (match D
       [(or (Asserted τ) (Retracted τ))
        τ]
@@ -1420,6 +1447,14 @@
        (string-append "+" (τ->string τ))]
       [(Retracted τ)
        (string-append "-" (τ->string τ))]
+      [(Message τ)
+       (string-append "!" (τ->string τ))]
+      [(Know τ)
+       (string-append "~+" (τ->string τ))]
+      [(Forget τ)
+       (string-append "~-" (τ->string τ))]
+      [(Realize τ)
+       (string-append "~!" (τ->string τ))]
       [(== StartEvt)
        "Start"]
       [(== StopEvt)
@@ -1501,6 +1536,14 @@
      (Asserted (parse-τ t))]
     [(list 'Retracted t)
      (Retracted (parse-τ t))]
+    [(list 'Message t)
+     (Message (parse-τ t))]
+    [(list 'Know t)
+     (Know (parse-τ t))]
+    [(list 'Forget t)
+     (Forget (parse-τ t))]
+    [(list 'Realize t)
+     (Realize (parse-τ t))]
     ['OnStart
      StartEvt]
     ['OnStop
