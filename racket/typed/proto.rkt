@@ -15,17 +15,21 @@
 ;;   - (Role FacetName (Listof EP)), also abbreviated as just Role
 ;;   - (Spawn τ)
 ;;   - (Sends τ)
+;;   - (Realizes τ)
 ;;   - (Stop FacetName Body)
 (struct Role (nm eps) #:transparent)
 (struct Spawn (ty) #:transparent)
 (struct Sends (ty) #:transparent)
+(struct Realizes (ty) #:transparent)
 (struct Stop (nm body) #:transparent)
 
 ;; a EP is one of
 ;;   - (Reacts D Body), describing an event handler
 ;;   - (Shares τ), describing an assertion
+;;   - (Know τ), describing an internal assertion
 (struct Reacts (evt body) #:transparent)
 (struct Shares (ty) #:transparent)
+(struct Know (ty) #:transparent)
 
 ;; a Body describes actions carried out in response to some event, and
 ;; is one of
@@ -47,7 +51,6 @@
 (struct Asserted (ty) #:transparent)
 (struct Retracted (ty) #:transparent)
 (struct Message (ty) #:transparent)
-(struct Know (ty) #:transparent)
 (struct Forget (ty) #:transparent)
 (struct Realize (ty) #:transparent)
 (define StartEvt 'Start)
@@ -103,7 +106,9 @@
 (struct transition (effs dest) #:transparent)
 ;; a TransitionEffect is one of
 ;;   - (send τ)
+;;   - (realize τ)
 (struct send (ty) #:transparent)
+(struct realize (ty) #:transparent)
 ;; ok, this is also ignoring Spawn actions for now, would show up in the transitions hash
 (struct state (name transitions) #:transparent)
 
@@ -298,7 +303,8 @@
       [(cons (cons parent T) rest)
        (match T
          ;; TODO - handle Spawn
-         [(Sends _)
+         [(or (Sends _)
+              (Realizes _))
           (loop rest downs ups)]
          [(Role nm eps)
           ;; record the parent/child relationship
@@ -444,6 +450,7 @@
 ;;   - (start RoleName)
 ;;   - (stop RoleName)
 ;;   - (send τ)
+;;   - (realize τ)
 ;; TODO - leaving out Spawn here
 (struct start (nm) #:transparent)
 (struct stop (nm) #:transparent)
@@ -468,7 +475,8 @@
        (set (transition '() st))]
       [(cons eff rest)
        (match eff
-         [(send _)
+         [(or (send _)
+              (realize _))
           (set (transition (list eff) st))]
          [(start nm)
           (define st+ (set-add st nm))
@@ -538,7 +546,8 @@
      (for*/list ([act (in-list (Body->actions body))]
                  [role (in-list (enumerate-roles act))])
        role)]
-    [(Sends _)
+    [(or (Sends _)
+         (Realizes _))
      '()]
     [(Spawn _)
      (error 'enumerate-roles "Spawn not yet implemented")]))
@@ -668,6 +677,8 @@
      (set (list (start nm)))]
     [(Sends τ)
      (set (list (send τ)))]
+    [(Realizes τ)
+     (set (list (realize τ)))]
     [(Stop nm more)
      (define effects (Body->effects more))
      (cond
@@ -783,6 +794,8 @@
   (match (list e1 e2)
     [(list (send t1) (send t2))
      (<:? t1 t2)]
+    [(list (realize t1) (realize t2))
+     (<:? t1 t2)]
     [_
      #f]))
 
@@ -802,6 +815,9 @@
   (match EP
     [(Shares τ)
      τ]
+    [(Know τ)
+     ;; TODO - will need to collect this assertion at some point
+     #f]
     [(Reacts D _)
      (match D
        [(or (Asserted τ)
@@ -1386,6 +1402,8 @@
      (Spawn (parse-T t))]
     [(list 'Sends t)
      (Sends (parse-τ t))]
+    [(list 'Realizes t)
+     (Realizes (parse-τ t))]
     [(list 'Stop name body ...)
      (define bdy (if (= (length body) 1)
                      (first body)
@@ -1399,6 +1417,9 @@
     [(list 'Shares ty)
      (define parsed-ty (parse-τ ty))
      (Shares parsed-ty)]
+    [(list 'Know ty)
+     (define parsed-ty (parse-τ ty))
+     (Know parsed-ty)]
     [(list 'Reacts D b ...)
      (define bdy (if (= (length b) 1)
                      (first b)
@@ -2065,6 +2086,23 @@
     (Stop during-inner))))
  (Reacts (Retracted (TaskManager (Bind Symbol) (Bind Int))))
  (Reacts (Asserted (TaskManager (Bind Symbol) (Bind Int))))))
+
+(module+ test
+  (test-case
+      "job manager with internal events basic functionality"
+    (define jmr (parse-T job-manager-v2))
+    (check-true (Role? jmr))
+    (define jmrg (compile jmr))
+    (check-true (role-graph? jmrg))
+    (check-true (simulates? jmr jmr)))
+  (test-case
+      "job manager subgraph(s) implement task assigner"
+    (define jmr (parse-T job-manager-v2))
+    (define tar (parse-T task-assigner-spec))
+    ;; TODO - would be good to have a timeout
+    (define ans (simulating-subgraphs jmr tar))
+    (check-true (list? ans))
+    (check-false (empty? ans))))
 
 ;; ---------------------------------------------------------------------------
 ;; Message Examples/Tests
