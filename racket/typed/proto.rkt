@@ -160,6 +160,141 @@
       ['()
        (role-graph (set (Role-nm role)) states)])))
 
+;; RoleGraph Role -> RoleGraph
+;; "Optimize" the given role graph with respect to internal events.
+;; The resulting graph will have transitions of only external events.
+(define (compile/internal-events rg role)
+  (match-define (role-graph st0 orig-st#) rg)
+  ;; doing funny business with state (set) here
+  (define orig-st#* (hash-set orig-st# (set) (state (set) (hash))))
+  (define assertion# (hash-set (all-states-assertions/internal (in-hash-keys orig-st#) role)
+                               (set)
+                               (set)))
+  ;; a WorkItem is a
+  ;;   (work-item StateName StateName D (Listof D) (Listof TransitionEffect))
+  ;; such as (work-item from prev to by with effs), where
+  ;;   - from is the origin state for this chain of events
+  ;;   - prev is the prior state in the sequence
+  ;;   - to is the current state that has been reached
+  ;;   - by is the external event that kicked off this sequence
+  ;;   - with is a list of pending events to be processed
+  ;;   - effs are effects emitted on this path
+  ;; NOTE: the initial work item is a hack, setting from and prev to (set) and
+  ;; by to DataflowEvt. The first case in the outer match removes (set) from the
+  ;; states to compensate for this.
+  (struct work-item (from prev to by with effs) #:transparent)
+  (define (walk work visited st#)
+    (match work
+      ['()
+       (define states
+         (for/hash ([(sn txns) (in-hash st#)]
+                    #:unless (set-empty? sn))
+           (values sn (state sn txns))))
+       ;; TODO - st0 might have changed
+       (role-graph st0 states)]
+      [(cons (work-item from prev to by with effs) more-work)
+       (define txn# (state-transitions (hash-ref orig-st# to)))
+       (define visited+ (set-add visited to))
+       (define st#+ (if (hash-has-key? st# to) st# (hash-set st# to (hash))))
+       (define new-paths-work
+         (for*/list (#:unless (set-member? visited to)
+                     [(D txns) txn#]
+                     #:when (external-evt? D)
+                     #:unless (equal? D DataflowEvt)
+                     [t (in-set txns)])
+           (match-define (transition es dst) t)
+           (work-item to to dst D (effs->internal-events es) es)))
+       (define new-events (route-internal (hash-ref assertion# prev)
+                                          (hash-ref assertion# to)))
+       (cond
+         [(and (empty? with)
+               (set-empty? new-events))
+          (define new-st# (update-path st#+ from to by effs))
+          (walk (append more-work new-paths-work) visited+ new-st#)]
+         [else
+          ;; TODO - this is saying something about how the implementation schedules handlers;
+          ;; I think it should be something like exploring (append with (permutations new-events))
+          (define new-events* (set->list new-events))
+          (define pending (append with new-events*))
+          (define pending/first-relevant
+            (dropf pending
+                   (lambda (evt)
+                     (not
+                      (for/or ([D (in-hash-keys txn#)])
+                        ;; TODO - think I want non-empty intersection instead of subtyping
+                        (or (D<:? evt D)
+                            (D<:? D evt)))))))
+          (match pending/first-relevant
+            ['()
+             (define new-st# (update-path st#+ from to by effs))
+             (walk (append more-work new-paths-work) visited+ new-st#)]
+            [(cons evt more-pending)
+             (define more-labor
+               (for*/list ([(D ts) (in-hash txn#)]
+                           #:when (or (D<:? evt D)
+                                      (D<:? D evt))
+                           [t (in-set ts)])
+                 (match-define (transition more-effs dest) t)
+                 (define internal-effs (effs->internal-events more-effs))
+                 (work-item from to dest (append more-pending internal-effs) (append effs more-effs))))
+             (walk (append more-work more-labor new-paths-work) visited+ st#+)])])]))
+  (walk (list (work-item (set) (set) st0 StartEvt '() '()))
+        (set)
+        (hash)))
+
+(module+ test
+  (test-case
+      "most minimal functionality for removing internal events"
+    ;; manager role has basically nothing to it
+    (define m (compile manager))
+    (define i (compile/internal-events m manager))
+    (check-true (role-graph? i))
+    (check-true (simulates?/rg i manager m manager))
+    (check-true (simulates?/rg m manager i manager))
+    ;; this isn't necessarily *needed*, but nice to know
+    (check-equal? i m))
+  (test-case
+      "removing internal events on more involved role"
+    ;; though it doesn't use any internal events
+    (define tmr (parse-T task-manager-ty))
+    (define tm (compile tmr))
+    (define tmi (compile/internal-events tm tmr))
+    (check-true (role-graph? tmi))
+    (check-true (simulates?/rg tmi tmr tm tmr))
+    (check-true (simulates?/rg tm tmr tmi tmr))
+    (check-equal? tmi tm)))
+
+;; (Setof τ) (Setof τ) -> (Setof D)
+;; Subtyping-based assertion routing (*not* intersection - TODO)
+(define (route-internal prev current)
+  (set))
+
+;; (Hashof StateName (Hashof D (Setof Transition)))
+;; StateName
+;; StateName
+;; D
+;; (Listof TransitionEffects)
+;; -> (Hashof StateName (Hashof D (Setof Transition)))
+;; record an edge between from and to based on the given event and emitting some effects
+(define (update-path st# from to by effs)
+  (define txn (transition effs to))
+  (hash-update st#
+               from
+               (lambda (txn#)
+                 (hash-update txn#
+                              by
+                              (lambda (txns)
+                                (set-add txns txn))
+                              (set)))
+               (hash)))
+
+;; (Listof (TransitionEffect)) -> (Listof D)
+(define (effs->internal-events effs)
+  (for/list ([e (in-list effs)]
+             #:when (realize? e))
+    (match-define (realize m) e)
+    (Realize m)))
+
 ;; D -> Bool
 ;; test if D corresponds to an external event (assertion, message)
 (define (external-evt? D)
@@ -808,6 +943,15 @@
              #:when τ?)
     τ?))
 
+;; Role -> (Setof τ)
+;; Compute the set of internal assertions the role contributes (on its own, not
+;; considering parent assertions)
+(define (role-assertions/internal r)
+  (for*/set ([ep (in-list (Role-eps r))]
+             [τ? (in-value (EP-assertion/internal ep))]
+             #:when τ?)
+    τ?))
+
 ;; EP -> (U #f τ)
 ;; the type of assertion and endpoint contributes, otherwise #f for
 ;; dataflow/start/stop
@@ -815,9 +959,6 @@
   (match EP
     [(Shares τ)
      τ]
-    [(Know τ)
-     ;; TODO - will need to collect this assertion at some point
-     #f]
     [(Reacts D _)
      (match D
        [(or (Asserted τ)
@@ -826,7 +967,26 @@
         ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
         (Observe τ)]
        [_
-        #f])]))
+        #f])]
+    [_ #f]))
+
+;; EP -> (U #f τ)
+;; the type of internal assertion and endpoint contributes, otherwise #f for
+;; dataflow/start/stop
+(define (EP-assertion/internal EP)
+  (match EP
+    [(Know τ)
+     τ]
+    [(Reacts D _)
+     (match D
+       [(or (Know τ)
+            (Forget τ)
+            (Realize τ))
+        ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
+        (Observe τ)]
+       [_
+        #f])]
+    [_ #f]))
 
 (module+ test
   ;; make sure the or pattern above works the way I think it does
@@ -983,12 +1143,30 @@
                       ([facet-name (in-set sn)])
               (set-union assertions (hash-ref assertion# facet-name (set)))))))
 
+;; (Sequenceof StateName) Role -> (Hashof StateName (Setof τ))
+;; map each state name to its active internal assertions
+(define (all-states-assertions/internal state-seq role)
+  (define all-roles (enumerate-roles role))
+  (define assertion# (all-roles-assertions/internal all-roles))
+  (for/hash ([sn state-seq])
+    (values sn
+            (for/fold ([assertions (set)])
+                      ([facet-name (in-set sn)])
+              (set-union assertions (hash-ref assertion# facet-name (set)))))))
+
 ;; (List Role) -> (Hashof RoleName (Setof τ))
 ;; map each role's name to the assertions it contributes
 (define (all-roles-assertions roles)
   (for/hash ([role (in-list roles)])
     (values (Role-nm role)
             (role-assertions role))))
+
+;; (List Role) -> (Hashof RoleName (Setof τ))
+;; map each role's name to the internal assertions it contributes
+(define (all-roles-assertions/internal roles)
+  (for/hash ([role (in-list roles)])
+    (values (Role-nm role)
+            (role-assertions/internal role))))
 
 ;; (Setof τ) (Setof τ) -> Bool
 ;; is as1 a superset of as2?
