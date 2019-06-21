@@ -166,15 +166,13 @@
 (define (compile/internal-events rg role)
   (match-define (role-graph st0 orig-st#) rg)
   ;; doing funny business with state (set) here
-  (define orig-st#* (hash-set orig-st# (set) (state (set) (hash))))
-  (define assertion# (hash-set (all-states-assertions/internal (in-hash-keys orig-st#) role)
-                               (set)
-                               (set)))
+  (define orig-st#+ (hash-set orig-st# (set) (state (set) (hash))))
+  (define assertion# (all-states-assertions/internal (in-hash-keys orig-st#+) role))
   ;; a WorkItem is a
-  ;;   (work-item StateName StateName D (Listof D) (Listof TransitionEffect))
-  ;; such as (work-item from prev to by with effs), where
+  ;;   (work-item StateName (Listof StateName) D (Listof D) (Listof TransitionEffect))
+  ;; such as (work-item from path/r to by with effs), where
   ;;   - from is the origin state for this chain of events
-  ;;   - prev is the prior state in the sequence
+  ;;   - path/r is the list of states in the path to this point, in reverse
   ;;   - to is the current state that has been reached
   ;;   - by is the external event that kicked off this sequence
   ;;   - with is a list of pending events to be processed
@@ -182,65 +180,78 @@
   ;; NOTE: the initial work item is a hack, setting from and prev to (set) and
   ;; by to DataflowEvt. The first case in the outer match removes (set) from the
   ;; states to compensate for this.
-  (struct work-item (from prev to by with effs) #:transparent)
-  (define (walk work visited st#)
-    (match work
-      ['()
-       (define states
-         (for/hash ([(sn txns) (in-hash st#)]
-                    #:unless (set-empty? sn))
-           (values sn (state sn txns))))
-       ;; TODO - st0 might have changed
-       (role-graph st0 states)]
-      [(cons (work-item from prev to by with effs) more-work)
-       (define txn# (state-transitions (hash-ref orig-st# to)))
-       (define visited+ (set-add visited to))
-       (define st#+ (if (hash-has-key? st# to) st# (hash-set st# to (hash))))
-       (define new-paths-work
-         (for*/list (#:unless (set-member? visited to)
-                     [(D txns) txn#]
-                     #:when (external-evt? D)
-                     #:unless (equal? D DataflowEvt)
-                     [t (in-set txns)])
-           (match-define (transition es dst) t)
-           (work-item to to dst D (effs->internal-events es) es)))
-       (define new-events (route-internal (hash-ref assertion# prev)
-                                          (hash-ref assertion# to)))
-       (cond
-         [(and (empty? with)
-               (set-empty? new-events))
-          (define new-st# (update-path st#+ from to by effs))
-          (walk (append more-work new-paths-work) visited+ new-st#)]
-         [else
-          ;; TODO - this is saying something about how the implementation schedules handlers;
-          ;; I think it should be something like exploring (append with (permutations new-events))
-          (define new-events* (set->list new-events))
-          (define pending (append with new-events*))
-          (define pending/first-relevant
-            (dropf pending
-                   (lambda (evt)
-                     (not
-                      (for/or ([D (in-hash-keys txn#)])
-                        ;; TODO - think I want non-empty intersection instead of subtyping
-                        (or (D<:? evt D)
-                            (D<:? D evt)))))))
-          (match pending/first-relevant
-            ['()
-             (define new-st# (update-path st#+ from to by effs))
-             (walk (append more-work new-paths-work) visited+ new-st#)]
-            [(cons evt more-pending)
-             (define more-labor
-               (for*/list ([(D ts) (in-hash txn#)]
-                           #:when (or (D<:? evt D)
-                                      (D<:? D evt))
-                           [t (in-set ts)])
-                 (match-define (transition more-effs dest) t)
-                 (define internal-effs (effs->internal-events more-effs))
-                 (work-item from to dest (append more-pending internal-effs) (append effs more-effs))))
-             (walk (append more-work more-labor new-paths-work) visited+ st#+)])])]))
-  (walk (list (work-item (set) (set) st0 StartEvt '() '()))
-        (set)
-        (hash)))
+  (struct work-item (from path/r to by with effs) #:transparent)
+  (let/ec fail
+    (define (walk work visited st#)
+      (match work
+        ['()
+         (define states
+           (for/hash ([(sn txns) (in-hash st#)]
+                      #:unless (set-empty? sn))
+             (values sn (state sn txns))))
+         ;; TODO - st0 might have changed
+         (role-graph st0 states)]
+        [(cons (work-item from path/r to by with effs) more-work)
+         (define prev (first path/r))
+         (define txn# (state-transitions (hash-ref orig-st#+ to)))
+         (define visited+ (set-add visited to))
+         (define st#+ (if (hash-has-key? st# to) st# (hash-set st# to (hash))))
+         (define new-paths-work
+           (for*/list (#:unless (set-member? visited to)
+                       [(D txns) (in-hash txn#)]
+                       #:when (external-evt? D)
+                       #:unless (equal? D DataflowEvt)
+                       [t (in-set txns)])
+             (match-define (transition es dst) t)
+             (work-item to (list to) dst D (effs->internal-events es) es)))
+         (define new-events (route-internal (hash-ref assertion# prev)
+                                            (hash-ref assertion# to)))
+         (cond
+           [(and (empty? with)
+                 (set-empty? new-events)
+                 (not (hash-has-key? txn# DataflowEvt)))
+            (define new-st# (update-path st#+ from to by effs))
+            (walk (append more-work new-paths-work) visited+ new-st#)]
+           [else
+            ;; TODO - this is saying something about how the implementation schedules handlers;
+            ;; I think it should be something like exploring (append with (permutations new-events))
+            (define new-events* (set->list new-events))
+            (define new-events/df (if (hash-has-key? txn# DataflowEvt) (cons DataflowEvt new-events*) new-events*))
+            (define pending (append with new-events/df))
+            (define pending/first-relevant
+              (dropf pending
+                     (lambda (evt)
+                       (not
+                        (for/or ([D (in-hash-keys txn#)])
+                          ;; TODO - think I want non-empty intersection instead of subtyping
+                          (D<:? evt D))))))
+            (match pending/first-relevant
+              ['()
+               (define new-st# (update-path st#+ from to by effs))
+               (walk (append more-work new-paths-work) visited+ new-st#)]
+              [(cons evt more-pending)
+               (define path/r+ (cons to path/r))
+               (define more-labor
+                 (for*/list ([(D ts) (in-hash txn#)]
+                             #:when (D<:? evt D)
+                             [t (in-set ts)])
+                   (match-define (transition more-effs dest) t)
+                   (when (member dest path/r+)
+                     (fail (list (reverse (cons dest path/r+))
+                                 by
+                                 evt
+                                 D)))
+                   (define internal-effs (effs->internal-events more-effs))
+                   (work-item from
+                              path/r+
+                              dest
+                              by
+                              (append more-pending internal-effs)
+                              (append effs more-effs))))
+               (walk (append more-work more-labor new-paths-work) visited+ st#+)])])]))
+    (walk (list (work-item (set) (list (set)) st0 StartEvt '() '()))
+          (set)
+          (hash))))
 
 (module+ test
   (test-case
