@@ -139,14 +139,18 @@
                    ([nm (in-set current)])
            (define txns (hash-ref roles# nm))
            (hash-union agg txns #:combine combine-effect-sets)))
+       (define (build-transitions D effs)
+         (for*/set ([eff* (in-set effs)]
+                    [txn (in-set (apply-effects eff* current ft roles#))]
+                    ;; filter effect-free self-loops
+                    #:unless (and (empty? (transition-effs txn))
+                                  (equal? (transition-dest txn) current)))
+           txn))
        (define transitions
          (for/hash ([(D effs) (in-hash agg-txn)]
-                    #:when (external-evt? D))
-           ;; TODO - may want to remove self loops here
-           (define txns
-             (for*/set ([eff* (in-set effs)]
-                        [txn (in-set (apply-effects eff* current ft roles#))])
-               txn))
+                    #:unless (start/stop-evt? D)
+                    [txns (in-value (build-transitions D effs))]
+                    #:unless (set-empty? txns))
            (values D txns)))
        (define new-work
          (for*/list ([txns (in-hash-values transitions)]
@@ -172,7 +176,8 @@
   ;;   (work-item StateName (Listof StateName) D (Listof D) (Listof TransitionEffect))
   ;; such as (work-item from path/r to by with effs), where
   ;;   - from is the origin state for this chain of events
-  ;;   - path/r is the list of states in the path to this point, in reverse
+  ;;   - path/r is the list of states in the path to this point, *after* from, in reverse
+  ;;     (meaning that all of these transitions are due to *internal* events)
   ;;   - to is the current state that has been reached
   ;;   - by is the external event that kicked off this sequence
   ;;   - with is a list of pending events to be processed
@@ -192,26 +197,28 @@
          ;; TODO - st0 might have changed
          (role-graph st0 states)]
         [(cons (work-item from path/r to by with effs) more-work)
-         (define prev (first path/r))
+         (define prev (if (empty? path/r) from (first path/r)))
          (define txn# (state-transitions (hash-ref orig-st#+ to)))
          (define visited+ (set-add visited to))
          (define st#+ (if (hash-has-key? st# to) st# (hash-set st# to (hash))))
-         (define new-paths-work
+         (define new-events (route-internal (hash-ref assertion# prev)
+                                            (hash-ref assertion# to)))
+         ;; -> (Listof WorkItem)
+         ;; when this state is the end of a path, it can be the start of some new paths
+         (define (new-paths-work)
            (for*/list (#:unless (set-member? visited to)
                        [(D txns) (in-hash txn#)]
                        #:when (external-evt? D)
                        #:unless (equal? D DataflowEvt)
                        [t (in-set txns)])
              (match-define (transition es dst) t)
-             (work-item to (list to) dst D (effs->internal-events es) es)))
-         (define new-events (route-internal (hash-ref assertion# prev)
-                                            (hash-ref assertion# to)))
+             (work-item to '() dst D (effs->internal-events es) es)))
          (cond
            [(and (empty? with)
                  (set-empty? new-events)
                  (not (hash-has-key? txn# DataflowEvt)))
             (define new-st# (update-path st#+ from to by effs))
-            (walk (append more-work new-paths-work) visited+ new-st#)]
+            (walk (append more-work (new-paths-work)) visited+ new-st#)]
            [else
             ;; TODO - this is saying something about how the implementation schedules handlers;
             ;; I think it should be something like exploring (append with (permutations new-events))
@@ -228,7 +235,7 @@
             (match pending/first-relevant
               ['()
                (define new-st# (update-path st#+ from to by effs))
-               (walk (append more-work new-paths-work) visited+ new-st#)]
+               (walk (append more-work (new-paths-work)) visited+ new-st#)]
               [(cons evt more-pending)
                (define path/r+ (cons to path/r))
                (define more-labor
@@ -248,7 +255,7 @@
                               by
                               (append more-pending internal-effs)
                               (append effs more-effs))))
-               (walk (append more-work more-labor new-paths-work) visited+ st#+)])])]))
+               (walk (append more-work more-labor) visited+ st#+)])])]))
     (walk (list (work-item (set) (list (set)) st0 StartEvt '() '()))
           (set)
           (hash))))
@@ -288,16 +295,21 @@
 ;; -> (Hashof StateName (Hashof D (Setof Transition)))
 ;; record an edge between from and to based on the given event and emitting some effects
 (define (update-path st# from to by effs)
-  (define txn (transition effs to))
-  (hash-update st#
-               from
-               (lambda (txn#)
-                 (hash-update txn#
-                              by
-                              (lambda (txns)
-                                (set-add txns txn))
-                              (set)))
-               (hash)))
+  (cond
+    [(and (equal? from to)
+          (empty? effs))
+     st#]
+    [else
+     (define txn (transition effs to))
+     (hash-update st#
+                  from
+                  (lambda (txn#)
+                    (hash-update txn#
+                                 by
+                                 (lambda (txns)
+                                   (set-add txns txn))
+                                 (set)))
+                  (hash))]))
 
 ;; (Listof (TransitionEffect)) -> (Listof D)
 (define (effs->internal-events effs)
@@ -319,6 +331,12 @@
      #t]
     [_
      #f]))
+
+;; D -> Bool
+;; test if D corresponds to Start or Stop event
+(define (start/stop-evt? D)
+  (or (equal? D StartEvt)
+      (equal? D StopEvt)))
 
 (module+ test
   (test-case
@@ -1333,12 +1351,10 @@
     (define tpr (parse-T task-performer-spec))
     (define tmr (parse-T task-manager-ty))
     (define ans (simulating-subgraphs tmr tpr))
-    (check-equal? (length ans) 4)
+    (check-equal? (length ans) 2)
     (define tprg (compile tpr))
     (check-true (simulates?/rg (first ans) tmr tprg tpr))
-    (check-true (simulates?/rg (second ans) tmr tprg tpr))
-    (check-true (simulates?/rg (third ans) tmr tprg tpr))
-    (check-true (simulates?/rg (fourth ans) tmr tprg tpr))))
+    (check-true (simulates?/rg (second ans) tmr tprg tpr))))
 
 ;; RoleGraph (Setof τ) -> (Sequenceof RoleGraph)
 ;; generate non-empty subgraphs, where at least the given assertions are enabled
@@ -2189,6 +2205,7 @@
     (check-false (simulates? tm (parse-T task-assigner-spec)))
     (check-false (simulates? tm (parse-T task-performer-spec)))))
 
+;; has a bug with done facet dying too soon
 (define job-manager-v2
   '(Role
  (jm)
@@ -2292,6 +2309,95 @@
     (define ans (simulating-subgraphs jmr tar))
     (check-true (list? ans))
     (check-false (empty? ans))))
+
+;; fixed above bug
+(define job-manager-v3
+  '(Role
+    (jm)
+    (Shares (JobManagerAlive))
+    (Reacts
+     (Asserted
+      (Job
+       (Bind Symbol)
+       (Bind (List (Task Int (U (MapWork String) (ReduceWork Int Int)))))))
+     (Role
+      (during-inner)
+      (Reacts
+       OnStart
+       (Role
+        (delegate-tasks)
+        (Reacts
+         OnDataflow
+         (Role
+          (perform)
+          (Reacts
+           OnStart
+           (Role
+            (select)
+            (Reacts (Forget (SelectedTM (Bind Symbol))))
+            (Reacts
+             OnDataflow
+             (Branch
+              (Effs
+               (Branch
+                (Effs
+                 (Role
+                  (assign)
+                  (Shares
+                   (TaskAssignment
+                    Symbol
+                    Symbol
+                    (Task
+                     Int
+                     (U
+                      (MapWork String)
+                      (ReduceWork (Hash String Int) (Hash String Int))))))
+                  (Know (SelectedTM Symbol))
+                  (Reacts
+                   (Asserted
+                    (TaskState
+                     Symbol
+                     Symbol
+                     Int
+                     (Bind (U (Finished (Hash String Int)) Symbol))))
+                   (Branch
+                    (Effs)
+                    (Effs)
+                    (Effs (Stop assign))
+                    (Effs
+                     (Stop
+                      perform
+                      (Branch
+                       (Effs
+                        (Realizes (TasksFinished Symbol (Hash String Int))))
+                       (Effs))))))
+                  (Reacts
+                   OnStart
+                   (Role
+                    (take-slot)
+                    (Reacts
+                     (Asserted (TaskState Symbol Symbol Int Discard))
+                     (Stop take-slot))))
+                  (Reacts
+                   (Retracted (TaskManager Symbol Discard))
+                   (Stop assign))))
+                (Effs)))
+              (Effs)))))
+          (Reacts OnStop)
+          (Reacts OnStart)))
+        (Reacts
+         (Realize (TasksFinished Symbol (Bind (Hash String Int))))
+         (Stop
+          delegate-tasks
+          (Role (done) (Shares (JobFinished Symbol (Hash String Int))))))))
+      (Reacts
+       (Retracted
+        (Job
+         Symbol
+         (List (Task Int (U (MapWork String) (ReduceWork Int Int))))))
+       (Stop during-inner))))
+    (Reacts (Retracted (TaskManager (Bind Symbol) (Bind Int))))
+    (Reacts (Asserted (TaskManager (Bind Symbol) (Bind Int))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Message Examples/Tests
