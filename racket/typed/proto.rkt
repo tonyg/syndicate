@@ -57,6 +57,16 @@
 (define StopEvt 'Stop)
 (define DataflowEvt 'Dataflow)
 
+;; a D+ is a D with StartEvt and StopEvt replaced with variants that name the
+;; specified facet,
+;;   - (StartOf FacetName)
+;;   - (StopOf FacetName)
+(struct StartOf (fn) #:transparent)
+(struct StopOf (fn) #:transparent)
+
+;; NOTE: because I'm adding D+ after writing a bunch of code using only D,
+;; expect inconsistencies in signatures and names
+
 ;; a τ is one of
 ;;   - (U (Listof τ))
 ;;   - (Struct StructName (Listof τ ...))
@@ -96,10 +106,24 @@
                       eps))))
 
 ;; -----------------------------------------------------------------------------
+;; Testing Utilities
+
+(module+ test
+  (require racket/engine)
+
+  ;; (-> A) Real -> (U A Engine)
+  ;; run the given thunk in an engine for 'fuel' milliseconds
+  ;; if the engine completes, returns the result, otherwise the engine itself
+  (define (run/timeout tnk [fuel 1000])
+    (define e (engine (lambda (p) (tnk))))
+    (define r (engine-run fuel e))
+    (if r (engine-result e) e)))
+
+
+;; -----------------------------------------------------------------------------
 ;; Compiling Roles to state machines
 
-;; a State is a (state StateName (Hashof D (Setof Transition)))
-;;   where each D in the hash satisfies external-evt?
+;; a State is a (state StateName (Hashof D+ (Setof Transition)))
 ;; a StateName is a (Setof FacetName)
 ;; let's assume that all FacetNames are unique
 ;; a Transition is a (transition (Listof TransitionEffect) StateName)
@@ -147,10 +171,12 @@
                                   (equal? (transition-dest txn) current)))
            txn))
        (define transitions
-         (for/hash ([(D effs) (in-hash agg-txn)]
-                    #:unless (start/stop-evt? D)
-                    [txns (in-value (build-transitions D effs))]
-                    #:unless (set-empty? txns))
+         (for*/hash ([(D effs) (in-hash agg-txn)]
+                     ;; TODO - why was this here?
+                     ;; I feel like apply-affects was trying to handle start/stop things
+                     ;; #:unless (start/stop-evt? D)
+                     [txns (in-value (build-transitions D effs))]
+                     #:unless (set-empty? txns))
            (values D txns)))
        (define new-work
          (for*/list ([txns (in-hash-values transitions)]
@@ -164,7 +190,31 @@
       ['()
        (role-graph (set (Role-nm role)) states)])))
 
-;; RoleGraph Role -> RoleGraph
+(module+ test
+  (test-case
+      "facets created in OnStart handled properly"
+    (define strt
+      '(Role (x)
+         (Reacts OnStart
+                 (Role (y)
+                   (Shares (Hi))
+                   (Reacts (Asserted (Bye))
+                           (Stop y))))))
+    (define r (parse-T strt))
+    (define rg (run/timeout (thunk (compile r))))
+    (check-true (role-graph? rg))
+    (match-define (role-graph st0 st#) rg)
+    (check-true (hash-has-key? st# (set 'x 'y)))))
+
+;; a DetectedCylce is a (List (Listof StateName) D D D), as in
+;;   (list path init evt D)
+;; where
+;;   - path represents the sequences of states containing a cycle,
+;;   - init is the external event that initiated this activity
+;;   - evt is the last-taken internal event
+;;   - D is the edge in the graph that matched evt
+
+;; RoleGraph Role -> (U RoleGraph DetectedCycle)
 ;; "Optimize" the given role graph with respect to internal events.
 ;; The resulting graph will have transitions of only external events.
 (define (compile/internal-events rg role)
@@ -172,8 +222,9 @@
   ;; doing funny business with state (set) here
   (define orig-st#+ (hash-set orig-st# (set) (state (set) (hash))))
   (define assertion# (all-states-assertions/internal (in-hash-keys orig-st#+) role))
+
   ;; a WorkItem is a
-  ;;   (work-item StateName (Listof StateName) D (Listof D) (Listof TransitionEffect))
+  ;;   (work-item StateName (Listof StateName) D+ (Listof D+) (Listof TransitionEffect))
   ;; such as (work-item from path/r to by with effs), where
   ;;   - from is the origin state for this chain of events
   ;;   - path/r is the list of states in the path to this point, *after* from, in reverse
@@ -182,81 +233,81 @@
   ;;   - by is the external event that kicked off this sequence
   ;;   - with is a list of pending events to be processed
   ;;   - effs are effects emitted on this path
-  ;; NOTE: the initial work item is a hack, setting from and prev to (set) and
-  ;; by to DataflowEvt. The first case in the outer match removes (set) from the
-  ;; states to compensate for this.
   (struct work-item (from path/r to by with effs) #:transparent)
   (let/ec fail
     (define (walk work visited st#)
       (match work
         ['()
+         (define mt-txns (hash-ref (hash-ref st# (set)) StartEvt))
+         (define new-st0
+           (cond
+             [(and (= (set-count mt-txns) 1)
+                   (empty? (transition-effs (set-first mt-txns))))
+              (transition-dest (set-first mt-txns))]
+             [else
+              (set)]))
          (define states
            (for/hash ([(sn txns) (in-hash st#)]
-                      #:unless (set-empty? sn))
+                      #:unless (and (set-empty? sn)
+                                    (not (equal? sn new-st0))))
              (values sn (state sn txns))))
-         ;; TODO - st0 might have changed
-         (role-graph st0 states)]
+         (role-graph new-st0 states)]
         [(cons (work-item from path/r to by with effs) more-work)
          (define prev (if (empty? path/r) from (first path/r)))
          (define txn# (state-transitions (hash-ref orig-st#+ to)))
          (define visited+ (set-add visited to))
-         (define st#+ (if (hash-has-key? st# to) st# (hash-set st# to (hash))))
          (define new-events (route-internal (hash-ref assertion# prev)
                                             (hash-ref assertion# to)))
-         ;; -> (Listof WorkItem)
-         ;; when this state is the end of a path, it can be the start of some new paths
-         (define (new-paths-work)
-           (for*/list (#:unless (set-member? visited to)
-                       [(D txns) (in-hash txn#)]
-                       #:when (external-evt? D)
-                       #:unless (equal? D DataflowEvt)
-                       [t (in-set txns)])
-             (match-define (transition es dst) t)
-             (work-item to '() dst D (effs->internal-events es) es)))
-         (cond
-           [(and (empty? with)
-                 (set-empty? new-events)
-                 (not (hash-has-key? txn# DataflowEvt)))
-            (define new-st# (update-path st#+ from to by effs))
-            (walk (append more-work (new-paths-work)) visited+ new-st#)]
-           [else
-            ;; TODO - this is saying something about how the implementation schedules handlers;
-            ;; I think it should be something like exploring (append with (permutations new-events))
-            (define new-events* (set->list new-events))
-            (define new-events/df (if (hash-has-key? txn# DataflowEvt) (cons DataflowEvt new-events*) new-events*))
-            (define pending (append with new-events/df))
-            (define pending/first-relevant
-              (dropf pending
-                     (lambda (evt)
-                       (not
-                        (for/or ([D (in-hash-keys txn#)])
-                          ;; TODO - think I want non-empty intersection instead of subtyping
-                          (D<:? evt D))))))
-            (match pending/first-relevant
-              ['()
-               (define new-st# (update-path st#+ from to by effs))
-               (walk (append more-work (new-paths-work)) visited+ new-st#)]
-              [(cons evt more-pending)
-               (define path/r+ (cons to path/r))
-               (define more-labor
-                 (for*/list ([(D ts) (in-hash txn#)]
-                             #:when (D<:? evt D)
-                             [t (in-set ts)])
-                   (match-define (transition more-effs dest) t)
-                   (when (member dest path/r+)
-                     (fail (list (reverse (cons dest path/r+))
-                                 by
-                                 evt
-                                 D)))
-                   (define internal-effs (effs->internal-events more-effs))
-                   (work-item from
-                              path/r+
-                              dest
+         ;; TODO - this is saying something about how the implementation schedules handlers;
+         ;; I think it should be something like exploring (append with (permutations new-events))
+         (define started (for/list ([fn (in-set (set-subtract to prev))]) (StartOf fn)))
+         (define stopped (for/list ([fn (in-set (set-subtract prev to))]) (StopOf fn)))
+         (define new-events* (cons DataflowEvt (append started stopped (set->list new-events))))
+         (define pending (append with new-events*))
+         (define pending/first-relevant
+           (dropf pending
+                  (lambda (evt)
+                    (not
+                     (for/or ([D (in-hash-keys txn#)])
+                       ;; TODO - think I want non-empty intersection instead of subtyping
+                       (D<:? evt D))))))
+         (match pending/first-relevant
+           ['()
+            (define new-paths-work
+              (for*/list (#:unless (set-member? visited to)
+                          [(D txns) (in-hash txn#)]
+                          #:when (external-evt? D)
+                          #:unless (equal? D DataflowEvt)
+                          [t (in-set txns)])
+                (match-define (transition es dst) t)
+                (work-item to '() dst D (effs->internal-events es) es)))
+            (define new-st# (update-path st# from to by effs))
+            (walk (append more-work new-paths-work) visited+ new-st#)]
+           [(cons evt more-pending)
+            (define path/r+ (cons to path/r))
+            (define more-labor
+              (for*/list ([(D ts) (in-hash txn#)]
+                          #:when (D<:? evt D)
+                          [t (in-set ts)])
+                (match-define (transition more-effs dest) t)
+                (when (and (member dest path/r+)
+                           ;; TODO - cycles involving Start/Stop are tricky. Punt for now
+                           (not (start/stop-evt? evt)))
+                  (fail (list (cons from (reverse (cons dest path/r+)))
                               by
-                              (append more-pending internal-effs)
-                              (append effs more-effs))))
-               (walk (append more-work more-labor) visited+ st#+)])])]))
-    (walk (list (work-item (set) (list (set)) st0 StartEvt '() '()))
+                              evt
+                              D)))
+                (define internal-effs (effs->internal-events more-effs))
+                (work-item from
+                           path/r+
+                           dest
+                           by
+                           (append more-pending internal-effs)
+                           (append effs more-effs))))
+            (walk (append more-work more-labor) visited+ st#)])]))
+    (local-require racket/trace)
+    #;(trace walk)
+    (walk (list (work-item (set) '() st0 StartEvt '() '()))
           (set)
           (hash))))
 
@@ -280,12 +331,99 @@
     (check-true (role-graph? tmi))
     (check-true (simulates?/rg tmi tmr tm tmr))
     (check-true (simulates?/rg tm tmr tmi tmr))
-    (check-equal? tmi tm)))
+    (check-equal? tmi tm))
+  (test-case
+      "detect a simple internal event cycle"
+    (define cyclic
+      '(Role (x)
+             (Reacts (Realize Int)
+                     (Realizes Int))
+             (Reacts OnStart
+                     (Realizes Int))))
+    (define r (parse-T cyclic))
+    (define rg (compile r))
+    (define i (run/timeout (thunk (compile/internal-events rg r))))
+    (check-true (list? i))
+    (check-equal? (length i) 4)
+    (match-define (list path kick-off evt edge) i)
+    ;; the first 'x -> 'x cycle is ignored because it's a Start event
+    (check-equal? path (list (set) (set 'x) (set 'x) (set 'x)))
+    (check-equal? kick-off StartEvt)
+    (check-equal? evt (Realize Int))
+    (check-equal? edge (Realize Int)))
+  (test-case
+      "interesting internal start event"
+    (test-case
+        "facets created in OnStart handled properly"
+      (define strt
+        '(Role (x)
+               (Reacts OnStart
+                       (Role (y)
+                             (Shares (Hi))
+                             (Reacts (Asserted (Bye))
+                                     (Stop y))))))
+      (define r (parse-T strt))
+      (define rg (run/timeout (thunk (compile r))))
+      (check-true (role-graph? rg))
+      (define rgi (run/timeout (thunk (compile/internal-events rg r))))
+      (check-true (role-graph? rgi))
+      (match-define (role-graph st0 st#) rgi)
+      (check-equal? st0 (set 'x 'y))
+      (check-true (hash-has-key? st# (set 'x 'y)))
+      (define xy-txns (state-transitions (hash-ref st# (set 'x 'y))))
+      (check-equal? xy-txns (hash (Asserted (Struct 'Bye '()))
+                                  (set (transition '() (set 'x)))))
+      (check-true (hash-has-key? st# (set 'x)))
+      (define x-txns (state-transitions (hash-ref st# (set 'x))))
+      (check-equal? x-txns (hash)))))
 
 ;; (Setof τ) (Setof τ) -> (Setof D)
 ;; Subtyping-based assertion routing (*not* intersection - TODO)
 (define (route-internal prev current)
-  (set))
+  ;; note that messages are handled separately, don't need to worry about them
+  ;; here
+  (define old-interests (interests prev))
+  (define old-matches (matching-interests old-interests prev))
+  (define new-interests (interests current))
+  (define new-matches (matching-interests new-interests current))
+  (define appeared (label-assertions (assertion-delta new-matches old-matches) Know))
+  (define disappeared (label-assertions (assertion-delta old-matches new-matches) Forget))
+  (define appearing-interests (assertion-delta new-interests old-interests))
+  (define newly-relevant (label-assertions (matching-interests appearing-interests current) Know))
+  (set-union appeared disappeared newly-relevant))
+
+;; (Setof τ) -> (Setof τ)
+;; the type of interests in a set
+(define (interests as)
+  (for/set ([a (in-set as)]
+            #:when (Observe? a))
+    (Observe-ty a)))
+
+;; (Setof τ) (Setof τ) -> (Setof τ)
+;; The assertions in as that have a matching (supertype) interest in is
+(define (matching-interests is as)
+  (for/set ([a (in-set as)]
+            #:when (contains-supertype? is a))
+    a))
+
+;; (Setof τ) τ -> Bool
+;; does the set contain a type that is a supertype of a?
+(define (contains-supertype? as a)
+  (for/or ([x (in-set as)])
+    (<:? a x)))
+
+;; (Setof τ) (Setof τ) -> (Setof τ)
+;; Computes as1 - as2, up to suptyping, applying xform to each element
+(define (assertion-delta as1 as2)
+  (for/set ([a1 (in-set as1)]
+            #:unless (contains-supertype? as2 a1))
+    a1))
+
+;; (Setof τ) (τ -> X) -> (Setof X)
+;; apply a procedure to each assertion in a set
+(define (label-assertions as f)
+  (for/set ([a (in-set as)])
+    (f a)))
 
 ;; (Hashof StateName (Hashof D (Setof Transition)))
 ;; StateName
@@ -301,7 +439,9 @@
      st#]
     [else
      (define txn (transition effs to))
-     (hash-update st#
+     ;; make sure to is in the hash
+     (define st#+to (hash-update st# to values (hash)))
+     (hash-update st#+to
                   from
                   (lambda (txn#)
                     (hash-update txn#
@@ -332,11 +472,13 @@
     [_
      #f]))
 
-;; D -> Bool
+;; D+ -> Bool
 ;; test if D corresponds to Start or Stop event
 (define (start/stop-evt? D)
   (or (equal? D StartEvt)
-      (equal? D StopEvt)))
+      (equal? D StopEvt)
+      (StartOf? D)
+      (StopOf? D)))
 
 (module+ test
   (test-case
@@ -619,10 +761,10 @@
 (struct start (nm) #:transparent)
 (struct stop (nm) #:transparent)
 
-;; a TransitionDesc is a (Hashof D (Setof (Listof RoleEffect)), describing the
+;; a TransitionDesc is a (Hashof D+ (Setof (Listof RoleEffect)), describing the
 ;; possible ways an event (+/- of an assertion) can alter the facet tree.
-;; It always includes the keys StartEvt and StopEvt.
-(define txn-desc0 (hash StartEvt (set) StopEvt (set)))
+;; It always includes the keys (StartOf FacetName) and (StopOf FacetName).
+(define (txn-desc0 fn) (hash (StartOf fn) (set) (StopOf fn) (set)))
 
 ;; (Listof RoleEffect)
 ;; StateName
@@ -644,7 +786,7 @@
           (set (transition (list eff) st))]
          [(start nm)
           (define st+ (set-add st nm))
-          (define start-effs (hash-ref (hash-ref txn# nm) StartEvt))
+          (define start-effs (hash-ref (hash-ref txn# nm) (StartOf nm)))
           (cond
             [(set-empty? start-effs)
              (loop st+ rest)]
@@ -660,7 +802,7 @@
               (set-remove st c)))
           (for/fold ([txns (set (transition '() st-))])
                     ([f-name (in-list children)])
-            (define stop-effs (hash-ref (hash-ref txn# f-name) StopEvt))
+            (define stop-effs (hash-ref (hash-ref txn# f-name) (StopOf f-name)))
             (define stop-effs+ (if (set-empty? stop-effs)
                                    (set '())
                                    stop-effs))
@@ -721,7 +863,7 @@
 (define (describe-role role)
   (match role
     [(Role nm eps)
-     (for/fold ([txns txn-desc0])
+     (for/fold ([txns (txn-desc0 nm)])
                ([ep (in-list eps)]
                 #:when (Reacts? ep))
        (match-define (Reacts evt body) ep)
@@ -741,9 +883,17 @@
               (equal? effects (set '())))
           txns]
          [else
+          (define evt+
+            (match evt
+              [(== StartEvt)
+               (StartOf nm)]
+              [(== StopEvt)
+               (StopOf nm)]
+              [_
+               evt]))
           (define (update-effect-set existing)
             (combine-effect-sets effects existing))
-          (hash-update txns evt update-effect-set (set))]))]))
+          (hash-update txns evt+ update-effect-set (set))]))]))
 
 ;; (Setof (Listof X)) (Setof (Listof X)) -> (Setof (Listof X))
 ;; two separately analyzed sets of effects may combine in any way
@@ -764,14 +914,14 @@
     (define desc (describe-roles manager))
     (check-true (hash-has-key? desc 'account-manager))
     (check-equal? (hash-ref desc 'account-manager)
-                  txn-desc0))
+                  (txn-desc0 'account-manager)))
   (test-case
       "describe nested role"
     (define desc (describe-roles seller))
     (check-true (hash-has-key? desc 'seller))
     (check-true (hash-has-key? desc 'fulfill))
     (check-equal? (hash-ref desc 'fulfill)
-                  txn-desc0)
+                  (txn-desc0 'fulfill))
     (define seller-txns (hash-ref desc 'seller))
     (define quote-request
       (Observe (book-quote String ⋆)))
@@ -799,7 +949,7 @@
     (define desc (describe-roles leader-spec))
     (check-true (hash-has-key? desc 'announce))
     (check-equal? (hash-ref desc 'announce)
-                  txn-desc0))
+                  (txn-desc0 'announce)))
   (test-case
       "leader-spec transitions from {leader,poll} to {leader}"
     (define desc (describe-roles leader-spec))
@@ -945,6 +1095,10 @@
      (<:? τ1 τ2)]
     [(list (Realize τ1) (Realize τ2))
      (<:? τ1 τ2)]
+    [(list (StartOf fn1) (StartOf fn2))
+     (equal? fn1 fn2)]
+    [(list (StopOf fn1) (StopOf fn2))
+     (equal? fn1 fn2)]
     [(list (== StartEvt) (== StartEvt))
      #t]
     [(list (== StopEvt) (== StopEvt))
@@ -1561,6 +1715,10 @@
      (string-append "~-" (τ->string τ))]
     [(Realize τ)
      (string-append "~!" (τ->string τ))]
+    [(StartOf fn)
+     (format "(Started ~a)" fn)]
+    [(StopOf fn)
+     (format "(Stopped ~a)" fn)]
     [(== StartEvt)
      "Start"]
     [(== StopEvt)
@@ -2398,6 +2556,18 @@
        (Stop during-inner))))
     (Reacts (Retracted (TaskManager (Bind Symbol) (Bind Int))))
     (Reacts (Asserted (TaskManager (Bind Symbol) (Bind Int))))))
+
+(module+ test
+  (test-case
+      "job manager v3 basic functionality"
+    (define jmr (parse-T job-manager-v3))
+    (check-true (Role? jmr))
+    (define jmrg (run/timeout (thunk (compile jmr))))
+    (check-true (role-graph? jmrg))
+    (check-true (run/timeout (thunk (simulates? jmr jmr))))
+    (define jmrgi (run/timeout (thunk (compile/internal-events jmrg jmr))))
+    (check-true (role-graph? jmrgi))
+    (check-true (run/timeout (thunk (simulates?/rg jmrgi jmr jmrgi jmr))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Message Examples/Tests
