@@ -260,13 +260,20 @@
          (define prev (if (empty? path/r) from (first path/r)))
          (define txn# (state-transitions (hash-ref orig-st#+ to)))
          (define visited+ (set-add visited to))
-         (define new-events (route-internal (hash-ref assertion# prev)
-                                            (hash-ref assertion# to)))
-         ;; TODO - this is saying something about how the implementation schedules handlers;
-         ;; It could be doing something like exploring (append with (permutations new-events))
-         (define started (for/list ([fn (in-set (set-subtract to prev))]) (StartOf fn)))
-         (define stopped (for/list ([fn (in-set (set-subtract prev to))]) (StopOf fn)))
-         (define new-events* (append started stopped (set->list new-events)))
+         (define new-state-changes (route-internal (hash-ref assertion# prev)
+                                                   (hash-ref assertion# to)))
+         (define state-changes* (for/list ([D (in-set new-state-changes)]
+                                           #:when (hash-has-key? txn# D))
+                                  D))
+         (define started (for*/list ([fn (in-set (set-subtract to prev))]
+                                     [D (in-value (StartOf fn))]
+                                     #:when (hash-has-key? txn# D))
+                           D))
+         (define stopped (for*/list ([fn (in-set (set-subtract prev to))]
+                                     [D (in-value (StopOf fn))]
+                                     #:when (hash-has-key? txn# D))
+                           D))
+         (define new-events (append started stopped state-changes*))
 
          ;; (Listof D+) -> (Listof WorkItem)
          ;; Try to dispatch the first relevant pending event, which yields a
@@ -306,15 +313,19 @@
                            (append more-pending internal-effs)
                            (append effs more-effs)))]))
 
-         (define pending (append with new-events*))
+         ;; NOTE: knowledge of scheduling used here
          (define pending*
-           (if (hash-has-key? txn# DataflowEvt)
-               (list pending (cons DataflowEvt pending))
-               (list pending)))
+           (for*/list ([schedule (in-permutations new-events)]
+                       [evts (in-value (append with schedule))]
+                       [df? (in-list (if (hash-has-key? txn# DataflowEvt)
+                                         (list #t #f)
+                                         (list #f)))])
+             (if df? (cons DataflowEvt evts) evts)))
          (define induced-work (map pending-evts->work-items pending*))
-         (define induced-work* (flatten induced-work))
+         (define induced-work* (remove-duplicates (flatten induced-work)))
          (cond
-           [(empty? (first induced-work))
+           [(ormap empty? induced-work)
+            ;; this is the end of some path
             (define new-paths-work
               (for*/list (#:unless (set-member? visited to)
                           [(D txns) (in-hash txn#)]
