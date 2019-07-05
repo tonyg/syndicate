@@ -10,11 +10,14 @@
          (struct-out text-field@)
          (struct-out set-text-field)
          (struct-out button@)
-         (struct-out button-press))
+         (struct-out button-press)
+         (struct-out set-text-field-background)
+         (struct-out text-field-update))
 
 (require (only-in racket/class
                   new
-                  send))
+                  send
+                  make-object))
 (require racket/gui/base)
 
 ;; an ID is a (Sealof Any)
@@ -24,8 +27,10 @@
 
 (assertion-struct horizontal-pane@ (id))
 
-(assertion-struct text-field@ (id))
+(assertion-struct text-field@ (id value))
 (message-struct set-text-field (id value))
+(message-struct set-text-field-background (id color))
+(message-struct text-field-update (id value))
 
 (assertion-struct button@ (id))
 (message-struct button-press (id))
@@ -57,21 +62,34 @@
 (define (spawn-text-field #:parent parent
                           #:label label
                           #:init-value init
-                          #:enabled enabled?
+                          #:enabled [enabled? #t]
                           #:min-width min-width)
   (define parent-component (seal-contents parent))
+
+  (define (inject-text-field-update! _ evt)
+    (send-ground-message (text-field-update id (send tf get-value))))
+
   (define tf (new text-field%
                   [parent parent-component]
                   [label label]
                   [init-value init]
                   [enabled enabled?]
-                  [min-width min-width]))
+                  [min-width min-width]
+                  [callback inject-text-field-update!]))
   (define id (seal tf))
 
   (spawn
-   (assert (text-field@ id))
+   (field [val (send tf get-value)])
+   (assert (text-field@ id (val)))
    (on (message (set-text-field id $value))
-       (send tf set-value value)))
+       (send tf set-value value)
+       (val value))
+   (on (message (set-text-field-background id $color))
+       (define c (make-object color% color))
+       (send tf set-field-background c))
+   (on (message (inbound (text-field-update id $value)))
+       (val (send tf get-value))
+       (send! (text-field-update id (val)))))
 
   id)
 
