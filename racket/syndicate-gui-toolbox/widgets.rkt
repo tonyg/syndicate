@@ -4,6 +4,7 @@
          spawn-horizontal-pane
          spawn-text-field
          spawn-button
+         spawn-choice
          (struct-out frame@)
          (struct-out show-frame)
          (struct-out horizontal-pane@)
@@ -12,7 +13,11 @@
          (struct-out button@)
          (struct-out button-press)
          (struct-out set-text-field-background)
-         (struct-out text-field-update))
+         (struct-out text-field-update)
+         (struct-out choice@)
+         (struct-out choice-selection)
+         (struct-out set-selection)
+         (struct-out enable))
 
 (require (only-in racket/class
                   new
@@ -21,6 +26,8 @@
 (require racket/gui/base)
 
 ;; an ID is a (Sealof Any)
+
+(message-struct enable (id val))
 
 (assertion-struct frame@ (id))
 (message-struct show-frame (id value))
@@ -34,6 +41,14 @@
 
 (assertion-struct button@ (id))
 (message-struct button-press (id))
+
+(assertion-struct choice@ (id selection))
+(message-struct choice-selection (id val))
+(message-struct set-selection (id idx))
+
+(define (enable/disable-handler self my-id)
+  (on (message (enable my-id $val))
+      (send self enable val)))
 
 ;; String -> ID
 (define (spawn-frame #:label label)
@@ -63,7 +78,7 @@
                           #:label label
                           #:init-value init
                           #:enabled [enabled? #t]
-                          #:min-width min-width)
+                          #:min-width [min-width 1])
   (define parent-component (seal-contents parent))
 
   (define (inject-text-field-update! _ evt)
@@ -81,6 +96,7 @@
   (spawn
    (field [val (send tf get-value)])
    (assert (text-field@ id (val)))
+   (enable/disable-handler tf id)
    (on (message (set-text-field id $value))
        (send tf set-value value)
        (val value))
@@ -107,8 +123,37 @@
 
   (spawn
    (assert (button@ id))
+   (enable/disable-handler but id)
    ;; NOTE - this assumes we are one level away from ground
    (on (message (inbound (button-press id)))
        (send! (button-press id))))
+
+  id)
+
+;; ID String (Listof String) -> ID
+(define (spawn-choice #:parent parent
+                      #:label label
+                      #:choices choices)
+  (define (inject-selection! c e)
+    (send-ground-message (choice-selection id (send ch get-string-selection))))
+  (define parent-component (seal-contents parent))
+  (define ch (new choice%
+                  [parent parent-component]
+                  [label label]
+                  [choices choices]
+                  [callback inject-selection!]))
+  (define id (seal ch))
+
+  (spawn
+   (field [selection (send ch get-string-selection)])
+   (assert (choice@ id (selection)))
+
+   (enable/disable-handler ch id)
+   (on (message (inbound (choice-selection id $val)))
+       (selection val)
+       (send! (choice-selection id val)))
+   (on (message (set-selection id $idx))
+       (send ch set-selection idx)
+       (selection (send ch get-string-selection))))
 
   id)
