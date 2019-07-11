@@ -5,6 +5,8 @@
          spawn-text-field
          spawn-button
          spawn-choice
+         spawn-gauge
+         spawn-slider
          (struct-out frame@)
          (struct-out show-frame)
          (struct-out horizontal-pane@)
@@ -17,7 +19,11 @@
          (struct-out choice@)
          (struct-out choice-selection)
          (struct-out set-selection)
-         (struct-out enable))
+         (struct-out enable)
+         (struct-out gauge@)
+         (struct-out set-gauge-value)
+         (struct-out slider@)
+         (struct-out slider-update))
 
 (require (only-in racket/class
                   new
@@ -45,6 +51,12 @@
 (assertion-struct choice@ (id selection))
 (message-struct choice-selection (id val))
 (message-struct set-selection (id idx))
+
+(assertion-struct gauge@ (id))
+(message-struct set-gauge-value (id value))
+
+(assertion-struct slider@ (id value))
+(message-struct slider-update (id value))
 
 (define (enable/disable-handler self my-id)
   (on (message (enable my-id $val))
@@ -155,5 +167,53 @@
    (on (message (set-selection id $idx))
        (send ch set-selection idx)
        (selection (send ch get-string-selection))))
+
+  id)
+
+;; ID String Bool Nat -> ID
+(define (spawn-gauge #:parent parent
+                     #:label label
+                     #:enabled [enabled? #t]
+                     #:range [range 100])
+  (define parent-component (seal-contents parent))
+  (define g (new gauge%
+                 [parent parent-component]
+                 [label label]
+                 [enabled enabled?]
+                 [range range]))
+  (define id (seal g))
+
+  (spawn
+   (assert (gauge@ id))
+   (on (message (set-gauge-value id $v))
+       (send g set-value v)))
+
+  id)
+
+;; ID String Nat Nat -> ID
+(define (spawn-slider #:parent parent
+                      #:label label
+                      #:min-value [min-value 0]
+                      #:max-value [max-value 100])
+  (define (inject-slider-event! self evt)
+    (send-ground-message (slider-update id (get))))
+
+  (define parent-component (seal-contents parent))
+  (define s (new slider%
+                 [parent parent-component]
+                 [label label]
+                 [min-value min-value]
+                 [max-value max-value]
+                 [callback inject-slider-event!]))
+  (define id (seal s))
+
+  (define (get) (send s get-value))
+
+  (spawn
+   (field [current (get)])
+   (assert (slider@ id (current)))
+   (on (message (inbound (slider-update id $val)))
+       (current val)
+       (send! (slider-update id val))))
 
   id)
