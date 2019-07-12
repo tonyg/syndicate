@@ -2,14 +2,17 @@
 
 (provide spawn-frame
          spawn-horizontal-pane
+         spawn-vertical-pane
          spawn-text-field
          spawn-button
          spawn-choice
          spawn-gauge
          spawn-slider
+         spawn-list-box
          (struct-out frame@)
          (struct-out show-frame)
          (struct-out horizontal-pane@)
+         (struct-out vertical-pane@)
          (struct-out text-field@)
          (struct-out set-text-field)
          (struct-out button@)
@@ -23,7 +26,10 @@
          (struct-out gauge@)
          (struct-out set-gauge-value)
          (struct-out slider@)
-         (struct-out slider-update))
+         (struct-out slider-update)
+         (struct-out list-box@)
+         (struct-out list-box-selection)
+         (struct-out set-list-box-choices))
 
 (require (only-in racket/class
                   new
@@ -32,6 +38,7 @@
 (require racket/gui/base)
 
 ;; an ID is a (Sealof Any)
+;; an Alignment is a (List (U 'left 'center 'right) (U 'top 'center 'bottom))
 
 (message-struct enable (id val))
 
@@ -39,6 +46,7 @@
 (message-struct show-frame (id value))
 
 (assertion-struct horizontal-pane@ (id))
+(assertion-struct vertical-pane@ (id))
 
 (assertion-struct text-field@ (id value))
 (message-struct set-text-field (id value))
@@ -58,6 +66,10 @@
 (assertion-struct slider@ (id value))
 (message-struct slider-update (id value))
 
+(assertion-struct list-box@ (id idx))
+(message-struct list-box-selection (id idx))
+(message-struct set-list-box-choices (id choices))
+
 (define (enable/disable-handler self my-id)
   (on (message (enable my-id $val))
       (send self enable val)))
@@ -75,13 +87,32 @@
   id)
 
 ;; ID -> ID
-(define (spawn-horizontal-pane #:parent parent)
+(define (spawn-horizontal-pane #:parent parent
+                               #:border [border 0]
+                               #:alignment [alignment '(left center)])
   (define parent-component (seal-contents parent))
-  (define pane (new horizontal-pane% [parent parent-component]))
+  (define pane (new horizontal-pane%
+                    [parent parent-component]
+                    [border border]
+                    [alignment alignment]))
   (define id (seal pane))
 
   (spawn
    (assert (horizontal-pane@ id)))
+
+  id)
+
+;; ID Alignment -> ID
+(define (spawn-vertical-pane #:parent parent
+                             #:alignment [alignment '(center top)])
+  (define parent-component (seal-contents parent))
+  (define pane (new vertical-pane%
+                    [parent parent-component]
+                    [alignment alignment]))
+  (define id (seal pane))
+
+  (spawn
+   (assert (vertical-pane@ id)))
 
   id)
 
@@ -90,7 +121,7 @@
                           #:label label
                           #:init-value init
                           #:enabled [enabled? #t]
-                          #:min-width [min-width 1])
+                          #:min-width [min-width #f])
   (define parent-component (seal-contents parent))
 
   (define (inject-text-field-update! _ evt)
@@ -215,5 +246,37 @@
    (on (message (inbound (slider-update id $val)))
        (current val)
        (send! (slider-update id val))))
+
+  id)
+
+;; ID (U String #f) (Listof String) ... -> ID
+(define (spawn-list-box #:parent parent
+                        #:label label
+                        #:choices choices
+                        #:min-width [min-width #f]
+                        #:min-height [min-height #f])
+  (define (inject-list-box-selection! self evt)
+    (send-ground-message (list-box-selection id (get))))
+  (define parent-component (seal-contents parent))
+  (define lb (new list-box%
+                  [parent parent-component]
+                  [label label]
+                  [choices choices]
+                  [min-width min-width]
+                  [min-height min-height]
+                  [callback inject-list-box-selection!]))
+  (define id (seal lb))
+  (define (get)
+    (send lb get-selection))
+
+  (spawn
+   (field [selection (get)])
+   (assert (list-box@ id (selection)))
+   (on (message (inbound (list-box-selection id $val)))
+       (selection val)
+       (send! (list-box-selection id val)))
+   (on (message (set-list-box-choices id $val))
+       (send lb set val)
+       (selection (get))))
 
   id)
