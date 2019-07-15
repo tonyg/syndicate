@@ -2,6 +2,7 @@
 
 (provide spawn-frame
          spawn-horizontal-pane
+         spawn-horizontal-panel
          spawn-vertical-pane
          spawn-text-field
          spawn-button
@@ -12,6 +13,7 @@
          (struct-out frame@)
          (struct-out show-frame)
          (struct-out horizontal-pane@)
+         (struct-out horizontal-panel@)
          (struct-out vertical-pane@)
          (struct-out text-field@)
          (struct-out set-text-field)
@@ -29,7 +31,10 @@
          (struct-out slider-update)
          (struct-out list-box@)
          (struct-out list-box-selection)
-         (struct-out set-list-box-choices))
+         (struct-out set-list-box-choices)
+         (struct-out popup-menu)
+         (struct-out no-popdown-selected)
+         (struct-out popdown-item-selected))
 
 (require (only-in racket/class
                   new
@@ -44,9 +49,13 @@
 
 (assertion-struct frame@ (id))
 (message-struct show-frame (id value))
+(message-struct popup-menu (parent-id id title x y items))
+(message-struct no-popdown-selected (id))
+(message-struct popdown-item-selected (id item))
 
 (assertion-struct horizontal-pane@ (id))
 (assertion-struct vertical-pane@ (id))
+(assertion-struct horizontal-panel@ (id))
 
 (assertion-struct text-field@ (id value))
 (message-struct set-text-field (id value))
@@ -75,30 +84,67 @@
       (send self enable val)))
 
 ;; String -> ID
-(define (spawn-frame #:label label)
+(define (spawn-frame #:label label
+                     #:width [width #f])
   (define frame
     (parameterize ((current-eventspace (make-eventspace)))
-      (new frame% [label label])))
+      (new frame%
+           [label label]
+           [width width])))
   (define id (seal frame))
+
+  (define ((on-popdown! pid) self evt)
+    (when (eq? (send evt get-event-type) 'menu-popdown-none)
+      (send-ground-message (no-popdown-selected pid))))
+  (define ((popdown-item! pid i) . _x)
+    (send-ground-message (popdown-item-selected pid i)))
+
   (spawn
    (assert (frame@ id))
    (on (message (show-frame id $val))
-       (send frame show val)))
+       (send frame show val))
+   (on (message (popup-menu id $pid $title $x $y $items))
+       (define pm (new popup-menu% [title title] [popdown-callback (on-popdown! pid)]))
+       (for ([i (in-list items)])
+         (new menu-item% [parent pm] [label i] [callback (popdown-item! pid i)]))
+       (send frame popup-menu pm x y)
+       (react (stop-when (message (inbound (no-popdown-selected pid))) (send! (no-popdown-selected pid)))
+              (stop-when (message (inbound (popdown-item-selected pid $i))) (send! (popdown-item-selected pid i))))))
   id)
 
-;; ID -> ID
+;; ID ... -> ID
 (define (spawn-horizontal-pane #:parent parent
                                #:border [border 0]
+                               #:min-height [min-height #f]
                                #:alignment [alignment '(left center)])
   (define parent-component (seal-contents parent))
   (define pane (new horizontal-pane%
                     [parent parent-component]
                     [border border]
+                    [min-height min-height]
                     [alignment alignment]))
   (define id (seal pane))
 
   (spawn
    (assert (horizontal-pane@ id)))
+
+  id)
+
+;; ID ... -> ID
+(define (spawn-horizontal-panel #:parent parent
+                                #:border [border 0]
+                                #:min-height [min-height #f]
+                                #:alignment [alignment '(left center)])
+  (define parent-component (seal-contents parent))
+  (define panel (new horizontal-panel%
+                     [parent parent-component]
+                     [border border]
+                     [min-height min-height]
+                     [alignment alignment]))
+  (define id (seal panel))
+
+  (spawn
+   (assert (horizontal-panel@ id)))
 
   id)
 
@@ -224,8 +270,9 @@
 ;; ID String Nat Nat -> ID
 (define (spawn-slider #:parent parent
                       #:label label
-                      #:min-value [min-value 0]
-                      #:max-value [max-value 100])
+                      #:min-value min-value
+                      #:max-value max-value
+                      #:init-value [init-value min-value])
   (define (inject-slider-event! self evt)
     (send-ground-message (slider-update id (get))))
 
@@ -235,6 +282,7 @@
                  [label label]
                  [min-value min-value]
                  [max-value max-value]
+                 [init-value init-value]
                  [callback inject-slider-event!]))
   (define id (seal s))
 
