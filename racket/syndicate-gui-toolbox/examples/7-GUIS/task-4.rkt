@@ -57,6 +57,6 @@
  (on (message (slider-update slider $val))
      (duration-cb val))
  (on-start (elapsed-cb)
-           (send! (show-frame frame #t))))
+           (send! (show frame #t))))
 
 )

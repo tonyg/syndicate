@@ -1,6 +1,9 @@
 #lang syndicate
 
-(provide spawn-frame
+(provide gui-eventspace
+         gui-callback
+         qc
+         spawn-frame
          spawn-horizontal-pane
          spawn-horizontal-panel
          spawn-vertical-pane
@@ -10,8 +13,9 @@
          spawn-gauge
          spawn-slider
          spawn-list-box
+         spawn-dialog
          (struct-out frame@)
-         (struct-out show-frame)
+         (struct-out show)
          (struct-out horizontal-pane@)
          (struct-out horizontal-panel@)
          (struct-out vertical-pane@)
@@ -21,6 +25,7 @@
          (struct-out button-press)
          (struct-out set-text-field-background)
          (struct-out text-field-update)
+         (struct-out text-field-enter)
          (struct-out choice@)
          (struct-out choice-selection)
          (struct-out set-selection)
@@ -34,7 +39,8 @@
          (struct-out set-list-box-choices)
          (struct-out popup-menu)
          (struct-out no-popdown-selected)
-         (struct-out popdown-item-selected))
+         (struct-out popdown-item-selected)
+         (struct-out dialog@))
 
 (require (only-in racket/class
                   new
@@ -42,13 +48,27 @@
                   make-object))
 (require racket/gui/base)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Eventspace Shennanigans
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define gui-eventspace (make-parameter (make-eventspace)))
+
+(define (gui-callback thnk)
+  (parameterize ([current-eventspace (gui-eventspace)])
+    (queue-callback thnk)))
+
+(define-syntax-rule (qc expr ...)
+  (gui-callback (lambda () expr ...)))
+
+
 ;; an ID is a (Sealof Any)
 ;; an Alignment is a (List (U 'left 'center 'right) (U 'top 'center 'bottom))
 
 (message-struct enable (id val))
 
 (assertion-struct frame@ (id))
-(message-struct show-frame (id value))
+(message-struct show (id value))
 (message-struct popup-menu (parent-id id title x y items))
 (message-struct no-popdown-selected (id))
 (message-struct popdown-item-selected (id item))
@@ -61,6 +81,7 @@
 (message-struct set-text-field (id value))
 (message-struct set-text-field-background (id color))
 (message-struct text-field-update (id value))
+(message-struct text-field-enter (id value))
 
 (assertion-struct button@ (id))
 (message-struct button-press (id))
@@ -79,18 +100,22 @@
 (message-struct list-box-selection (id idx))
 (message-struct set-list-box-choices (id choices))
 
+(assertion-struct dialog@ (id))
+
 (define (enable/disable-handler self my-id)
   (on (message (enable my-id $val))
-      (send self enable val)))
+      (qc (send self enable val))))
 
 ;; String -> ID
 (define (spawn-frame #:label label
-                     #:width [width #f])
+                     #:width [width #f]
+                     #:height [height #f])
   (define frame
-    (parameterize ((current-eventspace (make-eventspace)))
+    (parameterize ((current-eventspace (gui-eventspace)))
       (new frame%
            [label label]
-           [width width])))
+           [width width]
+           [height height])))
   (define id (seal frame))
 
   (define ((on-popdown! pid) self evt)
@@ -101,13 +126,13 @@
 
   (spawn
    (assert (frame@ id))
-   (on (message (show-frame id $val))
-       (send frame show val))
+   (on (message (show id $val))
+       (qc (send frame show val)))
    (on (message (popup-menu id $pid $title $x $y $items))
        (define pm (new popup-menu% [title title] [popdown-callback (on-popdown! pid)]))
        (for ([i (in-list items)])
          (new menu-item% [parent pm] [label i] [callback (popdown-item! pid i)]))
-       (send frame popup-menu pm x y)
+       (qc (send frame popup-menu pm x y))
        (react (stop-when (message (inbound (no-popdown-selected pid))) (send! (no-popdown-selected pid)))
               (stop-when (message (inbound (popdown-item-selected pid $i))) (send! (popdown-item-selected pid i))))))
   id)
@@ -167,11 +192,17 @@
                           #:label label
                           #:init-value init
                           #:enabled [enabled? #t]
-                          #:min-width [min-width #f])
+                          #:min-width [min-width #f]
+                          #:min-height [min-height #f])
   (define parent-component (seal-contents parent))
 
   (define (inject-text-field-update! _ evt)
-    (send-ground-message (text-field-update id (send tf get-value))))
+    (printf "inject-text-field-update!\n")
+    (case (send evt get-event-type)
+      [(text-field)
+       (send-ground-message (text-field-update id (send tf get-value)))]
+      [(text-field-enter)
+       (send-ground-message (text-field-enter id (send tf get-value)))]))
 
   (define tf (new text-field%
                   [parent parent-component]
@@ -179,6 +210,7 @@
                   [init-value init]
                   [enabled enabled?]
                   [min-width min-width]
+                  [min-height min-height]
                   [callback inject-text-field-update!]))
   (define id (seal tf))
 
@@ -187,14 +219,17 @@
    (assert (text-field@ id (val)))
    (enable/disable-handler tf id)
    (on (message (set-text-field id $value))
-       (send tf set-value value)
+       (qc (send tf set-value value))
        (val value))
    (on (message (set-text-field-background id $color))
        (define c (make-object color% color))
-       (send tf set-field-background c))
+       (qc (send tf set-field-background c)))
    (on (message (inbound (text-field-update id $value)))
-       (val (send tf get-value))
-       (send! (text-field-update id (val)))))
+       (val value)
+       (send! (text-field-update id value)))
+   (on (message (inbound (text-field-enter id $value)))
+       (val value)
+       (send! (text-field-enter id value))))
 
   id)
 
@@ -242,7 +277,7 @@
        (selection val)
        (send! (choice-selection id val)))
    (on (message (set-selection id $idx))
-       (send ch set-selection idx)
+       (qc (send ch set-selection idx))
        (selection (send ch get-string-selection))))
 
   id)
@@ -263,7 +298,7 @@
   (spawn
    (assert (gauge@ id))
    (on (message (set-gauge-value id $v))
-       (send g set-value v)))
+       (qc (send g set-value v))))
 
   id)
 
@@ -324,7 +359,30 @@
        (selection val)
        (send! (list-box-selection id val)))
    (on (message (set-list-box-choices id $val))
-       (send lb set val)
+       (qc (send lb set val))
        (selection (get))))
+
+  id)
+
+(define (spawn-dialog #:label label
+                      #:parent [parent #f]
+                      #:style [style null])
+  (define parent-component (and parent (seal-contents parent)))
+  (define evt-spc (if parent-component
+                      (send parent-component get-eventspace)
+                      (make-eventspace) #;(gui-eventspace)))
+  (define d (parameterize ((current-eventspace evt-spc))
+              (new dialog%
+                   [label label]
+                   [parent parent-component]
+                   [style style])))
+  (define id (seal d))
+
+  (spawn
+   (assert (dialog@ id))
+
+   (on (message (show id $show?))
+       (qc (send d show show?))
+       (unless show? (stop-current-facet))))
 
   id)

@@ -202,5 +202,5 @@
 (define canvas (spawn-circle-canvas hpane2 frame undo-but redo-but))
 
 (on (asserted (frame@ frame))
-    (send! (show-frame frame #t)))
+    (send! (show frame #t)))
 )

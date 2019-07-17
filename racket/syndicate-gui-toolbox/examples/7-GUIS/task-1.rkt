@@ -19,7 +19,7 @@
      (counter (add1 (counter)))
      (send! (set-text-field view (~a (counter)))))
  (on-start
-  (send! (show-frame frame #t))))))
+  (send! (show frame #t))))))
 
 (module+ main
   (void))
