@@ -58,4 +58,4 @@
  (on (message (text-field-update F-field $val))
      (fahrenheit->celsius F-field val))
  (on-start
-  (send! (show-frame frame #t))))))
+  (send! (show frame #t))))))

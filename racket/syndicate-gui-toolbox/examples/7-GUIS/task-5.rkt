@@ -69,6 +69,6 @@
 (define (retrieve-name) (string-append (*surname) ", " (*name)))
 
 (on-start (prefix-cb "")
-          (send! (show-frame frame #t))))
+          (send! (show frame #t))))
 
 )

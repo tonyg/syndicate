@@ -64,6 +64,6 @@
  (on (message (button-press book))
      (displayln "confirmed"))
 
- (on-start (send! (show-frame frame #t))
+ (on-start (send! (show frame #t))
            (enable-return-book (*kind-flight))))
 )
