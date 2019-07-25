@@ -16,8 +16,6 @@
 
 (define (next-time) (+ (current-milliseconds) INTERVAL))
 
-(spawn
-
 (define frame   (spawn-frame #:label "timer"))
 (define elapsed (spawn-gauge #:label "elapsed" #:parent frame #:enabled #f #:range 100))
 (define text    (spawn-text-field #:parent frame #:init-value "0" #:label ""))
@@ -58,5 +56,3 @@
      (duration-cb val))
  (on-start (elapsed-cb)
            (send! (show frame #t))))
-
-)

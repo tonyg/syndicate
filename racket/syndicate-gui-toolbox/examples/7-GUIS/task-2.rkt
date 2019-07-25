@@ -28,8 +28,6 @@
   (send! (set-text-field-background to-field "white"))
   (send! (set-text-field to-field (~a (~r *to #:precision 4) (if (eq? #\. last) "." "")))))
 
-(spawn
- (on-start
 (define frame   (spawn-frame #:label "temperature converter"))
 (define pane    (spawn-horizontal-pane #:parent frame))
 
@@ -58,4 +56,4 @@
  (on (message (text-field-update F-field $val))
      (fahrenheit->celsius F-field val))
  (on-start
-  (send! (show frame #t))))))
+  (send! (show frame #t))))

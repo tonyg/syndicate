@@ -193,7 +193,6 @@
   (spawn-slider #:parent parent #:label "" #:min-value 10 #:max-value 100 #:init-value init-value))
 
 ;; ---------------------------------------------------------------------------------------------------
-(spawn
 (define frame  (spawn-frame #:label "Circle Drawer" #:width 400))
 (define hpane1 (spawn-horizontal-pane #:parent frame #:min-height 20 #:alignment '(center center)))
 (define undo-but (spawn-button #:label "Undo" #:parent hpane1))
@@ -201,6 +200,7 @@
 (define hpane2 (spawn-horizontal-panel #:parent frame #:min-height 400 #:alignment '(center center)))
 (define canvas (spawn-circle-canvas hpane2 frame undo-but redo-but))
 
-(on (asserted (frame@ frame))
-    (send! (show frame #t)))
-)
+(spawn
+ (on (asserted (frame@ frame))
+     (send! (show frame #t))
+     (stop-current-facet)))
