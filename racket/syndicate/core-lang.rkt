@@ -2,6 +2,7 @@
 
 (require (for-syntax racket/base syntax/kerncase))
 (require (for-syntax syntax/parse))
+(require (for-syntax (only-in racket/list make-list)))
 
 (require racket/match)
 (require "main.rkt")
@@ -52,6 +53,24 @@
                               (module+ main (current-ground-dataspace run-ground))
                               forms ...)))]))
 
+;; Identifier -> Bool
+;; Is the identifier a form that shouldn't capture actor actions?
+;; note the absence of define-values
+(define-for-syntax (kernel-id? x)
+  (ormap (lambda (i) (free-identifier=? x i))
+         (syntax->list #'(require
+                          provide
+                          define-values
+                          define-syntaxes
+                          begin-for-syntax
+                          module
+                          module*
+                          module+
+                          #%require
+                          #%provide
+                          #%declare
+                          begin-for-declarations))))
+
 (define-syntax (syndicate-module stx)
   (syntax-parse stx
     [(_ (action-ids ...) (form forms ...))
@@ -61,27 +80,27 @@
                                                    #'begin-for-declarations)
                                              (kernel-form-identifier-list))))
      (syntax-parse expanded
-       #:literals (begin)
+       #:literals (begin define-values)
        [(begin more-forms ...)
         #'(syndicate-module (action-ids ...) (more-forms ... forms ...))]
+       [(define-values (x:id ...) e)
+        #:with action-id (car (generate-temporaries (list #'form)))
+        #:with (tmp ...) (generate-temporaries #'(x ...))
+        #`(begin
+            (define-values (tmp ...) (values #,@(make-list (length (syntax->list #'(x ...))) #'#f)))
+            (define action-id
+              (capture-actor-actions
+               (lambda () (set!-values (tmp ...) e))))
+            (define-values (x ...) (values tmp ...))
+            (syndicate-module (action-ids ... action-id) (forms ...)))]
        [(head rest ...)
-        (if (ormap (lambda (i) (free-identifier=? #'head i))
-                   (syntax->list #'(require
-                                     provide
-                                     define-values
-                                     define-syntaxes
-                                     begin-for-syntax
-                                     module
-                                     module*
-                                     module+
-                                     #%require
-                                     #%provide
-                                     #%declare
-                                     begin-for-declarations)))
-            #`(begin #,expanded (syndicate-module (action-ids ...) (forms ...)))
-            (with-syntax ([action-id (car (generate-temporaries (list #'form)))])
-              #`(begin (define action-id (capture-actor-actions (lambda () #,expanded)))
-                       (syndicate-module (action-ids ... action-id) (forms ...)))))]
+        (cond
+          [(kernel-id? #'head)
+           #`(begin #,expanded (syndicate-module (action-ids ...) (forms ...)))]
+          [else
+           (with-syntax ([action-id (car (generate-temporaries (list #'form)))])
+             #`(begin (define action-id (capture-actor-actions (lambda () #,expanded)))
+                      (syndicate-module (action-ids ... action-id) (forms ...))))])]
        [non-pair-syntax
         #'(begin form (syndicate-module (action-ids ...) (forms ...)))])]
     [(_ (action-ids ...) ())
