@@ -8,7 +8,6 @@
 ;; a create-read-update-deleted MVC implementation 
 
 ;; ---------------------------------------------------------------------------------------------------
-(spawn
 (define frame   (spawn-frame #:label "CRUD"))
 (define hpane1  (spawn-horizontal-pane #:parent frame #:border 10 #:alignment '(left bottom)))
 (define vpane1  (spawn-vertical-pane #:parent hpane1))
@@ -70,5 +69,3 @@
 
 (on-start (prefix-cb "")
           (send! (show frame #t))))
-
-)

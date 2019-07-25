@@ -197,7 +197,6 @@
   (define parent-component (seal-contents parent))
 
   (define (inject-text-field-update! _ evt)
-    (printf "inject-text-field-update!\n")
     (case (send evt get-event-type)
       [(text-field)
        (send-ground-message (text-field-update id (send tf get-value)))]

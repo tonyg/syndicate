@@ -86,11 +86,11 @@
 ))
 
 ;; ---------------------------------------------------------------------------------------------------
-(spawn
 (define frame  (spawn-frame #:label "Cells" #:width (/ WIDTH 2) #:height (/ HEIGHT 3)))
 (define canvas (spawn-cells-canvas frame WIDTH HEIGHT))
 (spawn-control frame)
 
-(on (asserted (frame@ frame))
-    (send! (show frame #t)))
-)
+(spawn
+ (on (asserted (frame@ frame))
+     (send! (show frame #t))
+     (stop-current-facet)))

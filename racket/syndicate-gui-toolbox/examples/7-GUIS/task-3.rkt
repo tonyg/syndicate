@@ -19,7 +19,6 @@
 (define RED     "red")
 (define WHITE   "white")
 
-(spawn
 (define (make-field enabled)
   (spawn-text-field #:parent frame
                     #:label ""
@@ -66,4 +65,3 @@
 
  (on-start (send! (show frame #t))
            (enable-return-book (*kind-flight))))
-)
