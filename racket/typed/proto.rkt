@@ -137,14 +137,15 @@
 ;;   - (realize τ)
 (struct send (ty) #:transparent)
 (struct realize (ty) #:transparent)
-;; ok, this is also ignoring Spawn actions for now, would show up in the transitions hash
 (struct state (name transitions) #:transparent)
 
 ;; a FacetTree is a
-;;   (facet-tree (Hashof (U #f FacetName) (Listof FacetName))
+;;   (facet-tree (Hashof FacetName (Listof FacetName))
 ;;               (Hashof FacetName (U #f FacetName)))
 ;; describing the potential immediate children of each facet
-;; and each facet's parent. The parent of the root facet is #f.
+;; and each facet's parent.
+;; For roles that spawn multiple actors, a FacetTree is in fact a forest. The
+;; parent of a root facet is #f
 (struct facet-tree (down up) #:transparent)
 
 ;; a RoleGraph is a
@@ -641,10 +642,11 @@
        (facet-tree downs ups)]
       [(cons (cons parent T) rest)
        (match T
-         ;; TODO - handle Spawn
          [(or (Sends _)
               (Realizes _))
           (loop rest downs ups)]
+         [(Spawn role)
+          (loop (cons (cons #f role) rest) downs ups)]
          [(Role nm eps)
           ;; record the parent/child relationship
           (define downs2 (hash-update downs
@@ -662,13 +664,29 @@
                 downs3
                 ups2)]
          [(Stop target body)
-          (define new-parent (hash-ref ups target))
+          (define new-parent (hash-ref ups target #f))
           (define more-work
             (for/list ([k (in-list (Body->actions body))])
               (cons new-parent k)))
           (loop (append rest more-work)
                 downs
                 ups)])])))
+
+(module+ test
+  (test-case
+      "basic spawn functionality"
+    (define seller (parse-T real-seller-ty))
+    (define seller+spawn (Role 'start (list (Reacts StartEvt (Spawn seller)))))
+    (define rg (run/timeout (thunk (compile seller+spawn))))
+    (check-true (role-graph? rg))
+    (define rgi (compile/internal-events rg seller+spawn))
+    (check-true (role-graph? rgi))
+    (define srg (compile seller))
+    (check-true (run/timeout (thunk (simulates?/rg rg seller+spawn rg seller+spawn))))
+    (check-false (run/timeout (thunk (simulates?/rg rg seller+spawn srg seller))))
+    (check-false (run/timeout (thunk (simulates?/rg srg seller rg seller+spawn))))
+    (check-true (run/timeout (thunk (simulates?/rg rgi seller+spawn srg seller))))
+    (check-true (run/timeout (thunk (simulates?/rg srg seller rgi seller+spawn))))))
 
 ;; Body -> (Listof T)
 ;; extract the list of all Role, Stop, and Spawn types from a Body
@@ -790,7 +808,6 @@
 ;;   - (stop RoleName)
 ;;   - (send τ)
 ;;   - (realize τ)
-;; TODO - leaving out Spawn here
 (struct start (nm) #:transparent)
 (struct stop (nm) #:transparent)
 
@@ -888,8 +905,8 @@
     [(or (Sends _)
          (Realizes _))
      '()]
-    [(Spawn _)
-     (error 'enumerate-roles "Spawn not yet implemented")]))
+    [(Spawn r)
+     (enumerate-roles r)]))
 
 ;; Role -> TransitionDesc
 ;; determine how the event handlers in a role alter the facet tree
@@ -1034,8 +1051,8 @@
        [else
         (for/set ([eff* (in-set effects)])
           (cons (stop nm) eff*))])]
-    [(Spawn _)
-     (error)]))
+    [(Spawn r)
+     (set (list (start (Role-nm r))))]))
 
 (module+ test
   (test-case
