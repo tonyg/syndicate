@@ -13,7 +13,7 @@
 
 ;; a T is one of
 ;;   - (Role FacetName (Listof EP)), also abbreviated as just Role
-;;   - (Spawn τ)
+;;   - (Spawn Role)
 ;;   - (Sends τ)
 ;;   - (Realizes τ)
 ;;   - (Stop FacetName Body)
@@ -80,6 +80,7 @@
 ;;   - (Hash τ τ)
 ;;   - ⋆
 ;;   - (Base Symbol)
+;;   - (internal-label Symbol τ)
 (struct U (tys) #:transparent)
 (struct Struct (nm tys) #:transparent)
 (struct Observe (ty) #:transparent)
@@ -87,6 +88,7 @@
 (struct Set (ty) #:transparent)
 (struct Hash (ty-k ty-v) #:transparent)
 (struct Mk⋆ () #:transparent)
+(struct internal-label (actor-id ty) #:transparent)
 ;; TODO this might be a problem when used as a match pattern
 (define ⋆ (Mk⋆))
 (struct Base (name) #:transparent)
@@ -156,6 +158,7 @@
 ;; Role -> RoleGraph
 ;; in each state, the transitions will include the reactions of the parent
 ;; facet(s)
+;; ASSUME role has already had internal events labelled
 (define (compile role)
   (define roles# (describe-roles role))
   (define ft (make-facet-tree role))
@@ -686,7 +689,26 @@
     (check-false (run/timeout (thunk (simulates?/rg rg seller+spawn srg seller))))
     (check-false (run/timeout (thunk (simulates?/rg srg seller rg seller+spawn))))
     (check-true (run/timeout (thunk (simulates?/rg rgi seller+spawn srg seller))))
-    (check-true (run/timeout (thunk (simulates?/rg srg seller rgi seller+spawn))))))
+    (check-true (run/timeout (thunk (simulates?/rg srg seller rgi seller+spawn)))))
+  (test-case
+      "internal events across spawns"
+    (define role
+      (label-internal-events
+       (Role 'start
+             (list
+              (Know Int)
+              (Reacts StartEvt
+                      (Spawn (Role 'spawned
+                                   (list (Reacts (Know Int)
+                                                 (Role 'know (list)))))))))))
+    (define rg (run/timeout (thunk (compile role))))
+    (check-true (role-graph? rg))
+    (define rgi (run/timeout (thunk (compile/internal-events rg role))))
+    (check-true (role-graph? rgi))
+    (define state-names (hash-keys (role-graph-states rgi)))
+    (for ([sn (in-list state-names)])
+      ;; that facet shouldn't be reachable
+      (check-false (set-member? sn 'know)))))
 
 ;; Body -> (Listof T)
 ;; extract the list of all Role, Stop, and Spawn types from a Body
@@ -1086,6 +1108,62 @@
                   (set (list (stop 'leader) (start 'announce))
                        (list (stop 'poll))))))
 
+;; Role -> Role
+;; label internal events & handlers with actor-unique identifiers
+(define (label-internal-events T)
+  (let walk ([subj T] ;; T or EP or Body or D+
+             [current-actor (gensym 'initial)])
+    (define (map-walk s) (walk s current-actor))
+    (match subj
+      [(Role nm eps)
+       (Role nm (map map-walk eps))]
+      [(Spawn r)
+       (define new-actor-id (gensym (Role-nm r)))
+       (Spawn (walk r new-actor-id))]
+      [(Realizes ty)
+       (Realizes (internal-label current-actor ty))]
+      [(Stop nm body)
+       (Stop nm (walk body current-actor))]
+      [(Reacts D body)
+       (define D+ (walk D current-actor))
+       (Reacts D+ (walk body current-actor))]
+      [(Know ty)
+       (Know (internal-label current-actor ty))]
+      [(? cons?)
+       (map map-walk subj)]
+      [(Branch bodies)
+       (Branch (map map-walk bodies))]
+      [(Forget ty)
+       (Forget (internal-label current-actor ty))]
+      [(Realize ty)
+       (Realize (internal-label current-actor ty))]
+      [_
+       subj])))
+
+(module+ test
+  (test-case "label internal events"
+    (define role
+      (Role 'start
+            (list
+             (Know Int)
+             (Reacts StartEvt
+                     (Spawn (Role 'spawned
+                                  (list (Reacts (Know Int)
+                                                (Role 'know (list))))))))))
+    (define role+ (run/timeout (thunk (label-internal-events role))))
+    (check-true (Role? role+))
+    (match role+
+      [(Role _
+            (list
+             (Know (internal-label label1 Int))
+             (Reacts _
+                     (Spawn (Role _
+                                  (list (Reacts (Know (internal-label label2 Int))
+                                                (Role _ (list)))))))))
+       (check-not-equal? label1 label2)]
+      [_
+       (fail "labelled role didn't match expected structure")])))
+
 ;; ---------------------------------------------------------------------------
 ;; "Simulation"
 
@@ -1101,6 +1179,9 @@
         #t]
        [(list (Base t1) (Base t2))
         (equal? t1 t2)]
+       [(list (internal-label l1 t1) (internal-label l2 t2))
+        (and (equal? l1 l2)
+             (<:? t1 t2))]
        [(list (U τs) _)
         (for/and ([τ (in-list τs)])
           (<:? τ τ2))]
@@ -1800,7 +1881,9 @@
      (paren-join (cons (~a nm) slots))]
     [(U τs)
      (define slots (map τ->string τs))
-     (paren-join (cons "U" slots))]))
+     (paren-join (cons "U" slots))]
+    [(internal-label _ ty)
+     (τ->string ty)]))
 
 ;; ---------------------------------------------------------------------------
 ;; Converting types from the turnstile implementation
@@ -2504,7 +2587,7 @@
 (module+ test
   (test-case
       "job manager with internal events basic functionality"
-    (define jmr (parse-T job-manager-v2))
+    (define jmr (run/timeout (thunk (label-internal-events (parse-T job-manager-v2)))))
     (check-true (Role? jmr))
     (define jmrg (compile jmr))
     (check-true (role-graph? jmrg))
@@ -2610,7 +2693,7 @@
 (module+ test
   (test-case
       "job manager v3 basic functionality"
-    (define jmr (parse-T job-manager-v3))
+    (define jmr (run/timeout (thunk (parse-T job-manager-v3))))
     (check-true (Role? jmr))
     (define jmrg (run/timeout (thunk (compile jmr))))
     (check-true (role-graph? jmrg))
