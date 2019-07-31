@@ -240,7 +240,7 @@
   ;;   - to is the current state that has been reached
   ;;   - by is the external event that kicked off this sequence
   ;;   - with is a list of pending events to be processed
-  ;;   - effs are effects emitted on this path
+  ;;   - effs are the external effects emitted on this path
   (struct work-item (from path/r to by with effs) #:transparent)
   (let/ec fail
     (define (walk work visited st#)
@@ -309,13 +309,14 @@
                               by
                               evt
                               D)))
-                (define internal-effs (effs->internal-events more-effs))
+                (define-values (internal-effs external-effs)
+                  (partition-transition-effects more-effs))
                 (work-item from
                            path/r+
                            dest
                            by
                            (append more-pending internal-effs)
-                           (append effs more-effs)))]))
+                           (append effs external-effs)))]))
 
          ;; NOTE: knowledge of scheduling used here
          (define pending*
@@ -337,7 +338,9 @@
                           #:unless (equal? D DataflowEvt)
                           [t (in-set txns)])
                 (match-define (transition es dst) t)
-                (work-item to '() dst D (effs->internal-events es) es)))
+                (define-values (internal-effs external-effs)
+                  (partition-transition-effects es))
+                (work-item to '() dst D internal-effs external-effs)))
             (define new-st# (update-path st# from to by effs))
             (walk (append more-work induced-work* new-paths-work) visited+ new-st#)]
            [else
@@ -412,7 +415,24 @@
                                   (set (transition '() (set 'x)))))
       (check-true (hash-has-key? st# (set 'x)))
       (define x-txns (state-transitions (hash-ref st# (set 'x))))
-      (check-equal? x-txns (hash)))))
+      (check-equal? x-txns (hash))))
+  (test-case
+      "remove internal effects from transitions"
+    (define role
+      (Role 'x
+            (list (Reacts (Asserted Int)
+                          (list (Realizes String)
+                                (Sends Int)
+                                (Role 'y (list)))))))
+    (define rg (run/timeout (thunk (compile role))))
+    (check-true (role-graph? rg))
+    (define rgi (run/timeout (thunk (compile/internal-events rg role))))
+    (check-true (role-graph? rgi))
+    (define state# (role-graph-states rgi))
+    (check-true (hash-has-key? state# (set 'x)))
+    (define txn# (state-transitions (hash-ref state# (set 'x))))
+    (check-equal? txn#
+                  (hash (Asserted Int) (set (transition (list (send Int)) (set 'x 'y)))))))
 
 ;; (Setof τ) (Setof τ) -> (Setof D)
 ;; Subtyping-based assertion routing (*not* intersection - TODO)
@@ -488,12 +508,14 @@
                                  (set)))
                   (hash))]))
 
-;; (Listof (TransitionEffect)) -> (Listof D)
-(define (effs->internal-events effs)
-  (for/list ([e (in-list effs)]
-             #:when (realize? e))
-    (match-define (realize m) e)
-    (Realize m)))
+;; (Listof (TransitionEffect)) -> (Values (Listof D) (Listof TransitionEffect))
+;; partition the internal and external effects, translating realize effects to
+;; Realize events along the way
+(define (partition-transition-effects effs)
+  (define-values (internals externals) (partition realize? effs))
+  (define (realize->Realize e) (Realize (realize-ty e)))
+  (values (map realize->Realize internals)
+          externals))
 
 ;; D -> Bool
 ;; test if D corresponds to an external event (assertion, message)
@@ -855,7 +877,8 @@
        (match eff
          [(or (send _)
               (realize _))
-          (set (transition (list eff) st))]
+          (for/set ([txn (in-set (loop st rest))])
+            (transition (cons eff (transition-effs txn)) (transition-dest txn)))]
          [(start nm)
           (define st+ (set-add st nm))
           (define start-effs (hash-ref (hash-ref txn# nm) (StartOf nm)))
@@ -885,6 +908,16 @@
               (transition (append (transition-effs txn)
                                   (transition-effs next-txn))
                           (transition-dest next-txn))))])])))
+
+(module+ test
+  (test-case
+      "bug in apply-effects"
+    ;; was dropping everything after the first send or realize effect
+    (define txns (apply-effects (list (realize Int) (realize String))
+                                (set)
+                                (facet-tree (hash) (hash))
+                                (hash)))
+    (check-equal? txns (set (transition (list (realize Int) (realize String)) (set))))))
 
 ;; FacetTree FacetName (Setof FacetName) -> (List FacetName)
 ;; return the facets in names that are children of the given facet nm, ordered
