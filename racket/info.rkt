@@ -1,6 +1,9 @@
 #lang setup/infotab
 (define collection 'multi)
 (define deps '("rfc6455"
+               "turnstile-lib"
+               "turnstile-example"
+               "macrotypes-lib"
 	       "base"
 	       "data-lib"
 	       "net-lib"
