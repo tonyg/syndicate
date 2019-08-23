@@ -51,7 +51,9 @@ perform a task.
   (or (symbol? x) (exact-nonnegative-integer? x)))
 #|
 The resources available to a TM are its associated TaskRunners (TRs). TaskRunners
-assert their presence with (task-runner ID Status), where Status is one of
+assert their presence with (task-runner ID)
+
+a Status is one of
   - IDLE, when the TR is not executing a task
   - (executing ID), when the TR is executing the task with the given ID
   - OVERLOAD, when the TR has been asked to perform a task before it has
@@ -581,3 +583,6 @@ The JobManager then performs the job and, when finished, asserts (job-finished I
 (spawn-task-runner)
 (spawn-task-runner)
 (spawn-observer)
+
+(module+ main
+  (void))
