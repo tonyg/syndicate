@@ -54,7 +54,7 @@
 
 (module+ test
   (require rackunit)
-  (require turnstile/rackunit-typechecking))
+  (require rackunit/turnstile))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Needed Forms

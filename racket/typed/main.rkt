@@ -36,7 +36,7 @@
 
 (module+ test
   (require rackunit)
-  (require turnstile/rackunit-typechecking))
+  (require rackunit/turnstile))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
@@ -721,7 +721,7 @@ is meant to be
 
 (define-typed-syntax (λ [p s] ...) ≫
   #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
-  [[x ≫ x- : τ :i (U) :o (U) :a (U)] ... ⊢ s ≫ s- (⇒ : τv) (⇒ :i τ1) (⇒ :o τ2) (⇒ :a τ3)] ...
+  [[x ≫ x- : τ] ... ⊢ s ≫ s- (⇒ : τv) (⇒ :i τ1) (⇒ :o τ2) (⇒ :a τ3)] ...
   ;; REALLY not sure how to handle p/p-/p.match-pattern,
   ;; particularly w.r.t. typed terms that appear in p.match-pattern
   [⊢ p ≫ _ ⇒ τ-p] ...

@@ -4,6 +4,7 @@
                "turnstile-lib"
                "turnstile-example"
                "macrotypes-lib"
+               "rackunit-macrotypes-lib"
 	       "base"
 	       "data-lib"
 	       "net-lib"
