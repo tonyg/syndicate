@@ -163,6 +163,10 @@ ltl sanity {
      BoTM_assertions >= 0)
   &&
   <> (BQ_assertions > 0)
+  &&
+  [] (ASSERTED(IBQ) -> <> ASSERTED(BQ))
+  &&
+  [] (ASSERTED(IBI) -> <> ASSERTED(BI))
   /*
   &&
   <> (leader_state == announce || leader_state == none)
