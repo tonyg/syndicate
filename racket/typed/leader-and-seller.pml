@@ -88,7 +88,6 @@ active proctype Leader() {
             assert(asserting_IBI);
             asserting_IBI = false;
             RETRACT(IBI);
-            IBI_assertions = IBI_assertions - 1;
          :: ASSERTED(BI) && !know_BI ->
             leader_state = announce;
             assert(asserting_IBI);
