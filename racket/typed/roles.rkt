@@ -24,6 +24,7 @@
          define/query-value
          define/query-set
          define/query-hash
+         define/dataflow
          on-start on-stop
          ;; endpoints
          assert know on field
@@ -512,6 +513,22 @@
 
 (define-simple-macro (on-stop e ...)
   (on stop e ...))
+
+(define-typed-syntax define/dataflow
+  [(define/dataflow x:id τ:type e) ≫
+  [⊢ e ≫ e- (⇐ : τ)]
+  #:fail-unless (pure? #'e-) "expression must be pure"
+  ;; because the begin/dataflow body is scheduled to run at some later point,
+  ;; the initial value is visible e.g. immediately after the define/dataflow
+;; #:with place-holder (attach #'(#%datum- #f) ': #'τ.norm)
+  ----------------------------------------
+  [≻ (begin (field [x τ e-])
+            (begin/dataflow (set! x e-)))]]
+  [(define/dataflow x:id e) ≫
+   [⊢ e ≫ e- (⇒ : τ)]
+   #:fail-unless (pure? #'e-) "expression must be pure"
+   ----------------------------------------
+   [≻ (define/dataflow x τ e-)]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Expressions
