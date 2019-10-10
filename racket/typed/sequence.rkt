@@ -17,6 +17,7 @@
          sequence-add-between
          in-list
          in-set
+         in-range
          )
 
 (require "core-types.rkt")
@@ -48,7 +49,8 @@
   [sequence-add-between : (∀ (X) (→fn (Sequence X) X (Sequence X)))])
 
 (require/typed racket/base
-  [in-list : (∀ (X) (→fn (List X) (Sequence X)))])
+  [in-list : (∀ (X) (→fn (List X) (Sequence X)))]
+  [in-range : (→fn Int (Sequence Int))])
 (require/typed racket/set
   [in-set : (∀ (X) (→fn (Set X) (Sequence X)))])
 
