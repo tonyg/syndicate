@@ -88,9 +88,9 @@
                  (cons left-over? reductions)
                  reductions))])))
 
-;; TaskTree -> (Listof Task)
+;; TaskTree ID -> (Listof Task)
 ;; flatten a task tree by assigning job-unique IDs
-(define (task-tree->list tt)
+(define (task-tree->list tt job-id)
   (define-values (tasks _)
     ;; TaskTree ID -> (Values (Listof Task) ID)
     ;; the input id is for the current node of the tree
@@ -99,7 +99,8 @@
                [next-id 0])
       (match tt
         [(map-work _)
-         (values (list (task next-id tt))
+         ;; NOTE : utilizing knowledge of Tuple representation here
+         (values (list (task (list 'tuple next-id job-id) tt))
                        (add1 next-id))]
         [(reduce-work left right)
          (define left-id (add1 next-id))
@@ -107,7 +108,7 @@
            (loop left left-id))
          (define-values (rights next)
            (loop right right-id))
-         (values (cons (task next-id (reduce-work left-id right-id))
+         (values (cons (task (list 'tuple next-id job-id) (reduce-work left-id right-id))
                         (append lefts rights))
                  next)])))
   tasks)
@@ -116,7 +117,7 @@
 (define (create-job in)
   (define job-id (gensym 'job))
   (define input-lines (sequence->list (in-lines in)))
-  (define tasks (task-tree->list (create-task-tree input-lines)))
+  (define tasks (task-tree->list (create-task-tree input-lines) job-id))
   (job job-id tasks))
 
 ;; String -> Job
