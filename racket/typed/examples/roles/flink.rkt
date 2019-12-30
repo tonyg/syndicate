@@ -126,7 +126,8 @@ TaskRunners.
   (Role (listen)
     (During (Observe (TaskPerformance ID ConcreteTask ★/t))
       ;; would be nice to say how the IDs and TaskIDs relate to each other
-      (Shares (TaskPerformance TaskID TaskStateDesc)))))
+      ;; BUG in spec; ConcreteTask used to be just TaskID (when I streamlined protocol)
+      (Shares (TaskPerformance ID ConcreteTask TaskStateDesc)))))
 
 #|
 Job Submission Protocol
