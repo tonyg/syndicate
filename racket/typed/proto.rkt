@@ -2308,38 +2308,38 @@
     (listen)
     (Reacts
      (Asserted
-      (Observe-
-       (TaskPerformance-
+      (Observe
+       (TaskPerformance
         Symbol
-        (Task-
-         (Tuple- Int Symbol)
+        (Task
+         (Tuple Int Symbol)
          (U
-          (MapWork- String)
-          (ReduceWork- (Hash- String Int) (Hash- String Int))))
+          (MapWork String)
+          (ReduceWork (Hash String Int) (Hash String Int))))
         ★/t)))
      (Role
       (during-inner)
       (Reacts
        (Retracted
-        (Observe-
-         (TaskPerformance-
+        (Observe
+         (TaskPerformance
           Symbol
-          (Task-
-           (Tuple- Int Symbol)
+          (Task
+           (Tuple Int Symbol)
            (U
-            (MapWork- String)
-            (ReduceWork- (Hash- String Int) (Hash- String Int))))
+            (MapWork String)
+            (ReduceWork (Hash String Int) (Hash String Int))))
           ★/t)))
        (Stop during-inner))
       (Shares
-       (TaskPerformance-
+       (TaskPerformance
         Symbol
-        (Task-
-         (Tuple- Int Symbol)
+        (Task
+         (Tuple Int Symbol)
          (U
-          (MapWork- String)
-          (ReduceWork- (Hash- String Int) (Hash- String Int))))
-        (U (Finished- (Hash- String Int)) Symbol)))))))
+          (MapWork String)
+          (ReduceWork (Hash String Int) (Hash String Int))))
+        (U (Finished (Hash String Int)) Symbol)))))))
 
 (module+ test
     (test-case "parse and compile task-performer-spec"
