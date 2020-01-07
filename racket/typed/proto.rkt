@@ -1674,8 +1674,9 @@
 ;; Role Role -> (Listof RoleGraph)
 ;; Find all subgraphs of the implementation role that simulate the spec role
 (define (simulating-subgraphs impl spec)
+  ;; assume spec doesn't have any internal events
   (define spec-rg (compile spec))
-  (define impl-rg (compile impl))
+  (define impl-rg (compile/internal-events (compile impl) impl))
   (define evts (relevant-events spec-rg))
   (for/list ([srg (subgraphs impl-rg evts)]
              #:when (simulates?/rg srg impl spec-rg spec))
@@ -2365,14 +2366,121 @@
 
 
 (define job-manager-actual
-  '())
+  '(Role
+    (jm)
+    (Shares (JobManagerAlive))
+    (Reacts
+     (Asserted
+      (Observe
+       (JobCompletion
+        (Bind Symbol)
+        (Bind
+         (List
+          (Task
+           (Tuple Int Symbol)
+           (U (MapWork String) (ReduceWork Int Int)))))
+        Discard)))
+     (Role
+      (during-inner)
+      (Reacts
+       OnStart
+       (Role
+        (delegate-tasks)
+        (Reacts
+         OnDataflow
+         (Role
+          (perform)
+          (Reacts
+           OnStart
+           (Role
+            (select)
+            (Reacts (Forget (SelectedTM (Bind Symbol))))
+            (Reacts
+             OnDataflow
+             (Branch
+              (Effs
+               (Branch
+                (Effs
+                 (Role
+                  (assign)
+                  (Know (SelectedTM Symbol))
+                  (Reacts
+                   (Asserted
+                    (TaskPerformance
+                     Symbol
+                     (Task
+                      (Tuple Int Symbol)
+                      (U
+                       (MapWork String)
+                       (ReduceWork (Hash String Int) (Hash String Int))))
+                     (Bind (U (Finished (Hash String Int)) Symbol))))
+                   (Branch
+                    (Effs)
+                    (Effs)
+                    (Effs (Stop assign))
+                    (Effs
+                     (Stop
+                      perform
+                      (Branch
+                       (Effs
+                        (Realizes (TasksFinished Symbol (Hash String Int))))
+                       (Effs))))))
+                  (Reacts
+                   OnStart
+                   (Role
+                    (take-slot)
+                    (Reacts
+                     (Asserted
+                      (TaskPerformance
+                       Symbol
+                       (Task
+                        (Tuple Int Symbol)
+                        (U
+                         (MapWork String)
+                         (ReduceWork (Hash String Int) (Hash String Int))))
+                       Discard))
+                     (Stop take-slot))))
+                  (Reacts
+                   (Retracted (TaskManager Symbol Discard))
+                   (Stop assign))))
+                (Effs)))
+              (Effs)))))
+          (Reacts OnStop)
+          (Reacts OnStart)))
+        (Reacts
+         (Realize (TasksFinished Symbol (Bind (Hash String Int))))
+         (Stop
+          delegate-tasks
+          (Role
+           (done)
+           (Shares
+            (JobCompletion
+             Symbol
+             (List
+              (Task
+               (Tuple Int Symbol)
+               (U (MapWork String) (ReduceWork Int Int))))
+             (Hash String Int))))))))
+      (Reacts
+       (Retracted
+        (Observe
+         (JobCompletion
+          Symbol
+          (List
+           (Task
+            (Tuple Int Symbol)
+            (U (MapWork String) (ReduceWork Int Int))))
+          Discard)))
+       (Stop during-inner))))
+    (Reacts (Retracted (TaskManager (Bind Symbol) (Bind Int))))
+    (Reacts (Asserted (TaskManager (Bind Symbol) (Bind Int))))))
 
-#;(module+ test
+(module+ test
   (test-case
       "job manager reads and compiles"
     (define jmr (parse-T job-manager-actual))
     (check-true (Role? jmr))
-    (define jm (compile jmr))
+    (define jm (run/timeout (thunk (compile jmr))))
     (check-true (role-graph? jm))
     (check-true (simulates? jmr jmr))))
 
@@ -2509,20 +2617,19 @@
     (check-false (simulates? tm (parse-T task-performer-spec)))))
 
 
-#;(module+ test
+(module+ test
   (test-case
       "job manager with internal events basic functionality"
-    (define jmr (run/timeout (thunk (label-internal-events (parse-T job-manager-v2)))))
+    (define jmr (run/timeout (thunk (label-internal-events (parse-T job-manager-actual)))))
     (check-true (Role? jmr))
     (define jmrg (compile jmr))
     (check-true (role-graph? jmrg))
     (check-true (simulates? jmr jmr)))
   (test-case
       "job manager subgraph(s) implement task assigner"
-    (define jmr (parse-T job-manager-v2))
+    (define jmr (parse-T job-manager-actual))
     (define tar (parse-T task-assigner-spec))
-    ;; TODO - would be good to have a timeout
-    (define ans (simulating-subgraphs jmr tar))
+    (define ans (run/timeout (thunk (simulating-subgraphs jmr tar)) 60000))
     (check-true (list? ans))
     (check-false (empty? ans))))
 
