@@ -1,6 +1,7 @@
 #lang setup/infotab
 (define collection 'multi)
-(define deps '("rfc6455"
+(define deps '(
+               "rfc6455"
                "turnstile-lib"
                "turnstile-example"
                "macrotypes-lib"
@@ -26,7 +27,12 @@
 	       "sha"
                "db-lib"
                ))
-(define build-deps '("racket-doc"
+(define build-deps '(
+                     "racket-doc"
                      "scribble-lib"
                      "sha"
-                     "draw-doc" "gui-doc" "htdp-doc" "pict-doc"))
+                     "draw-doc"
+                     "gui-doc"
+                     "htdp-doc"
+                     "pict-doc"
+                     ))
