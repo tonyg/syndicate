@@ -856,6 +856,12 @@
     (if internal? #`(internal-knowledge #,P-stx) P-stx))
   (define-values (proj-stx pat bindings _instantiated)
     (analyze-pattern event-stx P+))
+  (define interest-stx
+    (if internal?
+        #`(patch-seq (core:sub #,pat)
+                     ;; Allow other facets to see our interest
+                     (core:assert (internal-knowledge (observe #,(cadr pat)))))
+        #`(core:sub #,pat)))
   (define event-predicate-stx (if asserted? #'patch/added? #'patch/removed?))
   (define patch-accessor-stx (if asserted? #'patch-added #'patch-removed))
   (define change-detector-stx
@@ -867,7 +873,7 @@
      #,(source-location->string outer-expr-stx)
      #,internal?
      (lambda () (if #,when-pred-stx
-                    (core:sub #,pat)
+                    #,interest-stx
                     patch-empty))
      (lambda (e current-interests synthetic?)
        (when (not (trie-empty? current-interests))
@@ -1200,12 +1206,9 @@
          (dataflow-forget-subject! (actor-state-field-dataflow a) (list fid eid))
          (define-values (new-mux _eid _delta delta-aggregate)
            (mux-remove-stream (actor-state-mux a) eid))
-         (define internal (patch-step delta-aggregate internal-knowledge-parenthesis))
-         (define external (patch (trie-subtract (patch-added delta-aggregate) (patch-added internal))
-                                 (trie-subtract (patch-removed delta-aggregate) (patch-removed internal))))
+         (define-values (internal external) (split-internal/external delta-aggregate))
          (current-actor-state (struct-copy actor-state a
                                            [mux new-mux]))
-         (define internal-aggregate (patch-prepend internal-knowledge-parenthesis internal))
          (schedule-script!
           #:priority *gc-priority*
           ;; need to do this later for the forget change detector
@@ -1216,7 +1219,7 @@
             (current-actor-state (struct-copy actor-state a
                                               [knowledge new-knowledge]))))
 
-         (schedule-internal-event! internal-aggregate)
+         (schedule-internal-event! internal)
          (schedule-action! external))))
 
     (schedule-script!
@@ -1328,7 +1331,9 @@
   (define-values (new-mux _eid _delta delta-aggregate)
     (mux-update-stream (actor-state-mux a) eid patch))
   (current-actor-state (struct-copy actor-state a [mux new-mux]))
-  (schedule-action! delta-aggregate))
+  (define-values (internal external) (split-internal/external delta-aggregate))
+  (schedule-internal-event! internal)
+  (schedule-action! external))
 
 (define (actor-behavior e a)
   (and e
@@ -1352,9 +1357,7 @@
   (define mux (actor-state-mux (current-actor-state)))
   (with-current-facet fid #f
     (when (patch? e)
-      ;; quick-and-dirty intersection with (internal-knowledge ?)
-      (define internal (patch-prepend internal-knowledge-parenthesis
-                                      (patch-step e internal-knowledge-parenthesis)))
+      (define internal (internal-patch e))
       (update-facet! fid
                      (lambda (f)
                        (and f
@@ -1491,6 +1494,23 @@
 (define (quit-dataspace!)
   (ensure-in-script! 'quit-dataspace!)
   (schedule-action! (core:quit-dataspace)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Helpers
+
+;; Patch -> (Values Patch Patch)
+;; split a patch into its internal and external components
+(define (split-internal/external e)
+  (define internal (internal-patch e))
+  (values internal
+          (patch (trie-subtract (patch-added e) (patch-added internal))
+                 (trie-subtract (patch-removed e) (patch-removed internal)))))
+
+;; Patch -> Patch
+;; Remove all items from a patch not constructed with internal-knowledge
+(define (internal-patch e)
+  (patch-prepend internal-knowledge-parenthesis
+                 (patch-step e internal-knowledge-parenthesis)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
