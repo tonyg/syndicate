@@ -17,7 +17,6 @@
 (define-primop + (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
 (define-primop - (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
 (define-primop * (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
-(define-primop or (→ Bool Bool (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
 (define-primop not (→ Bool (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
 (define-primop < (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
 (define-primop > (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
@@ -48,12 +47,18 @@
   ------------------------
   [⊢ (#%app- exact-truncate- (#%app- /- e1- e2-)) (⇒ : Int)])
 
-;; for some reason defining `and` as a prim op doesn't work
+;; I think defining `and` and `or` as primops doesn't work because they're syntax
 (define-typed-syntax (and e ...) ≫
   [⊢ e ≫ e- (⇐ : Bool)] ...
   #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions not allowed to have effects"
   ------------------------
   [⊢ (and- e- ...) (⇒ : Bool)])
+
+(define-typed-syntax (or e ...) ≫
+  [⊢ e ≫ e- (⇐ : Bool)] ...
+  #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions not allowed to have effects"
+  ------------------------
+  [⊢ (or- e- ...) (⇒ : Bool)])
 
 (define-typed-syntax (equal? e1:expr e2:expr) ≫
   [⊢ e1 ≫ e1- (⇒ : τ1)]
