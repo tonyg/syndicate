@@ -158,6 +158,7 @@
   [⊢ (match- e- [p- s-] ...
                 [_ (#%app- error- "incomplete pattern match")])
      (⇒ : (U τ-s ...))
+     ;; TODO losing branching information here
      (⇒ ν-ep (eps ... ...))
      (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
      (⇒ ν-s (ss ... ...))])
