@@ -326,9 +326,9 @@
                 "Spawned actors not valid in dataspace"
   #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c.norm)
                                #'τ-i)
-                "Not prepared to handle all inputs"
-  #:fail-unless (project-safe? #'τ-o/i #'τ-i/i)
-                "Not prepared to handle internal events"
+                (string-append "Not prepared to handle inputs:\n" (make-actor-error-message #'τ-i #'τ-o #'τ-c.norm))
+  #:fail-unless (project-safe? (∩ (strip-? #'τ-o/i) #'τ-o/i) #'τ-i/i)
+                (string-append "Not prepared to handle internal events:\n" (make-actor-error-message #'τ-i/i #'τ-o/i #'τ-o/i))
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ ν-s (τ-final))]]
@@ -337,6 +337,26 @@
    #:when τc
    ----------------------------------------
    [≻ (spawn #,τc s)]])
+
+;; Type Type Type -> String
+(define-for-syntax (make-actor-error-message τ-i τ-o τ-c)
+  (define mismatches (find-surprising-inputs τ-i τ-o τ-c))
+  (string-join (map type->str mismatches) ",\n"))
+
+;; Type Type Type -> (Listof Type)
+(define-for-syntax (find-surprising-inputs τ-i τ-o τ-c)
+  (define incoming (∩ (strip-? τ-o) τ-c))
+  ;; Type -> (Listof Type)
+  (let loop ([ty incoming])
+    (syntax-parse ty
+      [(~U* τ ...)
+       (apply append (map loop (syntax->list #'(τ ...))))]
+      [_
+       (cond
+         [(project-safe? ty τ-i)
+          '()]
+         [else
+          (list ty)])])))
 
 (define-typed-syntax (dataspace τ-c:type s ...) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
