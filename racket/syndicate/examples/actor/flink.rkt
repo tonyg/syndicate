@@ -301,11 +301,9 @@ The JobManager then performs the job and, when finished, asserts
         ;; keep track of task managers, how many slots they say are open, and how many tasks we have assigned.
         ;; (Hashof TaskManagerID Nat)
         (define/query-hash task-managers (task-manager $id $slots) id slots
-          #:on-add (begin (log "JM learns that ~a has ~v slots" id slots)
-                          #;(requests-in-flight (hash-set (requests-in-flight) id 0))))
+          #:on-add (log "JM learns that ~a has ~v slots" id slots))
 
-        (field [waiting-tasks '()]  ;; (Listof ID)
-               [requests-in-flight (hash)] ;; (Hashof ID Nat)
+        (field [requests-in-flight (hash)] ;; (Hashof ID Nat)
                [assignments (hash)]) ;; (Hashof ID ID) request ID to manager ID
 
         ;; to better understand the supply of slots for each task manager, keep track of the number
