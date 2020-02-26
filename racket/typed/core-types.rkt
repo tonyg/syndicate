@@ -1165,7 +1165,10 @@
   (syntax-local-bind-syntaxes (list x-) #f ctx)
   (syntax-local-bind-syntaxes (list x)
                               #`(make-rename-transformer
-                                 (add-orig (assign-type #'#,x- #'#,t #:wrap? #f) #'#,x))
+                                 (add-orig
+                                  (attach #'#,x- ': #'#,t)
+                                  #'#,x)
+                                 #;(add-orig (assign-type #'#,x- #'#,t #:wrap? #f) #'#,x))
                               ctx))
 
 (define-for-syntax (add-bindings-to-ctx e- def-ctx)
@@ -1252,26 +1255,32 @@
      ;; (where walk/bind won't replace further uses) and subsequent provides
      #'(begin-
          (define-syntax x
-           (make-variable-like-transformer (add-orig (assign-type #'x- #'τ #:wrap? #f) #'x)))
+           (make-variable-like-transformer (add-orig (attach #'x- ': #'τ) #'x)))
          (define- x- e))]))
 
 ;; copied from ext-stlc
 (define-typed-syntax define
   [(_ x:id (~datum :) τ:type e:expr) ≫
-   [⊢ e ≫ e- ⇐ τ.norm]
-   #:fail-unless (pure? #'e-) "expression must be pure"
+   [⊢ e ≫ e- (⇐ : τ.norm) (⇒ ν-ep (~effs τ-ep ...)) (⇒ ν-f (~effs τ-f ...)) (⇒ ν-s (~effs τ-s ...))]
    #:with x- (generate-temporary #'x)
    #:with x+ (syntax-local-identifier-as-binding #'x)
    --------
-   [⊢ (define/intermediate x+ x- τ.norm e-) (⇒ : ★/t)]]
+   [⊢ (define/intermediate x+ x- τ.norm e-)
+      (⇒ : ★/t)
+      (⇒ ν-ep (τ-ep ...))
+      (⇒ ν-f (τ-f ...))
+      (⇒ ν-s (τ-s ...))]]
   [(_ x:id e) ≫
    ;This won't work with mutually recursive definitions
-   [⊢ e ≫ e- ⇒ τ]
-   #:fail-unless (pure? #'e-) "expression must be pure"
+   [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs τ-ep ...)) (⇒ ν-f (~effs τ-f ...)) (⇒ ν-s (~effs τ-s ...))]
    #:with x- (generate-temporary #'x)
    #:with x+ (syntax-local-identifier-as-binding #'x)
    --------
-   [⊢ (define/intermediate x+ x- τ e-) (⇒ : ★/t)]]
+   [⊢ (define/intermediate x+ x- τ e-)
+      (⇒ : ★/t)
+      (⇒ ν-ep (τ-ep ...))
+      (⇒ ν-f (τ-f ...))
+      (⇒ ν-s (τ-s ...))]]
   [(_ (f [x (~optional (~datum :)) ty:type] ...
          (~or (~datum →) (~datum ->)) ty_out:type)
          e ...+) ≫
