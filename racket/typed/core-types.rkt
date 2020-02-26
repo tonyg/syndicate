@@ -1386,6 +1386,8 @@
                                                    (~Endpoints τ-ep ...)
                                                    (~Roles τ-f ...)
                                                    (~Spawns τ-s ...))))]
+   ;; TODO - don't know why this cut is needed for error messages
+   #:cut
    #:fail-unless (pure? #'e_fn-) "expression not allowed to have effects"
    #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
                  (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
