@@ -158,10 +158,11 @@
   [⊢ (match- e- [p- s-] ...
                 [_ (#%app- error- "incomplete pattern match")])
      (⇒ : (U τ-s ...))
-     ;; TODO losing branching information here
-     (⇒ ν-ep (eps ... ...))
+     (⇒ ν-ep #,(make-Branch #'((eps ...) ...)))
      (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
-     (⇒ ν-s (ss ... ...))])
+     (⇒ ν-s #,(make-Branch #'((ss ...) ...)))])
+
+
 
 (define-typed-syntax (tuple e:expr ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
