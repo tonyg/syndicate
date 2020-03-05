@@ -310,6 +310,7 @@
                    identity))
 
 (define-typed-syntax spawn
+  ;; TODO - do the lack of #:cut-s cause bad error messages here?
   [(spawn τ-c:type s) ≫
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   ;; TODO: check that each τ-f is a Role
