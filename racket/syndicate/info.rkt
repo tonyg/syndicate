@@ -3,3 +3,8 @@
 (define racket-launcher-names '("syndicate-broker" "syndicate-render-msd"))
 (define racket-launcher-libraries '("broker/server.rkt" "trace/render-msd.rkt"))
 (define test-include-paths '("syndicate/tests"))
+(define test-omit-paths
+  '(;; Sam: example-plain is interactive, I think
+    "examples/example-plain.rkt"
+    ;; Sam: for whatever reason I get a failure to load libcrypto for f-to-c
+    "examples/actor/f-to-c.rkt"))

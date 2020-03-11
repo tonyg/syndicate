@@ -77,11 +77,13 @@
         (start-facet x
           (on (retracted (observe (quote title discard)))
               (stop x))
-          (match title
-            ["Catch 22"
-             (assert (quote title (price 22)))]
-            [discard
-             (assert (quote title (out-of-stock)))])))
+          (define answer
+            (match title
+              ["Catch 22"
+               (price 22)]
+              [_
+               (out-of-stock)]))
+          (assert (quote title answer))))
     (on (asserted (observe (order (bind title String) (bind offer Int) discard discard)))
         (start-facet x
           (on (retracted (observe (order title offer discard discard)))
