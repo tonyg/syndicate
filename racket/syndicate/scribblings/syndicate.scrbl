@@ -100,92 +100,260 @@ Within the following descriptions, we use @emph{EI} as a shorthand for
 expressions that execute in an endpoint-installation context and @emph{S} for
 expressions in a script context.
 
-@defform[(spawn EI ...)]{
+@subsection{Script Actions: Starting and Stopping Actors and Facets}
+
+@defform[(spawn EI ...+)]{
 Spawn an actor with a single inital facet whose endpoints are installed by
-@racket[EI]. That is, there is an implicit @racket[react] around @racket[EI ...].}
+@racket[EI]. That is, there is an implicit @racket[react] around @racket[EI
+...]. Allowed within a script and module-top-level.}
 
-
-@defproc[(send! [v any/c]
-                [#:meta-level level natural-number/c 0])
-         void?]{
-Sends a message with body @racket[v]. The message is sent @racket[level]
-dataspaces removed from the dataspace containing the actor performing the
-@racket[send!].}
-
-@defform[(during pat O ...)]{
-Runs the behaviors @racket[O ...] for the duration of each assertion matching
-@racket[pat].
-
-Roughly equivalent to
-@racket[(on (asserted pat)
-            (until (retracted pat)
-                   O ...))]
-where the @racket[pat] in the @racket[until] clause is specialized to the actual
-value matched by @racket[pat] in the @racket[asserted] clause.
+@defform[(react EI ...+)]{
+Create a new facet in the current actor whose endpoints are the result of
+executing @racket[EI ...]. Allowed within a script.
 }
 
-@defform[(assert maybe-pred exp maybe-level)
+@defform[(stop-facet fid S ...)
+         #:contracts ([fid facet-id?])]{
+Terminate the facet with ID @racket[fid], as well as all of its children.
+Allowed within a script.
+
+The optional script actions @racket[S ...] function like a continuation. They
+run @emph{after} the facet and all of its children finish shutting down, i.e.
+after all @racket[stop] handlers have executed. Moreover, @racket[S ...] runs in
+the context of the @emph{parent} of @racket[fid]. Thus, any facet created by the
+script survives termination and will have @racket[fid]'s parent as its own
+parent.
+
+Note that @racket[fid] must be an ancestor of the current facet.
+}
+
+@defform[(stop-current-facet S ...)]{
+Stop the currently running facet; equivalent to @racket[(stop-facet
+(current-facet-id) S ...)]. Allowed within a script.
+}
+
+@defproc[(current-facet-id) facet-id?]{
+Retrieves the ID of the currently running facet.
+}
+
+@defproc[(send! [v any/c])
+         void?]{
+Sends a @racket[message] with body @racket[v].}
+
+@subsection{Installing Endpoints}
+
+@defform[(field [x init-expr maybe-contract] ...+)
+         #:grammar
+         [(maybe-contract (code:line)
+                          (code:line #:contract in)
+                          (code:line #:contract in out))]]{
+Define fields for the current facet. Each @racket[x] is bound to a handle
+function: calling @racket[(x)] retrieves the current value, while @racket[(x v)]
+sets the field to @racket[v].
+
+Fields may optionally have a contract; the @racket[in] contract is applied when
+writing to a field, while the (optional) @racket[out] contract applies when
+reading a value from a field.
+
+Allowed within an endpoint installation context.
+}
+
+@defform[(assert maybe-pred exp)
          #:grammar
          [(maybe-pred (code:line)
-                      (code:line #:when pred))
-          (maybe-level (code:line)
-                       (code:line #:meta-level level))]
-         #:contracts ([pred boolean?]
-                      [level natural-number/c])]{
-Makes the assertion @racket[exp] while the enclosing actor is running. If a
-@racket[#:when] predicate is given, the assertion is made conditionally on the
-predicate expression evaluating to true.}
+                      (code:line #:when pred))]
+         #:contracts ([pred boolean?])]{
+Make the assertion @racket[exp] while the enclosing facet is active. Publishing
+the assertion can be made conditional on a boolean expression by supplying a
+@racket[#:when] predicate, in which case the assertion is made only when
+@racket[pred] evaluates to @racket[#t].
 
-@defform[(on E
-             I ...)]{
-When the event @racket[E] becomes active, executes the instantaneous actions
-@racket[I ...] in the body. The result of the final action is the result of the
-entire behavior.}
+If the expression @racket[exp] refers to any fields, then the assertion created
+by the endpoint is automatically kept up-to-date each time any of those fields
+is updated. More specifically, the will issue a patch retracting the assertion
+of the previous value, replacing it with the results of reevaluating
+@racket[exp] with the current values of each field.
 
-@section{Events (E)}
+Allowed within an endpoint installation context.
+}
 
-@defform[(message pat)]{
-Activates when a message is received with a body matching @racket[pat].
-The message event establishes the enclosing actor's interest in @racket[pat].}
+@defform[#:literals (message asserted retracted _ $ ?)
+         (on event-description
+             S ...+)
+         
+         #:grammar
+         [(event-description (code:line message pattern)
+                             (code:line asserted pattern)
+                             (code:line retracted pattern))
+          (pattern (code:line _)
+                   (code:line $id)
+                   (code:line ($ id pattern))
+                   (code:line (? pred pattern))
+                   (code:line (ctor pattern ...))
+                   (code:line expr))]]{
+Creates an event handler endpoint that responds to the event specified by
+@racket[event-description]. Executes the body @racket[S ...] for each matching
+event, with any pattern variables bound to their matched value. Additionally,
+the actor will make an assertion of interest in events that could match
+@racket[event-description].
 
-@defform[(asserted pat)]{
-Activates when a patch is received with an added assertion matching
-@racket[pat]. Establishes the enclosing actor's interest in @racket[pat].}
+Allowed within an endpoint installation context.
 
-@defform[(retracted pat)]{
-Similar to @racket[asserted], except for assertions removed in a patch.}
+Event descriptions have one of the following forms:
+@itemlist[
+  @item{@racket[(message pattern)] activates when a message is received with a
+    body matching @racket[pat].}
 
-@defform[(rising-edge expr)]{
-Activates when @racket[expr] evaluates to anything besides @racket[#f] (having
-previously evaluated to @racket[#f]). The condition is checked after each
-received event, corresponding to after each instantaneous action is executed.}
+  @item{@racket[(asserted pattern)] activates when a patch is received with an
+    added assertion matching @racket[pattern]. Additionally, if the actor has
+    @emph{already} received a patch with matching assertions, which can occur if
+    multiple facets in a single actor have overlapping interests, then the
+    endpoint will match those assertions upon facet start up.}
 
-@section{Patterns}
+  @item{@racket[(retracted pat)] is similar to @racket[asserted], but for
+    assertions withdrawn in a patch.}
 
-@(racketgrammar
-  pat
-  (code:line)
-  (code:line _)
-  (code:line $id)
-  (code:line ($ id pat))
-  (code:line (? pred pat))
-  (code:line (ctor pat ...))
-  (code:line expr))
+  @;{@item{@racket[(rising-edge expr)] activates when @racket[expr] evaluates to
+    anything besides @racket[#f] (having previously evaluated to @racket[#f]). The
+    condition is checked after each received event.}}
+]
 
-@racket[_] matches anything.
+While patterns have the following meanings:
+@itemlist[
+  @item{@racket[_] matches anything.}
 
-@racket[$id] matches anything and binds the value to @racket[id].
+  @item{@racket[$id] matches anything and binds the value to @racket[id].}
 
-@racket[($ id pat)] matches values that match @racket[pat] and binds the value
-to @racket[id].
+  @item{@racket[($ id pattern)] matches values that match @racket[pattern] and
+    binds the value to @racket[id].}
 
-@racket[(? pred pat)] matches values where @racket[(pred val)] is not
-@racket[#f] and that match @racket[pat].
+  @item{@racket[(? pred pattern)] matches values where @racket[(pred val)] is not
+     @racket[#f] and that match @racket[pattern].}
 
-@racket[(ctor pat ...)] matches values built by applying the constructor
-@racket[ctor] to values matching @racket[pat ...].
+  @item{@racket[(ctor pat ...)] matches values built by applying the constructor
+    @racket[ctor] to values matching @racket[pat ...]. @racket[ctor] is usually
+    a @racket[struct] name.}
 
-@racket[expr] patterns match values that are exactly equal to @racket[expr].
+  @item{@racket[expr] patterns match values that are @racket[equal?] to
+    @racket[expr].}
+]
+}
+
+@defform[(during pattern EI ...+)]{
+Engage in behavior for the duration of a matching assertion. Roughly equivalent
+to:
+
+@racketblock[
+(on (asserted pattern)
+  (react
+    EI ...
+    (on (retracted inst-pattern)
+        (stop-current-facet))))]
+
+where @racket[inst-pattern] is the @racket[pattern] with variables instantiated
+to their matching values.
+
+Allowed within an endpoint installation context.
+}
+
+@subsection{Handling Facet Startup and Shutdown}
+
+In addition to external events, such as assertion (dis)appearance and message
+broadcast, facets can react to their own startup and shutdown. This provides a
+handy way to perform initialization, cleanup, as well as setting up and tearing
+down resources.
+
+@defform[(on-start S ...)]{
+Perform the script actions @racket[S ...] upon facet startup.
+
+Allowed within an endpoint installation context.
+}
+
+@defform[(on-stop S ...)]{
+Perform the script actions @racket[S ...] upon facet shutdown.
+
+The script @racket[S ...] differs from that of @racket[stop-facet] in that it
+executes in the context of the terminating facet, not its parent. Thus, any
+facets created in @racket[S ...] will start up and then immediately shut down.
+
+Allowed within an endpoint installation context.
+}
+
+Note that a single facet may have any number of @racket[on-start] and
+@racket[on-stop] handlers, which do not compete with each other. That is, each
+@racket[on-start] handler runs during facet startup and, likewise, each
+@racket[on-stop] during facet shutdown.
+
+@subsection{Streaming Query Fields}
+
+Syndicate actors often aggregate information about current assertions as part of
+their local state, that is, in a @racket[field]. Since these patterns are
+exceedingly common, Syndicate provides a number of forms for defining fields
+that behave as streaming queries over the assertions in the dataspace.
+
+@defform[(define/query-set name pattern expr maybe-on-add maybe-on-remove)
+         #:grammar
+         [(maybe-on-add (code:line)
+                        (code:line #:on-add on-add-expr))
+          (maybe-on-remove (code:line)
+                           (code:line #:on-remove on-remove-expr))]]{
+Define a @racket[field] called @racket[name] that is the @racket[set] of values
+extracted from assertions matching @racket[pattern]. Each value is extracted
+from a matching assertion by evaluating @racket[expr], which may refer to
+variables bound by @racket[pattern].
+
+The query set expands to roughly the following code:
+@racketblock[
+(begin
+  (field [name (set)])
+  (on (asserted pattern)
+      (name (set-add (name) expr)))
+  (on (retracted pattern)
+      (name (set-remove (name) expr))))]
+    
+The optional @racket[on-add-expr] is performed inside the @racket[on asserted]
+handler, while @racket[on-remove-expr] runs in the @racket[on retracted]
+handler.
+
+Allowed within an endpoint installation context.
+}
+
+@defform[(define/query-value name absent-expr pattern expr
+                               maybe-on-add
+                               maybe-on-remove)
+         #:grammar
+         [(maybe-on-add (code:line)
+                        (code:line #:on-add on-add-expr))
+          (maybe-on-remove (code:line)
+                           (code:line #:on-remove on-remove-expr))]]{
+Define a @racket[field] called @racket[name] whose value is based on the
+presence of an assertion matching @racket[pattern] in the dataspace. When such
+an assertion is present, the value of the @racket[name] field is the result of
+evaluating @racket[expr], which may refer to @racket[pattern]. When no such
+assertion exists, including initially, the value of @racket[name] is the result
+of @racket[absent-expr].
+
+The optional @racket[maybe-on-add] and @racket[maybe-on-expr] behave the same
+way they do for @racket[define/query-set].
+
+Allowed within an endpoint installation context.
+}
+
+@subsection{Generalizing Dataflow}
+
+Talk about begin/dataflow here.
+
+@subsection{Generalizing Actor-Internal Communication}
+
+Talk about internal assertions and messages.
+
+@subsection{Nesting Dataspaces}
+
+Nested dataspaces, inbound and outbound assertions.
+
+@section{Interacting with the Outside World}
+
+ground dataspace, drivers, etc.
 
 @section{Actors with an Agenda}
 
