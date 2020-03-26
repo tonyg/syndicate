@@ -102,10 +102,42 @@ expressions in a script context.
 
 @subsection{Script Actions: Starting and Stopping Actors and Facets}
 
-@defform[(spawn EI ...+)]{
+@defform[(spawn maybe-name
+                maybe-assertions
+                maybe-linkage
+                EI ...+)
+         #:grammar
+         [(maybe-name (code:line)
+                      (code:line #:name name-expr))
+          (maybe-assertions (code:line)
+                            (code:line #:assertions assertion-expr)
+                            (code:line #:assertions* assertions-expr))
+          (maybe-linkage (code:line)
+                         (code:line #:linkage [linkage-expr ...]))]
+         #:contracts
+         ([assertion-expr any/c]
+          [assertions-expr trie?])]{
 Spawn an actor with a single inital facet whose endpoints are installed by
 @racket[EI]. That is, there is an implicit @racket[react] around @racket[EI
-...]. Allowed within a script and module-top-level.}
+...]. Allowed within a script and module-top-level.
+
+An optionally provided @racket[name-expr] is associated with the created actor.
+The name is only used for error and log messages, thus is mainly useful for
+debugging.
+
+The actor may optionally be given some initial assertions, which come into being
+at the same time as the actor. (Otherwise, the actor spawns, then boots its
+initial facet(s), then establishes any ensuing assertions.) When
+@racket[assertion-expr] is provided, the actors initial assertions are the
+result of interpreting the expression as a @racket[trie] pattern, with
+@racket[?] giving rise to infinte sets. On the other hand,
+@racket[assertions-expr] may be used to specify an entire set of initial
+assertions as an arbitrary @racket[trie].
+
+The optional @racket[linkage-expr]s are executed during facet startup; your
+simple documentation author is not sure why they are useful, as opposed to just
+putting them in the body of the @racket[spawn].
+}
 
 @defform[(react EI ...+)]{
 Create a new facet in the current actor whose endpoints are the result of
@@ -128,8 +160,10 @@ Note that @racket[fid] must be an ancestor of the current facet.
 }
 
 @defform[(stop-current-facet S ...)]{
-Stop the currently running facet; equivalent to @racket[(stop-facet
-(current-facet-id) S ...)]. Allowed within a script.
+Stop the currently running facet; equivalent to
+@racketblock[(stop-facet (current-facet-id) S ...)].
+
+Allowed within a script.
 }
 
 @defproc[(current-facet-id) facet-id?]{
@@ -138,7 +172,10 @@ Retrieves the ID of the currently running facet.
 
 @defproc[(send! [v any/c])
          void?]{
-Sends a @racket[message] with body @racket[v].}
+Sends a @racket[message] with body @racket[v].
+
+Allowed within a script.
+}
 
 @subsection{Installing Endpoints}
 
@@ -166,7 +203,7 @@ Allowed within an endpoint installation context.
 Make the assertion @racket[exp] while the enclosing facet is active. Publishing
 the assertion can be made conditional on a boolean expression by supplying a
 @racket[#:when] predicate, in which case the assertion is made only when
-@racket[pred] evaluates to @racket[#t].
+@racket[pred] evaluates to a truthy value.
 
 If the expression @racket[exp] refers to any fields, then the assertion created
 by the endpoint is automatically kept up-to-date each time any of those fields
@@ -178,24 +215,35 @@ Allowed within an endpoint installation context.
 }
 
 @defform[#:literals (message asserted retracted _ $ ?)
-         (on event-description
+         (on maybe-pred event-description
              S ...+)
          
          #:grammar
-         [(event-description (code:line message pattern)
-                             (code:line asserted pattern)
-                             (code:line retracted pattern))
+         [(maybe-pred (code:line)
+                      (code:line #:when pred))
+          (event-description (code:line (message pattern))
+                             (code:line (asserted pattern))
+                             (code:line (retracted pattern)))
           (pattern (code:line _)
                    (code:line $id)
                    (code:line ($ id pattern))
                    (code:line (? pred pattern))
                    (code:line (ctor pattern ...))
-                   (code:line expr))]]{
+                   (code:line expr))]
+         #:contracts ([pred boolean?])]{
 Creates an event handler endpoint that responds to the event specified by
 @racket[event-description]. Executes the body @racket[S ...] for each matching
-event, with any pattern variables bound to their matched value. Additionally,
-the actor will make an assertion of interest in events that could match
-@racket[event-description].
+event, with any pattern variables bound to their matched value.
+
+The actor will make an assertion of interest in events that could match
+@racket[event-description]. Like with @racket[assert], the interest will be
+refreshed any time a field referenced within the @racket[event-description]
+pattern changes.
+
+The event handler can optionally be made conditional on a boolean expression by
+supplying a @racket[#:when] predicate, in which case the endpoint only reacts to
+events, and only expresses the corresponding assertion of interest, when
+@racket[pred] evaluates to a truthy value.
 
 Allowed within an endpoint installation context.
 
@@ -252,6 +300,64 @@ to:
 
 where @racket[inst-pattern] is the @racket[pattern] with variables instantiated
 to their matching values.
+
+Allowed within an endpoint installation context.
+}
+
+@defform[(during/spawn pattern
+                        maybe-actor-wrapper
+                        maybe-name
+                        maybe-assertions
+                        maybe-parent-let
+                        maybe-on-crash
+                        EI ...)
+          #:grammar
+          [(maybe-actor-wrapper (code:line)
+                                (code:line #:spawn wrapper-stx))
+           (maybe-parent-let (code:line)
+                             (code:line #:let [x expr] ...))
+           (maybe-on-crash (code:line)
+                           (code:line #:on-crash on-crash-expr))]]{
+Like @racket[during], but in addition to creating a new facet for each matching
+assertion, @racket[spawn]s a new actor. The difference is primarily relevant for
+error propagation; an exception inside @racket[during] causes the entire actor
+to crash, while an exception inside @racket[during/spawn] crashes only the newly
+spawned actor.
+
+The assertion triggering the @racket[during/spawn] may disappear @emph{before}
+the spawned actor boots, in which case it fails to see the retraction event. To
+avoid potential glitches, the @emph{spawning} actor maintains an assertion that
+lets the @racket[spawned] actor know whether the originial assertion still
+exists.
+
+The @racket[maybe-name] and @racket[maybe-assertions] have the same meaning they
+do for @racket[spawn], applied to the newly spawned actor.
+
+The @racket[wrapper-stx] serves as an interposition point; it may be provided to
+change the meaning of "spawning an actor" in response to an assertion. By
+default, it is @racket[#'spawn].
+
+The optional @racket[#:let] clauses can be used to read the values of fields in
+the @emph{spawning} actor so that they can be used in the @emph{spawned} actor.
+Otherwise, the spawned actor has no access to the parent's fields, and trying to
+read or write to such a field will cause a runtime @racket[error].
+
+The @racket[on-crash-expr] provides a hook for script actions that can be
+performed in the @emph{spawning} actor if the @emph{spawned} actor crashes.
+
+Allowed within an endpoint installation context.
+}
+
+@defform[(stop-when maybe-pred event-description S ...)
+         #:grammar
+         [(maybe-pred (code:line)
+                      (code:line #:when pred))]
+         #:contracts ([pred boolean?])]{
+Stop the current facet when an event matching @racket[event-description] occurs.
+Roughly equivalent to
+@racketblock[
+(on event-description
+    (stop-current-facet S ...))]
 
 Allowed within an endpoint installation context.
 }
@@ -318,6 +424,27 @@ handler.
 Allowed within an endpoint installation context.
 }
 
+@defform[(define/query-hash name pattern key-expr value-expr
+                              maybe-on-add
+                              maybe-on-remove)
+         #:grammar
+         [(maybe-on-add (code:line)
+                        (code:line #:on-add on-add-expr))
+          (maybe-on-remove (code:line)
+                           (code:line #:on-remove on-remove-expr))]]{
+Define a @racket[field] called @racket[name] that is a @racket[hash] based on
+assertions matching @racket[pattern]. Each matching assertion establishes a key
+in the hash based on @racket[key-expr] whose value is the result of
+@racket[value-expr], with each expression referring to variables bound by
+@racket[pattern]. When a matching assertion disappears from the dataspace, the
+associated key is removed from the hash.
+
+The optional @racket[maybe-on-add] and @racket[maybe-on-expr] behave the same
+way they do for @racket[define/query-set].
+
+Allowed within an endpoint installation context.
+}
+
 @defform[(define/query-value name absent-expr pattern expr
                                maybe-on-add
                                maybe-on-remove)
@@ -339,9 +466,62 @@ way they do for @racket[define/query-set].
 Allowed within an endpoint installation context.
 }
 
+@defform[(define/query-count name pattern key-expr
+                               maybe-on-add
+                               maybe-on-remove)
+         #:grammar
+         [(maybe-on-add (code:line)
+                        (code:line #:on-add on-add-expr))
+          (maybe-on-remove (code:line)
+                           (code:line #:on-remove on-remove-expr))]]{
+Define a @racket[field] called @racket[name] whose value is a @racket[hash]
+counting occurrences of matching assertions in the dataspace. More precisely,
+for each assertion @racket[pattern], evaluating @racket[key-expr] determines a
+key in the hash; the value for that key is incremented when the assertion
+appears and decremented when it disappears. When the count associated with a
+particular key falls to @racket[0], that key is removed from the hash.
+
+The optional @racket[maybe-on-add] and @racket[maybe-on-expr] behave the same
+way they do for @racket[define/query-set].
+
+Allowed within an endpoint installation context.
+}
+
 @subsection{Generalizing Dataflow}
 
-Talk about begin/dataflow here.
+The dataflow mechanism that automatically refreshes @racket[assert] endpoints
+when a referenced field changes may be used to react to local state updates in
+arbitrary ways using @racket[begin/dataflow].
+
+@defform[(begin/dataflow S ...+)]{
+Evaluate and perform the script actions @racket[S ...] during facet startup, and
+then again each time a field referenced by the script updates.
+
+Conceptually, @racket[begin/dataflow] may be thought of as an event handler
+endpoint in the vein of @racket[on], where the event of interest is @emph{update
+of local state}.
+
+Allowed within an endpoint installation context.
+}
+
+@defform[(define/dataflow name expr maybe-default)
+         #:grammar
+         [(maybe-default (code:line)
+                         (code:line #:default default-expr))]]{
+Define a @racket[field] named @racket[name], whose value is reevaluated to the
+result of @racket[expr] each time any referenced field changes.
+
+The value of @racket[name] is either @racket[#f] or, if provided,
+@racket[default-expr]. This initial value is observable for a short time during
+facet startup.
+
+Note that when a field referenced by @racket[expr] changes, there may be some
+time before @racket[name] refreshes, during which "stale" values may be read
+from the field.
+
+Allowed within an endpoint installation context.
+}
+
 
 @subsection{Generalizing Actor-Internal Communication}
 
@@ -349,7 +529,19 @@ Talk about internal assertions and messages.
 
 @subsection{Nesting Dataspaces}
 
-Nested dataspaces, inbound and outbound assertions.
+Nested dataspaces, inbound and outbound assertions, quit-datapace.
+
+@defform[(dataspace S ...)]{
+Spawns a dataspace as a child of the dataspace enclosing the executing actor.
+The new dataspace executes each action @racket[S].
+
+Allowed within a script.
+}
+
+
+@section{Module Top Level}
+
+Meaning of module top level.
 
 @section{Interacting with the Outside World}
 
@@ -360,10 +552,6 @@ ground dataspace, drivers, etc.
 Here we talk about @racket[spawn*] and @racket[react/suspend].
 
 @section{Odds and Ends}
-
-@defform[(dataspace I ...)]{
-Spawns a dataspace as a child of the dataspace enclosing the executing actor. The
-new dataspace executes each instantaneous action @racket[I].}
 
 @defproc[(assert! [v any/c]
                   [#:meta-level level natural-number/c 0])
