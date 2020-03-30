@@ -539,9 +539,32 @@ Allowed within a script.
 }
 
 
-@section{Module Top Level}
+@section{@hash-lang[] @racket[syndicate] Programs}
 
-Meaning of module top level.
+In a @hash-lang[] @racket[syndicate] program, the results of top-level
+expressions define the initial group of actors in the dataspace. That is,
+evaluating @racket[spawn] or @racket[dataspace] in the context of the module
+top-level adds that actor specification to the initial dataspace of the program.
+For example, a module such as:
+
+@codeblock[#:line-numbers 0]|{
+#lang syndicate
+
+(define (spawn-fun)
+  (spawn ...))
+
+(spawn ...)
+
+(spawn-fun)
+}|
+
+launches a syndicate program with two initial actors, one the result of the
+@racket[spawn] expression on line 5 and one the result of evaluating the
+@racket[spawn] expresion on line 3 during the course of calling
+@racket[spawn-fun] on line 7.
+
+The initial dataspace is referred to as the @emph{ground} dataspace, and it
+plays a special role in Syndicate programming; see below.
 
 @section{Interacting with the Outside World}
 
