@@ -200,7 +200,10 @@
 
 (define-typed-syntax (stop facet-name:id cont ...) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
-  [⊢ (begin #f cont ...) ≫ cont- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
+  [⊢ (begin #f cont ...) ≫ cont-
+                         (⇒ ν-ep (~effs))
+                         (⇒ ν-s (~effs))
+                         (⇒ ν-f (~effs τ-f ...))]
   #:with τ (mk-Stop- #`(facet-name- τ-f ...))
   ---------------------------------------------------------------------------------
   [⊢ (syndicate:stop-facet facet-name- cont-) (⇒ : ★/t)

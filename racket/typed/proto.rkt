@@ -129,9 +129,17 @@
 ;; -----------------------------------------------------------------------------
 ;; Compiling Roles to state machines
 
+;; a RoleGraph is a
+;;   (role-graph StateName (Hashof StateName State))
+;; describing the initial state and the behavior in each state.
+(struct role-graph (st0 states) #:transparent)
+
 ;; a State is a (state StateName (Hashof D+ (Setof Transition)))
+(struct state (name transitions) #:transparent)
+
 ;; a StateName is a (Setof FacetName)
 ;; let's assume that all FacetNames are unique
+
 ;; a Transition is a (transition (Listof TransitionEffect) StateName)
 (struct transition (effs dest) #:transparent)
 ;; a TransitionEffect is one of
@@ -139,7 +147,6 @@
 ;;   - (realize τ)
 (struct send (ty) #:transparent)
 (struct realize (ty) #:transparent)
-(struct state (name transitions) #:transparent)
 
 ;; a FacetTree is a
 ;;   (facet-tree (Hashof FacetName (Listof FacetName))
@@ -149,11 +156,6 @@
 ;; For roles that spawn multiple actors, a FacetTree is in fact a forest. The
 ;; parent of a root facet is #f
 (struct facet-tree (down up) #:transparent)
-
-;; a RoleGraph is a
-;;   (role-graph StateName (Hashof StateName State))
-;; describing the initial state and the behavior in each state.
-(struct role-graph (st0 states) #:transparent)
 
 ;; RoleGraph -> Nat
 (define (role-graph-size rg)
@@ -167,7 +169,9 @@
 ;; facet(s)
 ;; ASSUME role has already had internal events labelled
 (define (compile role)
+  ;; roles# : (Hashof FacetName TransitionDesc)
   (define roles# (describe-roles role))
+  ;; ft : FacetTree
   (define ft (make-facet-tree role))
   (let loop ([work-list (list (set (Role-nm role)))]
              [states (hash)])
@@ -274,11 +278,11 @@
         [(cons (work-item from path/r to by with effs) more-work)
          (define prev (if (empty? path/r) from (first path/r)))
          (define txn# (state-transitions (hash-ref orig-st#+ to)))
-         (define visited+ (set-add visited to))
          (define new-state-changes (route-internal (hash-ref assertion# prev)
                                                    (hash-ref assertion# to)))
          (define state-changes* (for/list ([D (in-set new-state-changes)]
-                                           #:when (hash-has-key? txn# D))
+                                           #:when (for/or ([D/actual (in-hash-keys txn#)])
+                                                    (D<:? D D/actual)))
                                   D))
          (define started (for*/list ([fn (in-set (set-subtract to prev))]
                                      [D (in-value (StartOf fn))]
@@ -342,6 +346,7 @@
          (cond
            [(ormap empty? induced-work)
             ;; this is the end of some path
+            (define visited+ (set-add visited to))
             (define new-paths-work
               (for*/list (#:unless (set-member? visited to)
                           [(D txns) (in-hash txn#)]
@@ -355,9 +360,7 @@
             (define new-st# (update-path st# from to by effs))
             (walk (append more-work induced-work* new-paths-work) visited+ new-st#)]
            [else
-            (walk (append more-work induced-work*) visited+ st#)])]))
-    (local-require racket/trace)
-    #;(trace walk)
+            (walk (append more-work induced-work*) visited st#)])]))
     (walk (list (work-item (set) '() st0 StartEvt '() '()))
           (set)
           (hash))))
@@ -390,7 +393,7 @@
                      (Realizes Int))
              (Reacts OnStart
                      (Realizes Int))))
-    (define r (parse-T cyclic))
+    (define r (label-internal-events (parse-T cyclic)))
     (define rg (compile r))
     (define i (run/timeout (thunk (compile/internal-events rg r))))
     (check-true (list? i))
@@ -399,8 +402,8 @@
     ;; the first 'x -> 'x cycle is ignored because it's a Start event
     (check-equal? path (list (set) (set 'x) (set 'x) (set 'x)))
     (check-equal? kick-off StartEvt)
-    (check-equal? evt (Realize Int))
-    (check-equal? edge (Realize Int)))
+    (check-match evt (Realize (internal-label _ (== Int))))
+    (check-match edge (Realize (internal-label _ (== Int)))))
   (test-case
       "interesting internal start event"
     (test-case
@@ -442,16 +445,32 @@
     (check-true (hash-has-key? state# (set 'x)))
     (define txn# (state-transitions (hash-ref state# (set 'x))))
     (check-equal? txn#
-                  (hash (Asserted Int) (set (transition (list (send Int)) (set 'x 'y)))))))
+                  (hash (Asserted Int) (set (transition (list (send Int)) (set 'x 'y))))))
+
+  (test-case
+      "regression: type equality instead of subtyping on internal transitions"
+    (define desc '(Role (x)
+                        (Know (Tuple Int))
+                        (Reacts (Know (Tuple ★/t))
+                                (Role (y)))))
+    (define role (run/timeout (thunk (label-internal-events (parse-T desc)))))
+    (define rg (run/timeout (thunk (compile role))))
+    (check-true (role-graph? rg))
+    (define rgi (run/timeout (thunk (compile/internal-events rg role))))
+    (check-true (role-graph? rgi))
+    (check-equal? rgi
+                  (role-graph (set 'x 'y)
+                              (hash (set 'x 'y) (state (set 'x 'y)
+                                                       (hash)))))))
 
 ;; (Setof τ) (Setof τ) -> (Setof D)
 ;; Subtyping-based assertion routing (*not* intersection - TODO)
 (define (route-internal prev current)
   ;; note that messages are handled separately, don't need to worry about them
   ;; here
-  (define old-interests (interests prev))
+  (define old-interests (internal-interests prev))
   (define old-matches (matching-interests old-interests prev))
-  (define new-interests (interests current))
+  (define new-interests (internal-interests current))
   (define new-matches (matching-interests new-interests current))
   (define appeared (label-assertions (assertion-delta new-matches old-matches) Know))
   (define disappeared (label-assertions (assertion-delta old-matches new-matches) Forget))
@@ -459,12 +478,50 @@
   (define newly-relevant (label-assertions (matching-interests appearing-interests current) Know))
   (set-union appeared disappeared newly-relevant))
 
+(module+ test
+  (test-case
+      "test routing"
+    (define interest (internal-label 'x
+                                     (parse-τ '(Observe
+                                                (SlotAssignment (ReqID (Bind (Tuple Int Symbol))
+                                                                       (Bind Symbol))
+                                                                Discard)))))
+    (define request (internal-label 'x
+                                    (parse-τ '(SlotAssignment (ReqID (Tuple Int Symbol) Symbol)
+                                                              (Bind Symbol)))))
+    (define expected (set (Know request)))
+    (check-equal? (route-internal (set interest) (set interest request))
+                  expected)
+    (check-equal? (route-internal (set request) (set interest request))
+                  expected)
+    (check-equal? (route-internal (set) (set interest request))
+                  expected))
+  (test-case
+      "test routing internally-labeled assertions"
+    (define interest (internal-label 'x
+                                     (parse-τ '(Observe
+                                                (SlotAssignment (ReqID (Bind (Tuple Int Symbol))
+                                                                       (Bind Symbol))
+                                                                Discard)))))
+    (define request (internal-label 'x
+                                    (parse-τ '(SlotAssignment (ReqID (Tuple Int Symbol) Symbol)
+                                                              (Bind Symbol)))))
+    (define expected (set (Know request)))
+    (check-equal? (route-internal (set interest) (set interest request))
+                  expected)
+    (check-equal? (route-internal (set request) (set interest request))
+                  expected)
+    (check-equal? (route-internal (set) (set interest request))
+                  expected)))
+
 ;; (Setof τ) -> (Setof τ)
 ;; the type of interests in a set
-(define (interests as)
+(define (internal-interests as)
   (for/set ([a (in-set as)]
-            #:when (Observe? a))
-    (Observe-ty a)))
+            #:when (and (internal-label? a)
+                        (Observe? (internal-label-ty a))))
+    (internal-label (internal-label-actor-id a)
+                    (Observe-ty (internal-label-ty a)))))
 
 ;; (Setof τ) (Setof τ) -> (Setof τ)
 ;; The assertions in as that have a matching (supertype) interest in is
@@ -1347,18 +1404,24 @@
        [(or (Know τ)
             (Forget τ)
             (Realize τ))
+        (match-define (internal-label id ty) τ)
         ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
-        (Observe τ)]
+        (internal-label id (Observe ty))]
        [_
         #f])]
     [_ #f]))
 
 (module+ test
+  (test-case
+      "EP-assertion sanity"
   ;; make sure the or pattern above works the way I think it does
   (check-equal? (EP-assertion (Reacts (Asserted Int) #f))
                 (Observe Int))
   (check-equal? (EP-assertion (Reacts (Retracted String) #f))
                 (Observe String)))
+  (test-case "EP-assertion/internal regression"
+    (check-equal? (EP-assertion/internal (Reacts (Know (internal-label 'x Int)) '()))
+                  (internal-label 'x (Observe Int)))))
 
 ;; an Equation is (equiv StateName StateName)
 ;; INVARIANT: lhs is "implementation", rhs is "specification"
@@ -1953,9 +2016,9 @@
     [(list 'Realizes t)
      (Realizes (parse-τ t))]
     [(list 'Stop name body ...)
-     (define bdy (if (= (length body) 1)
-                     (first body)
-                     body))
+     (define bdy (cond [(empty? body) body]
+                       [(= (length body) 1) (first body)]
+                       [else (cons 'Effs body)]))
      (Stop name (parse-Body bdy))]
     ))
 
@@ -2057,7 +2120,21 @@
     (check-true (simulates? (parse-T real-leader-ty) leader-actual))
     (check-false (simulates? leader-actual (parse-T real-leader-ty)))
     (check-true (simulates? (parse-T real-leader-ty) leader-revised))
-    (check-false (simulates? leader-revised (parse-T real-leader-ty)))))
+    (check-false (simulates? leader-revised (parse-T real-leader-ty))))
+
+  (test-case
+      "parse a Stop with two actions"
+    (define r '(Stop
+                assign-manager
+                (Role
+                 (waiting-for-answer)
+                 (Reacts OnStop)
+                 )
+                (Role
+                 (_)
+                 (Know
+                  (SlotAssignment (ReqID (Tuple Int Symbol) Symbol) Symbol)))))
+    (check-true (Stop? (parse-T r)))))
 
 ;; --------------------------------------------------------------------------
 ;; Examples, Book Club
@@ -2384,67 +2461,61 @@
       (during-inner)
       (Reacts
        OnStart
+       (Realizes
+        (TaskIsReady
+         Symbol
+         (Task
+          (Tuple Int Symbol)
+          (U
+           (MapWork String)
+           (ReduceWork (Hash String Int) (Hash String Int))))))
        (Role
         (delegate-tasks)
         (Reacts
-         OnDataflow
+         (Realize (TaskIsReady Symbol (Bind (U))))
          (Role
           (perform)
           (Reacts
            OnStart
            (Role
             (select)
-            (Reacts (Forget (SelectedTM (Bind Symbol))))
             (Reacts
-             OnDataflow
-             (Branch
-              (Effs
+             (Know
+              (SlotAssignment (ReqID (Tuple Int Symbol) Symbol) (Bind Symbol)))
+             (Role
+              (assign)
+              (Reacts
+               (Asserted
+                (TaskPerformance
+                 Symbol
+                 (Task
+                  (Tuple Int Symbol)
+                  (U
+                   (MapWork String)
+                   (ReduceWork (Hash String Int) (Hash String Int))))
+                 (Bind (U (Finished (Hash String Int)) Symbol))))
                (Branch
+                (Effs)
+                (Effs)
+                (Effs (Stop assign))
                 (Effs
-                 (Role
-                  (assign)
-                  (Know (SelectedTM Symbol))
-                  (Reacts
-                   (Asserted
-                    (TaskPerformance
-                     Symbol
-                     (Task
-                      (Tuple Int Symbol)
-                      (U
-                       (MapWork String)
-                       (ReduceWork (Hash String Int) (Hash String Int))))
-                     (Bind (U (Finished (Hash String Int)) Symbol))))
-                   (Branch
-                    (Effs)
-                    (Effs)
-                    (Effs (Stop assign))
-                    (Effs
-                     (Stop
-                      perform
-                      (Branch
-                       (Effs
-                        (Realizes (TasksFinished Symbol (Hash String Int))))
-                       (Effs))))))
-                  (Reacts
-                   OnStart
-                   (Role
-                    (take-slot)
-                    (Reacts
-                     (Asserted
-                      (TaskPerformance
-                       Symbol
-                       (Task
-                        (Tuple Int Symbol)
-                        (U
-                         (MapWork String)
-                         (ReduceWork (Hash String Int) (Hash String Int))))
-                       Discard))
-                     (Stop take-slot))))
-                  (Reacts
-                   (Retracted (TaskManager Symbol Discard))
-                   (Stop assign))))
-                (Effs)))
-              (Effs)))))
+                 (Stop
+                  perform
+                  (Branch
+                   (Effs (Realizes (TasksFinished Symbol (Hash String Int))))
+                   (Effs
+                    (Branch
+                     (Effs
+                      (Realizes
+                       (TaskIsReady
+                        Symbol
+                        (Task
+                         (Tuple Int Symbol)
+                         (U
+                          (MapWork String)
+                          (ReduceWork (Hash String Int) (Hash String Int)))))))
+                     (Effs))))))))
+              (Reacts (Retracted (TaskManager Symbol Discard)) (Stop assign))))))
           (Reacts OnStop)
           (Reacts OnStart)))
         (Reacts
@@ -2472,17 +2543,83 @@
             (U (MapWork String) (ReduceWork Int Int))))
           Discard)))
        (Stop during-inner))))
-    (Reacts (Retracted (TaskManager (Bind Symbol) (Bind Int))))
-    (Reacts (Asserted (TaskManager (Bind Symbol) (Bind Int))))))
+    (Reacts
+     OnStart
+     (Role
+      (slot-manager)
+      (Know (Slots Int))
+      (Reacts
+       (Know
+        (Observe
+         (SlotAssignment
+          (ReqID (Bind (Tuple Int Symbol)) (Bind Symbol))
+          Discard)))
+       (Role
+        (during-inner2)
+        (Reacts OnStop)
+        (Reacts
+         OnStart
+         (Role
+          (assign-manager)
+          (Reacts
+           (Know (Slots (Bind Int)))
+           (Branch
+            (Effs)
+            (Effs
+             (Branch
+              (Effs
+               (Stop
+                assign-manager
+                (Role
+                 (waiting-for-answer)
+                 (Reacts OnStop)
+                 (Reacts
+                  (Asserted
+                   (Observe
+                    (TaskPerformance
+                     Symbol
+                     (Task
+                      (Tuple Int Symbol)
+                      (Bind
+                       (U
+                        (MapWork String)
+                        (ReduceWork (Hash String Int) (Hash String Int)))))
+                     Discard)))
+                  (Role
+                   (_)
+                   (Reacts
+                    (Asserted
+                     (TaskPerformance
+                      Symbol
+                      (Task
+                       (Tuple Int Symbol)
+                       (U
+                        (MapWork String)
+                        (ReduceWork (Hash String Int) (Hash String Int))))
+                      Discard))
+                    (Stop waiting-for-answer)))))
+                (Role
+                 (_)
+                 (Know
+                  (SlotAssignment (ReqID (Tuple Int Symbol) Symbol) Symbol)))))
+              (Effs)))))))
+        (Reacts
+         (Forget
+          (Observe
+           (SlotAssignment (ReqID (Tuple Int Symbol) Symbol) Discard)))
+         (Stop during-inner2))))
+      (Reacts (Retracted (TaskManager (Bind Symbol) (Bind Int))))
+      (Reacts (Asserted (TaskManager (Bind Symbol) (Bind Int))))))))
 
 (module+ test
   (test-case
       "job manager reads and compiles"
-    (define jmr (parse-T job-manager-actual))
+    (define jmr (run/timeout (thunk (label-internal-events (parse-T job-manager-actual)))))
     (check-true (Role? jmr))
     (define jm (run/timeout (thunk (compile jmr))))
     (check-true (role-graph? jm))
-    (check-true (simulates? jmr jmr))))
+    (define jmi (run/timeout (thunk (compile/internal-events jm jmr))))
+    (check-true (run/timeout (thunk (simulates?/rg jmi jmr jmi jmr))))))
 
 (define task-runner-ty
   '(Role
@@ -2619,17 +2756,10 @@
 
 (module+ test
   (test-case
-      "job manager with internal events basic functionality"
-    (define jmr (run/timeout (thunk (label-internal-events (parse-T job-manager-actual)))))
-    (check-true (Role? jmr))
-    (define jmrg (compile jmr))
-    (check-true (role-graph? jmrg))
-    (check-true (simulates? jmr jmr)))
-  (test-case
       "job manager subgraph(s) implement task assigner"
-    (define jmr (parse-T job-manager-actual))
+    (define jmr (run/timeout (thunk (label-internal-events (parse-T job-manager-actual)))))
     (define tar (parse-T task-assigner-spec))
-    (define ans (run/timeout (thunk (simulating-subgraphs jmr tar)) 60000))
+    (define ans (run/timeout (thunk (simulating-subgraphs jmr tar)) 1500))
     (check-true (list? ans))
     (check-false (empty? ans))))
 
@@ -2854,3 +2984,53 @@
     (check-true (simulates? mrs mrs))
     (check-true (simulates? mr1 mrs))
     (check-false (simulates? mr2 mrs))))
+
+(module+ demo-leader-subgraph
+  (define leader
+    '(Role ; = react
+      (get-quotes)
+      (Shares (Observe (BookQuoteT String ★))) ; = assert
+      (Reacts ; = on
+       (Asserted (BookQuoteT String (Bind Int)))
+       (Branch
+        (Effs (Branch (Effs (Stop get-quotes)) (Effs)))
+        (Effs
+         (Role
+          (poll-members)
+          (Reacts
+           (Asserted (BookInterestT String (Bind String) Discard))
+           (Branch
+            (Effs (Stop poll-members (Branch (Effs (Stop get-quotes)) (Effs))))
+            (Effs))
+           (Branch
+            (Effs
+             (Stop get-quotes (Role (announce) (Shares (BookOfTheMonthT String)))))
+            (Effs)))
+          (Reacts (Retracted (BookInterestT String (Bind String) Bool)))
+          (Reacts (Asserted (BookInterestT String (Bind String) Bool)))
+          (Reacts (Retracted (BookInterestT String (Bind String) Bool)))
+          (Reacts (Asserted (BookInterestT String (Bind String) Bool)))))))
+      (Reacts (Retracted (ClubMemberT (Bind String))))
+      (Reacts (Asserted (ClubMemberT (Bind String))))))
+
+  (define leader-impl (parse-T leader))
+  (define simulating (simulating-subgraphs leader-impl leader-spec))
+  (displayln (length simulating))
+  (define largest (argmax role-graph-size simulating))
+  (render-to-file largest "largest-simulating.dot")
+  )
+
+(module+ demo-removing-internal-events
+  (define ty
+    '(Role (x)
+           (Reacts OnStart
+                   (Role (y)
+                         (Shares (Hi))
+                         (Reacts (Asserted (Bye))
+                                 (Stop y))))))
+  (define r (parse-T ty))
+  (define rg (compile r))
+  (define rgi (compile/internal-events rg r))
+  (render-to-file rg "before.dot")
+  (render-to-file rgi "after.dot")
+)
