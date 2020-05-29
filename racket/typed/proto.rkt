@@ -1,5 +1,7 @@
 #lang racket
 
+(provide (all-defined-out))
+
 (require (only-in racket/hash hash-union))
 (require racket/generator)
 
@@ -134,8 +136,8 @@
 ;; describing the initial state and the behavior in each state.
 (struct role-graph (st0 states) #:transparent)
 
-;; a State is a (state StateName (Hashof D+ (Setof Transition)))
-(struct state (name transitions) #:transparent)
+;; a State is a (state StateName (Hashof D+ (Setof Transition)) (Setof τ))
+(struct state (name transitions assertions) #:transparent)
 
 ;; a StateName is a (Setof FacetName)
 ;; let's assume that all FacetNames are unique
@@ -148,6 +150,19 @@
 (struct send (ty) #:transparent)
 (struct realize (ty) #:transparent)
 
+;; a TransitionDesc is a (Hashof D+ (Setof (Listof RoleEffect)), describing the
+;; possible ways an event (+/- of an assertion) can alter the facet tree.
+;; It always includes the keys (StartOf FacetName) and (StopOf FacetName).
+(define (txn-desc0 fn) (hash (StartOf fn) (set) (StopOf fn) (set)))
+
+;; a RoleEffect is one of
+;;   - (start RoleName)
+;;   - (stop RoleName)
+;;   - (send τ)
+;;   - (realize τ)
+(struct start (nm) #:transparent)
+(struct stop (nm) #:transparent)
+
 ;; a FacetTree is a
 ;;   (facet-tree (Hashof FacetName (Listof FacetName))
 ;;               (Hashof FacetName (U #f FacetName)))
@@ -156,6 +171,7 @@
 ;; For roles that spawn multiple actors, a FacetTree is in fact a forest. The
 ;; parent of a root facet is #f
 (struct facet-tree (down up) #:transparent)
+
 
 ;; RoleGraph -> Nat
 (define (role-graph-size rg)
@@ -167,12 +183,14 @@
 ;; Role -> RoleGraph
 ;; in each state, the transitions will include the reactions of the parent
 ;; facet(s)
-;; ASSUME role has already had internal events labelled
 (define (compile role)
+  (define labeled-role (label-internal-events role))
   ;; roles# : (Hashof FacetName TransitionDesc)
-  (define roles# (describe-roles role))
+  (define roles# (describe-roles labeled-role))
   ;; ft : FacetTree
   (define ft (make-facet-tree role))
+  ;; assertion# : (Hashof FacetName (Setof τ))
+  (define assertion# (all-roles-assertions (enumerate-roles labeled-role)))
   (let loop ([work-list (list (set (Role-nm role)))]
              [states (hash)])
     (match work-list
@@ -198,6 +216,7 @@
                      [txns (in-value (build-transitions D effs))]
                      #:unless (set-empty? txns))
            (values D txns)))
+       (define assertions (assertions-in-state current assertion#))
        (define new-work
          (for*/list ([txns (in-hash-values transitions)]
                      [txn (in-set txns)]
@@ -206,9 +225,15 @@
                      #:unless (hash-has-key? states st))
            st))
        (loop (append more new-work)
-             (hash-set states current (state current transitions)))]
+             (hash-set states current (state current transitions assertions)))]
       ['()
        (role-graph (set (Role-nm role)) states)])))
+
+;; StateName (Hashof FacetName (Setof τ)) -> (Setof τ)
+(define (assertions-in-state sn assertion#)
+  (for/fold ([assertions (set)])
+            ([facet-name (in-set sn)])
+    (set-union assertions (hash-ref assertion# facet-name (set)))))
 
 (module+ test
   (test-case
@@ -240,8 +265,7 @@
 (define (compile/internal-events rg role)
   (match-define (role-graph st0 orig-st#) rg)
   ;; doing funny business with state (set) here
-  (define orig-st#+ (hash-set orig-st# (set) (state (set) (hash))))
-  (define assertion# (all-states-assertions/internal (in-hash-keys orig-st#+) role))
+  (define orig-st#+ (hash-set orig-st# (set) (state (set) (hash) (set))))
 
   ;; a WorkItem is a
   ;;   (work-item StateName (Listof StateName) D+ (Listof D+) (Listof TransitionEffect))
@@ -273,13 +297,16 @@
                       #:unless (and (set-empty? sn)
                                     (not (equal? sn new-st0))
                                     (not (target-of-transition? sn st#))))
-             (values sn (state sn txns))))
+             (define old-assertions (state-assertions (hash-ref orig-st#+ sn)))
+             (define new-assertions (external-assertions old-assertions))
+             (values sn (state sn txns new-assertions))))
          (role-graph new-st0 states)]
         [(cons (work-item from path/r to by with effs) more-work)
          (define prev (if (empty? path/r) from (first path/r)))
-         (define txn# (state-transitions (hash-ref orig-st#+ to)))
-         (define new-state-changes (route-internal (hash-ref assertion# prev)
-                                                   (hash-ref assertion# to)))
+         (define prev-assertions (state-assertions (hash-ref orig-st#+ prev)))
+         (match-define (state _ txn# cur-assertions) (hash-ref orig-st#+ to))
+         (define new-state-changes (route-internal prev-assertions
+                                                   cur-assertions))
          (define state-changes* (for/list ([D (in-set new-state-changes)]
                                            #:when (for/or ([D/actual (in-hash-keys txn#)])
                                                     (D<:? D D/actual)))
@@ -372,8 +399,8 @@
     (define m (compile manager))
     (define i (compile/internal-events m manager))
     (check-true (role-graph? i))
-    (check-true (simulates?/rg i manager m manager))
-    (check-true (simulates?/rg m manager i manager))
+    (check-true (simulates?/rg i m))
+    (check-true (simulates?/rg m i))
     ;; this isn't necessarily *needed*, but nice to know
     (check-equal? i m))
   (test-case
@@ -384,7 +411,7 @@
     (define tmi (compile/internal-events tm tmr))
     (check-true (role-graph? tmi))
     ;; I'm not exactly sure how the two should be related via simulation :S
-    (check-true (simulates?/rg tmi tmr tm tmr)))
+    (check-true (simulates?/rg tmi tm)))
   (test-case
       "detect a simple internal event cycle"
     (define cyclic
@@ -393,7 +420,7 @@
                      (Realizes Int))
              (Reacts OnStart
                      (Realizes Int))))
-    (define r (label-internal-events (parse-T cyclic)))
+    (define r (parse-T cyclic))
     (define rg (compile r))
     (define i (run/timeout (thunk (compile/internal-events rg r))))
     (check-true (list? i))
@@ -453,15 +480,16 @@
                         (Know (Tuple Int))
                         (Reacts (Know (Tuple ★/t))
                                 (Role (y)))))
-    (define role (run/timeout (thunk (label-internal-events (parse-T desc)))))
+    (define role (run/timeout (thunk (parse-T desc))))
     (define rg (run/timeout (thunk (compile role))))
     (check-true (role-graph? rg))
     (define rgi (run/timeout (thunk (compile/internal-events rg role))))
     (check-true (role-graph? rgi))
-    (check-equal? rgi
-                  (role-graph (set 'x 'y)
-                              (hash (set 'x 'y) (state (set 'x 'y)
-                                                       (hash)))))))
+    (check-match rgi
+                 (role-graph (== (set 'x 'y))
+                             (hash-table ((== (set 'x 'y)) (state (== (set 'x 'y))
+                                                                  (== (hash))
+                                                                  (== (set)))))))))
 
 ;; (Setof τ) (Setof τ) -> (Setof D)
 ;; Subtyping-based assertion routing (*not* intersection - TODO)
@@ -548,6 +576,13 @@
 (define (label-assertions as f)
   (for/set ([a (in-set as)])
     (f a)))
+
+;; (Setof τ) -> (Setof τ)
+;; remove all internal-label assertions in a set
+(define (external-assertions assertions)
+  (for/set ([a (in-set assertions)]
+            #:unless (internal-label? a))
+    a))
 
 ;; (Hashof StateName (Hashof D (Setof Transition)))
 ;; StateName
@@ -661,7 +696,7 @@
     (check-true (hash-has-key? state# (set 'get-quotes)))
     (define gq-st (hash-ref state# (set 'get-quotes)))
     (check-true (state? gq-st))
-    (match-define (state _ gq-transitions) gq-st)
+    (match-define (state _ gq-transitions _) gq-st)
     (define bq (Asserted (book-quote String Int)))
     (check-true (hash? gq-transitions))
     (check-true (hash-has-key? gq-transitions bq))
@@ -674,7 +709,7 @@
     (check-true (hash-has-key? state# (set 'get-quotes 'poll-members)))
     (define gqpm-st (hash-ref state# (set 'get-quotes 'poll-members)))
     (check-true (state? gqpm-st))
-    (match-define (state _ gqpm-transitions) gqpm-st)
+    (match-define (state _ gqpm-transitions _) gqpm-st)
     (define bi (Asserted (book-interest String String ⋆)))
     (check-true (hash? gqpm-transitions))
     (check-true (hash-has-key? gqpm-transitions bi))
@@ -782,22 +817,21 @@
     (define rgi (compile/internal-events rg seller+spawn))
     (check-true (role-graph? rgi))
     (define srg (compile seller))
-    (check-true (run/timeout (thunk (simulates?/rg rg seller+spawn rg seller+spawn))))
-    (check-false (run/timeout (thunk (simulates?/rg rg seller+spawn srg seller))))
-    (check-false (run/timeout (thunk (simulates?/rg srg seller rg seller+spawn))))
-    (check-true (run/timeout (thunk (simulates?/rg rgi seller+spawn srg seller))))
-    (check-true (run/timeout (thunk (simulates?/rg srg seller rgi seller+spawn)))))
+    (check-true (run/timeout (thunk (simulates?/rg rg rg))))
+    (check-false (run/timeout (thunk (simulates?/rg rg srg))))
+    (check-false (run/timeout (thunk (simulates?/rg srg rg))))
+    (check-true (run/timeout (thunk (simulates?/rg rgi srg))))
+    (check-true (run/timeout (thunk (simulates?/rg srg rgi)))))
   (test-case
       "internal events across spawns"
     (define role
-      (label-internal-events
-       (Role 'start
-             (list
-              (Know Int)
-              (Reacts StartEvt
-                      (Spawn (Role 'spawned
-                                   (list (Reacts (Know Int)
-                                                 (Role 'know (list)))))))))))
+      (Role 'start
+            (list
+             (Know Int)
+             (Reacts StartEvt
+                     (Spawn (Role 'spawned
+                                  (list (Reacts (Know Int)
+                                                (Role 'know (list))))))))))
     (define rg (run/timeout (thunk (compile role))))
     (check-true (role-graph? rg))
     (define rgi (run/timeout (thunk (compile/internal-events rg role))))
@@ -921,19 +955,6 @@
     (check-equal? (ancestor?/dist 'poll 'leader ft) 1)
     (check-false (ancestor?/dist 'leader 'poll ft))
     (check-false (ancestor?/dist 'announce 'leader ft))))
-
-;; a RoleEffect is one of
-;;   - (start RoleName)
-;;   - (stop RoleName)
-;;   - (send τ)
-;;   - (realize τ)
-(struct start (nm) #:transparent)
-(struct stop (nm) #:transparent)
-
-;; a TransitionDesc is a (Hashof D+ (Setof (Listof RoleEffect)), describing the
-;; possible ways an event (+/- of an assertion) can alter the facet tree.
-;; It always includes the keys (StartOf FacetName) and (StopOf FacetName).
-(define (txn-desc0 fn) (hash (StartOf fn) (set) (StopOf fn) (set)))
 
 ;; (Listof RoleEffect)
 ;; StateName
@@ -1365,21 +1386,14 @@
              #:when τ?)
     τ?))
 
-;; Role -> (Setof τ)
-;; Compute the set of internal assertions the role contributes (on its own, not
-;; considering parent assertions)
-(define (role-assertions/internal r)
-  (for*/set ([ep (in-list (Role-eps r))]
-             [τ? (in-value (EP-assertion/internal ep))]
-             #:when τ?)
-    τ?))
-
 ;; EP -> (U #f τ)
 ;; the type of assertion and endpoint contributes, otherwise #f for
 ;; dataflow/start/stop
 (define (EP-assertion EP)
   (match EP
     [(Shares τ)
+     τ]
+    [(Know τ)
      τ]
     [(Reacts D _)
      (match D
@@ -1388,25 +1402,10 @@
             (Message τ))
         ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
         (Observe τ)]
-       [_
-        #f])]
-    [_ #f]))
-
-;; EP -> (U #f τ)
-;; the type of internal assertion and endpoint contributes, otherwise #f for
-;; dataflow/start/stop
-(define (EP-assertion/internal EP)
-  (match EP
-    [(Know τ)
-     τ]
-    [(Reacts D _)
-     (match D
-       [(or (Know τ)
-            (Forget τ)
-            (Realize τ))
-        (match-define (internal-label id ty) τ)
-        ;; TODO - this doesn't put ⋆ in where an underlying pattern uses a capture
-        (internal-label id (Observe ty))]
+       [(or (Know (internal-label id τ))
+            (Forget (internal-label id τ))
+            (Realize (internal-label id τ)))
+        (internal-label id (Observe τ))]
        [_
         #f])]
     [_ #f]))
@@ -1420,7 +1419,7 @@
   (check-equal? (EP-assertion (Reacts (Retracted String) #f))
                 (Observe String)))
   (test-case "EP-assertion/internal regression"
-    (check-equal? (EP-assertion/internal (Reacts (Know (internal-label 'x Int)) '()))
+    (check-equal? (EP-assertion (Reacts (Know (internal-label 'x Int)) '()))
                   (internal-label 'x (Observe Int)))))
 
 ;; an Equation is (equiv StateName StateName)
@@ -1494,7 +1493,7 @@
 (define (simulates? role1 role2)
   (define rg1 (compile role1))
   (define rg2 (compile role2))
-  (simulates?/rg rg1 role1 rg2 role2))
+  (simulates?/rg rg1 rg2))
 
 ;; RoleGraph Role RoleGraph Role -> Bool
 ;; determine if the first role acts suitably like the second role.
@@ -1504,11 +1503,10 @@
 ;; like simulates?, but take in and use the compiled role graph; the role1 and
 ;; role2 arguments are just for determining the assertions in each state
 ;; useful when checking subgraphs
-(define (simulates?/rg rg1 role1 rg2 role2)
+(define (simulates?/rg rg1 rg2)
   (match-define (role-graph st0-1 st#1) rg1)
   (match-define (role-graph st0-2 st#2) rg2)
-  (define assertion#1 (all-states-assertions (in-hash-keys st#1) role1))
-  (define assertion#2 (all-states-assertions (in-hash-keys st#2) role2))
+
   ;; Goal (Setof Equation) -> Bool
   (define not-equiv (mutable-set))
   (define (verify goal assumptions)
@@ -1524,12 +1522,10 @@
            (return #t))
          (when (set-member? not-equiv goal)
            (esc #f))
-         (define assertions1 (hash-ref assertion#1 sn1))
-         (define assertions2 (hash-ref assertion#2 sn2))
+         (match-define (state _ transitions1 assertions1) (hash-ref st#1 sn1))
+         (match-define (state _ transitions2 assertions2) (hash-ref st#2 sn2))
          (unless (assertion-superset? assertions1 assertions2)
            (return #f))
-         (define transitions1 (state-transitions (hash-ref st#1 sn1)))
-         (define transitions2 (state-transitions (hash-ref st#2 sn2)))
          (define (verify/with-current-assumed g)
            (verify g (set-add assumptions goal)))
          (unless (same-on-specified-events? transitions1
@@ -1560,41 +1556,12 @@
              ))])))
   (verify (equiv st0-1 st0-2) (set)))
 
-;; (Sequenceof StateName) Role -> (Hashof StateName (Setof τ))
-;; map each state name to its active assertions
-(define (all-states-assertions state-seq role)
-  (define all-roles (enumerate-roles role))
-  (define assertion# (all-roles-assertions all-roles))
-  (for/hash ([sn state-seq])
-    (values sn
-            (for/fold ([assertions (set)])
-                      ([facet-name (in-set sn)])
-              (set-union assertions (hash-ref assertion# facet-name (set)))))))
-
-;; (Sequenceof StateName) Role -> (Hashof StateName (Setof τ))
-;; map each state name to its active internal assertions
-(define (all-states-assertions/internal state-seq role)
-  (define all-roles (enumerate-roles role))
-  (define assertion# (all-roles-assertions/internal all-roles))
-  (for/hash ([sn state-seq])
-    (values sn
-            (for/fold ([assertions (set)])
-                      ([facet-name (in-set sn)])
-              (set-union assertions (hash-ref assertion# facet-name (set)))))))
-
 ;; (List Role) -> (Hashof RoleName (Setof τ))
 ;; map each role's name to the assertions it contributes
 (define (all-roles-assertions roles)
   (for/hash ([role (in-list roles)])
     (values (Role-nm role)
             (role-assertions role))))
-
-;; (List Role) -> (Hashof RoleName (Setof τ))
-;; map each role's name to the internal assertions it contributes
-(define (all-roles-assertions/internal roles)
-  (for/hash ([role (in-list roles)])
-    (values (Role-nm role)
-            (role-assertions/internal role))))
 
 ;; (Setof τ) (Setof τ) -> Bool
 ;; is as1 a superset of as2?
@@ -1742,7 +1709,7 @@
   (define impl-rg (compile/internal-events (compile impl) impl))
   (define evts (relevant-events spec-rg))
   (for/list ([srg (subgraphs impl-rg evts)]
-             #:when (simulates?/rg srg impl spec-rg spec))
+             #:when (simulates?/rg srg spec-rg))
     srg))
 
 (module+ test
@@ -1753,8 +1720,8 @@
     (define ans (simulating-subgraphs tmr tpr))
     (check-equal? (length ans) 68)
     (define tprg (compile tpr))
-    (check-true (simulates?/rg (first ans) tmr tprg tpr))
-    (check-true (simulates?/rg (second ans) tmr tprg tpr))))
+    (check-true (simulates?/rg (first ans) tprg))
+    (check-true (simulates?/rg (second ans) tprg))))
 
 ;; RoleGraph (Setof τ) -> (Sequenceof RoleGraph)
 ;; generate non-empty subgraphs, where at least the given assertions are enabled
@@ -1790,7 +1757,7 @@
              (D<:? D (Retracted e)))))
      (define st#
        (for/hash ([st (in-list states*)])
-         (define orig-txn# (state-transitions (hash-ref state# st)))
+         (match-define (state _ orig-txn# assertions) (hash-ref state# st))
          (define txn#
            (for/hash ([D (in-hash-keys orig-txn#)]
                       #:when (event-enabled? D))
@@ -1801,7 +1768,7 @@
                  txn))
              ;; TODO - what if new-txns is empty?
              (values D new-txns)))
-         (values st (state st txn#))))
+         (values st (state st txn# assertions))))
      (for ([st0 (in-list states*)])
        (define rg (role-graph st0 st#))
        (unless (set-member? cache rg)
@@ -1822,7 +1789,7 @@
     (match work
       ['() seen]
       [(cons current more)
-       (match-define (state name txn#) (hash-ref state# current))
+       (match-define (state name txn# _) (hash-ref state# current))
        (cond
          [(set-member? seen name)
           (search more seen)]
@@ -1839,10 +1806,14 @@
       "reachable states"
     (define rg
       (role-graph (set 'X 'Y 'Z)
-                  (hash (set 'X 'Y 'Z) (state (set 'X 'Y 'Z) (hash (Asserted Int) (set (transition '() (set 'X 'Y 'Z)))
-                                                                   (Retracted Int) (set (transition '() (set 'X 'Y)))))
-                        (set 'X) (state (set 'X) '#hash())
-                        (set 'X 'Y) (state (set 'X 'Y) (hash (Asserted Int) (set (transition '() (set 'X 'Y 'Z))))))))
+                  (hash (set 'X 'Y 'Z) (state (set 'X 'Y 'Z)
+                                              (hash (Asserted Int) (set (transition '() (set 'X 'Y 'Z)))
+                                                    (Retracted Int) (set (transition '() (set 'X 'Y))))
+                                              (set))
+                        (set 'X) (state (set 'X) '#hash() (set))
+                        (set 'X 'Y) (state (set 'X 'Y)
+                                           (hash (Asserted Int) (set (transition '() (set 'X 'Y 'Z))))
+                                           (set)))))
       (define reachable (reachable-states rg))
       (check-true (set-member? reachable (set 'X 'Y 'Z)))
       (check-true (set-member? reachable (set 'X 'Y)))
@@ -1860,15 +1831,17 @@
           (Asserted (Struct 'TaskAssignment (list)))
           (set (transition '() (set 'during-inner2 'during-inner1 'tm)))
           (Retracted (Struct 'TaskAssignment (list)))
-          (set (transition '() (set 'during-inner1 'tm)))))
+          (set (transition '() (set 'during-inner1 'tm))))
+         (set))
         (set 'tm)
-        (state (set 'tm) '#hash())
+        (state (set 'tm) '#hash() (set))
         (set 'during-inner1 'tm)
         (state
          (set 'during-inner1 'tm)
          (hash
           (Asserted (Struct 'TaskAssignment (list)))
-          (set (transition '() (set 'during-inner2 'during-inner1 'tm))))))))
+          (set (transition '() (set 'during-inner2 'during-inner1 'tm))))
+         (set)))))
     (define reachable (reachable-states rg))
     (check-true (set-member? reachable (set 'during-inner2 'during-inner1 'tm)))
     (check-true (set-member? reachable (set 'during-inner1 'tm)))
@@ -2614,12 +2587,12 @@
 (module+ test
   (test-case
       "job manager reads and compiles"
-    (define jmr (run/timeout (thunk (label-internal-events (parse-T job-manager-actual)))))
+    (define jmr (run/timeout (thunk (parse-T job-manager-actual))))
     (check-true (Role? jmr))
     (define jm (run/timeout (thunk (compile jmr))))
     (check-true (role-graph? jm))
     (define jmi (run/timeout (thunk (compile/internal-events jm jmr))))
-    (check-true (run/timeout (thunk (simulates?/rg jmi jmr jmi jmr))))))
+    (check-true (run/timeout (thunk (simulates?/rg jmi jmi))))))
 
 (define task-runner-ty
   '(Role
@@ -2757,9 +2730,9 @@
 (module+ test
   (test-case
       "job manager subgraph(s) implement task assigner"
-    (define jmr (run/timeout (thunk (label-internal-events (parse-T job-manager-actual)))))
+    (define jmr (run/timeout (thunk (parse-T job-manager-actual))))
     (define tar (parse-T task-assigner-spec))
-    (define ans (run/timeout (thunk (simulating-subgraphs jmr tar)) 1500))
+    (define ans (run/timeout (thunk (simulating-subgraphs jmr tar)) 1800))
     (check-true (list? ans))
     (check-false (empty? ans))))
 
