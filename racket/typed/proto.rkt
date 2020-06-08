@@ -6,7 +6,8 @@
 (require racket/generator)
 
 (module+ test
-  (require rackunit))
+  (require rackunit)
+  (require "test-utils.rkt"))
 
 ;; -------------------------------------------------------------------------
 ;; Role Type Data Definitions
@@ -112,21 +113,6 @@
                 (cons (Reacts (Retracted assertion)
                               (Stop facet-name '()))
                       eps))))
-
-;; -----------------------------------------------------------------------------
-;; Testing Utilities
-
-(module+ test
-  (require racket/engine)
-
-  ;; (-> A) Real -> (U A Engine)
-  ;; run the given thunk in an engine for 'fuel' milliseconds
-  ;; if the engine completes, returns the result, otherwise the engine itself
-  (define (run/timeout tnk [fuel 1000])
-    (define e (engine (lambda (p) (tnk))))
-    (define r (engine-run fuel e))
-    (if r (engine-result e) e)))
-
 
 ;; -----------------------------------------------------------------------------
 ;; Compiling Roles to state machines
