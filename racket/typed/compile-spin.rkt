@@ -50,10 +50,12 @@
 ;;   - (retract ?)
 ;;   - (send ?)
 ;;   - (incorporate D+)
+;;   - (transition-to SName)
 (struct assert [ty] #:transparent)
 (struct retract [ty] #:transparent)
 ;; send defined in proto.rkt
 (struct incorporate [evt] #:transparent)
+(struct transition-to [dest] #:transparent)
 
 ;; each process has a local variable that determines its current state
 (define CURRENT-STATE (svar 'current mtype))
@@ -132,8 +134,9 @@
   (define retracts (set-map retractions retract))
   (unless (andmap send? effs)
     (raise-argument-error 'branch-on "all external effects" effs))
-  (sbranch D+ dest (cons (incorporate D+)
-                         (append asserts retracts effs))))
+  (sbranch D+ dest (list* (transition-to dest)
+                          (incorporate D+)
+                          (append asserts retracts effs))))
 
 (module+ test
   (test-case
@@ -141,3 +144,127 @@
     (define/timeout seller-rg (compile seller-actual))
     (define/timeout seller-spin (compile-spin seller-rg))
     (check-true (sproc? seller-spin))))
+
+(define tab-level (make-parameter 0))
+
+(define TAB-WIDTH 2)
+
+(define (indent)
+  (display (make-string (* TAB-WIDTH (tab-level)) #\space)))
+
+(define-syntax-rule (with-indent bdy ...)
+  (parameterize ([tab-level (add1 (tab-level))])
+    bdy ...))
+
+;; SpinThang -> Void
+(define (gen-spin spin)
+  (match spin
+    [(sprog assignment procs)
+     #f]
+    [(sproc name init states)
+     ;; TODO - need to make sure name is a spin id
+     (indent) (printf "active proctype ~a() {\n" name)
+     (with-indent
+       (gen-assignment init)
+       (indent) (displayln "do")
+       (with-indent
+         (for ([st states])
+           (gen-spin st)))
+       (indent) (displayln "od;")
+       )
+     (indent) (displayln "}")
+     #f]
+    [(sstate name branches)
+     (indent) (printf ":: ~a == ~a ->\n" (svar-name CURRENT-STATE) name)
+     (with-indent
+       (indent) (displayln "if")
+       (with-indent
+         (for ([branch branches])
+           (gen-spin branch)))
+       (indent) (displayln "fi;"))]
+    [(sbranch event dest actions)
+     (indent) (printf "~a ->\n" (predicate-for event))
+     ;; TODO - make the body atomic
+     (with-indent
+       (for ([act actions])
+         (gen-spin act)))]
+    [(svar name ty)
+     ;; TODO - not sure if needed - handled by `declare-var` below
+     #f]
+    [(assert x)
+     (indent) (printf "ASSERT(~a);\n" x)]
+    [(retract x)
+     (indent) (printf "RETRACT(~a);\n" x)]
+    [(send x)
+     (raise-argument-error 'gen-spin "message sending not supported yet" spin)]
+    [(incorporate evt)
+     (indent) (update-for evt)]
+    [(transition-to dest)
+     (indent) (printf "~a = ~a;\n" (svar-name CURRENT-STATE) dest)]))
+
+;; Assignment -> Void
+(define (gen-assignment assign)
+  (for ([(var val) (in-hash assign)])
+    (indent) (printf "~a = ~a;\n"
+                     (declare-var var)
+                     (spin-val->string val))))
+
+;; SVar -> Void
+(define (declare-var var)
+  (match-define (svar name ty) var)
+  (format "~a ~a" (spin-type->string ty) name))
+
+;; SValue -> String
+(define (spin-val->string v)
+  (cond
+    [(boolean? v)
+     (if v "true" "false")]
+    [(exact-integer? v)
+     (~a v)]
+    [(symbol? v)
+     (~a v)]
+    ;; TODO - intermediate state has sets
+    [(set? v)
+     (~a v)]))
+
+;; SType -> String
+(define (spin-type->string ty)
+  (match ty
+    [(== SInt) "int"]
+    [(== SBool) "bool"]
+    [(== mtype) "mtype"]))
+
+;; D+ -> String
+(define (predicate-for event)
+  (match event
+    [(Asserted ty)
+     (define assertion-var (assertion-var-name event))
+     (define active-var (active-var-name event))
+     (format "ASSERTED(~a) && !~a" assertion-var active-var)]
+    [(Retracted ty)
+     (define assertion-var (assertion-var-name event))
+     (define active-var (active-var-name event))
+     (format "RETRACTED(~a) && ~a" assertion-var active-var)]
+    [(Message ty)
+     (raise-argument-error 'predicate-for "message sending not supported yet" event)]))
+
+;; D+ -> Void
+(define (update-for event)
+  (match event
+    [(Asserted ty)
+     (define active-var (active-var-name event))
+     (printf "~a = ~a;\n" active-var (spin-val->string #t))]
+    [(Retracted ty)
+     (define active-var (active-var-name event))
+     (printf "~a = ~a;\n" active-var (spin-val->string #f))]
+    [(Message ty)
+     (raise-argument-error 'predicate-for "message sending not supported yet" event)]))
+
+;; D+ -> String
+(define (assertion-var-name event)
+  ;; TODO
+  (~a event))
+
+(define (active-var-name event)
+  ;; TODO
+  (~a event))
