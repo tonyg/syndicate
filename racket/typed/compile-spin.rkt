@@ -303,7 +303,7 @@
     [(set-empty? nm)
      (gensym 'inert)]
     [else
-     (define (take-prefix s) (substring s 0 prefix))
+     (define (take-prefix s) (substring s 0 (min prefix (string-length s))))
      (define rough-name (string-join (set-map nm (compose take-prefix symbol->string)) "_"))
      (make-spin-id rough-name)]))
 
@@ -557,6 +557,16 @@
   [] (ASSERTED(Obs_BookInterestT_String_star_star) -> <> ASSERTED(BookInterestT_String_star_star))
 |#
 )
+
+(module+ flink
+  (define (import r)
+    (define r+ (parse-T r))
+    (compile/internal-events (compile r+) #f))
+  (define jm-rg (import job-manager-actual))
+  (define tm-rg (import task-manager-ty))
+  (define tr-rg (import task-runner-ty))
+  (define flink-spin (program->spin (list tr-rg tm-rg jm-rg)))
+  (gen-spin/to-file flink-spin "gen-flink.pml"))
 
 (require racket/trace)
 #;(trace make-spin-id)
