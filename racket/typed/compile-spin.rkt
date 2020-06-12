@@ -546,7 +546,17 @@
   (define seller-rg (compile seller-actual))
   (define member-rg (compile member-actual))
   (define book-club-spin (program->spin (list leader-rg seller-rg member-rg)))
-  (gen-spin/to-file book-club-spin "gen-book-club.pml"))
+  (gen-spin/to-file book-club-spin "gen-book-club.pml")
+;; handwritten LTL formula I've added to gen-book-club.pml:
+#|
+  &&
+  <> (BookQuoteT_String_star_assertions > 0)
+  &&
+  [] (ASSERTED(Obs_BookQuoteT_String_star) -> <> ASSERTED(BookQuoteT_String_star))
+  &&
+  [] (ASSERTED(Obs_BookInterestT_String_star_star) -> <> ASSERTED(BookInterestT_String_star_star))
+|#
+)
 
 (require racket/trace)
 #;(trace make-spin-id)
