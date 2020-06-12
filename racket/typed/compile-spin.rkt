@@ -68,28 +68,49 @@
 (define (program->spin rgs)
   (define assertion-tys (all-assertions rgs))
   (define event-tys (all-events rgs))
+  (define event-subty# (make-event-map assertion-tys event-tys))
   (define all-mentioned-tys (set-union assertion-tys event-tys))
   (define name-env (make-name-env all-mentioned-tys))
   (define globals (initial-assertion-vars-for all-mentioned-tys name-env))
-  (define procs (for/list ([rg rgs]) (rg->spin rg name-env)))
+  (define procs (for/list ([rg rgs]) (rg->spin rg event-subty# name-env)))
   (sprog globals procs))
 
-;; RoleGraph -> SpinProcess
-(define (rg->spin rg name-env #:name [name (gensym 'proc)])
+;; [Setof τ] [Setof τ] -> [Hashof τ [Setof τ]]
+(define (make-event-map assertion-tys event-tys)
+  ;; TODO - potentially use non-empty intersection
+  (for/hash ([a (in-set assertion-tys)])
+    (values a
+            (all-supertypes-of a event-tys))))
+
+;; τ [Setof τ] -> [Setof τ]
+(define (all-supertypes-of τ tys)
+  (for*/set ([ty (in-set tys)]
+             #:when (<:? τ ty))
+    ty))
+
+;; [Setof τ] [Hashof τ [Setof τ]]
+(define (super-type-closure asserts event-subty#)
+  (for*/set ([a (in-set asserts)]
+             [supers (in-value (hash-ref event-subty# a))]
+             [τ (in-set (set-add supers a))])
+    τ))
+
+;; RoleGraph [Hashof τ [Setof τ]] NameEnvironment -> SpinProcess
+(define (rg->spin rg event-subty# name-env #:name [name (gensym 'proc)])
   (match-define (role-graph st0 states) rg)
   (define all-events (all-event-types (in-hash-values states)))
   (define state-renaming (make-state-rename (hash-keys states)))
   (define states- (for/list ([st (in-hash-values states)])
-                    (state->spin st states name-env state-renaming)))
+                    (state->spin st states event-subty# name-env state-renaming)))
   (define st0- (hash-ref state-renaming st0))
   ;; ergh the invariant for when I tack on _assertions to a name is getting tricksy
-  (define st0-assertions (rename-all name-env (state-assertions (hash-ref states st0))))
+  (define st0-assertions (rename-all name-env (super-type-closure (state-assertions (hash-ref states st0)) event-subty#)))
   (define assignment (local-variables-for st0- all-events name-env))
   ;; TODO - states for mtype decl
   (sproc name (hash-values-set state-renaming) assignment st0-assertions (list->set states-)))
 
-;; State [Sequenceof State] NameEnvironment [Hashof StateName SName] -> SpinState
-(define (state->spin st states name-env state-env)
+;; State [Sequenceof State] [Hashof τ [Setof τ]] NameEnvironment [Hashof StateName SName] -> SpinState
+(define (state->spin st states event-subty# name-env state-env)
   (match-define (state name transitions assertions) st)
   (define name- (hash-ref state-env name))
   (define branches (for*/list ([(D+ txns) (in-hash transitions)]
@@ -97,7 +118,7 @@
                      (match-define (transition effs dest) txn)
                      (match-define (state _ _ dest-assertions) (hash-ref states dest))
                      (define dest- (hash-ref state-env dest))
-                     (branch-on D+ assertions dest- dest-assertions effs name-env)))
+                     (branch-on D+ assertions dest- dest-assertions effs event-subty# name-env)))
   (sstate name- branches))
 
 ;; [Setof τ] -> NameEnvironment
@@ -177,10 +198,10 @@
               #f)))
   (hash-set assign CURRENT-STATE st0))
 
-;; D+ [Setof τ] SName [Setof τ] [Listof TransitionEffect] NameEnvironment -> SBranch
-(define (branch-on D+ curr-assertions dest dest-assertions effs name-env)
-  (define new-assertions (set-subtract dest-assertions curr-assertions))
-  (define retractions (set-subtract curr-assertions dest-assertions))
+;; D+ [Setof τ] SName [Setof τ] [Listof TransitionEffect] [Hashof τ [Setof τ]] NameEnvironment -> SBranch
+(define (branch-on D+ curr-assertions dest dest-assertions effs event-subty# name-env)
+  (define new-assertions (super-type-closure (set-subtract dest-assertions curr-assertions) event-subty#))
+  (define retractions (super-type-closure (set-subtract curr-assertions dest-assertions) event-subty#))
   (define (lookup ty) (hash-ref name-env ty))
   (define asserts (set-map new-assertions (compose assert lookup)))
   (define retracts (set-map retractions (compose retract lookup)))
@@ -212,7 +233,12 @@
                       'Obs_BookQuoteT_String_star
                       (Struct 'BookQuoteT (list (Base 'String) (U (list (Base 'Int) (Base 'Int)))))
                       'BookQuoteT_String_U_Int_Int))
-    (define/timeout seller-spin (rg->spin seller-rg name-env))
+    (define event# (hash
+                    (Observe (Observe (Struct 'BookQuoteT (list (Base 'String) (Mk⋆)))))
+                    (set)
+                    (Struct 'BookQuoteT (list (Base 'String) (U (list (Base 'Int) (Base 'Int)))))
+                    (set)))
+    (define/timeout seller-spin (rg->spin seller-rg event# name-env))
     (check-true (sproc? seller-spin))))
 
 (define tab-level (make-parameter 0))
@@ -294,6 +320,8 @@
         (cons 'Obs (type-constructors ty (sub1 depth)))]
        [(U tys)
         (cons 'U (append-map (λ (ty) (type-constructors ty (sub1 depth))) tys))]
+       [(== ⋆)
+        (list 'star)]
        [(Base name)
         (list name)]
        [(List _)
@@ -302,8 +330,6 @@
         (list 'Set)]
        [(Hash _ _)
         (list 'Hash)]
-       [(== ⋆)
-        (list 'star)]
        [(internal-label _ _)
         (raise-argument-error 'type-constructors "internal events not supported" ty)])]))
 
@@ -482,7 +508,6 @@
   (define leader-rg (compile (parse-T
     '(Role ; = react
       (get-quotes)
-      (Shares (Observe (BookQuoteT String ★))) ; = assert
       (Reacts ; = on
        (Asserted (BookQuoteT String (Bind Int)))
        (Branch

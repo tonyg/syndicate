@@ -2948,7 +2948,6 @@
   (define leader
     '(Role ; = react
       (get-quotes)
-      (Shares (Observe (BookQuoteT String ★))) ; = assert
       (Reacts ; = on
        (Asserted (BookQuoteT String (Bind Int)))
        (Branch
