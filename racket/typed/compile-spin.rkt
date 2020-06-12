@@ -1,5 +1,10 @@
 #lang racket
 
+;; TODO - syntax for LTL
+;; TODO - atomic blocks
+;; TODO - mark acceptable end states
+;; TODO - avoid collisions with SPIN keywords, e.g. `run`
+
 (require "proto.rkt")
 
 (module+ test
@@ -60,8 +65,6 @@
 ;; each process has a local variable that determines its current state
 (define CURRENT-STATE (svar 'current mtype))
 
-;; TODO - think about how to handle subtype relationship between assertions
-
 ;; a NameEnvironment is a [Hashof τ SName]
 
 ;; [Sequenceof RoleGraph] -> SpinProgram
@@ -106,7 +109,6 @@
   ;; ergh the invariant for when I tack on _assertions to a name is getting tricksy
   (define st0-assertions (rename-all name-env (super-type-closure (state-assertions (hash-ref states st0)) event-subty#)))
   (define assignment (local-variables-for st0- all-events name-env))
-  ;; TODO - states for mtype decl
   (sproc name (hash-values-set state-renaming) assignment st0-assertions (list->set states-)))
 
 ;; State [Sequenceof State] [Hashof τ [Setof τ]] NameEnvironment [Hashof StateName SName] -> SpinState
@@ -385,7 +387,6 @@
      (gen-sanity-ltl assignment)]
     [(sproc name state-names init asserts states)
      (indent) (declare-mtype state-names)
-     ;; TODO - need to make sure name is a spin id
      (indent) (printf "active proctype ~a() {\n" name)
      (with-indent
        (gen-assignment init)
@@ -416,9 +417,6 @@
      (with-indent
        (for ([act actions])
          (gen-spin act)))]
-    [(svar name ty)
-     ;; TODO - not sure if needed - handled by `declare-var` below
-     #f]
     [(assert x)
      (indent) (printf "ASSERT(~a);\n" x)]
     [(retract x)
@@ -456,9 +454,6 @@
     [(exact-integer? v)
      (~a v)]
     [(symbol? v)
-     (~a v)]
-    ;; TODO - intermediate state has sets
-    [(set? v)
      (~a v)]))
 
 ;; SType -> String
