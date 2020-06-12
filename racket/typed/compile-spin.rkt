@@ -78,26 +78,6 @@
   (define procs (for/list ([rg rgs]) (rg->spin rg event-subty# name-env)))
   (sprog globals procs))
 
-;; [Setof τ] [Setof τ] -> [Hashof τ [Setof τ]]
-(define (make-event-map assertion-tys event-tys)
-  ;; TODO - potentially use non-empty intersection
-  (for/hash ([a (in-set assertion-tys)])
-    (values a
-            (all-supertypes-of a event-tys))))
-
-;; τ [Setof τ] -> [Setof τ]
-(define (all-supertypes-of τ tys)
-  (for*/set ([ty (in-set tys)]
-             #:when (<:? τ ty))
-    ty))
-
-;; [Setof τ] [Hashof τ [Setof τ]]
-(define (super-type-closure asserts event-subty#)
-  (for*/set ([a (in-set asserts)]
-             [supers (in-value (hash-ref event-subty# a))]
-             [τ (in-set (set-add supers a))])
-    τ))
-
 ;; RoleGraph [Hashof τ [Setof τ]] NameEnvironment -> SpinProcess
 (define (rg->spin rg event-subty# name-env #:name [name (gensym 'proc)])
   (match-define (role-graph st0 states) rg)
@@ -146,6 +126,26 @@
 ;; SName -> SName
 (define (active-var-name s)
   (string->symbol (format "know_~a" s)))
+
+;; [Setof τ] [Setof τ] -> [Hashof τ [Setof τ]]
+(define (make-event-map assertion-tys event-tys)
+  ;; TODO - potentially use non-empty intersection
+  (for/hash ([a (in-set assertion-tys)])
+    (values a
+            (all-supertypes-of a event-tys))))
+
+;; τ [Setof τ] -> [Setof τ]
+(define (all-supertypes-of τ tys)
+  (for*/set ([ty (in-set tys)]
+             #:when (<:? τ ty))
+    ty))
+
+;; [Setof τ] [Hashof τ [Setof τ]]
+(define (super-type-closure asserts event-subty#)
+  (for*/set ([a (in-set asserts)]
+             [supers (in-value (hash-ref event-subty# a))]
+             [τ (in-set (set-add supers a))])
+    τ))
 
 ;; [Setof τ] NameEnvironment -> Assignment
 (define (initial-assertion-vars-for assertion-tys name-env)
