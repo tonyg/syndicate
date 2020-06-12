@@ -12,8 +12,8 @@
 
 
 ;; a SpinProcess is a
-;;   (sproc SName [Setof SName] Assignment [Setof SpinState])
-(struct sproc [name state-names init states] #:transparent)
+;;   (sproc SName [Setof SName] Assignment [Listof SName] [Setof SpinState])
+(struct sproc [name state-names init initial-assertions states] #:transparent)
 
 ;; an Assignment is a [Hashof SVar SValue]
 
@@ -68,8 +68,9 @@
 (define (program->spin rgs)
   (define assertion-tys (all-assertions rgs))
   (define event-tys (all-events rgs))
-  (define name-env (make-name-env (set-union assertion-tys event-tys)))
-  (define globals (initial-assertion-vars-for assertion-tys name-env))
+  (define all-mentioned-tys (set-union assertion-tys event-tys))
+  (define name-env (make-name-env all-mentioned-tys))
+  (define globals (initial-assertion-vars-for all-mentioned-tys name-env))
   (define procs (for/list ([rg rgs]) (rg->spin rg name-env)))
   (sprog globals procs))
 
@@ -81,9 +82,11 @@
   (define states- (for/list ([st (in-hash-values states)])
                     (state->spin st states name-env state-renaming)))
   (define st0- (hash-ref state-renaming st0))
+  ;; ergh the invariant for when I tack on _assertions to a name is getting tricksy
+  (define st0-assertions (rename-all name-env (state-assertions (hash-ref states st0))))
   (define assignment (local-variables-for st0- all-events name-env))
   ;; TODO - states for mtype decl
-  (sproc name (hash-values-set state-renaming) assignment (list->set states-)))
+  (sproc name (hash-values-set state-renaming) assignment st0-assertions (list->set states-)))
 
 ;; State [Sequenceof State] NameEnvironment [Hashof StateName SName] -> SpinState
 (define (state->spin st states name-env state-env)
@@ -124,8 +127,13 @@
 ;; [Setof τ] NameEnvironment -> Assignment
 (define (initial-assertion-vars-for assertion-tys name-env)
   (for/hash ([τ (in-set assertion-tys)])
-    (values (svar (hash-ref name-env τ) SInt)
+    (values (svar (assertions-var-name (hash-ref name-env τ)) SInt)
             0)))
+
+;; NameEnvironment [Setof τ] -> [Sequenceof SName]
+(define (rename-all name-env asserts)
+  (for/set ([a (in-set asserts)])
+    (hash-ref name-env a)))
 
 ;; [Sequenceof RoleGraph] -> [Setof τ]
 (define (all-assertions rgs)
@@ -160,7 +168,7 @@
       [_
        (raise-argument-error 'all-event-types "internal events not allowed" D+)])))
 
-;; StateName [Setof τ] NameEnvironment -> Assignment
+;; SName [Setof τ] NameEnvironment -> Assignment
 (define (local-variables-for st0 all-events name-env)
   (define assign
     (for/hash ([evt (in-set all-events)])
@@ -265,9 +273,13 @@
 
 ;; StateName -> SName
 (define (state-name->spin-id nm #:prefix [prefix 3])
-  (define (take-prefix s) (substring s 0 prefix))
-  (define rough-name (string-join (set-map nm (compose take-prefix symbol->string)) "_"))
-  (make-spin-id rough-name))
+  (cond
+    [(set-empty? nm)
+     (gensym 'inert)]
+    [else
+     (define (take-prefix s) (substring s 0 prefix))
+     (define rough-name (string-join (set-map nm (compose take-prefix symbol->string)) "_"))
+     (make-spin-id rough-name)]))
 
 ;; τ -> [Listof Symbol]
 (define (type-constructors ty depth)
@@ -322,16 +334,36 @@
                (lambda () (type->id (Struct '--- '())))
                "unable to make spin id")))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Code Generation
+
+(define SPIN-PRELUDE (file->string "spin-prelude.pml"))
+
+;; SpinThang FilePath -> Void
+(define (gen-spin/to-file spin name)
+  (with-output-to-file name
+    (lambda () (gen-spin spin))
+    #:mode 'text
+    #:exists 'replace))
+
 ;; SpinThang -> Void
 (define (gen-spin spin)
   (match spin
     [(sprog assignment procs)
-     #f]
-    [(sproc name state_names init states)
+     (display SPIN-PRELUDE)
+     (gen-assignment assignment)
+     (newline)
+     (for ([p procs])
+       (gen-spin p)
+       (newline))]
+    [(sproc name state-names init asserts states)
+     (indent) (declare-mtype state-names)
      ;; TODO - need to make sure name is a spin id
      (indent) (printf "active proctype ~a() {\n" name)
      (with-indent
        (gen-assignment init)
+       (for ([a asserts])
+         (gen-spin (assert a)))
        (indent) (displayln "do")
        (with-indent
          (for ([st states])
@@ -344,8 +376,12 @@
      (with-indent
        (indent) (displayln "if")
        (with-indent
-         (for ([branch branches])
-           (gen-spin branch)))
+         (cond
+           [(empty? branches)
+            (indent) (displayln ":: true -> skip;")]
+           [else
+            (for ([branch branches])
+              (gen-spin branch))]))
        (indent) (displayln "fi;"))]
     [(sbranch event dest actions)
      (indent) (printf ":: ~a ->\n" (predicate-for event))
@@ -366,6 +402,12 @@
      (indent) (update-for evt)]
     [(transition-to dest)
      (indent) (printf "~a = ~a;\n" (svar-name CURRENT-STATE) dest)]))
+
+;; [Setof SName] -> Void
+(define (declare-mtype state-names)
+  (display "mtype = {")
+  (display (string-join (set-map state-names symbol->string) ", "))
+  (displayln "}"))
 
 ;; Assignment -> Void
 (define (gen-assignment assign)
@@ -403,11 +445,11 @@
 (define (predicate-for event)
   (match event
     [(Asserted nm)
-     (define assertion-var (assertions-var-name nm))
+     (define assertion-var nm)
      (define active-var (active-var-name nm))
      (format "ASSERTED(~a) && !~a" assertion-var active-var)]
     [(Retracted nm)
-     (define assertion-var (assertions-var-name nm))
+     (define assertion-var nm)
      (define active-var (active-var-name nm))
      (format "RETRACTED(~a) && ~a" assertion-var active-var)]
     [(Message nm)
@@ -432,3 +474,43 @@
 (define (hash-values-set h)
   (for/set ([x (in-hash-values h)])
     x))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Test Case
+
+(module+ leader-and-seller
+  (define leader-rg (compile (parse-T
+    '(Role ; = react
+      (get-quotes)
+      (Shares (Observe (BookQuoteT String ★))) ; = assert
+      (Reacts ; = on
+       (Asserted (BookQuoteT String (Bind Int)))
+       (Branch
+        (Effs (Branch (Effs (Stop get-quotes)) (Effs)))
+        (Effs
+         (Role
+          (poll-members)
+          (Reacts
+           (Asserted (BookInterestT String (Bind String) Discard))
+           (Branch
+            (Effs (Stop poll-members (Branch (Effs (Stop get-quotes)) (Effs))))
+            (Effs))
+           (Branch
+            (Effs
+             (Stop get-quotes (Role (announce) (Shares (BookOfTheMonthT String)))))
+            (Effs)))
+          (Reacts (Retracted (BookInterestT String (Bind String) Bool)))
+          (Reacts (Asserted (BookInterestT String (Bind String) Bool)))
+          (Reacts (Retracted (BookInterestT String (Bind String) Bool)))
+          (Reacts (Asserted (BookInterestT String (Bind String) Bool)))))))
+      (Reacts (Retracted (ClubMemberT (Bind String))))
+      (Reacts (Asserted (ClubMemberT (Bind String))))))))
+  (define seller-rg (compile seller-actual))
+  (define member-rg (compile member-actual))
+  (define book-club-spin (program->spin (list leader-rg seller-rg member-rg)))
+  (gen-spin/to-file book-club-spin "gen-book-club.pml"))
+
+(require racket/trace)
+#;(trace make-spin-id)
+#;(trace state->spin)
+#;(trace state-name->spin-id)
