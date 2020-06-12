@@ -278,14 +278,16 @@
               (set)]))
          (define states
            (for/hash ([(sn txns) (in-hash st#)]
-                      ;; get rid of the empty state unless it is the start,
-                      ;; or some other state transitions to it
-                      #:unless (and (set-empty? sn)
-                                    (not (equal? sn new-st0))
-                                    (not (target-of-transition? sn st#))))
+                      ;; handle empty state below
+                      #:unless (set-empty? sn))
              (define old-assertions (state-assertions (hash-ref orig-st#+ sn)))
              (define new-assertions (external-assertions old-assertions))
              (values sn (state sn txns new-assertions))))
+         (when (set-empty? new-st0)
+           (error 'compile-internal-events "not able to remove initial start event"))
+         (when (target-of-transition? (set) st#)
+           ;; get rid of the empty state unless some other state transitions to it
+           (set! states (hash-set states (set) (state (set) (hash) (set)))))
          (role-graph new-st0 states)]
         [(cons (work-item from path/r to by with effs) more-work)
          (define prev (if (empty? path/r) from (first path/r)))
