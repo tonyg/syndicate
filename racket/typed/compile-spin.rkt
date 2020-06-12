@@ -381,7 +381,8 @@
      (newline)
      (for ([p procs])
        (gen-spin p)
-       (newline))]
+       (newline))
+     (gen-sanity-ltl assignment)]
     [(sproc name state-names init asserts states)
      (indent) (declare-mtype state-names)
      ;; TODO - need to make sure name is a spin id
@@ -492,6 +493,18 @@
      (printf "~a = ~a;\n" active-var (spin-val->string #f))]
     [(Message nm)
      (raise-argument-error 'predicate-for "message sending not supported yet" event)]))
+
+;; Assignment -> Void
+(define (gen-sanity-ltl assignment)
+    (indent) (displayln "ltl sanity {")
+    (with-indent
+      (indent) (displayln "[](")
+      (with-indent
+        (for ([assertion-var (in-hash-keys assignment)])
+          (indent) (printf "~a >= 0 &&\n" (svar-name assertion-var)))
+        (indent) (displayln "true"))
+      (indent) (displayln ")"))
+    (indent) (displayln "}"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Misc Utils
