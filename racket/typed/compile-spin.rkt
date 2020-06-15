@@ -3,7 +3,6 @@
 ;; TODO - syntax for LTL
 ;; TODO - atomic blocks
 ;; TODO - mark acceptable end states
-;; TODO - avoid collisions with SPIN keywords, e.g. `run`
 
 (require "proto.rkt")
 
@@ -263,6 +262,18 @@
     (set! s (symbol->string s)))
   (regexp-match? SPIN_ID_RX s))
 
+(define SPIN-KEYWORDS
+  '(active assert atomic bit bool break byte chan d_step D_proctype do
+		else empty enabled fi full goto hidden if init int len mtype nempty
+    never nfull od of pc_value printf priority proctype provided run
+		short skip timeout typedef unless unsigned xr xs))
+
+;; Symbol -> Symbol
+(define (unkeyword s)
+  (if (member s SPIN-KEYWORDS)
+      (gensym s)
+      s))
+
 ;; (U Symbol String) -> SName
 (define (make-spin-id s)
   (when (symbol? s)
@@ -275,8 +286,8 @@
      (define match-str (apply string-append fst rst))
      (define without-added-prefix (substring match-str 3))
      (if (spin-id? without-added-prefix)
-         (string->symbol without-added-prefix)
-         (string->symbol match-str))]))
+         (unkeyword (string->symbol without-added-prefix))
+         (unkeyword (string->symbol match-str)))]))
 
 ;; τ -> SName
 (define (type->id ty #:depth [depth 3])
