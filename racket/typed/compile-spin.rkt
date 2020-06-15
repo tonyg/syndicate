@@ -1,8 +1,6 @@
 #lang racket
 
 ;; TODO - syntax for LTL
-;; TODO - atomic blocks
-;; TODO - mark acceptable end states
 
 (require "proto.rkt")
 
@@ -403,7 +401,7 @@
        (gen-assignment init)
        (for ([a asserts])
          (gen-spin (assert a)))
-       (indent) (displayln "do")
+       (indent) (displayln "end: do")
        (with-indent
          (for ([st states])
            (gen-spin st)))
@@ -426,8 +424,11 @@
      (indent) (printf ":: ~a ->\n" (predicate-for event))
      ;; TODO - make the body atomic
      (with-indent
-       (for ([act actions])
-         (gen-spin act)))]
+       (indent) (displayln "atomic {")
+       (with-indent
+         (for ([act actions])
+           (gen-spin act)))
+       (indent) (displayln "}"))]
     [(assert x)
      (indent) (printf "ASSERT(~a);\n" x)]
     [(retract x)
