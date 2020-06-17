@@ -3,14 +3,15 @@
 ;; TODO - syntax for LTL
 
 (require "proto.rkt")
+(require "ltl.rkt")
 
 (module+ test
   (require rackunit)
   (require "test-utils.rkt"))
 
 ;; a SpinProgram is a
-;;   (sprog [Assignment [Listof SpinProcess]])
-(struct sprog [assignment procs] #:transparent)
+;;   (sprog Assignment [Listof SpinProcess] [LTL SName])
+(struct sprog [assignment procs spec] #:transparent)
 
 
 ;; a SpinProcess is a
@@ -64,8 +65,8 @@
 
 ;; a NameEnvironment is a [Hashof τ SName]
 
-;; [Sequenceof RoleGraph] -> SpinProgram
-(define (program->spin rgs)
+;; [Sequenceof RoleGraph] [LTL τ] -> SpinProgram
+(define (program->spin rgs [spec #t])
   (define assertion-tys (all-assertions rgs))
   (define event-tys (all-events rgs))
   (define event-subty# (make-event-map assertion-tys event-tys))
@@ -73,7 +74,8 @@
   (define name-env (make-name-env all-mentioned-tys))
   (define globals (initial-assertion-vars-for all-mentioned-tys name-env))
   (define procs (for/list ([rg rgs]) (rg->spin rg event-subty# name-env)))
-  (sprog globals procs))
+  (define spec-spin (rename-ltl spec name-env))
+  (sprog globals procs spec-spin))
 
 ;; RoleGraph [Hashof τ [Setof τ]] NameEnvironment -> SpinProcess
 (define (rg->spin rg event-subty# name-env #:name [name (gensym 'proc)])
@@ -220,6 +222,11 @@
      (Retracted (hash-ref name-env τ))]
     [(Message τ)
      (raise-argument-error 'rename-event "messages not implemented yet" D+)]))
+
+;; [LTL τ] -> [LTL SName]
+(define (rename-ltl ltl name-env)
+  (define (lookup τ) (hash-ref name-env τ))
+  (map-atomic ltl lookup))
 
 (module+ test
   (test-case
@@ -386,13 +393,15 @@
 ;; SpinThang -> Void
 (define (gen-spin spin)
   (match spin
-    [(sprog assignment procs)
+    [(sprog assignment procs spec)
      (display SPIN-PRELUDE)
      (gen-assignment assignment)
      (newline)
      (for ([p procs])
        (gen-spin p)
        (newline))
+     (gen-spec "spec" (lambda () (gen-ltl spec)))
+     (newline)
      (gen-sanity-ltl assignment)]
     [(sproc name state-names init asserts states)
      (indent) (declare-mtype state-names)
@@ -501,17 +510,68 @@
     [(Message nm)
      (raise-argument-error 'predicate-for "message sending not supported yet" event)]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; LTL
+
+;; String {-> Void} -> Void
+(define (gen-spec name mk-body)
+  (indent) (printf "ltl ~a {\n" name)
+  (with-indent
+    (mk-body))
+  (newline)
+  (indent) (displayln "}"))
+
+;; [LTL SName] -> Void
+(define (gen-ltl ltl)
+  (match ltl
+    [(always p)
+     (indent) (displayln "[](")
+     (with-indent
+       (gen-ltl p))
+     (indent) (displayln ")")]
+    [(eventually p)
+     (indent) (displayln "<>(")
+     (with-indent
+       (gen-ltl p))
+     (indent) (displayln ")")]
+    [(weak-until p q)
+     (gen-ltl-bin-op "W" p q)]
+    [(strong-until p q)
+     (gen-ltl-bin-op "U" p q)]
+    [(ltl-implies p q)
+     (gen-ltl-bin-op "->" p q)]
+    [(ltl-and p q)
+     (gen-ltl-bin-op "&&" p q)]
+    [(ltl-or p q)
+     (gen-ltl-bin-op "||" p q)]
+    [(ltl-not p)
+     (indent) (display "!(")
+     (gen-ltl p)
+     (displayln ")")]
+    [(atomic nm)
+     (printf "ASSERTED(~a)\n" nm)]
+    [#t
+     (display "true")]
+    [#f
+     (display "false")]))
+
+;; String [LTL SName] [LTL SName] -> Void
+(define (gen-ltl-bin-op name p q)
+  (indent) (display "(") (gen-ltl p) (display ") ")
+  (displayln name)
+  (newline)
+  (indent) (display "(") (gen-ltl q) (displayln ")"))
+
 ;; Assignment -> Void
 (define (gen-sanity-ltl assignment)
-    (indent) (displayln "ltl sanity {")
-    (with-indent
-      (indent) (displayln "[](")
-      (with-indent
-        (for ([assertion-var (in-hash-keys assignment)])
-          (indent) (printf "~a >= 0 &&\n" (svar-name assertion-var)))
-        (indent) (displayln "true"))
-      (indent) (displayln ")"))
-    (indent) (displayln "}"))
+  (gen-spec "sanity"
+            (lambda ()
+              (indent) (displayln "[](")
+              (with-indent
+                (for ([assertion-var (in-hash-keys assignment)])
+                  (indent) (printf "~a >= 0 &&\n" (svar-name assertion-var)))
+                (indent) (displayln "true"))
+              (indent) (displayln ")"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Misc Utils
@@ -552,18 +612,17 @@
       (Reacts (Asserted (ClubMemberT (Bind String))))))))
   (define seller-rg (compile seller-actual))
   (define member-rg (compile member-actual))
-  (define book-club-spin (program->spin (list leader-rg seller-rg member-rg)))
-  (gen-spin/to-file book-club-spin "gen-book-club.pml")
-;; handwritten LTL formula I've added to gen-book-club.pml:
-#|
-  &&
-  <> (BookQuoteT_String_star_assertions > 0)
-  &&
-  [] (ASSERTED(Obs_BookQuoteT_String_star) -> <> ASSERTED(BookQuoteT_String_star))
-  &&
-  [] (ASSERTED(Obs_BookInterestT_String_star_star) -> <> ASSERTED(BookInterestT_String_star_star))
-|#
-)
+  (define bq (book-quote String ⋆))
+  (define bi (book-interest String ⋆ ⋆))
+  (define book-club-spec
+    (&& (eventually (atomic bq))
+        (always (ltl-implies (atomic (Observe bq))
+                             (eventually (atomic bq))))
+        (always (ltl-implies (atomic (Observe bi))
+                             (eventually (atomic bi))))))
+  (define book-club-spin (program->spin (list leader-rg seller-rg member-rg)
+                                        book-club-spec))
+  (gen-spin/to-file book-club-spin "gen-book-club.pml"))
 
 (module+ flink
   (define (import r)
@@ -574,8 +633,3 @@
   (define tr-rg (import task-runner-ty))
   (define flink-spin (program->spin (list tr-rg tm-rg jm-rg)))
   (gen-spin/to-file flink-spin "gen-flink.pml"))
-
-(require racket/trace)
-#;(trace make-spin-id)
-#;(trace state->spin)
-#;(trace state-name->spin-id)
