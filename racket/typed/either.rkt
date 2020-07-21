@@ -5,7 +5,7 @@
          Either
          left
          right
-         partition/either)
+         #;partition/either)
 
 (require "core-types.rkt")
 (require "core-expressions.rkt")
@@ -19,8 +19,13 @@
   (U (Left A)
      (Right B)))
 
-(define (∀ (X Y Z) (partition/either [xs : (List X)]
-                                     [pred : (→fn X (Either Y Z))]
+(define (∀ (X) (f [x : X] -> X))
+  x)
+
+
+#;(define (∀ (X Y Z) (partition/either [xs : (List X)]
+                                     [pred : (→fn X (U (Left Y)
+                                                       (Right Z)) #;(Either Y Z))]
                                      -> (Tuple (List Y) (List Z))))
   (for/fold ([acc (Tuple (List Y) (List Z)) (tuple (list) (list))])
             ([x xs])
