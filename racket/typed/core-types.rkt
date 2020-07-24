@@ -1084,14 +1084,14 @@
      [(X:id Y:id)
       (or (free-identifier=? #'X #'Y)
           (let ()
-            (displayln (identifier-binding #'X))
-            (displayln (identifier-binding #'Y))
+            #;(displayln (identifier-binding #'X))
+            #;(displayln (identifier-binding #'Y))
             #f))]
      [((~∀+ (X:id ...) τ1) (~∀+ (Y:id ...) τ2))
       #:when (stx-length=? #'(X ...) #'(Y ...))
       #:with τ2-X/Y (substs #'(X ...) #'(Y ...) #'τ2)
-      #:do [(displayln "∀ <: ∀")
-            (displayln #'τ2-X/Y)]
+      ;; #:do [(displayln "∀ <: ∀")
+            ;; (displayln #'τ2-X/Y)]
       (<: #'τ1 #'τ2-X/Y)]
      [((~Base τ1:id) (~Base τ2:id))
       (free-identifier=? #'τ1 #'τ2)]
@@ -1271,6 +1271,7 @@
                                                           (Endpoints τ-ep ...)
                                                           (Roles τ-f ...)
                                                           (Spawns τ-s ...))))])
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Type Abstraction
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1511,10 +1512,11 @@
                           (~Computation (~Value τ-v) _ _ _)))) #'TTTT
    #:do [(displayln 'D)]
    #:with ty_out- (substs #'(X- ...) #'(X ...) #'ty_out)
-   #:fail-unless (<: (type-eval #'(∀+ (Y ...) τ-v))
-                     (type-eval #'(∀+ (X- ...) ty_out-)))
+   #:with actual (type-eval #'(∀+ (Y ...) τ-v))
+   #:with expected (type-eval #'(∀+ (X- ...) ty_out-))
+   #:fail-unless (<: #'actual #'expected)
                  (format "expected different return type\n got ~a\n expected ~a\n"
-                         #'τ-v #'ty_out)
+                         (resugar-type #'actual) (resugar-type #'expected))
    #:do [(displayln 'E)]
    #:with f- (add-orig (generate-temporary #'f) #'f)
    -------------------------------------------------------
@@ -1601,12 +1603,12 @@
    [⊢ (#%plain-app- e_fn- e_arg- ...) ⇒ τ_out*]]
   ;; All Other Functions
   [(_ e_fn e_arg ...) ≫
-   [⊢ e_fn ≫ e_fn- (⇒ : (~→+ τ_in ... (~Computation (~Value τ-out)
-                                                    (~Endpoints τ-ep ...)
-                                                    (~Roles τ-f ...)
-                                                    (~Spawns τ-s ...))))]
-   ;; TODO - don't know why this cut is needed for error messages
    #:cut
+   [⊢ e_fn ≫ e_fn- (⇒ : (~→+ τ_in ... (~Computation (~Value τ-out)
+                                                            (~Endpoints τ-ep ...)
+                                                            (~Roles τ-f ...)
+                                                            (~Spawns τ-s ...))))]
+   ;; TODO - don't know why this cut is needed for error messages
    #:fail-unless (pure? #'e_fn-) "expression not allowed to have effects"
    #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
                  (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
