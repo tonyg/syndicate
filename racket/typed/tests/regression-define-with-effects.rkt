@@ -3,7 +3,7 @@
 (require rackunit/turnstile)
 
 (check-type
- (begin
+ (let ()
   (field [boo Int 0])
   (define x (begin (send! "hi") 5))
   ;; relying on `set` not allowing effects for this to be a good test

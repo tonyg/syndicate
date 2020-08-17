@@ -115,6 +115,14 @@
      (type-error #:src e
                  #:msg "not an iterable type: ~a" τ)]))
 
+(define-for-syntax (bind-renames renames body)
+  (syntax-parse renames
+    [([x:id x-:id] ...)
+     #:with (x-- ...) (map syntax-local-identifier-as-binding (syntax->list #'(x- ...)))
+     (quasisyntax/loc body
+       (let- ()
+             (define-syntax x (make-variable-like-transformer #'x--)) ...
+             #,body))]))
 
 (define-typed-syntax for/fold
   [(for/fold ([acc:id (~optional (~datum :)) τ-acc init])
@@ -125,16 +133,15 @@
   #:fail-unless (pure? #'init-) "expression must be pure"
   #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
   [[x ≫ x-- : τ] ...
-   [acc ≫ acc- : τ-acc] ⊢ (begin e-body ...) ≫ e-body-
+   [acc ≫ acc- : τ-acc] ⊢ (block e-body ...) ≫ e-body-
                            (⇐ : τ-acc)
                            (⇒ ν-ep (~effs τ-ep ...))
                            (⇒ ν-s (~effs τ-s ...))
                            (⇒ ν-f (~effs τ-f ...))]
-  #:with e-body-- (substs #'(x- ...) #'(x-- ...) #'e-body- free-identifier=?)
   -------------------------------------------------------
   [⊢ (for/fold- ([acc- init-])
                 clauses-
-                e-body--)
+                #,(bind-renames #'([x-- x-] ...) #'e-body-))
      (⇒ : τ-acc)
      (⇒ ν-ep (τ-ep ...))
      (⇒ ν-s (τ-s ...))
@@ -151,34 +158,34 @@
 (define-typed-syntax (for/list (clause:iter-clause ...)
                        e-body ...+) ≫
   #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
-  [[x ≫ x-- : τ] ... ⊢ (begin e-body ...) ≫ e-body-
+  [[x ≫ x-- : τ] ... ⊢ (block e-body ...) ≫ e-body-
                            (⇒ : τ-body)
                            (⇒ ν-ep (~effs τ-ep ...))
                            (⇒ ν-s (~effs τ-s ...))
                            (⇒ ν-f (~effs τ-f ...))]
-  #:with e-body-- (substs #'(x- ...) #'(x-- ...) #'e-body- free-identifier=?)
   ----------------------------------------------------------------------
   [⊢ (for/list- clauses-
-                e-body--) (⇒ : (List τ-body))
-                          (⇒ ν-ep (τ-ep ...))
-                          (⇒ ν-s (τ-s ...))
-                          (⇒ ν-f (τ-f ...))])
+       #,(bind-renames #'([x-- x-] ...) #'e-body-))
+                (⇒ : (List τ-body))
+                (⇒ ν-ep (τ-ep ...))
+                (⇒ ν-s (τ-s ...))
+                (⇒ ν-f (τ-f ...))])
 
 (define-typed-syntax (for/set (clause:iter-clause ...)
                        e-body ...+) ≫
   #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
-  [[x ≫ x-- : τ] ... ⊢ (begin e-body ...) ≫ e-body-
+  [[x ≫ x-- : τ] ... ⊢ (block e-body ...) ≫ e-body-
                            (⇒ : τ-body)
                            (⇒ ν-ep (~effs τ-ep ...))
                            (⇒ ν-s (~effs τ-s ...))
                            (⇒ ν-f (~effs τ-f ...))]
-  #:with e-body-- (substs #'(x- ...) #'(x-- ...) #'e-body- free-identifier=?)
   ----------------------------------------------------------------------
   [⊢ (for/set- clauses-
-                e-body--) (⇒ : (Set τ-body))
-                          (⇒ ν-ep (τ-ep ...))
-                          (⇒ ν-s (τ-s ...))
-                          (⇒ ν-f (τ-f ...))])
+       #,(bind-renames #'([x-- x-] ...) #'e-body-))
+              (⇒ : (Set τ-body))
+              (⇒ ν-ep (τ-ep ...))
+              (⇒ ν-s (τ-s ...))
+              (⇒ ν-f (τ-f ...))])
 
 (define-typed-syntax (for/sum (clause ...)
                        e-body ...+) ≫
@@ -198,18 +205,17 @@
 (define-typed-syntax (for/first (clause:iter-clause ...)
                        e-body ...+) ≫
   #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
-  [[x ≫ x-- : τ] ... ⊢ (begin e-body ...) ≫ e-body-
+  [[x ≫ x-- : τ] ... ⊢ (block e-body ...) ≫ e-body-
                  (⇒ : τ-body)
                  (⇒ ν-ep (~effs τ-ep ...))
                  (⇒ ν-s (~effs τ-s ...))
                  (⇒ ν-f (~effs τ-f ...))]
-  #:with e-body-- (substs #'(x- ...) #'(x-- ...) #'e-body- free-identifier=?)
   [[res ≫ _ : τ-body] ⊢ res  ≫ res- (⇒ : _)]
   ----------------------------------------------------------------------
   [⊢ (let- ()
        (define- res-
          (for/first- clauses-
-                     e-body--))
+                     #,(bind-renames #'([x-- x-] ...) #'e-body-)))
        (if- res-
             (some res-)
             none))

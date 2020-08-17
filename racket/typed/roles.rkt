@@ -162,7 +162,7 @@
   #:with (τ ...) (stx-map type-eval #'((Field τ-f.norm) ...))
   #:with MF (type-eval #'MakesField)
   ----------------------------------------------------------------------
-  [⊢ (field/intermediate [x x- τ e-] ...)
+  [⊢ (erased (field/intermediate [x x- τ e-] ...))
      (⇒ : ★/t)
      (⇒ ν-ep (MF))])
 
@@ -200,7 +200,7 @@
 
 (define-typed-syntax (stop facet-name:id cont ...) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
-  [⊢ (begin #f cont ...) ≫ cont-
+  [⊢ (block #f cont ...) ≫ cont-
                          (⇒ ν-ep (~effs))
                          (⇒ ν-s (~effs))
                          (⇒ ν-f (~effs τ-f ...))]
@@ -256,7 +256,7 @@
 (define-typed-syntax on
   #:datum-literals (start stop)
   [(on start s ...) ≫
-   [⊢ (begin s ...) ≫ s- (⇒ ν-ep (~effs))
+   [⊢ (block s ...) ≫ s- (⇒ ν-ep (~effs))
                           (⇒ ν-f (~effs τ-f ...))
                           (⇒ ν-s (~effs τ-s ...))]
    #:with τ-r (type-eval #'(Reacts OnStart τ-f ... τ-s ...))
@@ -264,7 +264,7 @@
    [⊢ (syndicate:on-start s-) (⇒ : ★/t)
       (⇒ ν-ep (τ-r))]]
   [(on stop s ...) ≫
-   [⊢ (begin s ...) ≫ s- (⇒ ν-ep (~effs))
+   [⊢ (block s ...) ≫ s- (⇒ ν-ep (~effs))
                           (⇒ ν-f (~effs τ-f ...))
                           (⇒ ν-s (~effs τ-s ...))]
    #:with τ-r (type-eval #'(Reacts OnStop τ-f ... τ-s ...))
@@ -281,7 +281,7 @@
    [⊢ p/e ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
    #:with ([x:id τ:type] ...) (pat-bindings #'p/e)
-   [[x ≫ x- : τ] ... ⊢ (begin s ...) ≫ s-
+   [[x ≫ x- : τ] ... ⊢ (block s ...) ≫ s-
                  (⇒ ν-ep (~effs))
                  (⇒ ν-f (~effs τ-f ...))
                  (⇒ ν-s (~effs τ-s ...))]
@@ -295,7 +295,7 @@
       (⇒ ν-ep (τ-r))]])
 
 (define-typed-syntax (begin/dataflow s ...+) ≫
-  [⊢ (begin s ...) ≫ s-
+  [⊢ (block s ...) ≫ s-
      (⇒ : _)
      (⇒ ν-ep (~effs))
      (⇒ ν-f (~effs τ-f ...))
@@ -319,7 +319,7 @@
   ;; TODO: check that each τ-f is a Role
   #:mode (communication-type-mode #'τ-c.norm)
     [
-     [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
+     [⊢ (block s) ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
     ]
   ;; TODO: s shouldn't refer to facets or fields!
   #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
@@ -570,10 +570,14 @@
 ;; n.b. this is a blocking operation, so an actor that uses this internally
 ;; won't necessarily terminate.
 (define-typed-syntax (run-ground-dataspace τ-c:type s ...) ≫
-  [⊢ (dataspace τ-c s ...) ≫ ((~literal erased) ((~literal syndicate:dataspace) s- ...)) (⇒ : t)]
+  ;;#:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
+  #:mode (communication-type-mode #'τ-c.norm)
+  [
+   [⊢ s ≫ s- (⇒ : t1)] ...
+   [⊢ (dataspace τ-c.norm s- ...) ≫ _ (⇒ : t2)]
+  ]
   -----------------------------------------------------------------------------------
   [⊢ (#%app- syndicate:run-ground s- ...) (⇒ : (AssertionSet τ-c))])
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities

@@ -29,12 +29,12 @@
 
 (define-typed-syntax (bind x:id τ:type) ≫
   ----------------------------------------
-  [⊢ (error- 'bind "escaped") (⇒ : (Bind τ))])
+  [⊢ (#%app- error- 'bind "escaped") (⇒ : (Bind τ))])
 
 (define-typed-syntax discard
   [_ ≫
    --------------------
-   [⊢ (error- 'discard "escaped") (⇒ : Discard)]])
+   [⊢ (#%app- error- 'discard "escaped") (⇒ : Discard)]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core-ish forms
@@ -84,12 +84,13 @@
   ------------------------------------
   [≻ (if e #f (let () s ...))])
 
+
 ;; copied from ext-stlc
 (define-typed-syntax let
   [(_ ([x e] ...) e_body ...) ⇐ τ_expected ≫
    [⊢ e ≫ e- ⇒ : τ_x] ...
    #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
-   [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- (⇐ : τ_expected)
+   [[x ≫ x- : τ_x] ... ⊢ (block e_body ...) ≫ e_body- (⇐ : τ_expected)
                    (⇒ ν-ep (~effs eps ...))
                    (⇒ ν-f (~effs fs ...))
                    (⇒ ν-s (~effs ss ...))]
@@ -101,7 +102,7 @@
   [(_ ([x e] ...) e_body ...) ≫
    [⊢ e ≫ e- ⇒ : τ_x] ...
    #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
-   [[x ≫ x- : τ_x] ... ⊢ (begin e_body ...) ≫ e_body- (⇒ : τ_body)
+   [[x ≫ x- : τ_x] ... ⊢ (block e_body ...) ≫ e_body- (⇒ : τ_body)
                    (⇒ ν-ep (~effs eps ...))
                    (⇒ ν-f (~effs fs ...))
                    (⇒ ν-s (~effs ss ...))]
@@ -115,7 +116,7 @@
 (define-typed-syntax let*
   [(_ () e_body ...) ≫
    --------
-   [≻ (begin e_body ...)]]
+   [≻ (block e_body ...)]]
   [(_ ([x e] [x_rst e_rst] ...) e_body ...) ≫
    --------
    [≻ (let ([x e]) (let* ([x_rst e_rst] ...) e_body ...))]])
@@ -123,7 +124,7 @@
 (define-typed-syntax (cond [pred:expr s ...+] ...+) ≫
   [⊢ pred ≫ pred- (⇐ : Bool)] ...
   #:fail-unless (stx-andmap pure? #'(pred- ...)) "predicates must be pure"
-  [⊢ (begin s ...) ≫ s- (⇒ : τ-s)
+  [⊢ (block s ...) ≫ s- (⇒ : τ-s)
                    (⇒ ν-ep (~effs eps ...))
                    (⇒ ν-f (~effs fs ...))
                    (⇒ ν-s (~effs ss ...))] ...
@@ -141,7 +142,7 @@
   #:with (p/e ...) (for/list ([pat (in-syntax #'(p ...))])
                      (elaborate-pattern/with-type pat #'τ-e))
   #:with (([x τ:type] ...) ...) (stx-map pat-bindings #'(p/e ...))
-  [[x ≫ x- : τ.norm] ... ⊢ (begin s ...) ≫ s- (⇒ : τ-s)
+  [[x ≫ x- : τ.norm] ... ⊢ (block s ...) ≫ s- (⇒ : τ-s)
                 (⇒ ν-ep (~effs eps ...))
                 (⇒ ν-f (~effs fs ...))
                 (⇒ ν-s (~effs ss ...))] ...

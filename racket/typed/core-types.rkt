@@ -26,6 +26,9 @@
   (require rackunit)
   (require rackunit/turnstile))
 
+(begin-for-syntax
+  (current-use-stop-list? #f))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Type Checking Conventions
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1079,7 +1082,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax (lambda ([x:id (~optional (~datum :)) τ:type] ...) body ...+) ≫
-  [[x ≫ x- : τ] ... ⊢ (begin body ...) ≫ body- (⇒ : τ-e)
+  [[x ≫ x- : τ] ... ⊢ (block body ...) ≫ body- (⇒ : τ-e)
                 (⇒ ν-ep (~effs τ-ep ...))
                 (⇒ ν-s (~effs τ-s ...))
                 (⇒ ν-f (~effs τ-f ...))]
@@ -1265,7 +1268,7 @@
    #:with x- (generate-temporary #'x)
    #:with x+ (syntax-local-identifier-as-binding #'x)
    --------
-   [⊢ (define/intermediate x+ x- τ.norm e-)
+   [⊢ (erased (define/intermediate x+ x- τ.norm e-))
       (⇒ : ★/t)
       (⇒ ν-ep (τ-ep ...))
       (⇒ ν-f (τ-f ...))
@@ -1276,7 +1279,7 @@
    #:with x- (generate-temporary #'x)
    #:with x+ (syntax-local-identifier-as-binding #'x)
    --------
-   [⊢ (define/intermediate x+ x- τ e-)
+   [⊢ (erased (define/intermediate x+ x- τ e-))
       (⇒ : ★/t)
       (⇒ ν-ep (τ-ep ...))
       (⇒ ν-f (τ-f ...))
@@ -1284,7 +1287,7 @@
   [(_ (f [x (~optional (~datum :)) ty:type] ...
          (~or (~datum →) (~datum ->)) ty_out:type)
          e ...+) ≫
-   [⊢ (lambda ([x : ty] ...) (begin e ...)) ≫ e- (⇒ : (~and fun-ty
+   [⊢ (lambda ([x : ty] ...) (block e ...)) ≫ e- (⇒ : (~and fun-ty
                                                             (~→ (~not (~Computation _ ...)) ...
                                                                 (~Computation (~Value τ-v)
                                                                               _ ...))))]
@@ -1295,7 +1298,7 @@
        #;(type->str #'ty_out))
    #:with f- (add-orig (generate-temporary #'f) #'f)
    --------
-   [⊢ (define/intermediate f f- fun-ty e-) (⇒ : ★/t)]]
+   [⊢ (erased (define/intermediate f f- fun-ty e-)) (⇒ : ★/t)]]
   [(_ (f [x (~optional (~datum :)) ty] ...)
          e ...+) ≫
    ----------------------------
@@ -1307,7 +1310,7 @@
       e ...+) ≫
    #:with e+ #'(Λ (X ...)
                   (lambda ([x : ty] ...)
-                    (begin e ...)))
+                    (block e ...)))
    [[X ≫ X- :: #%type] ... ⊢ e+ ≫ e-
                        (⇒ : (~and res-ty
                                   (~∀ (Y ...)
@@ -1320,12 +1323,23 @@
                          #'τ-v #'ty_out)
    #:with f- (add-orig (generate-temporary #'f) #'f)
    -------------------------------------------------------
-   [⊢ (define/intermediate f f- res-ty e-) (⇒ : ★/t)]]
+   [⊢ (erased (define/intermediate f f- res-ty e-)) (⇒ : ★/t)]]
   [(_ ((~datum ∀) (X:id ...)
                   (f [x (~optional (~datum :)) ty] ...))
       e ...+) ≫
    --------------------------------------------------
    [≻ (define (∀ (X ...) (f [x ty] ... -> ★/t)) e ...)]])
+
+(define-typed-syntax block
+  [(_ e_unit ... e) ≫
+   #:do [(define-values (e-... τ... ep-effs f-effs s-effs) (walk/bind #'(e_unit ... e)))]
+   #:with τ (last τ...)
+   --------
+   [⊢ (let- () #,@e-...) (⇒ : τ)
+      (⇒ ν-ep (#,@ep-effs))
+      (⇒ ν-f (#,@f-effs))
+      (⇒ ν-s (#,@s-effs))]])
+
 
 (define-typed-syntax begin
   [(_ e_unit ... e) ≫
