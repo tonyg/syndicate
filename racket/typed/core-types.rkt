@@ -1,11 +1,13 @@
 #lang turnstile
 
-(provide (except-out (all-defined-out) → ∀)
+(provide (except-out (all-defined-out) → ∀ Role)
          (rename-out [→+ →]
-                     [∀+ ∀])
-         (for-syntax (except-out (all-defined-out) ~→ ~∀)
+                     [∀+ ∀]
+                     [Role+Body Role])
+         (for-syntax (except-out (all-defined-out) ~→ ~∀ ~Role)
                      (rename-out [~→+ ~→]
-                                 [~∀+ ~∀]))
+                                 [~∀+ ~∀]
+                                 [~Role+Body ~Role]))
          (for-meta 2 (all-defined-out)))
 (require (only-in turnstile
                   [define-type-constructor define-type-constructor-]
@@ -15,13 +17,15 @@
 (require turnstile/typedefs)
 (begin-for-syntax
   ;; turnstile/typedefs sets it to #t, which breaks things
-  (current-use-stop-list? #t))
+  (current-use-stop-list? #f))
 
 (require (prefix-in syndicate: syndicate/actor-lang))
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
 (require (for-syntax turnstile/examples/util/filter-maximal))
-(require (for-syntax macrotypes/type-constraints macrotypes/variance-constraints))
+(require (for-syntax (prefix-in ttc: turnstile/type-constraints)
+                     (prefix-in mtc: macrotypes/type-constraints)
+                     (prefix-in mvc: macrotypes/variance-constraints)))
 #;(require (only-in (for-syntax macrotypes/typecheck-core) get-orig))
 (require (for-syntax racket/struct-info
                      syntax/id-table))
@@ -76,7 +80,10 @@
   (define (un- id)
     (define match?
       (regexp-match #px"^(\\S*)-\\S*$" (symbol->string (syntax-e id))))
-    (string->symbol (second match?)))
+    (if match?
+        (string->symbol (second match?))
+        (begin (printf "no match! ~a\n" id)
+               match?)))
 
   ;; Identifier -> (U #f type-metadata)
   (define (get-type-info ty-cons)
@@ -224,23 +231,10 @@
   (define (new-type? t)
     (or (type?- t)
         (Type? (detach t ':))))
+  #;(require racket/trace)
+  #;(trace new-type?)
 
   (current-type? new-type?))
-
-(begin-for-syntax
-  ;; won't work for binding types
-  (define-syntax ~Any/new
-    (pattern-expander
-     (syntax-parser
-       [(_ tycons . rst)
-        #'((~literal #%plain-app)
-           tycons
-           (~and
-            (~or* (~seq ty (... ...) ((~literal #%plain-app) (~literal list) . more-tys))
-                  (~seq ty (... ...)))
-            (~parse rst (if (attribute more-tys)
-                            #'(ty (... ...) . more-tys)
-                            #'(ty (... ...))))))]))))
 
 (begin-for-syntax
   (define-generic-type-method get-arg-variances-data #:default #f)
@@ -318,9 +312,15 @@
 (define-simple-macro (define-base-types Name:id ...)
   (begin- (define-base-type Name) ...))
 
+(define-base-types Discard ★/t)
+
+(define-type FacetName : FacetName)
+
 #;(define-type-constructor? Shares #:arity = 1)
 
-(define-binding-type Role #:arity >= 0 #:bvs = 1)
+#;(define-binding-type Role #:arity >= 0 #:bvs = 1)
+(define-type Role #:with-binders [X : FacetName] : Type -> Type)
+(define-type RoleBody : Type * -> Type)
 (define-type-constructor Shares #:arity = 1)
 (define-type-constructor Sends #:arity = 1)
 (define-type-constructor Realizes #:arity = 1)
@@ -330,7 +330,8 @@
 (define-type-constructor Know #:arity = 1)
 (define-type-constructor Forget #:arity = 1)
 (define-product-type Realize #:arity = 1)
-(define-type-constructor Stop #:arity >= 1)
+#;(define-type-constructor Stop #:arity >= 1)
+(define-type Stop : FacetName Type * -> Type)
 (define-type-constructor Field #:arity = 1)
 (define-type-constructor Bind #:arity = 1)
 ;; keep track of branches for facet effects
@@ -392,6 +393,21 @@
                 TY
                 (~parse (vars-pat ty-pat) (flatten-∀ #'TY)))]))))
 
+(define-simple-macro (Role+Body (x:id) ty ...)
+  (Role (x : FacetName)
+        (RoleBody ty ...)))
+
+(begin-for-syntax
+  (define-syntax ~Role+Body
+    (pattern-expander
+     (syntax-parser
+       [(_ var-pat . ty-pat)
+        (syntax/loc this-syntax
+          (~and (~Role (internal-name : _)
+                       (~RoleBody . tys))
+                (~parse var-pat #'(internal-name))
+                (~parse ty-pat #'tys)))]))))
+
 
 ;; for describing the RHS
 ;; a value and a description of the effects
@@ -402,7 +418,6 @@
 (define-type-constructor Spawns #:arity >= 0)
 
 
-(define-base-types Discard ★/t FacetName)
 
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
@@ -415,15 +430,17 @@
 ;; (copied from ext-stlc example)
 (define-syntax define-type-alias
   (syntax-parser
-    [(_ alias:id τ)
+    [(_ alias:id τ:type)
+     #:with kind (detach #'τ.norm ':)
      #'(define-syntax- alias
-         (make-variable-like-transformer #'τ))]
+         (make-variable-like-transformer (attach #'τ ': #'kind)))]
     [(_ (f:id x:id ...) ty)
      #'(define-syntax- (f stx)
          (syntax-parse stx
            [(_ x ...)
-            #:with τ:any-type #'ty
-            #'τ.norm]))]))
+            #'ty
+            ;; #:with τ:any-type #'ty
+            #;#'τ.norm]))]))
 
 (define-type-alias ⊥ (U*))
 (define-type-alias Unit (Tuple))
@@ -686,7 +703,7 @@
         #'(~and it
                 (~fail #:unless (user-defined-type? #'it))
                 (~parse tag (get-type-tag #'it))
-                (~Any _ . rst))])))
+                (~Any/new _ . rst))])))
 
   (define-syntax ~constructor-exp
     (pattern-expander
@@ -756,11 +773,25 @@
     #:datum-literals (:)
     [(_ lib [name:id : ty:type] ...)
      #:with (name- ...) (format-ids "~a-" #'(name ...))
+     #:with (kind ...) (for/list ([t (in-syntax #'(ty.norm ...))])
+                         (detach t ':))
+     (define nm1 (syntax-e (first (syntax->list #'(name ...)))))
+     (define kind1 (first (syntax->list #'(kind ...))))
+     (when (equal? nm1 'identity)
+       (printf "require/typed: ~a\n" nm1)
+       (syntax-parse kind1
+         [(~Base t)
+          (define t-i (syntax-local-introduce #'t))
+          (pretty-print (syntax-debug-info t-i))
+          (pretty-print (identifier-binding t-i))]))
      (syntax/loc stx
        (begin-
          (require (only-in lib [name name-] ...))
          (define-syntax name
-           (make-variable-like-transformer (add-orig (assign-type #'name- #'ty #:wrap? #f) #'name)))
+           (make-variable-like-transformer
+            (add-orig (assign-type #'name-
+                                   (attach #'ty ': ((current-type-eval) #'Type))
+                                   #:wrap? #f) #'name)))
          ...))]))
 
 ;; Format identifiers in the same way
@@ -843,9 +874,9 @@
 
 (define-for-syntax (flat-type? τ)
   (syntax-parse τ
-    [(~→+ τ ...) #f]
+    [(~→+ i ... o) #f]
     [(~Actor τ) #f]
-    [(~Role (_) _ ...) #f]
+    [(~Role+Body (_) _ ...) #f]
     [_ #t]))
 
 (define-for-syntax (strip-? t)
@@ -906,7 +937,7 @@
 
 ;; Wanted test case, but can't use it bc it uses things defined for-syntax
 #;(module+ test
- (let ([r (type-eval #'(Role (x) (Shares Int)))])
+ (let ([r (type-eval #'(Role+Body (x) (Shares Int)))])
    (syntax-parse (analyze-role-input/output r)
      [(τ-i τ-o)
       (check-true (type=? #'τ-o (type-eval #'Int)))])))
@@ -928,13 +959,13 @@
      (values bot (mk-Message- #'(τ-m)) bot bot bot)]
     [(~Realizes τ-m)
      (values bot bot bot (mk-Realize- #'(τ-m)) bot)]
-    [(~Role (name:id)
+    [(~Role+Body (name:id)
        (~or (~Shares τ-s)
             (~Know τ-k)
             (~Sends τ-m)
             (~Realizes τ-rlz)
             (~Reacts τ-if τ-then ...)) ...
-       (~and (~Role _ ...) sub-role) ...)
+       (~and (~Role+Body _ _ ...) sub-role) ...)
      #:with (msg ...) (for/list ([m (in-syntax #'(τ-m ...))])
                         (mk-Message- (list m)))
      #:with (rlz ...) (for/list ([r (in-syntax #'(τ-rlz ...))])
@@ -1026,6 +1057,18 @@
      (paren-join (cons "U" (stx-map type->strX #'(τ ...))))]
     [(~Base x)
      (un-gensym #'x)]
+    [(~Role+Body (x:id) τ ...)
+     (define nm (un-gensym #'x))
+     (define body (stx-map type->strX #'(τ ...)))
+     (paren-join (list* "Role" (format "(~a)" nm) body))]
+    [(~∀+ (X ...) τ)
+     (define vars
+       (paren-join (stx-map type->strX #'(X ...))))
+     (paren-join (list "∀" vars (type->strX #'τ)))]
+    [(~Any/new τ-cons τ ...)
+     (define ctor (un-gensym #'τ-cons))
+     (define body (stx-map type->strX #'(τ ...)))
+     (paren-join (cons ctor body))]
     [(~Any/bvs τ-cons (X ...) τ ...)
      (define ctor (un-gensym #'τ-cons))
      (define body (stx-map type->strX #'(τ ...)))
@@ -1059,7 +1102,7 @@
       (flat-type? t1)]
      [((~U* τ1 ...) _)
       (stx-andmap (lambda (t) (<: t t2)) #'(τ1 ...))]
-     [(_ (~U* τ2:type ...))
+     [(_ (~U* τ2 ...))
       (stx-ormap (lambda (t) (<: t1 t)) #'(τ2 ...))]
      [((~Actor τ1) (~Actor τ2))
       (and (<: #'τ1 #'τ2)
@@ -1083,9 +1126,13 @@
       #t]
      [(X:id Y:id)
       (or (free-identifier=? #'X #'Y)
-          (let ()
-            #;(displayln (identifier-binding #'X))
-            #;(displayln (identifier-binding #'Y))
+          #;(let ()
+            (printf "X:\n")
+            (pretty-print (syntax-debug-info (values #;syntax-local-introduce #'X)))
+            (pretty-print (identifier-binding #'X))
+            (printf ":\n")
+            (pretty-print (syntax-debug-info (values #;syntax-local-introduce #'Y)))
+            (pretty-print (identifier-binding #'Y))
             #f))]
      [((~∀+ (X:id ...) τ1) (~∀+ (Y:id ...) τ2))
       #:when (stx-length=? #'(X ...) #'(Y ...))
@@ -1094,8 +1141,16 @@
             ;; (displayln #'τ2-X/Y)]
       (<: #'τ1 #'τ2-X/Y)]
      [((~Base τ1:id) (~Base τ2:id))
-      (free-identifier=? #'τ1 #'τ2)]
-     [((~Role (x) _ ...) (~Role (y) _ ...))
+      (or (free-identifier=? #'τ1 #'τ2)
+          (let ()
+            (printf "τ1:\n")
+            (pretty-print (syntax-debug-info (values #;syntax-local-introduce #'τ1)))
+            (pretty-print (identifier-binding #'τ1))
+            (printf "τ2:\n")
+            (pretty-print (syntax-debug-info (values #;syntax-local-introduce #'τ2)))
+            (pretty-print (identifier-binding #'τ2))
+            #f))]
+     [((~Role+Body (x) _ ...) (~Role+Body (y) _ ...))
       ;; Extremely Coarse subtyping for Role types
       (type=? t1 t2)]
      ;; TODO: clauses for Roles, effectful functions, and so on
@@ -1118,7 +1173,7 @@
           [(== irrelevant)
            #t]))]
      [_
-      #f]))
+      (type=? t1 t2)]))
 
  ;; shortcuts for mapping
  (define ((<:l l) r)
@@ -1132,7 +1187,8 @@
 ;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 (begin-for-syntax
-  (current-typecheck-relation <:))
+  (current-typecheck-relation <:)
+  (current-check-relation <:))
 
 ;; Flat-Type Flat-Type -> Type
 ;; Intersection
@@ -1305,6 +1361,10 @@
       (and (flat-type? ty)
            (finite? ty))))
 
+#;(begin-for-syntax
+  (require racket/trace)
+  (trace instantiable?))
+
 (begin-for-syntax
   ;; CONVENTION: Type variables for effects are prefixed with ρ
   (define (row-variable? x)
@@ -1431,15 +1491,17 @@
     [(_ [x:id x-:id τ e-] ...)
      #'(syndicate:field [x- e-] ...)]))
 
+(define-for-syntax KIND-TAG ':)
 
 (define-syntax (define/intermediate stx)
   (syntax-parse stx
     [(_ x:id x-:id τ e)
      ;; including a syntax binding for x allows for module-top-level references
      ;; (where walk/bind won't replace further uses) and subsequent provides
+     #:with kind (detach #'τ ':)
      #'(begin-
          (define-syntax x
-           (make-variable-like-transformer (add-orig (attach #'x- ': #'τ) #'x)))
+           (make-variable-like-transformer (add-orig (attach #'x- ': (attach #'τ ': #'kind)) #'x)))
          (define- x- e))]))
 
 ;; copied from ext-stlc
@@ -1569,13 +1631,13 @@
    ;; solve for type variables Xs
    #:with [[e_arg- ...] Xs* cs] (solve #'Xs #'tyX_args this-syntax)
    ;; make sure types are legal
-   #:with tyXs (inst-types/cs #'Xs* #'cs #'Xs)
+   #:with tyXs (ttc:inst-types/cs #'Xs* #'cs #'Xs)
    #:fail-unless (for/and ([ty (in-syntax #'tyXs)]
                            [x (in-syntax #'Xs)])
                    (instantiable? x ty))
                  "type variables must be flat and finite"
    ;; instantiate polymorphic function type
-   #:with [τ_in ... τ_out] (inst-types/cs #'Xs* #'cs #'tyX_args)
+   #:with [τ_in ... τ_out] (ttc:inst-types/cs #'Xs* #'cs #'tyX_args)
    #:with (unsolved-X ...) (find-free-Xs #'Xs* #'τ_out)
    ;; arity check
    #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
@@ -1665,7 +1727,7 @@
                    ((current-type-eval) (get-expected-type stx)))
        (define initial-cs
          (if (and (syntax-e #'expected-ty) (stx-null? #'Vs))
-             (add-constraints Xs '() (list (list #'expected-ty #'τ_outX)))
+             (ttc:add-constraints Xs '() (list (list #'expected-ty #'τ_outX)))
              '()))
        (syntax-parse stx
          [(_ e_fn . args)
@@ -1673,7 +1735,7 @@
               (for/fold ([as- null] [cs initial-cs])
                         ([a (in-stx-list #'args)]
                          [tyXin (in-stx-list #'(τ_inX ...))])
-                (define ty_in (inst-type/cs/orig Xs cs tyXin datum=?))
+                (define ty_in (ttc:inst-type/cs/orig Xs cs tyXin datum=?))
                 (when (tyvar-under-union? Xs ty_in)
                   (type-error #:src a
                               #:msg (format "can't infer types with unions: ~a\nraw: ~a"
@@ -1688,8 +1750,8 @@
                                             (type->str #'ty_a) #'ty_a)))
                 (values
                  (cons #'a- as-)
-                 (add-constraints Xs cs (list (list ty_in #'ty_a))
-                                  (list (list (inst-type/cs/orig
+                 (ttc:add-constraints Xs cs (list (list ty_in #'ty_a))
+                                  (list (list (ttc:inst-type/cs/orig
                                                Xs cs ty_in
                                                datum=?)
                                               #'ty_a))))))
@@ -1739,9 +1801,9 @@
        (for/list ([X (in-list Xs)])
          (cond [(free-identifier=? X #'A) ctxt-variance]
                [else irrelevant]))]
-      [(~Any tycons)
+      [(~Any/new tycons)
        (stx-map (λ _ irrelevant) Xs)]
-      [(~?∀ () (~Any tycons τ ...))
+      [(~?∀ () (~Any/new tycons τ ...))
        #:when (get-arg-variances #'tycons)
        #:when (stx-length=? #'[τ ...] (get-arg-variances #'tycons))
        (define τ-ctxt-variances
@@ -1750,7 +1812,7 @@
        (for/fold ([acc (stx-map (λ _ irrelevant) Xs)])
                  ([τ (in-stx-list #'[τ ...])]
                   [τ-ctxt-variance (in-list τ-ctxt-variances)])
-         (map variance-join
+         (map mvc:variance-join
               acc
               (find-variances Xs τ τ-ctxt-variance)))]
       [ty
@@ -1758,3 +1820,18 @@
                      (stx-contains-id? #'ty X)))
        (stx-map (λ _ irrelevant) Xs)]
       [_ (stx-map (λ _ invariant) Xs)])))
+
+#;(begin-for-syntax
+  (define t #'Unit)
+  (define t- ((current-type-eval) t))
+  (displayln ((current-type?) t-))
+  (define tt (syntax-parse (detach t- ':)
+               [(#%plain-app x) #'x]))
+  (pretty-print (syntax-debug-info tt)))
+
+#;(begin-for-syntax
+  (define t #'(→ Unit Unit))
+  #;(define t #'(Actor Unit))
+  (define t- ((current-type-eval) t))
+  (values #;displayln ((current-type?) t-))
+  (printf "flat-type? ~a\n" (flat-type? t-)))

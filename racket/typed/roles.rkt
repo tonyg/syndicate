@@ -14,7 +14,7 @@
          Branch Effs
          FacetName Field ★/t
          Observe Inbound Outbound Actor U ⊥
-         Computation Value Endpoints Roles Spawns
+         Computation Value Endpoints Roles Spawns Sends
          →fn proc
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
@@ -84,6 +84,7 @@
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
 (require macrotypes/postfix-in)
 (require (for-syntax turnstile/mode))
+(require turnstile/typedefs)
 (require (postfix-in - racket/list))
 (require (postfix-in - racket/set))
 
@@ -139,7 +140,7 @@
                (~and τ-k (~Know _))
                ;; untyped syndicate might allow this - TODO
                #;(~and τ-m (~Sends _))
-               (~and τ-r (~Reacts _ ...))
+               (~and τ-r (~Reacts _ _ ...))
                ~MakesField)
           ...)
          ep-effects
@@ -204,7 +205,7 @@
                          (⇒ ν-ep (~effs))
                          (⇒ ν-s (~effs))
                          (⇒ ν-f (~effs τ-f ...))]
-  #:with τ (mk-Stop- #`(facet-name- τ-f ...))
+  #:with τ #'(Stop facet-name- τ-f ...)
   ---------------------------------------------------------------------------------
   [⊢ (syndicate:stop-facet facet-name- cont-) (⇒ : ★/t)
                                               (⇒ ν-f (τ))])
@@ -450,7 +451,7 @@
      #'τ]
     [(~U* τ ...)
      (mk-U- (stx-map instantiate-pattern-type #'(τ ...)))]
-    [(~Any/bvs τ-cons () τ ...)
+    [(~Any/new τ-cons τ ...)
      #:when (reassemblable? #'τ-cons)
      (define subitems (for/list ([t (in-syntax #'(τ ...))])
                         (instantiate-pattern-type t)))
@@ -609,6 +610,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
+  (check-type
+    (spawn (U (Observe (Tuple Int ★/t)))
+           (start-facet echo
+                        (on (message (tuple 1 $x))
+                            #f)))
+    : ★/t)
   (check-type (spawn (U (Message (Tuple String Int))
                         (Observe (Tuple String ★/t)))
                      (start-facet echo
