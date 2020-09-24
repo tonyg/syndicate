@@ -35,6 +35,7 @@
 (require (postfix-in - racket/set))
 (require (postfix-in - racket/match))
 (require (postfix-in - (only-in racket/format ~a)))
+(require (for-syntax "syntax-serializer.rkt"))
 
 
 (module+ test
@@ -431,9 +432,10 @@
 (define-syntax define-type-alias
   (syntax-parser
     [(_ alias:id τ:type)
-     #:with kind (detach #'τ.norm ':)
+     ;; #:with kind (detach #'τ.norm ':)
+     #:with serialized-τ (serialize-syntax #'τ.norm)
      #'(define-syntax- alias
-         (make-variable-like-transformer (attach #'τ ': #'kind)))]
+         (make-variable-like-transformer (deserialize-syntax #'serialized-τ)))]
     [(_ (f:id x:id ...) ty)
      #'(define-syntax- (f stx)
          (syntax-parse stx
@@ -773,24 +775,14 @@
     #:datum-literals (:)
     [(_ lib [name:id : ty:type] ...)
      #:with (name- ...) (format-ids "~a-" #'(name ...))
-     #:with (kind ...) (for/list ([t (in-syntax #'(ty.norm ...))])
-                         (detach t ':))
-     (define nm1 (syntax-e (first (syntax->list #'(name ...)))))
-     (define kind1 (first (syntax->list #'(kind ...))))
-     (when (equal? nm1 'identity)
-       (printf "require/typed: ~a\n" nm1)
-       (syntax-parse kind1
-         [(~Base t)
-          (define t-i (syntax-local-introduce #'t))
-          (pretty-print (syntax-debug-info t-i))
-          (pretty-print (identifier-binding t-i))]))
+     #:with (serialized-ty ...) (for/list ([t (in-syntax #'(ty.norm ...))])
+                                  (serialize-syntax t))
      (syntax/loc stx
        (begin-
          (require (only-in lib [name name-] ...))
          (define-syntax name
            (make-variable-like-transformer
-            (add-orig (assign-type #'name-
-                                   (attach #'ty ': ((current-type-eval) #'Type))
+            (add-orig (assign-type #'name- (deserialize-syntax #'serialized-ty)
                                    #:wrap? #f) #'name)))
          ...))]))
 
@@ -1406,12 +1398,12 @@
 (define-for-syntax (int-def-ctx-bind-type-rename x x- t ctx)
   (when DEBUG-BINDINGS?
     (printf "adding to context ~a\n" (syntax-debug-info x)))
-  (define kind (detach t KIND-TAG))
+  (define serialized-ty (serialize-syntax t))
   (syntax-local-bind-syntaxes (list x-) #f ctx)
   (syntax-local-bind-syntaxes (list x)
                               #`(make-rename-transformer
                                  (add-orig
-                                  (attach #'#,x- ': (attach #'#,t '#,KIND-TAG #'#,kind))
+                                  (attach #'#,x- ': (deserialize-syntax #'#,serialized-ty))
                                   #'#,x)
                                  #;(add-orig (assign-type #'#,x- #'#,t #:wrap? #f) #'#,x))
                               ctx))
@@ -1499,10 +1491,10 @@
     [(_ x:id x-:id τ e)
      ;; including a syntax binding for x allows for module-top-level references
      ;; (where walk/bind won't replace further uses) and subsequent provides
-     #:with kind (detach #'τ ':)
+     #:with serialized-τ (serialize-syntax #'τ)
      #'(begin-
          (define-syntax x
-           (make-variable-like-transformer (add-orig (attach #'x- ': (attach #'τ ': #'kind)) #'x)))
+           (make-variable-like-transformer (add-orig (attach #'x- ': (deserialize-syntax #'serialized-τ)) #'x)))
          (define- x- e))]))
 
 ;; copied from ext-stlc
@@ -1628,6 +1620,7 @@
    [⊢ e_fn ≫ e_fn- ⇒ (~∀+ Xs (~→fn tyX_in ... tyX_out))]
    ;; successfully matched a polymorphic fn type, don't backtrack
    #:cut
+   #:do [(printf "A\n")]
    #:with tyX_args #'(tyX_in ... tyX_out)
    ;; solve for type variables Xs
    #:with [[e_arg- ...] Xs* cs] (solve #'Xs #'tyX_args this-syntax)
@@ -1638,6 +1631,7 @@
                    (instantiable? x ty))
                  "type variables must be flat and finite"
    ;; instantiate polymorphic function type
+   #:do [(printf "B\n")]
    #:with [τ_in ... τ_out] (ttc:inst-types/cs #'Xs* #'cs #'tyX_args)
    #:with (unsolved-X ...) (find-free-Xs #'Xs* #'τ_out)
    ;; arity check
@@ -1649,6 +1643,7 @@
    #:with (τ_arg ...) (stx-map typeof #'(e_arg- ...))
    ;; typecheck args
    [τ_arg τ⊑ τ_in #:for e_arg] ...
+   #:do [(printf "C\n")]
    #:with τ_out* (if (stx-null? #'(unsolved-X ...))
                      #'τ_out
                      (syntax-parse #'τ_out
@@ -1661,7 +1656,8 @@
                              #f
                              (mk-app-poly-infer-error this-syntax #'(τ_in ...) #'(τ_arg ...) #'e_fn)
                              this-syntax)))
-                        ((type-eval) #'(∀+ (unsolved-X ... Y ...) τ_out))]))
+                        (type-eval #'(∀+ (unsolved-X ... Y ...) τ_out))]))
+   #:do [(printf "D\n")]
    --------
    [⊢ (#%plain-app- e_fn- e_arg- ...) ⇒ τ_out*]]
   ;; All Other Functions
