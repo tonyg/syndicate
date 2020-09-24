@@ -1087,7 +1087,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (begin-for-syntax
-  (define trace-sub? (make-parameter #t))
+  (define trace-sub? (make-parameter #f))
 
  ;; Type Type -> Bool
  ;; subtyping
@@ -1406,11 +1406,12 @@
 (define-for-syntax (int-def-ctx-bind-type-rename x x- t ctx)
   (when DEBUG-BINDINGS?
     (printf "adding to context ~a\n" (syntax-debug-info x)))
+  (define kind (detach t KIND-TAG))
   (syntax-local-bind-syntaxes (list x-) #f ctx)
   (syntax-local-bind-syntaxes (list x)
                               #`(make-rename-transformer
                                  (add-orig
-                                  (attach #'#,x- ': #'#,t)
+                                  (attach #'#,x- ': (attach #'#,t '#,KIND-TAG #'#,kind))
                                   #'#,x)
                                  #;(add-orig (assign-type #'#,x- #'#,t #:wrap? #f) #'#,x))
                               ctx))
