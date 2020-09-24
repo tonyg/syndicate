@@ -5,7 +5,7 @@
          Either
          left
          right
-         #;partition/either)
+         partition/either)
 
 (require "core-types.rkt")
 (require "core-expressions.rkt")
@@ -23,7 +23,7 @@
   x)
 
 
-#;(define (∀ (X Y Z) (partition/either [xs : (List X)]
+(define (∀ (X Y Z) (partition/either [xs : (List X)]
                                      [pred : (→fn X (U (Left Y)
                                                        (Right Z)) #;(Either Y Z))]
                                      -> (Tuple (List Y) (List Z))))
