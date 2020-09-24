@@ -4,6 +4,8 @@
 ;; Protocol
 
 #|
+
+#|
 Conversations in the flink dataspace primarily concern two topics: presence and
 task execution.
 
@@ -168,8 +170,13 @@ The JobManager then performs the job and, when finished, asserts
     (printf fmt . args)
     (printf "\n")))
 
+|#
+
+
 ;; ---------------------------------------------------------------------------------------------------
 ;; TaskRunner
+
+#|
 
 (define (word-count-increment [h : WordCount]
                               [word : String]
@@ -213,6 +220,7 @@ The JobManager then performs the job and, when finished, asserts
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; TaskManager
+
 
 (define (spawn-task-manager [num-task-runners : Int])
   (define id (gensym 'task-manager))
@@ -281,22 +289,8 @@ The JobManager then performs the job and, when finished, asserts
                [(finished discard)
                 (set! status st)])))))))))
 
-
 ;; ---------------------------------------------------------------------------------------------------
 ;; JobManager
-
-;; Task -> Bool
-;; Test if the task is ready to run
-(define (task-ready? [t : PendingTask] -> (Maybe ConcreteTask))
-  (match t
-    [(task $tid (map-work $s))
-     ;; having to re-produce this is directly bc of no occurrence typing
-     (some (task tid (map-work s)))]
-    [(task $tid (reduce-work (right $v1)
-                             (right $v2)))
-     (some (task tid (reduce-work v1 v2)))]
-    [_
-     none]))
 
 ;; Task Int Any -> Task
 ;; If the given task is waiting for this data, replace the waiting ID with the data
@@ -320,8 +314,23 @@ The JobManager then performs the job and, when finished, asserts
                                  -> (Tuple (List X) (List X))))
   (define l (split-at/lenient- xs n))
   (tuple (first l) (second l)))
+|#
 
-(define (partition-ready-tasks [tasks : (List PendingTask)]
+;; Task -> Bool
+;; Test if the task is ready to run
+#;(define (task-ready? [t : PendingTask] -> (Maybe ConcreteTask))
+  (match t
+    [(task $tid (map-work $s))
+     ;; having to re-produce this is directly bc of no occurrence typing
+     (some (task tid (map-work s)))]
+    [(task $tid (reduce-work (right $v1)
+                             (right $v2)))
+     (some (task tid (reduce-work v1 v2)))]
+    [_
+     none]))
+
+
+#;(define (partition-ready-tasks [tasks : (List PendingTask)]
                                -> (Tuple (List PendingTask)
                                          (List ConcreteTask)))
   (define part (inst partition/either PendingTask PendingTask ConcreteTask))
@@ -333,6 +342,28 @@ The JobManager then performs the job and, when finished, asserts
             [none
              (left t)]))))
 
+
+(define (partition-ready-tasks [tasks : (List Int)]
+                               -> (Tuple (List Int)
+                                         (List Int)))
+  (define part (inst partition/either Int Int Int))
+  (part tasks
+        (lambda ([t : Int])
+          (right 0)
+          #;(match (some 5)
+            [(some $ct)
+             (right ct)]
+            [none
+             (left 0)]))))
+
+#;(define (debug [tasks : (List Int)] -> (Tuple (List String) (List Int)))
+  (define part (inst partition/either Int String Int))
+  (tuple (list) (list))
+  (part tasks
+        (lambda ([t : Int])
+          (left "hi"))))
+#|
+
 (define (input->pending-task [t : InputTask] -> PendingTask)
   (match t
     [(task $id (map-work $s))
@@ -340,6 +371,7 @@ The JobManager then performs the job and, when finished, asserts
      (task id (map-work s))]
     [(task $id (reduce-work $l $r))
      (task id (reduce-work (left l) (left r)))]))
+
 
 (message-struct tasks-finished : TasksFinished (id results))
 
@@ -528,3 +560,4 @@ The JobManager then performs the job and, when finished, asserts
   (spawn-task-manager 3)
   (spawn-client (file->job "lorem.txt"))
   (spawn-client (string->job INPUT)))
+|#
