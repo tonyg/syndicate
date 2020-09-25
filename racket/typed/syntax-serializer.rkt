@@ -10,6 +10,8 @@
 (struct datum-val (d) #:prefab)
 (struct ref (unique-tag sym) #:prefab)
 
+;(require racket/pretty)
+
 (define (serialize-syntax stx)
   (define unique-tag (gensym))
   (define table (hasheq))
@@ -28,24 +30,29 @@
        (define serialized-val
          (if (syntax? val)
              (syntax-val (serialize-element! val))
-             (datum-val (serialize-element! val))))
+             (datum-val (serialize-element! val #:always-lift? #t))))
        (cons k serialized-val))))
 
-  (define (serialize-element! el)
+  (define (serialize-element! el #:always-lift? [always-lift? #f])
     (syntax-map
      el
      (lambda (tail? d) d)
      (lambda (orig-s d)
-       (if (not (ormap (lambda (p) (syntax-property-preserved? orig-s p))
-                       (syntax-property-symbol-keys orig-s)))
-           (datum->syntax orig-s d orig-s #f)
-           (lift! (build-props! orig-s d))))
+       (if (or always-lift?
+               (ormap (lambda (p) (syntax-property-preserved? orig-s p))
+                      (syntax-property-symbol-keys orig-s)))
+           (lift! (build-props! orig-s d))
+           (datum->syntax orig-s d orig-s #f)))
      syntax-e))
   
   (define top-s (serialize-element! stx))
   (datum->syntax #f (serialized-syntax unique-tag table top-s)))
 
 (define (deserialize-syntax ser)
+  ;(displayln 'deserialize-in)
+  ;(print-syntax-width +inf.0)
+  ;(println ser)
+  ;(pretty-print (syntax->datum ser))
   (match (syntax-e ser)
     [(serialized-syntax unique-tag-stx table-stx contents)
      (define unique-tag (syntax-e unique-tag-stx))
@@ -56,7 +63,8 @@
      
      (define (deserialize-stx-with-props ref-sym)
        (match-define (stx-with-props stx ps) (syntax-e (hash-ref table ref-sym)))
-       (for/fold ([stx stx])
+       (define deserialized-nested-stx (deserialize-element stx))
+       (for/fold ([stx deserialized-nested-stx])
                  ([stx-pr (syntax->list ps)])
          (define pr (syntax-e stx-pr))
          (define k (syntax-e (car pr)))
@@ -81,15 +89,29 @@
         (lambda (orig-s d) (datum->syntax orig-s d orig-s #f))
         syntax-e))
 
-     (deserialize-element contents)]))
+     (define res (deserialize-element contents))
+     ;(displayln 'deserialize-out)
+     ;(println res)
+     ;(pretty-print (syntax->datum res))
+     res]))
    
 (module+ test
   (require rackunit)
 
-  (define orig #`(1 #,(syntax-property #'2 ': (syntax-property #'Int ':: #'Type #t) #t)))
-  (define s (serialize-syntax orig))
+  (define type
+    (syntax-property
+      (syntax-property #'Int ':: #'Type #t)
+      'orig (list #'Int) #t))
+  (define term (syntax-property #`(1 #,(syntax-property #'2 ': type #t)) ': #'Type #t))
+  (define s (serialize-syntax term))
   (define d (deserialize-syntax s))
 
+  (check-true
+   (bound-identifier=?
+    (syntax-property d ':)
+    #'Type))
+
+  ; syntax with properties inside outer syntax with properties.
   (check-true
    (bound-identifier=?
     (syntax-property (syntax-property (cadr (syntax-e d)) ':) '::)
@@ -101,16 +123,23 @@
     #'Int))
 
   (check-equal?
-   (syntax-position orig)
+   (syntax-position term)
    (syntax-position d))
   
   (check-equal?
-   (syntax-position (syntax-property (cadr (syntax-e orig)) ':))
+   (syntax-position (syntax-property (cadr (syntax-e term)) ':))
    (syntax-position (syntax-property (cadr (syntax-e d)) ':)))
 
   (check-equal?
-   (syntax-position (car (syntax-e orig)))
-   (syntax-position (car (syntax-e d)))))
+   (syntax-position (car (syntax-e term)))
+   (syntax-position (car (syntax-e d))))
+
+  ; syntax in datum in properties
+  (check-true
+    (bound-identifier=?
+      (car (syntax-property (syntax-property (cadr (syntax-e d)) ':) 'orig))
+      #'Int))
+  )
 
 
 ;; ----------------------------------------------------------------
