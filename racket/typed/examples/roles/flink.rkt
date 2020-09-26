@@ -3,7 +3,6 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Protocol
 
-#|
 
 #|
 Conversations in the flink dataspace primarily concern two topics: presence and
@@ -170,13 +169,11 @@ The JobManager then performs the job and, when finished, asserts
     (printf fmt . args)
     (printf "\n")))
 
-|#
 
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; TaskRunner
 
-#|
 
 (define (word-count-increment [h : WordCount]
                               [word : String]
@@ -314,11 +311,10 @@ The JobManager then performs the job and, when finished, asserts
                                  -> (Tuple (List X) (List X))))
   (define l (split-at/lenient- xs n))
   (tuple (first l) (second l)))
-|#
 
 ;; Task -> Bool
 ;; Test if the task is ready to run
-#;(define (task-ready? [t : PendingTask] -> (Maybe ConcreteTask))
+(define (task-ready? [t : PendingTask] -> (Maybe ConcreteTask))
   (match t
     [(task $tid (map-work $s))
      ;; having to re-produce this is directly bc of no occurrence typing
@@ -330,7 +326,7 @@ The JobManager then performs the job and, when finished, asserts
      none]))
 
 
-#;(define (partition-ready-tasks [tasks : (List PendingTask)]
+(define (partition-ready-tasks [tasks : (List PendingTask)]
                                -> (Tuple (List PendingTask)
                                          (List ConcreteTask)))
   (define part (inst partition/either PendingTask PendingTask ConcreteTask))
@@ -343,7 +339,7 @@ The JobManager then performs the job and, when finished, asserts
              (left t)]))))
 
 
-(define (partition-ready-tasks [tasks : (List Int)]
+#;(define (partition-ready-tasks [tasks : (List Int)]
                                -> (Tuple (List Int)
                                          (List Int)))
   (define part (inst partition/either Int Int Int))
@@ -362,7 +358,6 @@ The JobManager then performs the job and, when finished, asserts
   (part tasks
         (lambda ([t : Int])
           (left "hi"))))
-#|
 
 (define (input->pending-task [t : InputTask] -> PendingTask)
   (match t
@@ -560,4 +555,3 @@ The JobManager then performs the job and, when finished, asserts
   (spawn-task-manager 3)
   (spawn-client (file->job "lorem.txt"))
   (spawn-client (string->job INPUT)))
-|#
