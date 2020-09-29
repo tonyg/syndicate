@@ -81,10 +81,7 @@
   (define (un- id)
     (define match?
       (regexp-match #px"^(\\S*)-\\S*$" (symbol->string (syntax-e id))))
-    (if match?
-        (string->symbol (second match?))
-        (begin (printf "no match! ~a\n" id)
-               match?)))
+    (and match? (string->symbol (second match?))))
 
   ;; Identifier -> (U #f type-metadata)
   (define (get-type-info ty-cons)
@@ -1134,7 +1131,7 @@
       (<: #'τ1 #'τ2-X/Y)]
      [((~Base τ1:id) (~Base τ2:id))
       (or (free-identifier=? #'τ1 #'τ2)
-          (let ()
+          #;(let ()
             (printf "τ1:\n")
             (pretty-print (syntax-debug-info (values #;syntax-local-introduce #'τ1)))
             (pretty-print (identifier-binding #'τ1))
