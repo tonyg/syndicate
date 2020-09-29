@@ -13,8 +13,20 @@
 ;(require racket/pretty)
 
 (define (serialize-syntax stx)
+  (displayln 'serialize)
+  ;(print-syntax-width +inf.0)
+  ;(println stx)
+  ;(pretty-print (syntax->datum stx))
+
   (define unique-tag (gensym))
   (define table (hasheq))
+  (define dedup-table (hasheq))
+  (define (dedup k f)
+    (if (hash-has-key? dedup-table k)
+      (hash-ref dedup-table k)
+      (let ([res (f)])
+        (set! dedup-table (hash-set dedup-table k res))
+        res)))
 
   (define (lift! el)
     (define tag-sym (gensym))
@@ -34,22 +46,35 @@
        (cons k serialized-val))))
 
   (define (serialize-element! el #:always-lift? [always-lift? #f])
-    (syntax-map
-     el
-     (lambda (tail? d) d)
-     (lambda (orig-s d)
-       (if (or always-lift?
-               (ormap (lambda (p) (syntax-property-preserved? orig-s p))
-                      (syntax-property-symbol-keys orig-s)))
-           (lift! (build-props! orig-s d))
-           (datum->syntax orig-s d orig-s #f)))
-     syntax-e))
-  
+    (dedup
+      el
+      (lambda ()
+        (syntax-map
+          el
+          (lambda (tail? d) d)
+          (lambda (orig-s d)
+            ;(when (and always-lift? (not (ref? (hash-ref dedup-table orig-s)))) ; TODO
+            ;(error 'dedup "lift error"))
+            (dedup
+              orig-s
+              (lambda ()
+                (if (or always-lift?
+                        (ormap (lambda (p) (syntax-property-preserved? orig-s p))
+                               (syntax-property-symbol-keys orig-s)))
+                  (lift! (build-props! orig-s d))
+                  (datum->syntax orig-s d orig-s #f)))))
+          syntax-e))))
+
   (define top-s (serialize-element! stx))
-  (datum->syntax #f (serialized-syntax unique-tag table top-s)))
+  (define res (datum->syntax #f (serialized-syntax unique-tag table top-s)))
+
+  ;(displayln 'serialize-out)
+  ;(println res)
+  ;(pretty-print (syntax->datum res))
+  res)
 
 (define (deserialize-syntax ser)
-  ;(displayln 'deserialize-in)
+  (displayln 'deserialize)
   ;(print-syntax-width +inf.0)
   ;(println ser)
   ;(pretty-print (syntax->datum ser))
@@ -57,10 +82,18 @@
     [(serialized-syntax unique-tag-stx table-stx contents)
      (define unique-tag (syntax-e unique-tag-stx))
      (define table (syntax-e table-stx))
+     (define dedup-table (hasheq))
+     (define (dedup k f)
+       (if (hash-has-key? dedup-table k)
+         (hash-ref dedup-table k)
+         (let ([res (f)])
+           (set! dedup-table (hash-set dedup-table k res))
+           res)))
+
 
      (define (maybe-syntax-e v)
        (if (syntax? v) (syntax-e v) v))
-     
+
      (define (deserialize-stx-with-props ref-sym)
        (match-define (stx-with-props stx ps) (syntax-e (hash-ref table ref-sym)))
        (define deserialized-nested-stx (deserialize-element stx))
@@ -76,18 +109,26 @@
              [(datum-val v)
               (deserialize-element (syntax->datum v))]))
          (syntax-property stx k prop-val #t)))
-     
+
      (define (deserialize-element el)
-       (syntax-map
-        el
-        (lambda (tail? d)
-          (match d
-            [(ref tag sym)
-             #:when (equal? (maybe-syntax-e tag) unique-tag)
-             (deserialize-stx-with-props (maybe-syntax-e sym))]
-            [_ d]))
-        (lambda (orig-s d) (datum->syntax orig-s d orig-s #f))
-        syntax-e))
+       (dedup
+         el
+         (lambda ()
+           (syntax-map
+             el
+             (lambda (tail? d)
+               (match d
+                 [(ref tag sym)
+                  #:when (equal? (maybe-syntax-e tag) unique-tag)
+                  (dedup
+                    sym
+                    (lambda () (deserialize-stx-with-props (maybe-syntax-e sym))))]
+                 [_ d]))
+             (lambda (orig-s d)
+               (dedup
+                 orig-s
+                 (lambda () (datum->syntax orig-s d orig-s #f))))
+             syntax-e))))
 
      (define res (deserialize-element contents))
      ;(displayln 'deserialize-out)
