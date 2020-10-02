@@ -26,7 +26,7 @@
 (define-type-alias account-manager-role
   (Role (account-manager)
         (Shares Account)
-        (Reacts (Know (Deposit Int)))))
+        (Reacts (Know Deposit))))
 
 (define-type-alias client-role
   (Role (client)

@@ -22,11 +22,11 @@
   (Role (cell-factory)
         (Reacts (Message (CreateCellT ID Value))
                 ;; want to say that what it spawns is a Cell
-                (Spawn ★/t))))
+                (Spawns ★/t))))
 
 (define-type-alias Reader
   (Role (reader)
-        (Shares (Observe (Cell ID ★/t)))))
+        (Shares (Observe (CellT ID ★/t)))))
 
 (define-type-alias Writer
   (Role (writer)

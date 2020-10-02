@@ -83,10 +83,10 @@
                                  (Stop poll)))))))
 
 (define-type-alias leader-actual
-  (Role (get-quotes31)
+  (Role (get-quotes)
         (Reacts (Asserted (BookQuoteT String (Bind Int)))
                 (Stop get-quotes)
-                (Role (poll-members36)
+                (Role (poll-members)
                       (Reacts OnDataflow
                               (Stop poll-members
                                     (Stop get-quotes))

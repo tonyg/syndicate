@@ -143,6 +143,20 @@
       (error "expected to find type-cons-key"))
     (tycons args)))
 
+(begin-for-syntax
+  (define ((mk-ctor-rewriter Name-) stx)
+    (syntax-parse stx
+      [(_ . ts)
+       (quasisyntax/loc stx
+         (#,Name- . ts))]))
+  (begin-for-syntax
+    (define ((mk-ctor-rewriter Name-) stx)
+      (syntax-parse stx
+        [(_ . ts)
+         (quasisyntax/loc stx
+           (#,Name- . ts))])))
+  )
+
 (define-syntax (define-type-constructor+ stx)
   (syntax-parse stx
     [(_ Name:id
@@ -163,18 +177,12 @@
            #,@(if (attribute extra-info)
                   #'(#:extra-info extra-info)
                   #'()))
-         (define-syntax (Name stx)
-           (syntax-parse stx
-             [(_ . ts)
-              (syntax/loc stx
-                (Name- . ts))]))
+         (define-syntax Name (mk-ctor-rewriter #'Name-))
          (begin-for-syntax
            (set-type-info! 'Name '#,(attribute desc.val) mk-)
            (define-syntax NamePat
              (pattern-expander
-              (syntax-parser
-                [(_ . p)
-                 #'(NamePat- . p)]))))
+              (mk-ctor-rewriter #'NamePat-))))
          (define-for-syntax mk mk-)))]))
 
 (begin-for-syntax
@@ -268,23 +276,19 @@
        (append prefix (list #'Type #'*))]))
 
   ;; PatternExpander (Syntax-Listof ID) ID -> Pattern
-  (define (make-type-recognizer pat dom ty)
-    (define pats (for/list ([t (in-syntax dom)])
-                   (if (free-identifier=? t #'Type)
-                       #'_
-                       #'(... ...))))
-    #`(syntax-parse ty
-        [(#,pat #,@pats) #t]
-        [_ #f])))
+  (define ((make-type-recognizer name-) ty)
+    (syntax-parse ty
+      [(~Any/new τcons . rst)
+       (free-identifier=? #'τcons name-)])))
 
 (define-syntax (define-type-constructor stx)
   (syntax-parse stx
     [(_ Name:id #:arity op arity:nat
                 (~optional (~seq #:arg-variances variances))
                 (~optional (~seq #:extra-info extra-info)))
-     #:with mk- (mk-mk (mk-- #'Name))
+     #:with Name- (mk-- #'Name)
+     #:with mk- (mk-mk #'Name-)
      #:with Name? (mk-? #'Name)
-     #:with Name-exp (mk-~ #'Name)
      #:with dom (make-arity-domain #'op (syntax-e #'arity))
      #:do [
            (define arg-var-meth #'(~? (get-arg-variances-data variances)
@@ -301,8 +305,8 @@
            #,@extra-info-meth)
          (define-for-syntax (mk- args)
            ((current-type-eval) #`(Name #,@args)))
-         (define-for-syntax (Name? ty)
-           #,(make-type-recognizer #'Name-exp #'dom #'ty)))]))
+         (define-for-syntax Name?
+           (make-type-recognizer #'Name-)))]))
 
 (define-simple-macro (define-base-type Name:id)
   (define-type Name : Type))
@@ -422,6 +426,11 @@
 
 (define-type-constructor U* #:arity >= 0)
 
+(define-for-syntax ((mk-type-alias-rewriter xs body) stx)
+  (syntax-parse stx
+    [(_ ty ...)
+     (type-eval (substs #'(ty ...) xs body))]))
+
 ;; τ.norm in 1st case causes "not valid type" error when referring to ⊥ in another file.
 ;; however, this version expands the type at every reference, incurring a potentially large
 ;; overhead---2x in the case of book-club.rkt
@@ -429,17 +438,11 @@
 (define-syntax define-type-alias
   (syntax-parser
     [(_ alias:id τ:type)
-     ;; #:with kind (detach #'τ.norm ':)
      #:with serialized-τ (serialize-syntax #'τ.norm)
      #'(define-syntax- alias
          (make-variable-like-transformer (deserialize-syntax #'serialized-τ)))]
     [(_ (f:id x:id ...) ty)
-     #'(define-syntax- (f stx)
-         (syntax-parse stx
-           [(_ x ...)
-            #'ty
-            ;; #:with τ:any-type #'ty
-            #;#'τ.norm]))]))
+     #'(define-syntax- f (mk-type-alias-rewriter #'(x ...) #'ty))]))
 
 (define-type-alias ⊥ (U*))
 (define-type-alias Unit (Tuple))
@@ -589,6 +592,22 @@
          #:type-constructor TyCons
          clause ...)]))
 
+(begin-for-syntax
+  (define ((mk-type-params-fetcher TypeCons) ty)
+    (syntax-parse ty
+      [(_ (~Any/new τcons t ...))
+       #:when (free-identifier=? #'τcons TypeCons)
+       #'(t ...)]))
+
+  (define ((mk-constructor-type-rule arity StructName TypeCons) stx)
+    (syntax-parse/typecheck stx
+      [(_ e ...) ≫
+       #:fail-unless (= arity (stx-length #'(e ...))) "arity mismatch"
+       [⊢ e ≫ e- (⇒ : τ)] ...
+       #:fail-unless (all-pure? #'(e- ...)) "expressions must be pure"
+       ----------------------
+       [⊢ (#%app- #,StructName e- ...) (⇒ : (#,TypeCons τ ...))]])))
+
 (define-syntax (define-constructor stx)
   (syntax-parse stx
     [(_ (Cons:id slot:id ...)
@@ -611,24 +630,12 @@
          (define-product-type TypeCons
            #:arity = #,arity
            #:extra-info TypeConsExtraInfo)
-         (define-syntax (MakeTypeCons stx)
-           (syntax-parse stx
-             [(_ . ts)
-              #:fail-unless (= #,arity (stx-length #'ts)) "arity mismatch"
-              #'(TypeCons . ts)]))
-         (define-syntax (GetTypeParams stx)
-           (syntax-parse stx
-             [(_ (~Any/new (~literal TypeCons) t (... ...)))
-              #'(t (... ...))]))
+         (define-type-alias Alias AliasBody) ...
+         (define-syntax MakeTypeCons (mk-ctor-rewriter #'TypeCons))
+         (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
          (define-syntax Cons
            (user-ctor #'Cons- #'StructName 'type-tag))
-         (define-typed-syntax (Cons- e (... ...)) ≫
-           #:fail-unless (= #,arity (stx-length #'(e (... ...)))) "arity mismatch"
-           [⊢ e ≫ e- (⇒ : τ)] (... ...)
-           #:fail-unless (all-pure? #'(e- (... ...))) "expressions must be pure"
-           ----------------------
-           [⊢ (#%app- StructName e- (... ...)) (⇒ : (TypeCons τ (... ...)))])
-         (define-type-alias Alias AliasBody) ...)]))
+         (define-syntax Cons- (mk-constructor-type-rule #,arity #'StructName #'TypeCons)))]))
 
 ;; (require-struct chicken #:as Chicken #:from "some-mod.rkt") will
 ;;  - extract the struct-info for chicken, and ensure that it is immutable, has a set number of fields
@@ -663,28 +670,15 @@
              (define arity (length accs)))
            (define-for-syntax (TypeConsExtraInfo stx)
              (list #'type-tag #'MakeTypeCons #'GetTypeParams)
-             #;(syntax-parse stx
-               [(_ X (... ...)) #'(#%app- 'type-tag 'MakeTypeCons 'GetTypeParams)]))
+             )
            (define-product-type TypeCons
              ;; issue: arity needs to parse as an exact-nonnegative-integer
              ;; fix: check arity in MakeTypeCons
              #:arity >= 0
              #:extra-info TypeConsExtraInfo)
-           (define-syntax (MakeTypeCons stx)
-             (syntax-parse stx
-               [(_ t (... ...))
-                #:fail-unless (= arity (stx-length #'(t (... ...)))) "arity mismatch"
-                #'(TypeCons t (... ...))]))
-           (define-syntax (GetTypeParams stx)
-             (syntax-parse stx
-               [(_ (~Any/new (~literal TypeCons) t (... ...)))
-                #'(t (... ...))]))
-           (define-typed-syntax (Cons- e (... ...)) ≫
-             #:fail-unless (= arity (stx-length #'(e (... ...)))) "arity mismatch"
-             [⊢ e ≫ e- (⇒ : τ)] (... ...)
-             #:fail-unless (all-pure? #'(e- (... ...))) "expressions must be pure"
-             ----------------------
-             [⊢ (#%app- orig-struct-info e- (... ...)) (⇒ : (TypeCons τ (... ...)))])
+           (define-syntax MakeTypeCons (mk-ctor-rewriter #'TypeCons))
+           (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
+           (define-syntax Cons- (mk-constructor-type-rule arity #'orig-struct-info #'TypeCons))
            (define-syntax ucons
              (user-ctor #'Cons- #'orig-struct-info 'type-tag)))))]))
 
@@ -724,30 +718,19 @@
 
   (define (get-type-tag t)
     (match (get-extra-info/new t)
-      [(list tag _ _) tag])
-    #;(syntax-parse (get-extra-info t)
-      [(~constructor-extra-info tag _ _)
-       (syntax-e #'tag)]))
+      [(list tag _ _) tag]))
 
   (define (get-type-args t)
     (match  (get-extra-info/new t)
       [(list _ _ get)
        (define f (syntax-local-value get))
-       (syntax->list (f #`(#,get #,t)))])
-    #;(syntax-parse (get-extra-info t)
-      [(~constructor-extra-info _ _ get)
-       (define f (syntax-local-value #'get))
-       (syntax->list (f #`(get #,t)))]))
+       (syntax->list (f #`(#,get #,t)))]))
 
   (define (make-cons-type t args)
     (match  (get-extra-info/new t)
       [(list _ mk _)
        (define f (syntax-local-value mk))
-       (type-eval (f #`(#,mk #,@args)))])
-    #;(syntax-parse (get-extra-info t)
-      [(~constructor-extra-info _ mk _)
-       (define f (syntax-local-value #'mk))
-        (type-eval (f #`(mk #,@args)))]))
+       (type-eval (f #`(#,mk #,@args)))]))
 
   (define (ctor-id? stx)
     (and (identifier? stx)
