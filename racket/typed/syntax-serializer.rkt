@@ -13,11 +13,6 @@
 ;(require racket/pretty)
 
 (define (serialize-syntax stx)
-  (displayln 'serialize)
-  ;(print-syntax-width +inf.0)
-  ;(println stx)
-  ;(pretty-print (syntax->datum stx))
-
   (define unique-tag (gensym))
   (define table (hasheq))
   (define dedup-table (hasheq))
@@ -68,16 +63,9 @@
   (define top-s (serialize-element! stx))
   (define res (datum->syntax #f (serialized-syntax unique-tag table top-s)))
 
-  ;(displayln 'serialize-out)
-  ;(println res)
-  ;(pretty-print (syntax->datum res))
   res)
 
 (define (deserialize-syntax ser)
-  (displayln 'deserialize)
-  ;(print-syntax-width +inf.0)
-  ;(println ser)
-  ;(pretty-print (syntax->datum ser))
   (match (syntax-e ser)
     [(serialized-syntax unique-tag-stx table-stx contents)
      (define unique-tag (syntax-e unique-tag-stx))
@@ -131,9 +119,6 @@
              syntax-e))))
 
      (define res (deserialize-element contents))
-     ;(displayln 'deserialize-out)
-     ;(println res)
-     ;(pretty-print (syntax->datum res))
      res]))
    
 (module+ test

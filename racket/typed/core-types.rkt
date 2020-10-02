@@ -1097,31 +1097,13 @@
      [(~Discard _)
       #t]
      [(X:id Y:id)
-      (or (free-identifier=? #'X #'Y)
-          #;(let ()
-            (printf "X:\n")
-            (pretty-print (syntax-debug-info (values #;syntax-local-introduce #'X)))
-            (pretty-print (identifier-binding #'X))
-            (printf ":\n")
-            (pretty-print (syntax-debug-info (values #;syntax-local-introduce #'Y)))
-            (pretty-print (identifier-binding #'Y))
-            #f))]
+      (free-identifier=? #'X #'Y)]
      [((~∀+ (X:id ...) τ1) (~∀+ (Y:id ...) τ2))
       #:when (stx-length=? #'(X ...) #'(Y ...))
       #:with τ2-X/Y (substs #'(X ...) #'(Y ...) #'τ2)
-      ;; #:do [(displayln "∀ <: ∀")
-            ;; (displayln #'τ2-X/Y)]
       (<: #'τ1 #'τ2-X/Y)]
      [((~Base τ1:id) (~Base τ2:id))
-      (or (free-identifier=? #'τ1 #'τ2)
-          #;(let ()
-            (printf "τ1:\n")
-            (pretty-print (syntax-debug-info (values #;syntax-local-introduce #'τ1)))
-            (pretty-print (identifier-binding #'τ1))
-            (printf "τ2:\n")
-            (pretty-print (syntax-debug-info (values #;syntax-local-introduce #'τ2)))
-            (pretty-print (identifier-binding #'τ2))
-            #f))]
+      (free-identifier=? #'τ1 #'τ2)]
      [((~Role+Body (x) _ ...) (~Role+Body (y) _ ...))
       ;; Extremely Coarse subtyping for Role types
       (type=? t1 t2)]
@@ -1528,31 +1510,24 @@
                      (~or (~datum →) (~datum ->)) ty_out))
       e ...+) ≫
    #:cut
-   #:do [(displayln 'A)]
    #:with e+ #'(Λ (X ...)
                   (lambda ([x : ty] ...)
                     (block e ...)))
-   #:do [(displayln 'B)]
    [[X ≫ X- : Type] ... ⊢ e+ ≫ e- (⇒ : TTTT)
                        #;(⇒ : (~and res-ty
                                   (~∀+ (Y ...)
                                       (~→ (~not (~Computation _ _ _ _)) ...
                                           (~Computation (~Value τ-v) _ _ _)))))]
-   #:do [(displayln 'C)
-         (local-require turnstile/typedefs)
-         (pretty-print (resugar-type #'TTTT))]
    #:with (~and res-ty
                 (~∀+ (Y ...)
                      (~→+ (~not (~Computation _ _ _ _)) ...
                           (~Computation (~Value τ-v) _ _ _)))) #'TTTT
-   #:do [(displayln 'D)]
    #:with ty_out- (substs #'(X- ...) #'(X ...) #'ty_out)
    #:with actual (type-eval #'(∀+ (Y ...) τ-v))
    #:with expected (type-eval #'(∀+ (X- ...) ty_out-))
    #:fail-unless (<: #'actual #'expected)
                  (format "expected different return type\n got ~a\n expected ~a\n"
                          (resugar-type #'actual) (resugar-type #'expected))
-   #:do [(displayln 'E)]
    #:with f- (add-orig (generate-temporary #'f) #'f)
    -------------------------------------------------------
    [⊢ (erased (define/intermediate f f- res-ty e-)) (⇒ : ★/t)]]
@@ -1600,7 +1575,6 @@
    [⊢ e_fn ≫ e_fn- ⇒ (~∀+ Xs (~→fn tyX_in ... tyX_out))]
    ;; successfully matched a polymorphic fn type, don't backtrack
    #:cut
-   #:do [(printf "A\n")]
    #:with tyX_args #'(tyX_in ... tyX_out)
    ;; solve for type variables Xs
    #:with [[e_arg- ...] Xs* cs] (solve #'Xs #'tyX_args this-syntax)
@@ -1611,7 +1585,6 @@
                    (instantiable? x ty))
                  "type variables must be flat and finite"
    ;; instantiate polymorphic function type
-   #:do [(printf "B\n")]
    #:with [τ_in ... τ_out] (ttc:inst-types/cs #'Xs* #'cs #'tyX_args)
    #:with (unsolved-X ...) (find-free-Xs #'Xs* #'τ_out)
    ;; arity check
@@ -1623,7 +1596,6 @@
    #:with (τ_arg ...) (stx-map typeof #'(e_arg- ...))
    ;; typecheck args
    [τ_arg τ⊑ τ_in #:for e_arg] ...
-   #:do [(printf "C\n")]
    #:with τ_out* (if (stx-null? #'(unsolved-X ...))
                      #'τ_out
                      (syntax-parse #'τ_out
@@ -1637,7 +1609,6 @@
                              (mk-app-poly-infer-error this-syntax #'(τ_in ...) #'(τ_arg ...) #'e_fn)
                              this-syntax)))
                         (type-eval #'(∀+ (unsolved-X ... Y ...) τ_out))]))
-   #:do [(printf "D\n")]
    --------
    [⊢ (#%plain-app- e_fn- e_arg- ...) ⇒ τ_out*]]
   ;; All Other Functions
@@ -1798,17 +1769,3 @@
        (stx-map (λ _ irrelevant) Xs)]
       [_ (stx-map (λ _ invariant) Xs)])))
 
-#;(begin-for-syntax
-  (define t #'Unit)
-  (define t- ((current-type-eval) t))
-  (displayln ((current-type?) t-))
-  (define tt (syntax-parse (detach t- ':)
-               [(#%plain-app x) #'x]))
-  (pretty-print (syntax-debug-info tt)))
-
-#;(begin-for-syntax
-  (define t #'(→ Unit Unit))
-  #;(define t #'(Actor Unit))
-  (define t- ((current-type-eval) t))
-  (values #;displayln ((current-type?) t-))
-  (printf "flat-type? ~a\n" (flat-type? t-)))
