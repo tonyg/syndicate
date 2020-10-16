@@ -75,17 +75,10 @@
     (hash-set! TypeInfo#
                ty-cons
                (type-metadata isec cons)))
-  ;; Identifier -> Symbol
-  ;; XYZ-.*
-  ;; based on the convention used by turnstile *shrug*
-  (define (un- id)
-    (define match?
-      (regexp-match #px"^(\\S*)-\\S*$" (symbol->string (syntax-e id))))
-    (and match? (string->symbol (second match?))))
 
   ;; Identifier -> (U #f type-metadata)
   (define (get-type-info ty-cons)
-    (hash-ref TypeInfo# (un- ty-cons) #f))
+    (hash-ref TypeInfo# (syntax-e ty-cons) #f))
 
   ;; Identifier -> (U #f isec-desc)
   (define (get-type-isec-desc ty-cons)
@@ -171,19 +164,14 @@
      #:with mk- (format-id #'Name- "mk-~a-" (syntax-e #'Name-))
      (quasisyntax/loc stx
        (begin-
-         (define-type-constructor Name-
+         (define-type-constructor Name
            #:arity op arity
            #:arg-variances variances
            #,@(if (attribute extra-info)
                   #'(#:extra-info extra-info)
                   #'()))
-         (define-syntax Name (mk-ctor-rewriter #'Name-))
          (begin-for-syntax
-           (set-type-info! 'Name '#,(attribute desc.val) mk-)
-           (define-syntax NamePat
-             (pattern-expander
-              (mk-ctor-rewriter #'NamePat-))))
-         (define-for-syntax mk mk-)))]))
+           (set-type-info! 'Name '#,(attribute desc.val) mk))))]))
 
 (begin-for-syntax
   ;; Syntax -> (Listof Variant)
@@ -237,8 +225,6 @@
   (define (new-type? t)
     (or (type?- t)
         (Type? (detach t ':))))
-  #;(require racket/trace)
-  #;(trace new-type?)
 
   (current-type? new-type?))
 
@@ -285,24 +271,22 @@
   (syntax-parse stx
     [(_ Name:id #:arity op arity:nat
                 (~optional (~seq #:arg-variances variances))
-                (~optional (~seq #:extra-info extra-info)))
+                (~optional (~seq #:extra-info extra-info))
+                (~optional (~seq #:implements meths ...)))
      #:with Name- (mk-- #'Name)
      #:with mk- (mk-mk #'Name-)
      #:with Name? (mk-? #'Name)
      #:with dom (make-arity-domain #'op (syntax-e #'arity))
      #:do [
-           (define arg-var-meth #'(~? (get-arg-variances-data variances)
-                                      ()))
-           (define extra-info-meth #'(~? (get-extra-info-data extra-info)
-                                         ()))
-           (define implements? (if (or (attribute variances) (attribute extra-info))
+           (define implements? (if (or (attribute variances) (attribute extra-info) (attribute meths))
                                    #'(#:implements)
                                    #'()))]
      #`(begin-
          (define-type Name : #,@#'dom -> Type
            #,@implements?
-           #,@arg-var-meth
-           #,@extra-info-meth)
+           (~? (~@ get-arg-variances-data variances))
+           (~? (~@ get-extra-info-data extra-info))
+           (~? (~@ meths ...)))
          (define-for-syntax (mk- args)
            ((current-type-eval) #`(Name #,@args)))
          (define-for-syntax Name?
@@ -318,11 +302,13 @@
 
 (define-type FacetName : FacetName)
 
-#;(define-type-constructor? Shares #:arity = 1)
-
-#;(define-binding-type Role #:arity >= 0 #:bvs = 1)
-(define-type Role #:with-binders [X : FacetName] : Type -> Type)
 (define-type RoleBody : Type * -> Type)
+(define-type Role #:with-binders [X : FacetName] : Type -> Type
+  #:implements get-resugar-info
+  (syntax-parser
+    [(~Role (nm : _) (~RoleBody body ...))
+     (list* #'Role (list #'nm) (stx-map resugar-type #'(body ...)))]))
+
 (define-type-constructor Shares #:arity = 1)
 (define-type-constructor Sends #:arity = 1)
 (define-type-constructor Realizes #:arity = 1)
@@ -354,9 +340,20 @@
 (define-container-type Patch #:arity = 2)
 
 ;; functions and type abstractions
-#;(define-binding-type ∀)
-(define-type ∀ #:with-binders [X : Type] : Type -> Type)
-(define-type-constructor → #:arity > 0)
+(define-for-syntax (resugar-∀ ty)
+  (syntax-parse (flatten-∀ ty)
+    [((X ...) body)
+     (list* #'∀ (syntax->list #'(X ...)) (resugar-type #'body))]))
+
+(define-type ∀ #:with-binders [X : Type] : Type -> Type
+  #:implements get-resugar-info
+  resugar-∀)
+
+(define-type-constructor → #:arity > 0
+  #:implements get-resugar-info
+  (syntax-parser
+    [(~→ o i ...)
+     (cons #'→ (stx-map resugar-type #'(i ... o)))]))
 
 (define-simple-macro (→+ in ... out)
   (→ out in ...))
@@ -624,9 +621,7 @@
      #`(begin-
          (struct- StructName (slot ...) #:reflection-name 'Cons #:transparent)
          (define-for-syntax (TypeConsExtraInfo stx)
-           (list #'type-tag #'MakeTypeCons #'GetTypeParams)
-           #;(syntax-parse stx
-             [(_ X (... ...)) #'(#%app- 'type-tag 'MakeTypeCons 'GetTypeParams)]))
+           (list #'type-tag #'MakeTypeCons #'GetTypeParams))
          (define-product-type TypeCons
            #:arity = #,arity
            #:extra-info TypeConsExtraInfo)
@@ -1315,10 +1310,6 @@
       (and (flat-type? ty)
            (finite? ty))))
 
-#;(begin-for-syntax
-  (require racket/trace)
-  (trace instantiable?))
-
 (begin-for-syntax
   ;; CONVENTION: Type variables for effects are prefixed with ρ
   (define (row-variable? x)
@@ -1366,8 +1357,7 @@
                               #`(make-rename-transformer
                                  (add-orig
                                   (attach #'#,x- ': (deserialize-syntax #'#,serialized-ty))
-                                  #'#,x)
-                                 #;(add-orig (assign-type #'#,x- #'#,t #:wrap? #f) #'#,x))
+                                  #'#,x))
                               ctx))
 
 (define-for-syntax (add-bindings-to-ctx e- def-ctx)
