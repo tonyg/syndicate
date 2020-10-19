@@ -19,7 +19,7 @@
 
 (require "core-types.rkt")
 (require (only-in "prim.rkt" Int Bool))
-(require (only-in "list.rkt" ~List))
+(require (only-in "list.rkt" ~List List))
 
 (require (postfix-in - racket/set))
 
