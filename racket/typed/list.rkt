@@ -11,10 +11,12 @@
                     [[empty?- (∀ (X) (→fn (List X) Bool))] empty?]
                     [[reverse- (∀ (X) (→fn (List X) (List X)))] reverse]
                     [[partition- (∀ (X) (→fn (List X) (→fn X Bool) (List X)))] partition]
-                    [[map- (∀ (X Y) (→fn (→fn X Y) (List X) (List Y)))] map]))
+                    [[map- (∀ (X Y) (→fn (→fn X Y) (List X) (List Y)))] map]
+                    [[argmax- : (∀ (X) (→fn (→fn X Int) (List X) X))] argmax]
+                    [[argmin- : (∀ (X) (→fn (→fn X Int) (List X) X))] argmin]))
 
 (require "core-types.rkt")
-(require (only-in "prim.rkt" Bool))
+(require (only-in "prim.rkt" Bool Int))
 (require (postfix-in - racket/list))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
