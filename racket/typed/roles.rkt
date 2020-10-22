@@ -577,8 +577,9 @@
    [⊢ s ≫ s- (⇒ : t1)] ...
    [⊢ (dataspace τ-c.norm s- ...) ≫ _ (⇒ : t2)]
   ]
+  #:with τ-out (strip-outbound #'τ-c.norm)
   -----------------------------------------------------------------------------------
-  [⊢ (#%app- syndicate:run-ground s- ...) (⇒ : (AssertionSet τ-c))])
+  [⊢ (#%app- syndicate:run-ground s- ...) (⇒ : (AssertionSet τ-out))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities
