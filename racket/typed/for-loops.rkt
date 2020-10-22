@@ -15,7 +15,7 @@
 (require (only-in "set.rkt" Set ~Set))
 (require (only-in "hash.rkt" Hash ~Hash))
 (require (only-in "prim.rkt" Bool + #%datum))
-(require (only-in "core-expressions.rkt" let unit))
+(require (only-in "core-expressions.rkt" let unit tuple-select mk-tuple))
 (require "maybe.rkt")
 
 (require (postfix-in - (only-in racket/set
@@ -127,35 +127,67 @@
              #,body))]))
 
 (define-typed-syntax for/fold
-  [(for/fold ([acc:id (~optional (~datum :)) τ-acc init])
+  [(for/fold ([acc:id (~optional (~datum :)) τ-acc init] ...+)
              (clause:iter-clause
               ...)
      e-body ...+) ≫
-  [⊢ init ≫ init- (⇐ : τ-acc)]
-  #:fail-unless (pure? #'init-) "expression must be pure"
+  [⊢ init ≫ init- (⇐ : τ-acc)] ...
+  #:fail-unless (all-pure? #'(init- ...)) "expression must be pure"
   #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
-  [[x ≫ x-- : τ] ...
-   [acc ≫ acc- : τ-acc] ⊢ (block e-body ...) ≫ e-body-
-                           (⇐ : τ-acc)
-                           (⇒ ν-ep (~effs τ-ep ...))
-                           (⇒ ν-s (~effs τ-s ...))
-                           (⇒ ν-f (~effs τ-f ...))]
+  #:do [(define num-accs (length (syntax->list #'(τ-acc ...))))]
+  #:with body-ty (if (= 1 num-accs)
+                     (first (syntax->list #'(τ-acc ...)))
+                     (type-eval #'(Tuple (~@ τ-acc ...))))
+  [[[x ≫ x-- : τ] ...]
+   [[acc ≫ acc- : τ-acc] ...] ⊢ (block e-body ...) ≫ e-body-
+                               (⇐ : body-ty)
+                               (⇒ ν-ep (~effs τ-ep ...))
+                               (⇒ ν-s (~effs τ-s ...))
+                               (⇒ ν-f (~effs τ-f ...))]
   -------------------------------------------------------
-  [⊢ (for/fold- ([acc- init-])
-                clauses-
-                #,(bind-renames #'([x-- x-] ...) #'e-body-))
-     (⇒ : τ-acc)
+  [⊢ (values->tuple #,num-accs
+       (for/fold- ([acc- init-] ...)
+         clauses-
+         #,(bind-renames #'([x-- x-] ...) #`(tuple->values #,num-accs e-body-))))
+     (⇒ : body-ty)
      (⇒ ν-ep (τ-ep ...))
      (⇒ ν-s (τ-s ...))
      (⇒ ν-f (τ-f ...))]]
-  [(for/fold ([acc:id init])
+  [(for/fold (accs ... [acc:id init] more-accs ...)
              clauses
      e-body ...+) ≫
    [⊢ init ≫ _ (⇒ : τ-acc)]
    ---------------------------------------------------
-   [≻ (for/fold ([acc τ-acc init])
+   [≻ (for/fold (accs ... [acc τ-acc init] more-accs ...)
                 clauses
         e-body ...)]])
+
+(define-syntax-parser tuple->values
+  [(_ n:nat e:expr)
+   (define arity (syntax-e #'n))
+   (cond
+     [(= 1 arity)
+      #'e]
+     [else
+      (define/with-syntax tmp (generate-temporary 'tup))
+      (define projections
+        (for/list ([i (in-range arity)])
+          #`(#%app- tuple-select #,i tmp)))
+      #`(let- ([tmp e])
+          (#%app- values- #,@projections))])])
+
+#;(tuple->values 1 (tuple 0))
+
+(define-syntax-parser values->tuple
+  [(_ n:nat e:expr)
+   (define arity (syntax-e #'n))
+   (cond
+     [(= 1 arity)
+      #'e]
+     [else
+      (define/with-syntax (tmp ...) (generate-temporaries (make-list arity 'values->tuple)))
+      #`(let-values- ([(tmp ...) e])
+          (#%app- mk-tuple (#%app- list- tmp ...)))])])
 
 (define-typed-syntax (for/list (clause:iter-clause ...)
                        e-body ...+) ≫

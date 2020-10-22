@@ -25,15 +25,16 @@
 
 (define (∀ (X Y Z) (partition/either [xs : (List X)]
                                      [pred : (→fn X (U (Left Y)
-                                                       (Right Z)) #;(Either Y Z))]
+                                                       (Right Z)))]
                                      -> (Tuple (List Y) (List Z))))
-  (for/fold ([acc (Tuple (List Y) (List Z)) (tuple (list) (list))])
+  (for/fold ([lefts (List Y) (list)]
+             [rights (List Z) (list)])
             ([x xs])
     (define y-or-z (pred x))
     (match y-or-z
       [(left (bind y Y))
-       (tuple (cons y (select 0 acc))
-              (select 1 acc))]
+       (tuple (cons y lefts)
+              rights)]
       [(right (bind z Z))
-       (tuple (select 0 acc)
-              (cons z (select 1 acc)))])))
+       (tuple lefts
+              (cons z rights))])))

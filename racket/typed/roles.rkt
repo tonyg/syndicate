@@ -43,7 +43,7 @@
          ;; primitives
          (all-from-out "prim.rkt")
          ;; expressions
-         (all-from-out "core-expressions.rkt")
+         (except-out (all-from-out "core-expressions.rkt") mk-tuple tuple-select)
          ;; lists
          (all-from-out "list.rkt")
          ;; sets

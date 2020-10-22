@@ -17,6 +17,8 @@
          error
          define-tuple
          match-define
+         mk-tuple
+         tuple-select
          (for-syntax (all-defined-out)))
 
 (require "core-types.rkt")
@@ -164,12 +166,15 @@
      (⇒ ν-s #,(make-Branch #'((ss ...) ...)))])
 
 
+;; (Listof Value) -> Value
+(define- (mk-tuple es)
+  (#%app- cons- 'tuple es))
 
 (define-typed-syntax (tuple e:expr ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
   #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions not allowed to have effects"
   -----------------------
-  [⊢ (#%app- list- 'tuple e- ...) (⇒ : (Tuple τ ...))])
+  [⊢ (#%app- mk-tuple (#%app- list- e- ...)) (⇒ : (Tuple τ ...))])
 
 (define unit : Unit (tuple))
 
