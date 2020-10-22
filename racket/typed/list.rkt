@@ -13,7 +13,9 @@
                     [[partition- (∀ (X) (→fn (List X) (→fn X Bool) (List X)))] partition]
                     [[map- (∀ (X Y) (→fn (→fn X Y) (List X) (List Y)))] map]
                     [[argmax- : (∀ (X) (→fn (→fn X Int) (List X) X))] argmax]
-                    [[argmin- : (∀ (X) (→fn (→fn X Int) (List X) X))] argmin]))
+                    [[argmin- : (∀ (X) (→fn (→fn X Int) (List X) X))] argmin]
+                    [[remove- : (∀ (X) (→fn X (List X) (List X)))] remove]
+                    [[length- : (∀ (X) (→fn (List X) Int))] length]))
 
 (require "core-types.rkt")
 (require (only-in "prim.rkt" Bool Int))
