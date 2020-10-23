@@ -156,17 +156,24 @@
      (⇒ : ★/t)
      (⇒ ν-f (τ))])
 
-(define-typed-syntax (field [x:id τ-f:type e:expr] ...) ≫
-  #:fail-unless (stx-andmap flat-type? #'(τ-f ...)) "keep your uppity data outta my fields"
-  [⊢ e ≫ e- (⇐ : τ-f)] ...
-  #:fail-unless (stx-andmap pure? #'(e- ...)) "field initializers not allowed to have effects"
-  #:with (x- ...) (generate-temporaries #'(x ...))
-  #:with (τ ...) (stx-map type-eval #'((Field τ-f.norm) ...))
-  #:with MF (type-eval #'MakesField)
-  ----------------------------------------------------------------------
-  [⊢ (erased (field/intermediate [x x- τ e-] ...))
-     (⇒ : ★/t)
-     (⇒ ν-ep (MF))])
+(define-typed-syntax field
+  [(_ [x:id τ-f:type e:expr] ...) ≫
+   #:cut
+   #:fail-unless (stx-andmap flat-type? #'(τ-f ...)) "keep your uppity data outta my fields"
+   [⊢ e ≫ e- (⇐ : τ-f)] ...
+   #:fail-unless (stx-andmap pure? #'(e- ...)) "field initializers not allowed to have effects"
+   #:with (x- ...) (generate-temporaries #'(x ...))
+   #:with (τ ...) (stx-map type-eval #'((Field τ-f.norm) ...))
+   #:with MF (type-eval #'MakesField)
+   ----------------------------------------------------------------------
+   [⊢ (erased (field/intermediate [x x- τ e-] ...))
+      (⇒ : ★/t)
+      (⇒ ν-ep (MF))]]
+  [(_ flds ... [x:id e:expr] more-flds ...) ≫
+   #:cut
+   [⊢ e ≫ e- (⇒ : τ)]
+   --------------------
+   [≻ (field flds ... [x τ e-] more-flds ...)]])
 
 (define-typed-syntax (assert e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
