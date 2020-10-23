@@ -617,6 +617,11 @@
      #:with TypeConsExpander (format-id #'TypeCons "~~~a" #'TypeCons)
      #:with TypeConsExtraInfo (format-id #'TypeCons "~a-extra-info" #'TypeCons)
      #:with (StructName Cons- type-tag) (generate-temporaries #'(Cons Cons Cons))
+     #:with (accessor ...) (for/list ([slot-name (in-syntax #'(slot ...))])
+                             (format-id slot-name "~a-~a" #'Cons slot-name))
+     #:with (accessor- ...) (for/list ([slot-name (in-syntax #'(slot ...))])
+                              (format-id #'StructName "~a-~a" #'StructName slot-name))
+     #:with (acc-defs ...) (mk-accessors #'(accessor ...) #'(accessor- ...) #'TypeCons #'(slot ...))
      (define arity (stx-length #'(slot ...)))
      #`(begin-
          (struct- StructName (slot ...) #:reflection-name 'Cons #:transparent)
@@ -630,7 +635,14 @@
          (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
          (define-syntax Cons
            (user-ctor #'Cons- #'StructName 'type-tag))
-         (define-syntax Cons- (mk-constructor-type-rule #,arity #'StructName #'TypeCons)))]))
+         (define-syntax Cons- (mk-constructor-type-rule #,arity #'StructName #'TypeCons))
+         #,@(mk-accessors #'(accessor ...) #'(accessor- ...) #'TypeCons #'(slot ...)))]))
+
+(define-for-syntax (mk-accessors accessors accessors- TypeCons slots)
+  (for/list ([accessor (in-syntax accessors)]
+             [accessor- (in-syntax accessors-)]
+             [slot (in-syntax slots)])
+    #`(define-typed-variable-rename+ #,accessor ≫ #,accessor- : (∀+ #,slots (→fn (#,TypeCons #,@slots) #,slot)))))
 
 ;; (require-struct chicken #:as Chicken #:from "some-mod.rkt") will
 ;;  - extract the struct-info for chicken, and ensure that it is immutable, has a set number of fields
@@ -1448,6 +1460,11 @@
          (define-syntax x
            (make-variable-like-transformer (add-orig (attach #'x- ': (deserialize-syntax #'serialized-τ)) #'x)))
          (define- x- e))]))
+
+(define-simple-macro (define-typed-variable-rename+ x:id (~datum ≫) x-:id (~datum :) τ:type)
+  #:with serialized-τ (serialize-syntax #'τ.norm)
+  (define-syntax x
+    (make-variable-like-transformer (add-orig (attach #'x- ': (deserialize-syntax #'serialized-τ)) #'x))))
 
 ;; copied from ext-stlc
 (define-typed-syntax define
