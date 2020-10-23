@@ -4,7 +4,10 @@
          #%app
          (rename-out [typed-quote quote])
          #%top-interaction
-         require only-in
+         ;; require & provides
+         require only-in prefix-in except-in rename-in
+         provide all-defined-out all-from-out rename-out except-out
+         for-syntax for-template for-label for-meta
          ;; Start dataspace programs
          run-ground-dataspace
          ;; Types
@@ -61,8 +64,6 @@
          print-type print-role role-strings
          ;; Extensions
          match cond
-         ;; require & provides
-         require provide
          submod for-syntax for-meta only-in except-in
          require/typed
          require-struct
