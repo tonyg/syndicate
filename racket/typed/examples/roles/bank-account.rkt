@@ -26,16 +26,19 @@
 (define-type-alias account-manager-role
   (Role (account-manager)
         (Shares Account)
-        (Reacts (Know Deposit))))
+        (Reacts (Asserted Deposit))))
 
 (define-type-alias client-role
   (Role (client)
-        (Reacts (Know Account))))
+        (Reacts (Asserted Account))))
+
+(check-simulates client-role client-role)
+(check-simulates client-role account-manager-role)
 
 (run-ground-dataspace ds-type
 
   (spawn ds-type
-    (print-role
+    (export-roles "account-manager-role.rktd"
     (start-facet account-manager
       (field [balance Int 0])
       (assert (account (ref balance)))

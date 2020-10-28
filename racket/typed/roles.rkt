@@ -62,6 +62,8 @@
          (all-from-out "either.rkt")
          ;; DEBUG and utilities
          print-type print-role role-strings
+         ;; Behavioral Roles
+         export-roles check-simulates
          ;; Extensions
          match cond
          submod for-syntax for-meta only-in except-in
@@ -88,6 +90,9 @@
 (require turnstile/typedefs)
 (require (postfix-in - racket/list))
 (require (postfix-in - racket/set))
+
+(require (for-syntax (prefix-in proto: "proto.rkt")
+                     syntax/id-table))
 
 (module+ test
   (require rackunit)
@@ -613,6 +618,95 @@
                    (type->strX r))
   ----------------------------------------
   [⊢ (#%app- list- (#%datum- . s) ...) (⇒ : (List String))])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Behavioral Analysis
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(begin-for-syntax
+
+  (define ID-PHASE 0)
+
+  (define-syntax (build-id-table stx)
+    (syntax-parse stx
+      [(_ (~seq key val) ...)
+       #'(make-free-id-table (hash (~@ #'key val) ...) #:phase ID-PHASE)]))
+
+  (define TRANSLATION#
+    (build-id-table Spawns proto:Spawn
+                    Sends proto:Sends
+                    Realizes proto:Realizes
+                    Shares proto:Shares
+                    Know proto:Know
+                    Branch proto:Branch
+                    Asserted proto:Asserted
+                    Retracted proto:Retracted
+                    Message proto:Message
+                    Forget proto:Forget
+                    Realize proto:Realize
+                    U* proto:U
+                    Observe proto:Observe
+                    List proto:List
+                    Set proto:Set
+                    Hash proto:Hash))
+
+  (define (double-check)
+    (for/first ([id (in-dict-keys TRANSLATION#)]
+                #:when (false? (identifier-binding id)))
+      (pretty-print id)
+      (pretty-print (syntax-debug-info id))))
+
+  (define (synd->proto ty)
+    (let convert ([ty (resugar-type ty)])
+      (syntax-parse ty
+        #:literals (★/t Discard ∀/internal →/internal Role/internal Stop Reacts)
+        [(ctor:id t ...)
+         #:when (dict-has-key? TRANSLATION# #'ctor)
+         (apply (dict-ref TRANSLATION# #'ctor) (stx-map convert #'(t ...)))]
+        [★/t proto:⋆]
+        [Discard proto:⋆] ;; TODO - should prob have a Discard type in proto
+        [(∀/internal (X ...) body)
+         ;; TODO
+         (error "unimplemented")]
+        [(→/internal ty-in ... ty-out)
+         ;; TODO
+         (error "unimplemented")]
+        [(Role/internal (nm) body ...)
+         (proto:Role (syntax-e #'nm) (stx-map convert #'(body ...)))]
+        [(Stop nm body ...)
+         (proto:Role (syntax-e #'nm) (stx-map convert #'(body ...)))]
+        [(Reacts evt body ...)
+         (define converted-body (stx-map convert #'(body ...)))
+         (define body+
+           (if (= 1 (length converted-body))
+               (first converted-body)
+               converted-body))
+         (proto:Reacts (convert #'evt) body+)]
+        [t:id
+         (proto:Base (syntax-e #'t))]
+        [(ctor:id args ...)
+         ;; assume it's a struct
+         (proto:Struct (syntax-e #'ctor) (stx-map convert #'(args ...)))]
+        [unrecognized (error (format "unrecognized type: ~a" #'unrecognized))]))))
+
+(define-typed-syntax (export-roles dest:string e:expr) ≫
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
+  #:do [(with-output-to-file (syntax-e #'dest)
+          (thunk (for ([f (in-syntax #'(fs ...))])
+                   (pretty-write (synd->proto f))))
+          #:exists 'replace)]
+  ----------------------------------------
+  [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
+
+(define-syntax-parser check-simulates
+  [(_ τ-impl:type τ-spec:type)
+  (define τ-impl- (synd->proto #'τ-impl.norm))
+  (define τ-spec- (synd->proto #'τ-spec.norm))
+  (pretty-print τ-impl-)
+  (pretty-print τ-spec-)
+  (unless (proto:simulates? τ-impl- τ-spec-)
+    (raise-syntax-error #f "type doesn't simulate spec" this-syntax))
+  #'(#%app- void-)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests

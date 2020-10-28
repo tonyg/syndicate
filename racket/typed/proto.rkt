@@ -20,26 +20,26 @@
 ;;   - (Sends τ)
 ;;   - (Realizes τ)
 ;;   - (Stop FacetName Body)
-(struct Role (nm eps) #:transparent)
-(struct Spawn (ty) #:transparent)
-(struct Sends (ty) #:transparent)
-(struct Realizes (ty) #:transparent)
-(struct Stop (nm body) #:transparent)
+(struct Role (nm eps) #:prefab)
+(struct Spawn (ty) #:prefab)
+(struct Sends (ty) #:prefab)
+(struct Realizes (ty) #:prefab)
+(struct Stop (nm body) #:prefab)
 
 ;; a EP is one of
 ;;   - (Reacts D Body), describing an event handler
 ;;   - (Shares τ), describing an assertion
 ;;   - (Know τ), describing an internal assertion
-(struct Reacts (evt body) #:transparent)
-(struct Shares (ty) #:transparent)
-(struct Know (ty) #:transparent)
+(struct Reacts (evt body) #:prefab)
+(struct Shares (ty) #:prefab)
+(struct Know (ty) #:prefab)
 
 ;; a Body describes actions carried out in response to some event, and
 ;; is one of
 ;;   - T
 ;;   - (Listof Body)
 ;;   - (Branch (Listof Body))
-(struct Branch (arms) #:transparent)
+(struct Branch (arms) #:prefab)
 
 ;; a D is one of
 ;;   - (Asserted τ), reaction to assertion
@@ -51,11 +51,11 @@
 ;;   - StartEvt, reaction to facet startup
 ;;   - StopEvt, reaction to facet shutdown
 ;;   - DataflowEvt, reaction to field updates
-(struct Asserted (ty) #:transparent)
-(struct Retracted (ty) #:transparent)
-(struct Message (ty) #:transparent)
-(struct Forget (ty) #:transparent)
-(struct Realize (ty) #:transparent)
+(struct Asserted (ty) #:prefab)
+(struct Retracted (ty) #:prefab)
+(struct Message (ty) #:prefab)
+(struct Forget (ty) #:prefab)
+(struct Realize (ty) #:prefab)
 (define StartEvt 'Start)
 (define StopEvt 'Stop)
 (define DataflowEvt 'Dataflow)
@@ -68,8 +68,8 @@
 ;; specified facet,
 ;;   - (StartOf FacetName)
 ;;   - (StopOf FacetName)
-(struct StartOf (fn) #:transparent)
-(struct StopOf (fn) #:transparent)
+(struct StartOf (fn) #:prefab)
+(struct StopOf (fn) #:prefab)
 
 ;; NOTE: because I'm adding D+ after writing a bunch of code using only D,
 ;; expect inconsistencies in signatures and names
@@ -84,17 +84,17 @@
 ;;   - ⋆
 ;;   - (Base Symbol)
 ;;   - (internal-label Symbol τ)
-(struct U (tys) #:transparent)
-(struct Struct (nm tys) #:transparent)
-(struct Observe (ty) #:transparent)
-(struct List (ty) #:transparent)
-(struct Set (ty) #:transparent)
-(struct Hash (ty-k ty-v) #:transparent)
-(struct Mk⋆ () #:transparent)
-(struct internal-label (actor-id ty) #:transparent)
+(struct U (tys) #:prefab)
+(struct Struct (nm tys) #:prefab)
+(struct Observe (ty) #:prefab)
+(struct List (ty) #:prefab)
+(struct Set (ty) #:prefab)
+(struct Hash (ty-k ty-v) #:prefab)
+(struct Mk⋆ () #:prefab)
+(struct internal-label (actor-id ty) #:prefab)
 ;; TODO this might be a problem when used as a match pattern
 (define ⋆ (Mk⋆))
-(struct Base (name) #:transparent)
+(struct Base (name) #:prefab)
 (define Int (Base 'Int))
 (define String (Base 'String))
 (define Bool (Base 'Bool))

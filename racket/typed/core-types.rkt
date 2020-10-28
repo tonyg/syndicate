@@ -3,7 +3,10 @@
 (provide (except-out (all-defined-out) → ∀ Role)
          (rename-out [→+ →]
                      [∀+ ∀]
-                     [Role+Body Role])
+                     [Role+Body Role]
+                     [Role Role/internal]
+                     [∀ ∀/internal]
+                     [→ →/internal])
          (for-syntax (except-out (all-defined-out) ~→ ~∀ ~Role)
                      (rename-out [~→+ ~→]
                                  [~∀+ ~∀]
@@ -712,7 +715,7 @@
         #'(~and (cons . rst)
                 (~fail #:unless (ctor-id? #'cons)))])))
 
-  (define (inspect t)
+  #;(define (inspect t)
     (syntax-parse t
       [(~constructor-type tag t ...)
        (list (syntax-e #'tag) (stx-map type->str #'(t ...)))]))
