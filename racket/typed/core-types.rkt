@@ -60,6 +60,15 @@
 ;; ν-s key aggregates spawned actors as `Actor`s
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Type Renaming
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-simple-macro (define-typed-variable-rename+ x:id (~datum ≫) x-:id (~datum :) τ:type)
+    #:with serialized-τ (serialize-syntax #'τ.norm)
+    (define-syntax x
+      (make-variable-like-transformer (add-orig (attach #'x- ': (deserialize-syntax #'serialized-τ)) #'x))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -645,7 +654,23 @@
   (for/list ([accessor (in-syntax accessors)]
              [accessor- (in-syntax accessors-)]
              [slot (in-syntax slots)])
-    #`(define-typed-variable-rename+ #,accessor ≫ #,accessor- : (∀+ #,slots (→fn (#,TypeCons #,@slots) #,slot)))))
+    (quasisyntax/loc TypeCons
+      (define-typed-variable-rename+ #,accessor ≫ #,accessor- : (∀+ #,slots (→fn (#,TypeCons #,@slots) #,slot))))))
+
+(define-for-syntax ((define-struct-accs accs/rev TypeCons lib) stx)
+  (syntax-parse stx
+    [(_ ucons:id)
+     (define accs (for/list ([acc (in-list (reverse accs/rev))])
+                    (format-id #'ucons "~a" (syntax-e acc))))
+     (define accs- (map mk-- accs))
+     (define slots (generate-temporaries accs))
+     (define renames (for/list ([acc (in-list accs)]
+                                [acc- (in-list accs-)])
+                       #`[#,acc #,acc-]))
+     (quasisyntax/loc TypeCons
+       (begin-
+         (require- (only-in- #,lib #,@renames))
+         #,@(mk-accessors accs accs- TypeCons slots)))]))
 
 ;; (require-struct chicken #:as Chicken #:from "some-mod.rkt") will
 ;;  - extract the struct-info for chicken, and ensure that it is immutable, has a set number of fields
@@ -672,12 +697,12 @@
              (define info (syntax-local-value #'orig-struct-info))
              (unless (struct-info? info)
                (raise-syntax-error #f "expected struct" #'#,stx #'ucons))
-             (match-define (list desc cons pred accs muts sup) (extract-struct-info info))
-             (when (false? (last accs))
+             (match-define (list desc cons pred accs/rev muts sup) (extract-struct-info info))
+             (when (false? (last accs/rev))
                (raise-syntax-error #f "number of slots must be exact" #'#,stx #'ucons))
              (unless (equal? #t sup)
                (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
-             (define arity (length accs)))
+             (define arity (length accs/rev)))
            (define-for-syntax (TypeConsExtraInfo stx)
              (list #'type-tag #'MakeTypeCons #'GetTypeParams)
              )
@@ -690,7 +715,10 @@
            (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
            (define-syntax Cons- (mk-constructor-type-rule arity #'orig-struct-info #'TypeCons))
            (define-syntax ucons
-             (user-ctor #'Cons- #'orig-struct-info 'type-tag)))))]))
+             (user-ctor #'Cons- #'orig-struct-info 'type-tag))
+           (define-syntax mk-struct-accs
+             (define-struct-accs accs/rev #'TypeCons #'lib))
+           (mk-struct-accs ucons))))]))
 
 (begin-for-syntax
   (define-syntax ~constructor-extra-info
@@ -811,10 +839,10 @@
 ;; Syntax
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(require-struct observe #:as Observe #:from syndicate/actor-lang)
-(require-struct inbound #:as Inbound #:from syndicate/actor-lang)
-(require-struct outbound #:as Outbound #:from syndicate/actor-lang)
-(require-struct message #:as Message #:from syndicate/actor-lang)
+(require-struct observe #:as Observe #:from syndicate/patch)
+(require-struct inbound #:as Inbound #:from syndicate/protocol/standard-relay)
+(require-struct outbound #:as Outbound #:from syndicate/protocol/standard-relay)
+(require-struct message #:as Message #:from syndicate/core)
 
 (begin-for-syntax
 
@@ -1463,11 +1491,6 @@
          (define-syntax x
            (make-variable-like-transformer (add-orig (attach #'x- ': (deserialize-syntax #'serialized-τ)) #'x)))
          (define- x- e))]))
-
-(define-simple-macro (define-typed-variable-rename+ x:id (~datum ≫) x-:id (~datum :) τ:type)
-  #:with serialized-τ (serialize-syntax #'τ.norm)
-  (define-syntax x
-    (make-variable-like-transformer (add-orig (attach #'x- ': (deserialize-syntax #'serialized-τ)) #'x))))
 
 ;; copied from ext-stlc
 (define-typed-syntax define

@@ -40,7 +40,7 @@
 (define-type-alias (Maybe t)
   (U t Bool))
 
-(define-constructor (order title price id delivery-date)
+(define-constructor (order title price oid delivery-date)
   #:type-constructor OrderT
   #:with Order (OrderT String Int (Maybe OrderId) (Maybe DeliveryDate))
   #:with OrderRequest (Observe (OrderT String Int ★/t ★/t))
