@@ -32,13 +32,11 @@
   (Role (client)
         (Reacts (Asserted Account))))
 
-(check-simulates client-role client-role)
-(check-simulates client-role account-manager-role)
 
 (run-ground-dataspace ds-type
 
   (spawn ds-type
-    (export-roles "account-manager-role.rktd"
+    (lift+define-role acct-mngr-role
     (start-facet account-manager
       (field [balance Int 0])
       (assert (account (ref balance)))
@@ -46,15 +44,22 @@
           (set! balance (+ (ref balance) amount))))))
 
   (spawn ds-type
-    (print-role
+    (lift+define-role obs-role
     (start-facet observer
       (on (asserted (account (bind amount Int)))
           (displayln amount)))))
 
   (spawn ds-type
-    (print-role
+    (lift+define-role buyer-role
     (start-facet buyer
       (on (asserted (observe (deposit discard)))
           (start-facet deposits
             (assert (deposit 100))
             (assert (deposit -30))))))))
+
+(module+ test
+  (check-simulates acct-mngr-role account-manager-role)
+  (check-simulates obs-role client-role)
+  ;; Tried to write this, then it failed, I looked and buyer doesn't actually implement that spec
+  #;(check-simulates buyer-role client-role)
+  )

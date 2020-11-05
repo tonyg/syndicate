@@ -4,6 +4,7 @@
          #%app
          (rename-out [typed-quote quote])
          #%top-interaction
+         module+ module*
          ;; require & provides
          require only-in prefix-in except-in rename-in
          provide all-defined-out all-from-out rename-out except-out
@@ -63,7 +64,7 @@
          ;; DEBUG and utilities
          print-type print-role role-strings
          ;; Behavioral Roles
-         export-roles check-simulates
+         export-roles check-simulates lift+define-role
          ;; Extensions
          match cond
          submod for-syntax for-meta only-in except-in
@@ -659,12 +660,17 @@
   (define (synd->proto ty)
     (let convert ([ty (resugar-type ty)])
       (syntax-parse ty
-        #:literals (★/t Discard ∀/internal →/internal Role/internal Stop Reacts)
+        #:literals (★/t Bind Discard ∀/internal →/internal Role/internal Stop Reacts)
         [(ctor:id t ...)
          #:when (dict-has-key? TRANSLATION# #'ctor)
          (apply (dict-ref TRANSLATION# #'ctor) (stx-map convert #'(t ...)))]
         [★/t proto:⋆]
-        [Discard proto:⋆] ;; TODO - should prob have a Discard type in proto
+        [(Bind t)
+         ;; TODO - this is debatable handling
+         (convert #'t)]
+        [Discard
+         ;; TODO - should prob have a Discard type in proto
+         proto:⋆]
         [(∀/internal (X ...) body)
          ;; TODO
          (error "unimplemented")]
@@ -698,6 +704,15 @@
   ----------------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
 
+(define-typed-syntax (lift+define-role x:id e:expr) ≫
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs)) (⇒ ν-f ((~and r  (~Role (_) _ ...)))) (⇒ ν-s (~effs))]
+  ;; because turnstile introduces a lot of intdef scopes; ideally, we'd be able to synthesize somethign
+  ;; with the right module scopes
+  #:with x+ (syntax-local-introduce (datum->syntax #f (syntax-e #'x)))
+  #:do [(syntax-local-lift-module-end-declaration #`(define-type-alias x+ r))]
+  ----------------------------------------
+  [⊢ e- (⇒ : τ) (⇒ ν-ep ()) (⇒ ν-f (r)) (⇒ ν-s ())])
+
 (define-syntax-parser check-simulates
   [(_ τ-impl:type τ-spec:type)
   (define τ-impl- (synd->proto #'τ-impl.norm))
@@ -707,6 +722,7 @@
   (unless (proto:simulates? τ-impl- τ-spec-)
     (raise-syntax-error #f "type doesn't simulate spec" this-syntax))
   #'(#%app- void-)])
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
