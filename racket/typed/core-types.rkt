@@ -39,6 +39,8 @@
 (require (postfix-in - racket/match))
 (require (postfix-in - (only-in racket/format ~a)))
 (require (for-syntax "syntax-serializer.rkt"))
+(require (for-syntax racket/provide-transform)
+         racket/provide-syntax)
 
 
 (module+ test
@@ -584,7 +586,7 @@
     (pattern (~seq #:type-constructor TypeCons:id))
     (pattern (~seq) #:attr TypeCons #f))
 
-  (struct user-ctor (typed-ctor untyped-ctor type-tag)
+  (struct user-ctor (typed-ctor untyped-ctor type-tag type-ctor field-ids)
     #:property prop:procedure
     (lambda (v stx)
       (define transformer (user-ctor-typed-ctor v))
@@ -646,7 +648,7 @@
          (define-syntax MakeTypeCons (mk-ctor-rewriter #'TypeCons))
          (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
          (define-syntax Cons
-           (user-ctor #'Cons- #'StructName 'type-tag))
+           (user-ctor #'Cons- #'StructName 'type-tag #'TypeCons (list #'accessor ...)))
          (define-syntax Cons- (mk-constructor-type-rule #,arity #'StructName #'TypeCons))
          #,@(mk-accessors #'(accessor ...) #'(accessor- ...) #'TypeCons #'(slot ...)))]))
 
@@ -657,11 +659,9 @@
     (quasisyntax/loc TypeCons
       (define-typed-variable-rename+ #,accessor ≫ #,accessor- : (∀+ #,slots (→fn (#,TypeCons #,@slots) #,slot))))))
 
-(define-for-syntax ((define-struct-accs accs/rev TypeCons lib) stx)
+(define-for-syntax ((define-struct-accs accs TypeCons lib) stx)
   (syntax-parse stx
     [(_ ucons:id)
-     (define accs (for/list ([acc (in-list (reverse accs/rev))])
-                    (format-id #'ucons "~a" (syntax-e acc))))
      (define accs- (map mk-- accs))
      (define slots (generate-temporaries accs))
      (define renames (for/list ([acc (in-list accs)]
@@ -671,6 +671,10 @@
        (begin-
          (require- (only-in- #,lib #,@renames))
          #,@(mk-accessors accs accs- TypeCons slots)))]))
+
+(define-for-syntax (cleanup-accs ucons accs/rev)
+  (for/list ([acc (in-list (reverse accs/rev))])
+    (format-id ucons "~a" (syntax-e acc))))
 
 ;; (require-struct chicken #:as Chicken #:from "some-mod.rkt") will
 ;;  - extract the struct-info for chicken, and ensure that it is immutable, has a set number of fields
@@ -702,7 +706,9 @@
                (raise-syntax-error #f "number of slots must be exact" #'#,stx #'ucons))
              (unless (equal? #t sup)
                (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
-             (define arity (length accs/rev)))
+             (define accs (cleanup-accs #'ucons accs/rev))
+             (define arity (length accs/rev))
+             )
            (define-for-syntax (TypeConsExtraInfo stx)
              (list #'type-tag #'MakeTypeCons #'GetTypeParams)
              )
@@ -715,9 +721,9 @@
            (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
            (define-syntax Cons- (mk-constructor-type-rule arity #'orig-struct-info #'TypeCons))
            (define-syntax ucons
-             (user-ctor #'Cons- #'orig-struct-info 'type-tag))
+             (user-ctor #'Cons- #'orig-struct-info 'type-tag #'TypeCons accs))
            (define-syntax mk-struct-accs
-             (define-struct-accs accs/rev #'TypeCons #'lib))
+             (define-struct-accs accs #'TypeCons #'lib))
            (mk-struct-accs ucons))))]))
 
 (begin-for-syntax
@@ -817,6 +823,28 @@
   (for/list ([iti (in-syntax los)])
     (match-define (list name- ty name) (syntax->list iti))
     (add-orig (assign-type name- ty #:wrap? #f) name)))
+
+(define-syntax struct-out
+  (make-provide-transformer
+   (lambda (stx modes)
+     (syntax-parse stx
+       [(_ ctor:id)
+        (define val (syntax-local-value #'ctor (const #f)))
+        (unless (user-ctor? val)
+          (raise-syntax-error (format "not a constructor: ~a" (syntax-e #'ctor)) this-syntax))
+        (define accs (user-ctor-field-ids val))
+        (for/list ([f (in-list (list* #'ctor (user-ctor-type-ctor val) accs))])
+          (make-export f (syntax-e f) (syntax-local-phase-level) #f f))]))))
+
+#;(define-provide-syntax (struct-out stx)
+  (syntax-parse stx
+    [(_ ctor:id)
+     (define val (syntax-local-value #'ctor (const #f)))
+     (unless (user-ctor? val)
+       (raise-syntax-error (format "not a constructor: ~a" (syntax-e #'ctor)) this-syntax))
+     (define accs (user-ctor-field-ids val))
+     (for/list ([f (in-list (cons #'ctor accs))])
+       (make-export f (syntax-e f) (sub1 (syntax-local-phase-level)) #f f))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Conveniences

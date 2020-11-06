@@ -8,7 +8,7 @@
          ;; require & provides
          require only-in prefix-in except-in rename-in
          provide all-defined-out all-from-out rename-out except-out
-         for-syntax for-template for-label for-meta
+         for-syntax for-template for-label for-meta struct-out
          ;; Start dataspace programs
          run-ground-dataspace
          ;; Types
