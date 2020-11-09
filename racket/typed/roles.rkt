@@ -633,19 +633,25 @@
       [(_ (~seq key val) ...)
        #'(make-free-id-table (hash (~@ #'key val) ...) #:phase ID-PHASE)]))
 
+  (define (mk-proto:U . args)
+    (proto:U args))
+  (define (mk-proto:Branch . args)
+    (proto:Branch args))
+
   (define TRANSLATION#
     (build-id-table Spawns proto:Spawn
                     Sends proto:Sends
                     Realizes proto:Realizes
                     Shares proto:Shares
                     Know proto:Know
-                    Branch proto:Branch
+                    Branch mk-proto:Branch
+                    Effs list
                     Asserted proto:Asserted
                     Retracted proto:Retracted
                     Message proto:Message
                     Forget proto:Forget
                     Realize proto:Realize
-                    U* proto:U
+                    U* mk-proto:U
                     Observe proto:Observe
                     List proto:List
                     Set proto:Set

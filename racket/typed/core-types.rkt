@@ -170,7 +170,8 @@
         #:arity op arity
         #:arg-variances variances
         #:isect-desc desc:isect-desc
-        (~optional (~seq #:extra-info extra-info)))
+        (~optional (~seq #:extra-info extra-info))
+        (~optional (~seq #:implements meths ...)))
      #:with Name- (mk-- #'Name)
      #:with NamePat (mk-~ #'Name)
      #:with NamePat- (mk-~ #'Name-)
@@ -181,9 +182,8 @@
          (define-type-constructor Name
            #:arity op arity
            #:arg-variances variances
-           #,@(if (attribute extra-info)
-                  #'(#:extra-info extra-info)
-                  #'()))
+           (~? (~@ #:extra-info extra-info))
+           (~? (~@ #:implements meths ...)))
          (begin-for-syntax
            (set-type-info! 'Name '#,(attribute desc.val) mk))))]))
 
@@ -201,15 +201,15 @@
 (define-syntax (define-container-type stx)
   (syntax-parse stx
     [(_ Name:id #:arity op arity
-        (~optional (~seq #:extra-info extra-info)))
+        (~optional (~seq #:extra-info extra-info))
+        (~optional (~seq #:implements meths ...)))
      (quasisyntax/loc stx
        (define-type-constructor+ Name
          #:arity op arity
          #:arg-variances mk-covariant
          #:isect-desc CONTAINER-LIKE
-         #,@(if (attribute extra-info)
-                #'(#:extra-info extra-info)
-                #'())))]))
+         (~? (~@ #:extra-info extra-info))
+         (~? (~@ #:implements meths ...))))]))
 
 ;; Define a type constructor that acts like a product:
 ;;   - covariant
@@ -217,15 +217,15 @@
 (define-syntax (define-product-type stx)
   (syntax-parse stx
     [(_ Name:id #:arity op arity
-        (~optional (~seq #:extra-info extra-info)))
+        (~optional (~seq #:extra-info extra-info))
+        (~optional (~seq #:implements meths ...)))
      (quasisyntax/loc stx
        (define-type-constructor+ Name
          #:arity op arity
          #:arg-variances mk-covariant
          #:isect-desc PRODUCT-LIKE
-         #,@(if (attribute extra-info)
-                #'(#:extra-info extra-info)
-                #'())))]))
+         (~? (~@ #:extra-info extra-info))
+         (~? (~@ #:implements meths ...))))]))
 
 (define-type Type : Type)
 
@@ -619,6 +619,13 @@
        ----------------------
        [⊢ (#%app- #,StructName e- ...) (⇒ : (#,TypeCons τ ...))]])))
 
+(define-for-syntax (resugar-ctor ty)
+  ;; because typedefs defines 0-arity constructors as base types,
+  ;; make a custom resugar that always parenthesizes constructors
+  (syntax-parse ty
+    [(~Any/new nm args ...)
+     (cons #'nm (stx-map resugar-type #'(args ...)))]))
+
 (define-syntax (define-constructor stx)
   (syntax-parse stx
     [(_ (Cons:id slot:id ...)
@@ -643,7 +650,8 @@
            (list #'type-tag #'MakeTypeCons #'GetTypeParams))
          (define-product-type TypeCons
            #:arity = #,arity
-           #:extra-info TypeConsExtraInfo)
+           #:extra-info TypeConsExtraInfo
+           #:implements get-resugar-info resugar-ctor)
          (define-type-alias Alias AliasBody) ...
          (define-syntax MakeTypeCons (mk-ctor-rewriter #'TypeCons))
          (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
@@ -716,7 +724,8 @@
              ;; issue: arity needs to parse as an exact-nonnegative-integer
              ;; fix: check arity in MakeTypeCons
              #:arity >= 0
-             #:extra-info TypeConsExtraInfo)
+             #:extra-info TypeConsExtraInfo
+             #:implements get-resugar-info resugar-ctor)
            (define-syntax MakeTypeCons (mk-ctor-rewriter #'TypeCons))
            (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
            (define-syntax Cons- (mk-constructor-type-rule arity #'orig-struct-info #'TypeCons))
@@ -835,16 +844,6 @@
         (define accs (user-ctor-field-ids val))
         (for/list ([f (in-list (list* #'ctor (user-ctor-type-ctor val) accs))])
           (make-export f (syntax-e f) (syntax-local-phase-level) #f f))]))))
-
-#;(define-provide-syntax (struct-out stx)
-  (syntax-parse stx
-    [(_ ctor:id)
-     (define val (syntax-local-value #'ctor (const #f)))
-     (unless (user-ctor? val)
-       (raise-syntax-error (format "not a constructor: ~a" (syntax-e #'ctor)) this-syntax))
-     (define accs (user-ctor-field-ids val))
-     (for/list ([f (in-list (cons #'ctor accs))])
-       (make-export f (syntax-e f) (sub1 (syntax-local-phase-level)) #f f))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Conveniences

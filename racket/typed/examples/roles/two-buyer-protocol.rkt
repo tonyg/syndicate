@@ -62,14 +62,18 @@
 
 (define-type-alias seller-role
   (Role (seller)
-    (Reacts (Asserted (Observe (QuoteT String ★/t)))
+    (During (Observe (QuoteT String ★/t))
+      (Shares (QuoteT String QuoteAnswer)))
+    #;(Reacts (Asserted (Observe (QuoteT String ★/t)))
             (Role (_)
-              (Shares (QuoteT String Int))))))
+              ;; QuoteAnswer was originally, erroneously, Int
+              (Shares (QuoteT String QuoteAnswer))))))
 
 (run-ground-dataspace ds-type
 
 ;; seller
 (spawn ds-type
+  (lift+define-role seller-impl
   (start-facet _
     (field [book (Tuple String Int) (tuple "Catch 22" 22)]
            [next-order-id Int 10001483])
@@ -93,10 +97,11 @@
                 (let ([id (ref next-order-id)])
                   (set! next-order-id (+ 1 id))
                   (assert (order title offer (order-id id) (delivery-date "March 9th"))))
-                (assert (order title offer #f #f))))))))
+                (assert (order title offer #f #f)))))))))
 
 ;; buyer A
 (spawn ds-type
+  (lift+define-role buyer-a-impl
   (start-facet buyer
     (field [title String "Catch 22"]
            [budget Int 1000])
@@ -113,10 +118,11 @@
                      (if (> (ref contribution) (- amount 5))
                          (stop negotiation (displayln "negotiation failed"))
                          (set! contribution
-                               (+ (ref contribution) (/ (- amount (ref contribution)) 2)))))))]))))
+                               (+ (ref contribution) (/ (- amount (ref contribution)) 2)))))))])))))
 
 ;; buyer B
 (spawn ds-type
+  (lift+define-role buyer-b-impl
   (start-facet buyer-b
     (field [funds Int 5])
     (on (asserted (observe (split-proposal (bind title String) (bind price Int) (bind their-contribution Int) discard)))
@@ -146,5 +152,12 @@
                                      (stop purchase))]
                              [discard
                               (begin (displayln "Order Rejected")
-                                     (stop purchase))]))))))])))))
+                                     (stop purchase))]))))))]))))))
 )
+
+(module+ test
+  (check-simulates seller-impl seller-impl)
+  ;; found a bug in spec, see seller-role above
+  (check-simulates seller-impl seller-role)
+  (check-simulates buyer-a-impl buyer-a-impl)
+  (check-simulates buyer-b-impl buyer-b-impl))
