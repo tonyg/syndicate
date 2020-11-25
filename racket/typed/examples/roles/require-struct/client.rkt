@@ -5,6 +5,9 @@
 
 (define m (msg 1 "hi"))
 
+(msg-in m)
+(msg-out m)
+
 (match m
   [(msg (bind x Int) discard)
    (displayln x)])

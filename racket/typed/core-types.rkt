@@ -667,9 +667,10 @@
     (quasisyntax/loc TypeCons
       (define-typed-variable-rename+ #,accessor ≫ #,accessor- : (∀+ #,slots (→fn (#,TypeCons #,@slots) #,slot))))))
 
-(define-for-syntax ((define-struct-accs accs TypeCons lib) stx)
+(define-for-syntax ((define-struct-accs accs/rev TypeCons lib) stx)
   (syntax-parse stx
     [(_ ucons:id)
+     (define accs (cleanup-accs #'ucons accs/rev))
      (define accs- (map mk-- accs))
      (define slots (generate-temporaries accs))
      (define renames (for/list ([acc (in-list accs)]
@@ -730,9 +731,9 @@
            (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
            (define-syntax Cons- (mk-constructor-type-rule arity #'orig-struct-info #'TypeCons))
            (define-syntax ucons
-             (user-ctor #'Cons- #'orig-struct-info 'type-tag #'TypeCons accs))
+             (user-ctor #'Cons- #'orig-struct-info 'type-tag #'TypeCons (cleanup-accs #'ucons accs/rev) #;accs))
            (define-syntax mk-struct-accs
-             (define-struct-accs accs #'TypeCons #'lib))
+             (define-struct-accs accs/rev #'TypeCons #'lib))
            (mk-struct-accs ucons))))]))
 
 (begin-for-syntax
