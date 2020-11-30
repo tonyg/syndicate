@@ -1812,6 +1812,17 @@
              #:when (simulates?/rg srg spec-rg))
     srg))
 
+;; Role Role -> (Maybe RoleGraph)
+;; try to find any subgraph of the implementation simulating the spec
+;; TODO: would be nice to find the largest
+(define (find-simulating-subgraph impl spec)
+  (define spec-rg (compile spec))
+  (define impl-rg (compile/internal-events (compile impl) impl))
+  (define evts (relevant-events spec-rg))
+  (for/first ([srg (subgraphs impl-rg evts)]
+             #:when (simulates?/rg srg spec-rg))
+    srg))
+
 (module+ test
   (test-case
       "task manager has task performer subgraphs"

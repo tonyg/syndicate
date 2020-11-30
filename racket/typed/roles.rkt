@@ -33,7 +33,7 @@
          ;; endpoints
          assert know on field
          ;; expressions
-         tuple select lambda ref observe inbound outbound
+         tuple select lambda λ ref observe inbound outbound
          Λ inst call/inst
          ;; making types
          define-type-alias
@@ -130,7 +130,22 @@
 ;; Core forms
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-typed-syntax (start-facet name:id ep ...+) ≫
+(define-typed-syntax start-facet
+  [(_ name:id #:implements spec:type ep ...+) ≫
+   #:cut
+   [⊢ (start-facet name ep ...) ≫ e- (⇒ ν-f (~effs impl-ty))]
+   #:fail-unless (simulating-types? #'impl-ty #'spec.norm)
+                 "facet does not implement specification"
+   ------------------------------------------------------------
+   [≻ e-]]
+  [(_ name:id #:includes-behavior spec:type ep ...+) ≫
+   #:cut
+   [⊢ (start-facet name ep ...) ≫ e- (⇒ ν-f (~effs impl-ty))]
+   #:fail-unless (type-has-simulating-subgraphs? #'impl-ty #'spec.norm)
+                 "no subset implements specified behavior"
+   ------------------------------------------------------------
+   [≻ e-]]
+  [(_ name:id ep ...+) ≫
   #:with name- (syntax-local-identifier-as-binding (syntax-local-introduce (generate-temporary #'name)))
   #:with name+ (syntax-local-identifier-as-binding #'name)
   #:with facet-name-ty (type-eval #'FacetName)
@@ -160,7 +175,7 @@
   [⊢ (syndicate:react (let- ([#,name-- (#%app- syndicate:current-facet-id)])
                         #,@ep-...))
      (⇒ : ★/t)
-     (⇒ ν-f (τ))])
+     (⇒ ν-f (τ))]])
 
 (define-typed-syntax field
   [(_ [x:id τ-f:type e:expr] ...) ≫
@@ -337,10 +352,13 @@
      [⊢ (block s) ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
     ]
   ;; TODO: s shouldn't refer to facets or fields!
+  #:fail-unless (and (stx-andmap Role? #'(τ-f ...))
+                     (= 1 (length (syntax->list #'(τ-f ...)))))
+                 "expected exactly one Role for body"
   #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
   #:fail-unless (<: #'τ-o #'τ-c.norm)
                 (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o) (type->str #'τ-c.norm))
-  #:with τ-final (mk-Actor- #'(τ-c.norm))
+  #:with τ-final #;(mk-Actor- #'(τ-c.norm)) (mk-ActorWithRole- #'(τ-c.norm τ-f ...))
   #:fail-unless (<: #'τ-a #'τ-final)
                 "Spawned actors not valid in dataspace"
   #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c.norm)
@@ -655,7 +673,10 @@
                     Observe proto:Observe
                     List proto:List
                     Set proto:Set
-                    Hash proto:Hash))
+                    Hash proto:Hash
+                    OnStart proto:StartEvt
+                    OnStop proto:StopEvt
+                    OnDataflow proto:DataflowEvt))
 
   (define (double-check)
     (for/first ([id (in-dict-keys TRANSLATION#)]
@@ -666,10 +687,17 @@
   (define (synd->proto ty)
     (let convert ([ty (resugar-type ty)])
       (syntax-parse ty
-        #:literals (★/t Bind Discard ∀/internal →/internal Role/internal Stop Reacts)
+        #:literals (★/t Bind Discard ∀/internal →/internal Role/internal Stop Reacts Actor ActorWithRole)
         [(ctor:id t ...)
          #:when (dict-has-key? TRANSLATION# #'ctor)
          (apply (dict-ref TRANSLATION# #'ctor) (stx-map convert #'(t ...)))]
+        [nm:id
+         #:when (dict-has-key? TRANSLATION# #'nm)
+         (dict-ref TRANSLATION# #'nm)]
+        [(Actor _)
+         (error "only able to convert actors with roles")]
+        [(ActorWithRole _ r)
+         (proto:Spawn (convert #'r))]
         [★/t proto:⋆]
         [(Bind t)
          ;; TODO - this is debatable handling
@@ -686,7 +714,7 @@
         [(Role/internal (nm) body ...)
          (proto:Role (syntax-e #'nm) (stx-map convert #'(body ...)))]
         [(Stop nm body ...)
-         (proto:Role (syntax-e #'nm) (stx-map convert #'(body ...)))]
+         (proto:Stop (syntax-e #'nm) (stx-map convert #'(body ...)))]
         [(Reacts evt body ...)
          (define converted-body (stx-map convert #'(body ...)))
          (define body+
@@ -719,15 +747,35 @@
   ----------------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν-ep ()) (⇒ ν-f (r)) (⇒ ν-s ())])
 
+
+;; Type Type -> Bool
+;; (normalized Types)
+(define-for-syntax (simulating-types? ty-impl ty-spec)
+  (define ty-impl- (synd->proto ty-impl))
+  (define ty-spec- (synd->proto ty-spec))
+  (proto:simulates? ty-impl- ty-spec-))
+
+;; Type Type -> Bool
+;; (normalized Types)
+(define-for-syntax (type-has-simulating-subgraphs? ty-impl ty-spec)
+  (define ty-impl- (synd->proto ty-impl))
+  (define ty-spec- (synd->proto ty-spec))
+  (define ans (proto:find-simulating-subgraph ty-impl- ty-spec-))
+  (unless ans
+    (pretty-print ty-impl-)
+    (pretty-print ty-spec-))
+  ans)
+
 (define-syntax-parser check-simulates
   [(_ τ-impl:type τ-spec:type)
-  (define τ-impl- (synd->proto #'τ-impl.norm))
-  (define τ-spec- (synd->proto #'τ-spec.norm))
-  (pretty-print τ-impl-)
-  (pretty-print τ-spec-)
-  (unless (proto:simulates? τ-impl- τ-spec-)
-    (raise-syntax-error #f "type doesn't simulate spec" this-syntax))
-  #'(#%app- void-)])
+   (displayln 'CS)
+   (define τ-impl- (synd->proto #'τ-impl.norm))
+   (define τ-spec- (synd->proto #'τ-spec.norm))
+   (unless (proto:simulates? τ-impl- τ-spec-)
+     (pretty-print τ-impl-)
+     (pretty-print τ-spec-)
+     (raise-syntax-error #f "type doesn't simulate spec" this-syntax))
+   #'(#%app- void-)])
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

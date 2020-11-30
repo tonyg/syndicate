@@ -322,6 +322,10 @@
   (syntax-parser
     [(~Role (nm : _) (~RoleBody body ...))
      (list* #'Role (list #'nm) (stx-map resugar-type #'(body ...)))]))
+(define-for-syntax (Role? stx)
+  (syntax-parse stx
+    [(~Role (_ : _) _) #t]
+    [_ #f]))
 
 (define-type-constructor Shares #:arity = 1)
 (define-type-constructor Sends #:arity = 1)
@@ -344,6 +348,17 @@
 (define-base-types OnStart OnStop OnDataflow MakesField)
 (define-for-syntax field-prop-name 'fields)
 (define-type-constructor Actor #:arity = 1)
+(define-type-constructor ActorWithRole #:arity >= 1)
+;; usage: (ActorWithRole τc τr)
+;;  τc is the communication type
+;;  τr is the Role type of the root facet
+(begin-for-syntax
+  (define-syntax ~AnyActor
+    (pattern-expander
+    (syntax-parser
+      [(_ τc-pat)
+       #'(~or* (~Actor τc-pat)
+               (~ActorWithRole τc-pat _))]))))
 
 #;(define-product-type Message #:arity = 1)
 (define-product-type Tuple #:arity >= 0)
@@ -913,7 +928,7 @@
 (define-for-syntax (flat-type? τ)
   (syntax-parse τ
     [(~→+ i ... o) #f]
-    [(~Actor τ) #f]
+    [(~AnyActor τ) #f]
     [(~Role+Body (_) _ ...) #f]
     [_ #t]))
 
@@ -991,7 +1006,7 @@
     [(~Stop name:id τ-r ...)
      #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-r ...))
      (values #'τ-i #'τ-o #'τ-i/i #'τ-o/i #'τ-a)]
-    [(~Actor τc)
+    [(~AnyActor τc)
      (values bot bot bot bot t)]
     [(~Sends τ-m)
      (values bot (mk-Message- #'(τ-m)) bot bot bot)]
@@ -1142,7 +1157,7 @@
       (stx-andmap (lambda (t) (<: t t2)) #'(τ1 ...))]
      [(_ (~U* τ2 ...))
       (stx-ormap (lambda (t) (<: t1 t)) #'(τ2 ...))]
-     [((~Actor τ1) (~Actor τ2))
+     [((~AnyActor τ1) (~AnyActor τ2))
       (and (<: #'τ1 #'τ2)
            (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
      [((~proc τ-in1 ... -> τ-out1 #:spawns (~seq S1 ...)
@@ -1154,7 +1169,9 @@
       (and (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
            (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
            (<: #'τ-out1 #'τ-out2)
-           (<: (mk-Actor- (list (mk-U*- #'(S1 ...))))
+           ;; TODO!
+           (<: (mk-U*- #'(S1 ...)) (mk-U*- #'(S2 ...)))
+           #;(<: (mk-Actor- (list (mk-U*- #'(S1 ...))))
                (mk-Actor- (list (mk-U*- #'(S2 ...)))))
            (<: (mk-U*- #'(R1 ...))
                (mk-U*- #'(R2 ...)))
