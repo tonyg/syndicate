@@ -1544,6 +1544,118 @@
              ))])))
   (verify (equiv st0-1 st0-2) (set)))
 
+;; a FailingTrace is a (failing-trace (Listof Transition) (Listof Transition) (Listof TraceStep))
+(struct failing-trace (impl-path spec-path steps) #:transparent)
+
+;; a TraceStep is one of
+;; - (both-step D)
+;; - (impl-step D)
+;; describing either both the spec and the implementation responding to an
+;; event, or only the implementation
+(struct both-step (evt) #:transparent)
+(struct impl-step (evt) #:transparent)
+
+(define (print-failing-trace trace impl-rg spec-rg)
+  (match-define (role-graph _ impl-st#) impl-rg)
+  (match-define (role-graph _ spec-st#) spec-rg)
+  (match-define (failing-trace impl-path spec-path steps) trace)
+  (define SEP (make-string 40 #\;))
+  (define (print-sep)
+    (newline)
+    (println SEP)
+    (newline))
+  (let loop ([steps steps]
+             [impl-path impl-path]
+             [spec-path spec-path]
+             ;; because the path might end with a impl-step, remember the last
+             ;; spec state we've seen so we can print its assertions at the right time
+             [last-spec-state (transition-dest (car spec-path))])
+    (match steps
+      [(cons step more-steps)
+       (define impl-dest (transition-dest (car impl-path)))
+       (print-sep)
+       (printf "In response to event:\n")
+       (match step
+         [(or (both-step D)
+              (impl-step D))
+          (pretty-print D)])
+       (printf "Implementation steps to state:\n")
+       (pretty-print impl-dest)
+       (when (empty? more-steps)
+         (printf "Implementation Assertions:\n")
+         (pretty-print (state-assertions (hash-ref impl-st# impl-dest))))
+       (when (both-step? step)
+         (printf "Specification steps to state:\n")
+         (pretty-print (transition-dest (car spec-path))))
+       (when (empty? more-steps)
+         (printf "Specification Assertions:\n")
+         (pretty-print (state-assertions (hash-ref spec-st# last-spec-state))))
+       (loop more-steps
+             (cdr impl-path)
+             (if (both-step? step) (cdr spec-path) spec-path)
+             (if (both-step? step) (transition-dest (car spec-path)) last-spec-state))]
+      [_
+       (void)])))
+
+;; RoleGraph RoleGraph -> Trace
+;; assuming impl-rg does not simulate spec-rg, find a trace of transitions
+;; (event + effects + destination assertions) demonstrating different behaviors
+(define (find-simulation-counterexample impl-rg spec-rg)
+  (match-define (role-graph impl-st0 impl-st#) impl-rg)
+  (match-define (role-graph spec-st0 spec-st#) spec-rg)
+  ;; inside loop, the each trace field is in reverse
+  (let loop ([work (list (failing-trace (list (transition '() impl-st0))
+                                        (list (transition '() spec-st0))
+                                        (list (both-step StartEvt))))]
+             #;[visited (set)])
+    (match work
+      [(cons (failing-trace impl-path/rev spec-path/rev steps/rev) more-work)
+       (match-define (transition impl-effs impl-dest) (car impl-path/rev))
+       (match-define (transition spec-effs spec-dest) (car spec-path/rev))
+       (define last-step (car steps/rev))
+       (cond
+         [(or (impl-step? last-step)
+              ;; when only the implementation steps, no need to compare effects on transitions
+              (effects-subsequence? spec-effs impl-effs))
+          ;; cascading conds will help with development and isolating where things go wrong
+          (match-define (state _ impl-transition# impl-assertions) (hash-ref impl-st# impl-dest))
+          (match-define (state _ spec-transition# spec-assertions) (hash-ref spec-st# spec-dest))
+          (cond
+            ;; n.b. internal events should be compiled away by now or this wouldn't work
+            [(assertion-superset? impl-assertions spec-assertions)
+             ;; same effects and same assertions, compare transitions
+             ;; TODO: similarity to `same-on-specified-events?`
+             (define spec-matching-txns
+               (for*/list ([(spec-D spec-txns) (in-hash spec-transition#)]
+                           [(impl-D impl-txns) (in-hash impl-transition#)]
+                           #:when (D<:? spec-D impl-D)
+                           [spec-txn (in-set spec-txns)]
+                           [impl-txn (in-set impl-txns)])
+                 (failing-trace (cons impl-txn impl-path/rev)
+                                (cons spec-txn spec-path/rev)
+                                (cons (both-step spec-D) steps/rev))))
+             ;; transitions that the implementation has that the spec doesn't respond to
+             (define spec-evts (hash-keys spec-transition#))
+             ;; TODO: similarity to `same-on-extra-events?`
+             (define impl-extra-txns
+               (for*/list ([(impl-D impl-txns) (in-hash impl-transition#)]
+                           ;; TODO - this more or less assumes that *any* event matching impl-D also matches spec-evt, which I'm not sure is quite right
+                           #:unless (for/or ([spec-evt (in-list spec-evts)])
+                                      (D<:? spec-evt impl-D))
+                           [impl-txn (in-set impl-txns)])
+                 (failing-trace (cons impl-txn impl-path/rev)
+                                spec-path/rev
+                                (cons (impl-step impl-D) steps/rev))))
+             (loop (append more-work spec-matching-txns impl-extra-txns))]
+            [else
+             ;; states have different assertions
+             (failing-trace (reverse impl-path/rev) (reverse spec-path/rev) (reverse steps/rev))])]
+         [else
+          ;; transitions have different effects
+          (failing-trace (reverse impl-path/rev) (reverse spec-path/rev) (reverse steps/rev))])]
+      [_
+       (error "ran out of work")])))
+
 ;; (List Role) -> (Hashof RoleName (Setof τ))
 ;; map each role's name to the assertions it contributes
 (define (all-roles-assertions roles)
