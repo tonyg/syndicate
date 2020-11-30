@@ -646,9 +646,9 @@
     (check-equal? sn0 (set 'seller))
     (check-true (hash-has-key? seller# (set 'seller)))
     (check-true (hash-has-key? seller# (set 'seller 'fulfill)))
-    (check-equal? (hash-keys seller#)
-                  (list (set 'seller 'fulfill)
-                        (set 'seller)))
+    (check-equal? (list->set (hash-keys seller#))
+                  (set (set 'seller 'fulfill)
+                       (set 'seller)))
     (define st0 (hash-ref seller# (set 'seller)))
     (define transitions (state-transitions st0))
     (define quote-request
@@ -2700,10 +2700,10 @@
       "job manager reads and compiles"
     (define jmr (run/timeout (thunk (parse-T job-manager-actual))))
     (check-true (Role? jmr))
-    (define jm (run/timeout (thunk (compile jmr))))
+    (define jm (run/timeout (thunk (compile jmr)) 5000))
     (check-true (role-graph? jm))
-    (define jmi (run/timeout (thunk (compile/internal-events jm jmr))))
-    (check-true (run/timeout (thunk (simulates?/rg jmi jmi))))))
+    (define jmi (run/timeout (thunk (compile/internal-events jm jmr)) 5000))
+    (check-true (run/timeout (thunk (simulates?/rg jmi jmi)) 5000))))
 
 (define task-runner-ty
   '(Role
