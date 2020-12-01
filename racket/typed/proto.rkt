@@ -1544,6 +1544,18 @@
              ))])))
   (verify (equiv st0-1 st0-2) (set)))
 
+;; Role Role -> Bool
+(define (simulates?/report-error impl spec)
+  (define impl-rg (compile impl))
+  (define spec-rg (compile spec))
+  (cond
+    [(simulates?/rg impl-rg spec-rg)
+     #t]
+    [else
+     (define trace (find-simulation-counterexample impl-rg spec-rg))
+     (print-failing-trace trace impl-rg spec-rg)
+     #f]))
+
 ;; a FailingTrace is a (failing-trace (Listof Transition) (Listof Transition) (Listof TraceStep))
 (struct failing-trace (impl-path spec-path steps) #:transparent)
 
@@ -1555,6 +1567,7 @@
 (struct both-step (evt) #:transparent)
 (struct impl-step (evt) #:transparent)
 
+;; FailingTrace RoleGraph RoleGraph -> Void
 (define (print-failing-trace trace impl-rg spec-rg)
   (match-define (role-graph _ impl-st#) impl-rg)
   (match-define (role-graph _ spec-st#) spec-rg)
@@ -1562,7 +1575,7 @@
   (define SEP (make-string 40 #\;))
   (define (print-sep)
     (newline)
-    (println SEP)
+    (displayln SEP)
     (newline))
   (let loop ([steps steps]
              [impl-path impl-path]
@@ -1572,7 +1585,7 @@
              [last-spec-state (transition-dest (car spec-path))])
     (match steps
       [(cons step more-steps)
-       (define impl-dest (transition-dest (car impl-path)))
+       (match-define (transition impl-effs impl-dest) (car impl-path))
        (print-sep)
        (printf "In response to event:\n")
        (match step
@@ -1581,12 +1594,19 @@
           (pretty-print D)])
        (printf "Implementation steps to state:\n")
        (pretty-print impl-dest)
+       (unless (empty? impl-effs)
+         (printf "With Effects:\n")
+         (pretty-print impl-effs))
        (when (empty? more-steps)
          (printf "Implementation Assertions:\n")
          (pretty-print (state-assertions (hash-ref impl-st# impl-dest))))
        (when (both-step? step)
+         (match-define (transition spec-effs spec-dest) (car spec-path))
          (printf "Specification steps to state:\n")
-         (pretty-print (transition-dest (car spec-path))))
+         (pretty-print spec-dest)
+         (unless (empty? spec-effs)
+           (printf "With Effects:\n")
+           (pretty-print spec-effs)))
        (when (empty? more-steps)
          (printf "Specification Assertions:\n")
          (pretty-print (state-assertions (hash-ref spec-st# last-spec-state))))
@@ -1595,6 +1615,7 @@
              (if (both-step? step) (cdr spec-path) spec-path)
              (if (both-step? step) (transition-dest (car spec-path)) last-spec-state))]
       [_
+       (newline)
        (void)])))
 
 ;; RoleGraph RoleGraph -> Trace
@@ -1818,10 +1839,49 @@
 (define (find-simulating-subgraph impl spec)
   (define spec-rg (compile spec))
   (define impl-rg (compile/internal-events (compile impl) impl))
+  (find-simulating-subgraph impl-rg spec-rg))
+
+;; RoleGraph RoleGraph -> (Maybe RoleGraph)
+(define (find-simulating-subgraph/rg impl-rg spec-rg)
   (define evts (relevant-events spec-rg))
   (for/first ([srg (subgraphs impl-rg evts)]
-             #:when (simulates?/rg srg spec-rg))
+              #:when (simulates?/rg srg spec-rg))
     srg))
+
+;; Role Role -> Bool
+(define (find-simulating-subgraph/report-error impl spec)
+  (define spec-rg (compile spec))
+  (define impl-rg (compile/internal-events (compile impl) impl))
+  (define ans (find-simulating-subgraph/rg impl-rg spec-rg))
+  (cond
+    [ans
+     #t]
+    [else
+     (define-values (ft sg) (find-largest-simulating-subgraph-counterexample))
+     (print-failing-trace ft impl-rg spec-rg)
+     #f]))
+
+;; RoleGraph RoleGraph -> (Values FailingTrace RoleGraph)
+;; assuming impl does not have any simulating subgraphs of spec
+;; largest *trace*, not largest subgraph
+(define (find-largest-simulating-subgraph-counterexample impl-rg spec-rg)
+  (define evts (relevant-events spec-rg))
+  (define-values (trace len rg)
+    (for/fold ([best-trace #f]
+               [best-length 0]
+               [best-subgraph #f])
+              ([srg (subgraphs impl-rg evts)])
+      (define ft (find-simulation-counterexample srg spec-rg))
+      (define len (failing-trace-length ft))
+      ;; thing >= will prefer larger graphs
+      (if (>= len best-length)
+          (values ft len srg)
+          (values best-trace best-length best-subgraph))))
+  (values trace rg))
+
+;; FailingTrace -> Int
+(define (failing-trace-length ft)
+  (length (failing-trace-steps ft)))
 
 (module+ test
   (test-case

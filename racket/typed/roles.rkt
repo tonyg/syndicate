@@ -751,14 +751,14 @@
 (define-for-syntax (simulating-types? ty-impl ty-spec)
   (define ty-impl- (synd->proto ty-impl))
   (define ty-spec- (synd->proto ty-spec))
-  (proto:simulates? ty-impl- ty-spec-))
+  (proto:simulates?/report-error ty-impl- ty-spec-))
 
 ;; Type Type -> Bool
 ;; (normalized Types)
 (define-for-syntax (type-has-simulating-subgraphs? ty-impl ty-spec)
   (define ty-impl- (synd->proto ty-impl))
   (define ty-spec- (synd->proto ty-spec))
-  (define ans (proto:find-simulating-subgraph ty-impl- ty-spec-))
+  (define ans (proto:find-simulating-subgraph/report-error ty-impl- ty-spec-))
   (unless ans
     (pretty-print ty-impl-)
     (pretty-print ty-spec-))
