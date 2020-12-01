@@ -131,15 +131,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax start-facet
-  [(_ name:id #:implements spec:type ep ...+) ≫
-   #:cut
+  [(_ name:id #:implements ~! spec:type ep ...+) ≫
    [⊢ (start-facet name ep ...) ≫ e- (⇒ ν-f (~effs impl-ty))]
    #:fail-unless (simulating-types? #'impl-ty #'spec.norm)
                  "facet does not implement specification"
    ------------------------------------------------------------
    [≻ e-]]
-  [(_ name:id #:includes-behavior spec:type ep ...+) ≫
-   #:cut
+  [(_ name:id #:includes-behavior ~! spec:type ep ...+) ≫
    [⊢ (start-facet name ep ...) ≫ e- (⇒ ν-f (~effs impl-ty))]
    #:fail-unless (type-has-simulating-subgraphs? #'impl-ty #'spec.norm)
                  "no subset implements specified behavior"
