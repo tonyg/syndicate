@@ -273,13 +273,7 @@
       [>
        (append prefix (list #'Type #'Type #'*))]
       [>=
-       (append prefix (list #'Type #'*))]))
-
-  ;; PatternExpander (Syntax-Listof ID) ID -> Pattern
-  (define ((make-type-recognizer name-) ty)
-    (syntax-parse ty
-      [(~Any/new τcons . rst)
-       (free-identifier=? #'τcons name-)])))
+       (append prefix (list #'Type #'*))])))
 
 (define-syntax (define-type-constructor stx)
   (syntax-parse stx
@@ -302,9 +296,7 @@
            (~? (~@ get-extra-info-data extra-info))
            (~? (~@ meths ...)))
          (define-for-syntax (mk- args)
-           ((current-type-eval) #`(Name #,@args)))
-         (define-for-syntax Name?
-           (make-type-recognizer #'Name-)))]))
+           ((current-type-eval) #`(Name #,@args))))]))
 
 (define-simple-macro (define-base-type Name:id)
   (define-type Name : Type))
@@ -634,12 +626,12 @@
        ----------------------
        [⊢ (#%app- #,StructName e- ...) (⇒ : (#,TypeCons τ ...))]])))
 
-(define-for-syntax (resugar-ctor ty)
+(define-for-syntax ((resugar-ctor ty-cons) t)
   ;; because typedefs defines 0-arity constructors as base types,
   ;; make a custom resugar that always parenthesizes constructors
-  (syntax-parse ty
-    [(~Any/new nm args ...)
-     (cons #'nm (stx-map resugar-type #'(args ...)))]))
+  (syntax-parse t
+    [(~Any/new _ args ...)
+     (cons ty-cons (stx-map resugar-type #'(args ...)))]))
 
 (define-syntax (define-constructor stx)
   (syntax-parse stx
@@ -666,7 +658,7 @@
          (define-product-type TypeCons
            #:arity = #,arity
            #:extra-info TypeConsExtraInfo
-           #:implements get-resugar-info resugar-ctor)
+           #:implements get-resugar-info (resugar-ctor #'TypeCons))
          (define-type-alias Alias AliasBody) ...
          (define-syntax MakeTypeCons (mk-ctor-rewriter #'TypeCons))
          (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
@@ -741,7 +733,7 @@
              ;; fix: check arity in MakeTypeCons
              #:arity >= 0
              #:extra-info TypeConsExtraInfo
-             #:implements get-resugar-info resugar-ctor)
+             #:implements get-resugar-info (resugar-ctor #'TypeCons))
            (define-syntax MakeTypeCons (mk-ctor-rewriter #'TypeCons))
            (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
            (define-syntax Cons- (mk-constructor-type-rule arity #'orig-struct-info #'TypeCons))
