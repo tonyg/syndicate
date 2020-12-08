@@ -784,7 +784,7 @@
   (check-type
     (spawn (U (Observe (Tuple Int ★/t)))
            (start-facet echo
-                        (on (message (tuple 1 $x))
+                        (on (message (tuple 1 $x:Int))
                             #f)))
     : ★/t)
   (check-type (spawn (U (Message (Tuple String Int))

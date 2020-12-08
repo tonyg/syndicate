@@ -282,10 +282,14 @@
       [x:dollar-ann-id
        (syntax/loc pat (bind x.id x.ty))]
       [x:dollar-id
+       (when (bot? ty)
+         (raise-syntax-error #f "unable to instantiate pattern with matching part of type" pat))
        (quasisyntax/loc pat (bind x.id #,ty))]
       [($ x:id ty)
        (syntax/loc pat (bind x ty))]
       [($ x:id)
+       (when (bot? ty)
+         (raise-syntax-error #f "unable to instantiate pattern with matching part of type" pat))
        (quasisyntax/loc pat (bind x #,ty))]
       [(tuple p ...)
        (define (matching? t)
@@ -324,6 +328,7 @@
        (define (proj t i)
          (syntax-parse t
            [(~constructor-type _ tt ...)
+            #:when (matching? t)
             (if (= i -1)
                 t
                 (stx-list-ref #'(tt ...) i))]
