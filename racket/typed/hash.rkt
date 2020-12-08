@@ -33,22 +33,12 @@
 
 (define-container-type Hash #:arity = 2)
 
-(begin-for-syntax
-  (define-splicing-syntax-class key-val-list
-    #:attributes (items)
-    (pattern (~seq k1 v1 rest:key-val-list)
-             #:attr items #`((k1 v1) #,@#'rest.items))
-    (pattern (~seq)
-             #:attr items #'())))
-
-(define-typed-syntax (hash keys&vals:key-val-list) ≫
-  #:with ((key val) ...) #'keys&vals.items
+(define-typed-syntax (hash (~seq key:expr val:expr) ...) ≫
   [⊢ key ≫ key- (⇒ : τ-k)] ...
   [⊢ val ≫ val- (⇒ : τ-val)] ...
   #:fail-unless (all-pure? #'(key- ... val- ...)) "gotta be pure"
-  #:with together-again (stx-flatten #'((key- val-) ...))
   --------------------------------------------------
-  [⊢ (#%app- hash- #,@#'together-again) (⇒ : (Hash (U τ-k ...) (U τ-val ...)))])
+  [⊢ (#%app- hash- (~@ key val) ...) (⇒ : (Hash (U τ-k ...) (U τ-val ...)))])
 
 (require/typed racket/base
   ;; don't have a type for ConsPair
