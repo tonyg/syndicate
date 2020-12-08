@@ -64,7 +64,7 @@
          ;; DEBUG and utilities
          print-type print-role role-strings
          ;; Behavioral Roles
-         export-roles check-simulates lift+define-role
+         export-roles export-type check-simulates lift+define-role
          ;; Extensions
          match cond
          submod for-syntax for-meta only-in except-in
@@ -735,6 +735,13 @@
           #:exists 'replace)]
   ----------------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
+
+(define-typed-syntax (export-type dest:string τ:type) ≫
+  #:do [(with-output-to-file (syntax-e #'dest)
+          (thunk (pretty-write (synd->proto #'τ.norm)))
+          #:exists 'replace)]
+  ----------------------------------------
+  [⊢ (#%app- void-) (⇒ : ★/t)])
 
 (define-typed-syntax (lift+define-role x:id e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs)) (⇒ ν-f ((~and r  (~Role (_) _ ...)))) (⇒ ν-s (~effs))]
