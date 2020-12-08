@@ -1857,7 +1857,7 @@
     [ans
      #t]
     [else
-     (define-values (ft sg) (find-largest-simulating-subgraph-counterexample))
+     (define-values (ft sg) (find-largest-simulating-subgraph-counterexample impl-rg spec-rg))
      (print-failing-trace ft impl-rg spec-rg)
      #f]))
 
