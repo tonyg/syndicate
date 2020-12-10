@@ -409,6 +409,7 @@
     [(_ [id:id init maybe-contract ...] ...)
      (quasisyntax/loc stx
        (begin
+         (ensure-in-endpoint-context! 'field)
          (when (and (in-script?) (pair? (current-facet-id)))
            (error 'field
                   "~a: Cannot declare fields in a script; are you missing a (react ...)?"
@@ -1116,11 +1117,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Endpoint Creation
 
+(define (ensure-in-endpoint-context! who)
+  (when (or (in-script?) (null? (current-facet-id)))
+    (error who "Attempt to add endpoint out of installation context; are you missing a (react ...)?")))
+
 (define (add-endpoint! where internal? patch-fn handler-fn)
-  (when (in-script?)
-    (error 'add-endpoint!
-           "~a: Cannot add endpoint in script; are you missing a (react ...)?"
-           where))
+  (ensure-in-endpoint-context! 'add-endpoint!)
   (define-values (new-eid delta-aggregate)
     (let ()
       (define a (current-actor-state))

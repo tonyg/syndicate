@@ -8,6 +8,7 @@
 (require "main.rkt")
 (require (submod "actor.rkt" for-module-begin))
 (require "store.rkt")
+(require (only-in "core.rkt" clean-actions))
 
 (provide (rename-out [module-begin #%module-begin])
          activate
@@ -71,6 +72,12 @@
                           #%declare
                           begin-for-declarations))))
 
+(define (ensure-spawn-actions! acts)
+  (define cleaned-acts (clean-actions acts))
+  (for ([act (in-list cleaned-acts)]
+        #:unless (actor? act))
+    (error "only actor creation actions allowed at module level")))
+
 (define-syntax (syndicate-module stx)
   (syntax-parse stx
     [(_ (action-ids ...) (form forms ...))
@@ -89,8 +96,9 @@
         #`(begin
             (define-values (tmp ...) (values #,@(make-list (length (syntax->list #'(x ...))) #'#f)))
             (define action-id
-              (capture-actor-actions
-               (lambda () (set!-values (tmp ...) e))))
+              (ensure-spawn-actions!
+               (capture-actor-actions
+               (lambda () (set!-values (tmp ...) e)))))
             (define-values (x ...) (values tmp ...))
             (syndicate-module (action-ids ... action-id) (forms ...)))]
        [(head rest ...)
@@ -99,8 +107,9 @@
            #`(begin #,expanded (syndicate-module (action-ids ...) (forms ...)))]
           [else
            (with-syntax ([action-id (car (generate-temporaries (list #'form)))])
-             #`(begin (define action-id (capture-actor-actions (lambda () #,expanded)))
-                      (syndicate-module (action-ids ... action-id) (forms ...))))])]
+             #`(begin
+                 (define action-id (ensure-spawn-actions! (capture-actor-actions (lambda () #,expanded))))
+                 (syndicate-module (action-ids ... action-id) (forms ...))))])]
        [non-pair-syntax
         #'(begin form (syndicate-module (action-ids ...) (forms ...)))])]
     [(_ (action-ids ...) ())
