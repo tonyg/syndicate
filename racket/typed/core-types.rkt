@@ -38,7 +38,6 @@
 (require (postfix-in - racket/set))
 (require (postfix-in - racket/match))
 (require (postfix-in - (only-in racket/format ~a)))
-(require (for-syntax "syntax-serializer.rkt"))
 (require (for-syntax racket/provide-transform)
          racket/provide-syntax)
 
@@ -49,6 +48,36 @@
 
 (begin-for-syntax
   (current-use-stop-list? #f))
+
+(define-for-syntax KIND-TAG ':)
+
+#;(require (for-syntax "syntax-serializer.rkt"))
+(define-for-syntax (lazy-serialize t) t)
+(define-for-syntax (lazy-deserialize t)
+  (define TYPE (type-eval #'Type))
+  (define FN (type-eval #'FacetName))
+  (let loop ([t t])
+    (syntax-parse t
+      #:literals (#%plain-app #%plain-lambda list)
+      [_:id
+       (attach t KIND-TAG TYPE)]
+      [(#%plain-app tycons τ-in (#%plain-lambda (X) τ-out))
+       #:do [(define var-ty (if (equal? 'Role (syntax-e #'typecons)) FN TYPE))]
+       #:with τ-in- (attach (loop #'τ-in) KIND-TAG var-ty)
+       #:with X- (attach #'X KIND-TAG var-ty)
+       #:with τ-out- (loop #'τ-out)
+       (define reconstructed #`(#%plain-app tycons τ-in- (#%plain-lambda (X-) τ-out-)))
+       (attach (add-orig reconstructed t) KIND-TAG TYPE)]
+      [(#%plain-app tycons (~or* (~seq ty ... (#%plain-app (~and lst list) . more-tys))
+                                 (~seq ty ...)) )
+       #:with more-tys- (if (attribute more-tys) (stx-map loop #'more-tys) #'())
+       (define reconstructed #`(#%plain-app tycons
+                                            #,@(stx-map loop #'(ty ...))
+                                            (~? (#%plain-app lst . more-tys-))))
+       (attach (add-orig reconstructed t) KIND-TAG TYPE)])))
+(define-for-syntax serialize-syntax lazy-serialize)
+(define-for-syntax deserialize-syntax lazy-deserialize)
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Type Checking Conventions
@@ -1433,12 +1462,15 @@
 (define-for-syntax (int-def-ctx-bind-type-rename x x- t ctx)
   (when DEBUG-BINDINGS?
     (printf "adding to context ~a\n" (syntax-debug-info x)))
-  (define serialized-ty (serialize-syntax t))
+  ;; at some point these serialize/deserialze-syntax calls seemed to fix an issue, but
+  ;; in principle it doesn't seem like they should be necessary and things seem to be
+  ;; working w/o them *shrug*
+  (define serialized-ty (values #;serialize-syntax t))
   (syntax-local-bind-syntaxes (list x-) #f ctx)
   (syntax-local-bind-syntaxes (list x)
                               #`(make-rename-transformer
                                  (add-orig
-                                  (attach #'#,x- ': (deserialize-syntax #'#,serialized-ty))
+                                  (attach #'#,x- ': (values #;deserialize-syntax #'#,serialized-ty))
                                   #'#,x))
                               ctx))
 
@@ -1517,8 +1549,6 @@
   (syntax-parse stx
     [(_ [x:id x-:id τ e-] ...)
      #'(syndicate:field [x- e-] ...)]))
-
-(define-for-syntax KIND-TAG ':)
 
 (define-syntax (define/intermediate stx)
   (syntax-parse stx
