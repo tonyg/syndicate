@@ -488,13 +488,17 @@
   (syntax-parse stx
     [(_ script ...)
      (quasisyntax/loc stx
-       (schedule-script! (lambda () (begin/void-default script ...))))]))
+       (begin
+         (ensure-in-endpoint-context! 'on-start)
+         (schedule-script! (lambda () (begin/void-default script ...)))))]))
 
 (define-syntax (on-stop stx)
   (syntax-parse stx
     [(_ script ...)
      (quasisyntax/loc stx
-       (add-stop-script! (lambda () (begin/void-default script ...))))]))
+       (begin
+         (ensure-in-endpoint-context! 'on-stop)
+         (add-stop-script! (lambda () (begin/void-default script ...)))))]))
 
 (define-syntax (on-event stx)
   (syntax-parse stx
