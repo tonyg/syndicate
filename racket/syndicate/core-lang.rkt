@@ -76,7 +76,8 @@
   (define cleaned-acts (clean-actions acts))
   (for ([act (in-list cleaned-acts)]
         #:unless (actor? act))
-    (error "only actor creation actions allowed at module level")))
+    (error "only actor creation actions allowed at module level"))
+  cleaned-acts)
 
 (define-syntax (syndicate-module stx)
   (syntax-parse stx
