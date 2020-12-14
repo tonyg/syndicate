@@ -84,6 +84,7 @@
 
 (require (prefix-in syndicate: syndicate/actor-lang))
 (require (submod syndicate/actor priorities))
+(require (prefix-in syndicate: (submod syndicate/actor for-module-begin)))
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
 (require macrotypes/postfix-in)
@@ -610,7 +611,8 @@
   ]
   #:with τ-out (strip-outbound #'τ-c.norm)
   -----------------------------------------------------------------------------------
-  [⊢ (#%app- syndicate:run-ground s- ...) (⇒ : (AssertionSet τ-out))])
+  [⊢ (#%app- syndicate:run-ground (#%app- syndicate:capture-actor-actions (lambda- () (#%app- list- s- ...))))
+     (⇒ : (AssertionSet τ-out))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities
