@@ -115,13 +115,22 @@ JobManager and the TaskManager, and one between the TaskManager and its
 TaskRunners.
 |#
 
-(define-type-alias TaskAssigner
+;; I think this is wrong by explicitly requiring that the facet stop in response
+(define-type-alias TaskAssigner-v1
   (Role (assign)
     (Shares (Observe (TaskPerformance ID ConcreteTask ★/t)))
     ;; would be nice to say how the TaskIDs relate to each other
     (Reacts (Asserted (TaskPerformance ID ConcreteTask ★/t))
             (Branch (Stop assign)
                     (Effs)))))
+
+(define-type-alias TaskAssigner
+  (Role (assign)
+    ;; would be nice to say how the TaskIDs relate to each other
+    (Reacts (Asserted (TaskPerformance ID ConcreteTask TaskStateDesc))
+            )))
+
+(export-type "task-assigner.rktd" TaskAssigner)
 
 (define-type-alias TaskPerformer
   (Role (listen)
@@ -195,8 +204,8 @@ The JobManager then performs the job and, when finished, asserts
 
 (define (spawn-task-runner [id : ID] [tm-id : ID])
   (spawn τc
-   (begin
-   (start-facet runner
+   (lift+define-role task-runner-impl
+   (start-facet runner ;; #:includes-behavior TaskPerformer
     (assert (task-runner id))
     (on (retracted (task-manager tm-id _))
         (stop runner))
@@ -222,8 +231,8 @@ The JobManager then performs the job and, when finished, asserts
 (define (spawn-task-manager [num-task-runners : Int])
   (define id (gensym 'task-manager))
   (spawn τc
-   (begin
-   (start-facet tm
+   (#;begin  lift+define-role task-manager-impl ;;export-roles "task-manager-impl.rktd"
+   (start-facet tm ;; #:includes-behavior TaskAssigner
     (log "Task Manager (TM) ~a is running" id)
     (during (job-manager-alive)
      (log "TM ~a learns about JM" id)
@@ -339,26 +348,6 @@ The JobManager then performs the job and, when finished, asserts
              (left t)]))))
 
 
-#;(define (partition-ready-tasks [tasks : (List Int)]
-                               -> (Tuple (List Int)
-                                         (List Int)))
-  (define part (inst partition/either Int Int Int))
-  (part tasks
-        (lambda ([t : Int])
-          (right 0)
-          #;(match (some 5)
-            [(some $ct)
-             (right ct)]
-            [none
-             (left 0)]))))
-
-#;(define (debug [tasks : (List Int)] -> (Tuple (List String) (List Int)))
-  (define part (inst partition/either Int String Int))
-  (tuple (list) (list))
-  (part tasks
-        (lambda ([t : Int])
-          (left "hi"))))
-
 (define (input->pending-task [t : InputTask] -> PendingTask)
   (match t
     [(task $id (map-work $s))
@@ -380,8 +369,8 @@ The JobManager then performs the job and, when finished, asserts
 
 (define (spawn-job-manager)
   (spawn τc
-   (begin
-   (start-facet jm
+    (lift+define-role job-manager-impl ;; export-roles "job-manager-impl.rktd"
+    (start-facet jm ;; #:includes-behavior TaskAssigner
     (assert (job-manager-alive))
     (log "Job Manager Up")
 
@@ -522,7 +511,7 @@ The JobManager then performs the job and, when finished, asserts
          (on (realize (tasks-finished job-id $data:TaskResult))
              (stop delegate-tasks
                    (start-facet done (assert (job-completion job-id tasks data)))))
-         (on (realize (task-is-ready job-id $t))
+         (on (realize (task-is-ready job-id $t:ConcreteTask))
              (perform-task t push-results)))
        (for ([t (in-list ready)])
          (add-ready-task! t))))))))
@@ -555,3 +544,11 @@ The JobManager then performs the job and, when finished, asserts
   (spawn-task-manager 3)
   (spawn-client (file->job "lorem.txt"))
   (spawn-client (string->job INPUT)))
+
+(module+ test
+  (check-simulates task-runner-impl task-runner-impl)
+  (check-has-simulating-subgraph task-runner-impl TaskPerformer)
+  (check-simulates task-manager-impl task-manager-impl)
+  (check-has-simulating-subgraph task-manager-impl TaskPerformer)
+  (check-has-simulating-subgraph task-manager-impl TaskAssigner)
+  (check-has-simulating-subgraph job-manager-impl TaskAssigner))

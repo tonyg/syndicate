@@ -74,7 +74,7 @@
 ;; seller
 (spawn ds-type
   (lift+define-role seller-impl
-  (start-facet _
+  (start-facet _ ;; #:implements seller-role
     (field [book (Tuple String Int) (tuple "Catch 22" 22)]
            [next-order-id Int 10001483])
     (on (asserted (observe (quote (bind title String) discard)))

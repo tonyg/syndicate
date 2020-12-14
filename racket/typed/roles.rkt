@@ -64,7 +64,7 @@
          ;; DEBUG and utilities
          print-type print-role role-strings
          ;; Behavioral Roles
-         export-roles export-type check-simulates lift+define-role
+         export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
          ;; Extensions
          match cond
          submod for-syntax for-meta only-in except-in
@@ -93,7 +93,8 @@
 (require (postfix-in - racket/set))
 
 (require (for-syntax (prefix-in proto: "proto.rkt")
-                     syntax/id-table))
+                     syntax/id-table)
+         (prefix-in proto: "proto.rkt"))
 
 (module+ test
   (require rackunit)
@@ -748,7 +749,8 @@
   ;; because turnstile introduces a lot of intdef scopes; ideally, we'd be able to synthesize somethign
   ;; with the right module scopes
   #:with x+ (syntax-local-introduce (datum->syntax #f (syntax-e #'x)))
-  #:do [(syntax-local-lift-module-end-declaration #`(define-type-alias x+ r))]
+  #:do [(define r- (synd->proto #'r))
+        (syntax-local-lift-module-end-declaration #`(define- x+ '#,r-))]
   ----------------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν-ep ()) (⇒ ν-f (r)) (⇒ ν-s ())])
 
@@ -771,17 +773,32 @@
     (pretty-print ty-spec-))
   ans)
 
-(define-syntax-parser check-simulates
-  [(_ τ-impl:type τ-spec:type)
-   (displayln 'CS)
-   (define τ-impl- (synd->proto #'τ-impl.norm))
-   (define τ-spec- (synd->proto #'τ-spec.norm))
-   (unless (proto:simulates? τ-impl- τ-spec-)
-     (pretty-print τ-impl-)
-     (pretty-print τ-spec-)
-     (raise-syntax-error #f "type doesn't simulate spec" this-syntax))
-   #'(#%app- void-)])
+(define- (ensure-Role! r)
+  (unless- (#%app- proto:Role? r)
+    (#%app- error- 'check-simulates "expected a Role type, got " r))
+  r)
 
+(begin-for-syntax
+  (define-syntax-class type-or-proto
+    #:attributes (role)
+    (pattern t:type #:attr role #`(quote- #,(synd->proto #'t.norm)))
+    (pattern x:id #:attr role #'(#%app- ensure-Role! x))
+    #;(pattern ((~literal quote-) r)
+             #:do [(define r- (syntax-e ))]
+             #:when (proto:Role? r-)
+             #:attr role r-)))
+
+(require rackunit)
+
+(define-syntax-parser check-simulates
+  [(_ τ-impl:type-or-proto τ-spec:type-or-proto)
+   (syntax/loc this-syntax
+     (check-true (#%app- proto:simulates? τ-impl.role τ-spec.role)))])
+
+(define-syntax-parser check-has-simulating-subgraph
+  [(_ τ-impl:type-or-proto τ-spec:type-or-proto)
+   (syntax/loc this-syntax
+     (check-not-false (#%app- proto:find-simulating-subgraph/report-error τ-impl.role τ-spec.role)))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
