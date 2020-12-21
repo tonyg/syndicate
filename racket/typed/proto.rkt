@@ -807,7 +807,7 @@
     (define srg (compile seller))
     (check-true (run/timeout (thunk (simulates?/rg rg rg))))
     (check-false (run/timeout (thunk (simulates?/rg rg srg))))
-    (check-false (run/timeout (thunk (simulates?/rg srg rg))))
+    (check-true (run/timeout (thunk (simulates?/rg srg rg))))
     (check-true (run/timeout (thunk (simulates?/rg rgi srg))))
     (check-true (run/timeout (thunk (simulates?/rg srg rgi)))))
   (test-case
@@ -1518,6 +1518,7 @@
            (verify g (set-add assumptions goal)))
          (unless (same-on-specified-events? transitions1
                                             transitions2
+                                            sn1
                                             verify/with-current-assumed)
            (return #f))
          (return (same-on-extra-events? transitions1
@@ -1562,10 +1563,12 @@
 ;; a TraceStep is one of
 ;; - (both-step D)
 ;; - (impl-step D)
+;; - (spec-step D)
 ;; describing either both the spec and the implementation responding to an
-;; event, or only the implementation
+;; event, only the implementation, or only the spec
 (struct both-step (evt) #:transparent)
 (struct impl-step (evt) #:transparent)
+(struct spec-step (evt) #:transparent)
 
 ;; FailingTrace RoleGraph RoleGraph -> Void
 (define (print-failing-trace trace impl-rg spec-rg)
@@ -1580,40 +1583,50 @@
   (let loop ([steps steps]
              [impl-path impl-path]
              [spec-path spec-path]
-             ;; because the path might end with a impl-step, remember the last
-             ;; spec state we've seen so we can print its assertions at the right time
-             [last-spec-state (transition-dest (car spec-path))])
+             ;; because the path might end with an impl-step or spec-step, remember the last
+             ;; states we've seen so we can print its assertions at the right time
+             [last-spec-state (transition-dest (car spec-path))]
+             [last-impl-state (transition-dest (car impl-path))])
+    (define (get-spec-dest)
+      (transition-dest (car spec-path)))
+    (define (get-impl-dest)
+      (transition-dest (car impl-path)))
     (match steps
       [(cons step more-steps)
-       (match-define (transition impl-effs impl-dest) (car impl-path))
        (print-sep)
        (printf "In response to event:\n")
        (match step
          [(or (both-step D)
-              (impl-step D))
+              (impl-step D)
+              (spec-step D))
           (pretty-print D)])
-       (printf "Implementation steps to state:\n")
-       (pretty-print impl-dest)
-       (unless (empty? impl-effs)
-         (printf "With Effects:\n")
-         (pretty-print impl-effs))
+       (when (or (both-step? step) (impl-step? step))
+         (define impl-effs (transition-effs (car impl-path)))
+         (printf "Implementation steps to state:\n")
+         (pretty-print (get-impl-dest))
+         (unless (empty? impl-effs)
+           (printf "With Effects:\n")
+           (pretty-print impl-effs)))
        (when (empty? more-steps)
+         (define impl-final (if (spec-step? step) last-impl-state (get-impl-dest)))
          (printf "Implementation Assertions:\n")
-         (pretty-print (state-assertions (hash-ref impl-st# impl-dest))))
-       (when (both-step? step)
-         (match-define (transition spec-effs spec-dest) (car spec-path))
+         (pretty-print (state-assertions (hash-ref impl-st# impl-final))))
+       (when (or (both-step? step) (spec-step? step))
+         (define spec-effs (transition-effs (car spec-path)))
          (printf "Specification steps to state:\n")
-         (pretty-print spec-dest)
+         (pretty-print (get-spec-dest))
          (unless (empty? spec-effs)
            (printf "With Effects:\n")
            (pretty-print spec-effs)))
        (when (empty? more-steps)
+         (define spec-final (if (impl-step? step) last-spec-state (get-spec-dest)))
          (printf "Specification Assertions:\n")
-         (pretty-print (state-assertions (hash-ref spec-st# last-spec-state))))
+         (pretty-print (state-assertions (hash-ref spec-st# spec-final))))
        (loop more-steps
-             (cdr impl-path)
-             (if (both-step? step) (cdr spec-path) spec-path)
-             (if (both-step? step) (transition-dest (car spec-path)) last-spec-state))]
+             (if (spec-step? step) impl-path (cdr impl-path))
+             (if (impl-step? step) spec-path (cdr spec-path))
+             (if (impl-step? step) last-spec-state (get-spec-dest))
+             (if (spec-step? step) last-impl-state (get-impl-dest)))]
       [_
        (newline)
        (void)])))
@@ -1637,6 +1650,7 @@
        (cond
          [(or (impl-step? last-step)
               ;; when only the implementation steps, no need to compare effects on transitions
+              (and (spec-step? last-step) (empty? spec-effs))
               (effects-subsequence? spec-effs impl-effs))
           ;; cascading conds will help with development and isolating where things go wrong
           (match-define (state _ impl-transition# impl-assertions) (hash-ref impl-st# impl-dest))
@@ -1655,9 +1669,21 @@
                  (failing-trace (cons impl-txn impl-path/rev)
                                 (cons spec-txn spec-path/rev)
                                 (cons (both-step spec-D) steps/rev))))
+             ;; transitions that the spec has but the implementation doesn't respond to
+             ;; TODO: similarity to `same-on-extra-events?`
+             (define impl-evts (hash-keys impl-transition#))
+             (define spec-extra-txns
+               (for*/list ([(spec-D spec-txns) (in-hash spec-transition#)]
+                           ;; TODO - this more or less assumes that *any* event matching impl-D also matches spec-evt, which I'm not sure is quite right
+                           #:unless (for/or ([impl-evt (in-list impl-evts)])
+                                      (D<:? impl-evt spec-D))
+                           [spec-txn (in-set spec-txns)])
+                 (failing-trace impl-path/rev
+                                (cons spec-txn spec-path/rev)
+                                (cons (spec-step spec-D) steps/rev))))
+             ;; TODO: similarity to above code
              ;; transitions that the implementation has that the spec doesn't respond to
              (define spec-evts (hash-keys spec-transition#))
-             ;; TODO: similarity to `same-on-extra-events?`
              (define impl-extra-txns
                (for*/list ([(impl-D impl-txns) (in-hash impl-transition#)]
                            ;; TODO - this more or less assumes that *any* event matching impl-D also matches spec-evt, which I'm not sure is quite right
@@ -1667,7 +1693,7 @@
                  (failing-trace (cons impl-txn impl-path/rev)
                                 spec-path/rev
                                 (cons (impl-step impl-D) steps/rev))))
-             (loop (append more-work spec-matching-txns impl-extra-txns))]
+             (loop (append more-work spec-matching-txns spec-extra-txns impl-extra-txns))]
             [else
              ;; states have different assertions
              (failing-trace (reverse impl-path/rev) (reverse spec-path/rev) (reverse steps/rev))])]
@@ -1704,7 +1730,11 @@
 ;;   as determined by the verify procedure
 ;;   and the effects on the edge going to Y are a supersequence of the effects
 ;;   on the edge to Y
-(define (same-on-specified-events? transitions1 transitions2 verify)
+;; and:
+;; Determine if the events in transitions2 that don't have any match in transitions1, are:
+;;   - all effect free
+;;   - verify with sn1 matched to each destination
+(define (same-on-specified-events? transitions1 transitions2 sn1 verify)
   (for/and ([(D2 edges2) (in-hash transitions2)])
     (define edges1
       (for/fold ([agg (set)])
@@ -1718,7 +1748,11 @@
         (set-union agg txns1)))
     (cond
       [(set-empty? edges1)
-       #f]
+       ;; - I think this is right, as long as the current state of the implementation
+       ;; matches all states the spec steps to --- unless there are effects on the transition
+       (for/and ([txn (in-set edges2)])
+         (and (empty? (transition-effs txn))
+              (verify (equiv sn1 (transition-dest txn)))))]
       [else
        (define combos (make-combinations edges1 edges2))
        (verify (one-of combos))])))
@@ -1839,7 +1873,7 @@
 (define (find-simulating-subgraph impl spec)
   (define spec-rg (compile spec))
   (define impl-rg (compile/internal-events (compile impl) impl))
-  (find-simulating-subgraph impl-rg spec-rg))
+  (find-simulating-subgraph/rg impl-rg spec-rg))
 
 ;; RoleGraph RoleGraph -> (Maybe RoleGraph)
 (define (find-simulating-subgraph/rg impl-rg spec-rg)
@@ -1889,7 +1923,7 @@
     (define tpr (parse-T task-performer-spec))
     (define tmr (parse-T task-manager-ty))
     (define ans (simulating-subgraphs tmr tpr))
-    (check-equal? (length ans) 68)
+    (check-equal? (length ans) 340)
     (define tprg (compile tpr))
     (check-true (simulates?/rg (first ans) tprg))
     (check-true (simulates?/rg (second ans) tprg))))
@@ -1929,15 +1963,16 @@
      (define st#
        (for/hash ([st (in-list states*)])
          (match-define (state _ orig-txn# assertions) (hash-ref state# st))
+         (define (enabled-txns D)
+           (define orig-txns (hash-ref orig-txn# D))
+           (for/set ([txn (in-set orig-txns)]
+                     #:when (set-member? states (transition-dest txn)))
+             txn))
          (define txn#
-           (for/hash ([D (in-hash-keys orig-txn#)]
-                      #:when (event-enabled? D))
-             (define orig-txns (hash-ref orig-txn# D))
-             (define new-txns
-               (for/set ([txn (in-set orig-txns)]
-                         #:when (set-member? states (transition-dest txn)))
-                 txn))
-             ;; TODO - what if new-txns is empty?
+           (for*/hash ([D (in-hash-keys orig-txn#)]
+                       #:when (event-enabled? D)
+                       [new-txns (in-value (enabled-txns D))]
+                       #:unless (set-empty? new-txns))
              (values D new-txns)))
          (values st (state st txn# assertions))))
      (for ([st0 (in-list states*)])
@@ -2903,7 +2938,7 @@
       "job manager subgraph(s) implement task assigner"
     (define jmr (run/timeout (thunk (parse-T job-manager-actual))))
     (define tar (parse-T task-assigner-spec))
-    (define ans (run/timeout (thunk (simulating-subgraphs jmr tar)) 1800))
+    (define ans (run/timeout (thunk (simulating-subgraphs jmr tar)) 2800))
     (check-true (list? ans))
     (check-false (empty? ans))))
 
@@ -3177,3 +3212,36 @@
   (render-to-file rg "before.dot")
   (render-to-file rgi "after.dot")
 )
+
+(module+ test
+  (test-case
+    "regression: ok for implementation not to have edges if the current state matches"
+    (define a (role-graph
+               (set 'seller341 'during-inner343)
+               (hash
+                (set 'seller341 'during-inner343)
+                (state
+                 (set 'seller341 'during-inner343)
+                 '#hash()
+                 (set
+                  '#s(Observe #s(Observe #s(Struct BookQuoteT (#s(Base String) #s(Mk⋆)))))
+                  '#s(Struct BookQuoteT (#s(Base String) #s(Base Int))))))))
+    (define b (role-graph
+               (set 'seller)
+               (hash
+                (set 'seller)
+                (state
+                 (set 'seller)
+                 (hash
+                  '#s(Asserted #s(Observe #s(Struct BookQuoteT (#s(Base String) #s(Mk⋆)))))
+                  (set (transition '() (set '_ 'seller))))
+                 (set
+                  '#s(Observe #s(Observe #s(Struct BookQuoteT (#s(Base String) #s(Mk⋆)))))))
+                (set '_ 'seller)
+                (state
+                 (set '_ 'seller)
+                 '#hash()
+                 (set
+                  '#s(Observe #s(Observe #s(Struct BookQuoteT (#s(Base String) #s(Mk⋆)))))
+                  '#s(Struct BookQuoteT (#s(Base String) #s(Base Int))))))))
+    (check-true (run/timeout (thunk (simulates?/rg a b))))))

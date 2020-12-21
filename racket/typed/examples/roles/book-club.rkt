@@ -59,17 +59,19 @@
            (Role (_)
                  ;; nb no mention of retracting this assertion
                  (Shares (BookQuoteT String Int))))))
+(export-type "seller-role.rktd" seller-role)
 
 (define (spawn-seller [inventory : Inventory])
   (spawn τc
-    (begin
+    (export-roles "seller-impl.rktd"
+    (lift+define-role seller-impl
     (start-facet seller
       (field [books Inventory inventory])
 
       ;; Give quotes to interested parties.
       (during (observe (book-quote $title _))
         ;; TODO - lookup
-        (assert (book-quote title (lookup title (ref books)))))))))
+        (assert (book-quote title (lookup title (ref books))))))))))
 
 (define-type-alias leader-role
   (Role (leader)
@@ -77,10 +79,10 @@
                 (Role (poll)
                       (Reacts (Asserted (BookInterestT String String Bool))
                               ;; this is actually implemented indirectly through dataflow
-                              (U (Stop leader
-                                       (Role (_)
-                                             (Shares (BookOfTheMonthT String))))
-                                 (Stop poll)))))))
+                              (Branch (Stop leader
+                                            (Role (_)
+                                                  (Shares (BookOfTheMonthT String))))
+                                      (Stop poll)))))))
 
 (define-type-alias leader-actual
   (Role (get-quotes)
@@ -102,7 +104,8 @@
 
 (define (spawn-leader [titles : (List String)])
   (spawn τc
-   (print-role
+   (export-roles "leader-impl.rktd"
+   (lift+define-role leader-impl
    (start-facet get-quotes
      (field [book-list (List String) (rest titles)]
             [title String (first titles)])
@@ -154,7 +157,7 @@
                (when (> (set-count (ref nays))
                         (/ (set-count (ref members)) 2))
                  (printf "leader finds enough negative nancys for ~a\n" (ref title))
-                 (stop poll-members (next-book)))))]))))))
+                 (stop poll-members (next-book)))))])))))))
 
 (define-type-alias member-role
   (Role (member)
@@ -167,7 +170,8 @@
 (define (spawn-club-member [name : String]
                            [titles : (List String)])
   (spawn τc
-   (print-role
+   (export-roles "member-impl.rktd"
+   (lift+define-role member-impl
    (start-facet member
      ;; assert our presence
      (assert (club-member name))
@@ -175,7 +179,7 @@
      (during (observe (book-interest $title _ _))
        (define answer (member? title titles))
        (printf "~a responds to suggested book ~a: ~a\n" name title answer)
-       (assert (book-interest title name answer)))))))
+       (assert (book-interest title name answer))))))))
 
 (run-ground-dataspace τc
   (spawn-seller (list (tuple "The Wind in the Willows" 5)
@@ -187,3 +191,9 @@
                       "Encyclopaedia Brittannica"))
   (spawn-club-member "tony" (list "Candide"))
   (spawn-club-member "sam" (list "Encyclopaedia Brittannica" "Candide")))
+
+(module+ test
+  (check-simulates leader-impl leader-impl)
+  (check-has-simulating-subgraph leader-impl leader-role)
+  (check-simulates seller-impl seller-impl)
+  (check-has-simulating-subgraph seller-impl seller-role))

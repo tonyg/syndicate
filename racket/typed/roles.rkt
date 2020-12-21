@@ -795,7 +795,7 @@
 (define-syntax-parser check-simulates
   [(_ τ-impl:type-or-proto τ-spec:type-or-proto)
    (syntax/loc this-syntax
-     (check-true (#%app- proto:simulates? τ-impl.role τ-spec.role)))])
+     (check-true (#%app- proto:simulates?/report-error τ-impl.role τ-spec.role)))])
 
 (define-syntax-parser check-has-simulating-subgraph
   [(_ τ-impl:type-or-proto τ-spec:type-or-proto)
