@@ -4,6 +4,7 @@
 
 (require "proto.rkt")
 (require "ltl.rkt")
+(require racket/runtime-path)
 
 (module+ test
   (require rackunit)
@@ -572,6 +573,31 @@
                   (indent) (printf "~a >= 0 &&\n" (svar-name assertion-var)))
                 (indent) (displayln "true"))
               (indent) (displayln ")"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Invoking Spin
+
+(define-runtime-path RUN-SPIN.EXE "run-spin.sh")
+
+;; SpinThang String -> Bool
+(define (run-spin spin [spec-name "spec"])
+  (define tmp (make-temporary-file "typed-syndicate-spin~a.pml"))
+  (gen-spin/to-file spin tmp)
+  (define out (with-output-to-string
+                (thunk (system* RUN-SPIN.EXE tmp spec-name))))
+  (delete-file tmp)
+  (analyze-spin-output out))
+
+(define SPIN-REPORT-RX #px"(?m:^State-vector \\d+ byte, depth reached \\d+, errors: (\\d+)$)")
+
+;; String -> Bool
+;; True if the model satisfies the spec, false otherwise
+(define (analyze-spin-output out)
+  (define rxmatch (regexp-match SPIN-REPORT-RX out))
+  (unless rxmatch
+    (error 'analyze-spin-output "unable to parse spin output"))
+  (define num-errors (string->number (second rxmatch)))
+  (zero? num-errors))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Misc Utils
