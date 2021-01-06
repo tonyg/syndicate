@@ -248,7 +248,7 @@
 ;; RoleGraph Role -> (U RoleGraph DetectedCycle)
 ;; "Optimize" the given role graph with respect to internal events.
 ;; The resulting graph will have transitions of only external events.
-(define (compile/internal-events rg role)
+(define (compile/internal-events rg)
   (match-define (role-graph st0 orig-st#) rg)
   ;; doing funny business with state (set) here
   (define orig-st#+ (hash-set orig-st# (set) (state (set) (hash) (set))))
@@ -385,7 +385,7 @@
       "most minimal functionality for removing internal events"
     ;; manager role has basically nothing to it
     (define m (compile manager))
-    (define i (compile/internal-events m manager))
+    (define i (compile/internal-events m))
     (check-true (role-graph? i))
     (check-true (simulates?/rg i m))
     (check-true (simulates?/rg m i))
@@ -396,7 +396,7 @@
     ;; because it doesn't use any internal events, it should be unaffected
     (define tmr (parse-T task-runner-ty))
     (define tm (compile tmr))
-    (define tmi (compile/internal-events tm tmr))
+    (define tmi (compile/internal-events tm))
     (check-true (role-graph? tmi))
     ;; I'm not exactly sure how the two should be related via simulation :S
     (check-true (simulates?/rg tmi tm)))
@@ -410,7 +410,7 @@
                      (Realizes Int))))
     (define r (parse-T cyclic))
     (define rg (compile r))
-    (define i (run/timeout (thunk (compile/internal-events rg r))))
+    (define i (run/timeout (thunk (compile/internal-events rg))))
     (check-true (list? i))
     (check-equal? (length i) 4)
     (match-define (list path kick-off evt edge) i)
@@ -433,7 +433,7 @@
       (define r (parse-T strt))
       (define rg (run/timeout (thunk (compile r))))
       (check-true (role-graph? rg))
-      (define rgi (run/timeout (thunk (compile/internal-events rg r))))
+      (define rgi (run/timeout (thunk (compile/internal-events rg))))
       (check-true (role-graph? rgi))
       (match-define (role-graph st0 st#) rgi)
       (check-equal? st0 (set 'x 'y))
@@ -454,7 +454,7 @@
                                 (Role 'y (list)))))))
     (define rg (run/timeout (thunk (compile role))))
     (check-true (role-graph? rg))
-    (define rgi (run/timeout (thunk (compile/internal-events rg role))))
+    (define rgi (run/timeout (thunk (compile/internal-events rg))))
     (check-true (role-graph? rgi))
     (define state# (role-graph-states rgi))
     (check-true (hash-has-key? state# (set 'x)))
@@ -471,7 +471,7 @@
     (define role (run/timeout (thunk (parse-T desc))))
     (define rg (run/timeout (thunk (compile role))))
     (check-true (role-graph? rg))
-    (define rgi (run/timeout (thunk (compile/internal-events rg role))))
+    (define rgi (run/timeout (thunk (compile/internal-events rg))))
     (check-true (role-graph? rgi))
     (check-match rgi
                  (role-graph (== (set 'x 'y))
@@ -802,7 +802,7 @@
     (define seller+spawn (Role 'start (list (Reacts StartEvt (Spawn seller)))))
     (define rg (run/timeout (thunk (compile seller+spawn))))
     (check-true (role-graph? rg))
-    (define rgi (compile/internal-events rg seller+spawn))
+    (define rgi (compile/internal-events rg))
     (check-true (role-graph? rgi))
     (define srg (compile seller))
     (check-true (run/timeout (thunk (simulates?/rg rg rg))))
@@ -822,7 +822,7 @@
                                                 (Role 'know (list))))))))))
     (define rg (run/timeout (thunk (compile role))))
     (check-true (role-graph? rg))
-    (define rgi (run/timeout (thunk (compile/internal-events rg role))))
+    (define rgi (run/timeout (thunk (compile/internal-events rg))))
     (check-true (role-graph? rgi))
     (define state-names (hash-keys (role-graph-states rgi)))
     (for ([sn (in-list state-names)])
@@ -1861,7 +1861,7 @@
 (define (simulating-subgraphs impl spec)
   ;; assume spec doesn't have any internal events
   (define spec-rg (compile spec))
-  (define impl-rg (compile/internal-events (compile impl) impl))
+  (define impl-rg (compile/internal-events (compile impl)))
   (define evts (relevant-events spec-rg))
   (for/list ([srg (subgraphs impl-rg evts)]
              #:when (simulates?/rg srg spec-rg))
@@ -1872,7 +1872,7 @@
 ;; TODO: would be nice to find the largest
 (define (find-simulating-subgraph impl spec)
   (define spec-rg (compile spec))
-  (define impl-rg (compile/internal-events (compile impl) impl))
+  (define impl-rg (compile/internal-events (compile impl)))
   (find-simulating-subgraph/rg impl-rg spec-rg))
 
 ;; RoleGraph RoleGraph -> (Maybe RoleGraph)
@@ -1885,7 +1885,7 @@
 ;; Role Role -> Bool
 (define (find-simulating-subgraph/report-error impl spec)
   (define spec-rg (compile spec))
-  (define impl-rg (compile/internal-events (compile impl) impl))
+  (define impl-rg (compile/internal-events (compile impl)))
   (define ans (find-simulating-subgraph/rg impl-rg spec-rg))
   (cond
     [ans
@@ -2797,7 +2797,7 @@
     (check-true (Role? jmr))
     (define jm (run/timeout (thunk (compile jmr)) 5000))
     (check-true (role-graph? jm))
-    (define jmi (run/timeout (thunk (compile/internal-events jm jmr)) 5000))
+    (define jmi (run/timeout (thunk (compile/internal-events jm)) 5000))
     (check-true (run/timeout (thunk (simulates?/rg jmi jmi)) 5000))))
 
 (define task-runner-ty
