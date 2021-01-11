@@ -6,5 +6,6 @@ pan.c : leader-and-seller.pml
 
 # -a to analyze, -f for (weak) fairness
 # -n to elide report of unreached states
+# -N spec-name to verify a particular specification
 check: pan
-	./pan -a -f
+	./pan -a -f -n
