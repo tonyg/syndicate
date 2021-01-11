@@ -3208,7 +3208,7 @@
                                  (Stop y))))))
   (define r (parse-T ty))
   (define rg (compile r))
-  (define rgi (compile/internal-events rg r))
+  (define rgi (compile/internal-events rg))
   (render-to-file rg "before.dot")
   (render-to-file rgi "after.dot")
 )
