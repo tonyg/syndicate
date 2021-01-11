@@ -193,6 +193,16 @@
   (spawn-club-member "sam" (list "Encyclopaedia Brittannica" "Candide")))
 
 (module+ test
+  (verify-actors (And (Eventually (A BookQuote))
+                      (Always (Implies (A (Observe (BookQuoteT String ★/t)))
+                                       (Eventually (A BookQuote))))
+                      (Always (Implies (A (Observe (BookInterestT String ★/t ★/t)))
+                                       (Eventually (A BookInterest)))))
+                 leader-impl
+                 seller-impl
+                 member-impl))
+
+(module+ test
   (check-simulates leader-impl leader-impl)
   (check-has-simulating-subgraph leader-impl leader-role)
   (check-simulates seller-impl seller-impl)

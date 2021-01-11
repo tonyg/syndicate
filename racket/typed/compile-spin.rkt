@@ -1,6 +1,6 @@
 #lang racket
 
-;; TODO - syntax for LTL
+(provide run-spin compile+verify)
 
 (require "proto.rkt")
 (require "ltl.rkt")
@@ -382,7 +382,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Code Generation
 
-(define SPIN-PRELUDE (file->string "spin-prelude.pml"))
+(define-runtime-path SPIN-PRELUDE-PATH "spin-prelude.pml")
+
+(define SPIN-PRELUDE (file->string SPIN-PRELUDE-PATH))
 
 ;; SpinThang FilePath -> Void
 (define (gen-spin/to-file spin name)
@@ -598,6 +600,11 @@
     (error 'analyze-spin-output "unable to parse spin output"))
   (define num-errors (string->number (second rxmatch)))
   (zero? num-errors))
+
+;; [LTL τ] [Listof Role] -> Bool
+(define (compile+verify spec roles)
+  (define role-graphs (for/list ([r (in-list roles)]) (compile/internal-events (compile r))))
+  (run-spin (program->spin role-graphs spec)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Misc Utils

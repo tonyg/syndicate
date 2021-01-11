@@ -15,15 +15,15 @@
 ;;  - Bool
 ;; where X represents the type of atomic propositions
 
-(struct always [p] #:transparent)
-(struct eventually [p] #:transparent)
-(struct atomic [p] #:transparent)
-(struct weak-until [p q] #:transparent)
-(struct strong-until [p q] #:transparent)
-(struct ltl-implies [p q] #:transparent)
-(struct ltl-and [p q] #:transparent)
-(struct ltl-or [p q] #:transparent)
-(struct ltl-not [p] #:transparent)
+(struct always [p] #:prefab)
+(struct eventually [p] #:prefab)
+(struct atomic [p] #:prefab)
+(struct weak-until [p q] #:prefab)
+(struct strong-until [p q] #:prefab)
+(struct ltl-implies [p q] #:prefab)
+(struct ltl-and [p q] #:prefab)
+(struct ltl-or [p q] #:prefab)
+(struct ltl-not [p] #:prefab)
 
 ;; [LTL X] {X -> Y} -> [LTL Y]
 (define (map-atomic ltl op)

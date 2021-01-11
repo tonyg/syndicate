@@ -65,6 +65,9 @@
          print-type print-role role-strings
          ;; Behavioral Roles
          export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
+         verify-actors
+         ;; LTL Syntax
+         True False Always Eventually Until WeakUntil Implies And Or Not A
          ;; Extensions
          match cond
          submod for-syntax for-meta only-in except-in
@@ -94,8 +97,10 @@
 (require (postfix-in - racket/set))
 
 (require (for-syntax (prefix-in proto: "proto.rkt")
+                     (prefix-in proto: "ltl.rkt")
                      syntax/id-table)
-         (prefix-in proto: "proto.rkt"))
+         (prefix-in proto: "proto.rkt")
+         (prefix-in proto: "compile-spin.rkt"))
 
 (module+ test
   (require rackunit)
@@ -640,6 +645,24 @@
   [⊢ (#%app- list- (#%datum- . s) ...) (⇒ : (List String))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; LTL Syntax
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-type LTL : LTL)
+
+(define-type True : LTL)
+(define-type False : LTL)
+(define-type Always : LTL -> LTL)
+(define-type Eventually : LTL -> LTL)
+(define-type Until : LTL LTL -> LTL)
+(define-type WeakUntil : LTL LTL -> LTL)
+(define-type Implies : LTL LTL -> LTL)
+(define-type And : LTL * -> LTL)
+(define-type Or : LTL * -> LTL)
+(define-type Not : LTL -> LTL)
+(define-type A : Type -> LTL)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Behavioral Analysis
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -677,7 +700,19 @@
                     Hash proto:Hash
                     OnStart proto:StartEvt
                     OnStop proto:StopEvt
-                    OnDataflow proto:DataflowEvt))
+                    OnDataflow proto:DataflowEvt
+                    ;; LTL
+                    True #t
+                    False #f
+                    Always proto:always
+                    Eventually proto:eventually
+                    Until proto:strong-until
+                    WeakUntil proto:weak-until
+                    Implies proto:ltl-implies
+                    And proto:&&
+                    Or proto:||
+                    Not proto:ltl-not
+                    A proto:atomic))
 
   (define (double-check)
     (for/first ([id (in-dict-keys TRANSLATION#)]
@@ -801,6 +836,12 @@
   [(_ τ-impl:type-or-proto τ-spec:type-or-proto)
    (syntax/loc this-syntax
      (check-not-false (#%app- proto:find-simulating-subgraph/report-error τ-impl.role τ-spec.role)))])
+
+(define-syntax-parser verify-actors
+  [(_ spec actor-ty:type-or-proto ...)
+   #:with spec- #`(quote- #,(synd->proto (type-eval #'spec)))
+   (syntax/loc this-syntax
+     (check-true (#%app- proto:compile+verify spec- (#%app- list- actor-ty.role ...))))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
