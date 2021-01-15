@@ -11,8 +11,8 @@
   (require "test-utils.rkt"))
 
 ;; a SpinProgram is a
-;;   (sprog Assignment [Listof SpinProcess] [LTL SName])
-(struct sprog [assignment procs spec] #:transparent)
+;;   (sprog Assignment [Listof SpinProcess] [LTL SName] NameEnvironment)
+(struct sprog [assignment procs spec name-env] #:transparent)
 
 
 ;; a SpinProcess is a
@@ -55,8 +55,8 @@
 ;;   - (send ?)
 ;;   - (incorporate D+)
 ;;   - (transition-to SName)
-(struct assert [ty] #:transparent)
-(struct retract [ty] #:transparent)
+(struct assert [ty] #:prefab)
+(struct retract [ty] #:prefab)
 ;; send defined in proto.rkt
 (struct incorporate [evt] #:transparent)
 (struct transition-to [dest] #:transparent)
@@ -76,7 +76,7 @@
   (define globals (initial-assertion-vars-for all-mentioned-tys name-env))
   (define procs (for/list ([rg rgs]) (rg->spin rg event-subty# name-env)))
   (define spec-spin (rename-ltl spec name-env))
-  (sprog globals procs spec-spin))
+  (sprog globals procs spec-spin name-env))
 
 ;; RoleGraph [Hashof τ [Setof τ]] NameEnvironment -> SpinProcess
 (define (rg->spin rg event-subty# name-env #:name [name (gensym 'proc)])
@@ -386,39 +386,44 @@
 
 (define SPIN-PRELUDE (file->string SPIN-PRELUDE-PATH))
 
-;; SpinThang FilePath -> Void
+;; SpinProgram FilePath -> Void
 (define (gen-spin/to-file spin name)
   (with-output-to-file name
     (lambda () (gen-spin spin))
     #:mode 'text
     #:exists 'replace))
 
-;; SpinThang -> Void
-(define (gen-spin spin)
-  (match spin
-    [(sprog assignment procs spec)
+;; SpinProgram -> Void
+(define (gen-spin prog)
+  (match prog
+    [(sprog assignment procs spec name-env)
      (display SPIN-PRELUDE)
      (gen-assignment assignment)
      (newline)
      (for ([p procs])
-       (gen-spin p)
+       (gen-spin-form p name-env)
        (newline))
      (gen-spec "spec" (lambda () (gen-ltl spec)))
      (newline)
-     (gen-sanity-ltl assignment)]
+     (gen-sanity-ltl assignment)]))
+
+;; SpinThang NameEnvironment-> Void
+(define (gen-spin-form spin name-env)
+  (match spin
     [(sproc name state-names init asserts states)
      (indent) (declare-mtype state-names)
      (indent) (printf "active proctype ~a() {\n" name)
      (with-indent
        (gen-assignment init)
+       (indent) (displayln "atomic {")
        (for ([a asserts])
-         (gen-spin (assert a)))
+         (gen-spin-form (assert a) name-env))
+       (indent) (displayln "}")
        (indent) (displayln "end: do")
        (with-indent
          (for ([st states])
-           (gen-spin st)))
-       (indent) (displayln "od;")
-       )
+           (gen-spin-form st name-env)))
+       (indent) (displayln "od;"))
      (indent) (displayln "}")]
     [(sstate name branches)
      (indent) (printf ":: ~a == ~a ->\n" (svar-name CURRENT-STATE) name)
@@ -430,23 +435,22 @@
             (indent) (displayln ":: true -> skip;")]
            [else
             (for ([branch branches])
-              (gen-spin branch))]))
+              (gen-spin-form branch name-env))]))
        (indent) (displayln "fi;"))]
     [(sbranch event dest actions)
-     (indent) (printf ":: ~a ->\n" (predicate-for event))
-     ;; TODO - make the body atomic
+     (indent) (printf ":: ~a -> ~a\n" (predicate-for event) (embed-event-as-comment event name-env))
      (with-indent
        (indent) (displayln "atomic {")
        (with-indent
          (for ([act actions])
-           (gen-spin act)))
+           (gen-spin-form act name-env)))
        (indent) (displayln "}"))]
     [(assert x)
-     (indent) (printf "ASSERT(~a);\n" x)]
+     (indent) (printf "ASSERT(~a); ~a\n" x (embed-value-as-comment assert x name-env))]
     [(retract x)
-     (indent) (printf "RETRACT(~a);\n" x)]
+     (indent) (printf "RETRACT(~a); ~a\n" x (embed-value-as-comment retract x name-env))]
     [(send x)
-     (raise-argument-error 'gen-spin "message sending not supported yet" spin)]
+     (raise-argument-error 'gen-spin-form "message sending not supported yet" spin)]
     [(incorporate evt)
      (indent) (update-for evt)]
     [(transition-to dest)
@@ -512,6 +516,26 @@
      (printf "~a = ~a;\n" active-var (spin-val->string #f))]
     [(Message nm)
      (raise-argument-error 'predicate-for "message sending not supported yet" event)]))
+
+;; D+ NameEnvironment -> String
+(define (embed-event-as-comment event name-env)
+  (define-values (kons id)
+    (match event
+      [(Asserted nm) (values Asserted nm)]
+      [(Retracted nm) (values Retracted nm)]
+      [(Message nm) (error 'embed-event-as-comment "messages not supported yet")]))
+  (embed-value-as-comment kons id name-env))
+
+;; (τ -> Any) SName NameEnvironment -> String
+(define (embed-value-as-comment tag sname name-env)
+  (define ty (reverse-lookup name-env sname))
+  (format "/*~a*/" (tag ty)))
+
+;; NameEnvironment SName -> τ
+(define (reverse-lookup name-env sname)
+  (for/first ([(k v) (in-hash name-env)]
+              #:when (equal? v sname))
+    k))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LTL
@@ -580,6 +604,12 @@
 ;; Invoking Spin
 
 (define-runtime-path RUN-SPIN.EXE "run-spin.sh")
+(define-runtime-path REPLAY-TRAIL.EXE "replay-trail.sh")
+
+;; [LTL τ] [Listof Role] -> Bool
+(define (compile+verify spec roles)
+  (define role-graphs (for/list ([r (in-list roles)]) (compile/internal-events (compile r))))
+  (run-spin (program->spin role-graphs spec)))
 
 ;; SpinThang String -> Bool
 (define (run-spin spin [spec-name "spec"])
@@ -587,8 +617,16 @@
   (gen-spin/to-file spin tmp)
   (define out (with-output-to-string
                 (thunk (system* RUN-SPIN.EXE tmp spec-name))))
+  (define trail-file (format "~a.trail" (path->string tmp)))
+  (define trail-exists? (file-exists? trail-file))
+  (when (file-exists? trail-file)
+    (displayln "Detected Trail File!")
+    (analyze-spin-trail tmp)
+    (copy-file tmp (build-path (current-directory) "model.pml") #t)
+    (copy-file trail-file (build-path (current-directory) "model.pml.trail") #t)
+    (delete-file trail-file))
   (delete-file tmp)
-  (analyze-spin-output out))
+  (not trail-exists?))
 
 (define SPIN-REPORT-RX #px"(?m:^State-vector \\d+ byte, depth reached \\d+, errors: (\\d+)$)")
 
@@ -601,10 +639,76 @@
   (define num-errors (string->number (second rxmatch)))
   (zero? num-errors))
 
-;; [LTL τ] [Listof Role] -> Bool
-(define (compile+verify spec roles)
-  (define role-graphs (for/list ([r (in-list roles)]) (compile/internal-events (compile r))))
-  (run-spin (program->spin role-graphs spec)))
+#|
+Example:
+  4:	proc  2 (proc824:1) model.pml:140 (state 2)	[ClubMemberT_String_assertions = (ClubMemberT_String_assertions+1)]
+|#
+(define TRAIL-LINE-RX #px"(?m:^\\s*\\d+:\\s*proc\\s*(\\d+)\\s*\\(.*\\) \\S+\\.pml:(\\d+))")
+
+;; Path -> Void
+;; assume the trail file exists in the same directory as the spin (model) file
+(define (analyze-spin-trail spin-file)
+  (define out (with-output-to-string
+                (thunk (system* REPLAY-TRAIL.EXE spin-file))))
+  (pretty-display out)
+  (define pid/line-trace (regexp-match* TRAIL-LINE-RX out #:match-select cdr))
+  (define model-lines (file->vector spin-file))
+  (define trace (interpret-spin-trace pid/line-trace model-lines))
+  (print-trace trace))
+
+;; a PID is a Nat
+
+;; a TraceStep is a (trace-step PID TraceEvent)
+(struct trace-step (pid evt) #:prefab)
+
+;; a TraceEvent is one of
+;;   - (assert τ)
+;;   - (retract τ)
+;;   - (Asserted τ)
+;;   - (Retracted τ)
+
+;; (Listof (List String String)) (Vectorof String) -> (Listof TraceStep)
+(define (interpret-spin-trace pid/line-trace model-lines)
+  (define maybe-steps
+    (for/list ([item (in-list pid/line-trace)])
+      (match-define (list pid-str line-no-str) item)
+      (define line (vector-ref model-lines (sub1 (string->number line-no-str))))
+      (define evt (extract-comment-value line))
+      (and evt
+           (trace-step (string->number pid-str) evt))))
+  (filter values maybe-steps))
+
+;; (Listof TraceStep) -> Void
+(define (print-trace trace)
+  (for ([ts (in-list trace)])
+    (match-define (trace-step pid evt) ts)
+    (match evt
+      [(assert ty)
+       (printf "Process ~a ASSERTS ~a\n" pid (τ->string ty))]
+      [(retract ty)
+       (printf "Process ~a RETRACTS ~a\n" pid (τ->string ty))]
+      [(Asserted ty)
+       (printf "Process ~a REACTS to the ASSERTION of ~a\n" pid (τ->string ty))]
+      [(Retracted ty)
+       (printf "Process ~a REACTS to the RETRACTION of ~a\n" pid (τ->string ty))])))
+
+(define COMMENT-RX #px"/\\*(.*)\\*/")
+
+;; String -> (Maybe TraceEvent)
+(define (extract-comment-value line)
+  (define rxmatch (regexp-match COMMENT-RX line))
+  (and rxmatch
+       (with-input-from-string (second rxmatch) read)))
+
+(module+ test
+  (test-case
+      "extracting values back out from spin model"
+    (define evt-str "        :: ASSERTED(BookQuoteT_String_Int) && !know_BookQuoteT_String_Int -> /*#s(Asserted #s(Struct BookQuoteT (#s(Base String) #s(Base Int))))*/\n")
+    (define assert-str "  ASSERT(Obs_Obs_BookInterestT); /*#s(assert #s(Observe #s(Observe #s(Struct BookInterestT (#s(Base String) #s(Mk⋆) #s(Mk⋆))))))*/\n")
+    (check-equal? (extract-comment-value evt-str)
+                  #s(Asserted #s(Struct BookQuoteT (#s(Base String) #s(Base Int)))))
+    (check-equal? (extract-comment-value assert-str)
+                  #s(assert #s(Observe #s(Observe #s(Struct BookInterestT (#s(Base String) #s(Mk⋆) #s(Mk⋆)))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Misc Utils
@@ -613,6 +717,10 @@
 (define (hash-values-set h)
   (for/set ([x (in-hash-values h)])
     x))
+
+;; Path -> (Vecotrof String)
+(define (file->vector path)
+  (list->vector (file->lines path)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Test Case
