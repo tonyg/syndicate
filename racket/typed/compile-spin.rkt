@@ -427,16 +427,17 @@
      (indent) (displayln "}")]
     [(sstate name branches)
      (indent) (printf ":: ~a == ~a ->\n" (svar-name CURRENT-STATE) name)
-     (with-indent
-       (indent) (displayln "if")
-       (with-indent
-         (cond
-           [(empty? branches)
-            (indent) (displayln ":: true -> skip;")]
-           [else
+     (cond
+       [(empty? branches)
+        ;; no transitions out of this state
+        (indent) (displayln "end: false;")]
+       [else
+        (with-indent
+          (indent) (displayln "if")
+          (with-indent
             (for ([branch branches])
-              (gen-spin-form branch name-env))]))
-       (indent) (displayln "fi;"))]
+              (gen-spin-form branch name-env)))
+          (indent) (displayln "fi;"))])]
     [(sbranch event dest actions)
      (indent) (printf ":: ~a -> ~a\n" (predicate-for event) (embed-event-as-comment event name-env))
      (with-indent
@@ -640,10 +641,11 @@
   (zero? num-errors))
 
 #|
-Example:
+Examples:
   4:	proc  2 (proc824:1) model.pml:140 (state 2)	[ClubMemberT_String_assertions = (ClubMemberT_String_assertions+1)]
+  <<<<<START OF CYCLE>>>>>
 |#
-(define TRAIL-LINE-RX #px"(?m:^\\s*\\d+:\\s*proc\\s*(\\d+)\\s*\\(.*\\) \\S+\\.pml:(\\d+))")
+(define TRAIL-LINE-RX #px"(?m:^  <<<<<START OF CYCLE>>>>>|^\\s*\\d+:\\s*proc\\s*(\\d+)\\s*\\(.*\\) \\S+\\.pml:(\\d+))")
 
 ;; Path -> Void
 ;; assume the trail file exists in the same directory as the spin (model) file
@@ -658,8 +660,11 @@ Example:
 
 ;; a PID is a Nat
 
-;; a TraceStep is a (trace-step PID TraceEvent)
+;; a TraceStep is one of
+;;   - (trace-step PID TraceEvent)
+;;   - 'start-of-cycle
 (struct trace-step (pid evt) #:prefab)
+(define START-OF-CYCLE 'start-of-cycle)
 
 ;; a TraceEvent is one of
 ;;   - (assert τ)
@@ -671,26 +676,33 @@ Example:
 (define (interpret-spin-trace pid/line-trace model-lines)
   (define maybe-steps
     (for/list ([item (in-list pid/line-trace)])
-      (match-define (list pid-str line-no-str) item)
-      (define line (vector-ref model-lines (sub1 (string->number line-no-str))))
-      (define evt (extract-comment-value line))
-      (and evt
-           (trace-step (string->number pid-str) evt))))
+      (match item
+        ['(#f #f)
+         START-OF-CYCLE]
+        [(list pid-str line-no-str)
+         (define line (vector-ref model-lines (sub1 (string->number line-no-str))))
+         (define evt (extract-comment-value line))
+         (and evt
+              (trace-step (string->number pid-str) evt))]
+        )))
   (filter values maybe-steps))
 
 ;; (Listof TraceStep) -> Void
 (define (print-trace trace)
   (for ([ts (in-list trace)])
-    (match-define (trace-step pid evt) ts)
-    (match evt
-      [(assert ty)
-       (printf "Process ~a ASSERTS ~a\n" pid (τ->string ty))]
-      [(retract ty)
-       (printf "Process ~a RETRACTS ~a\n" pid (τ->string ty))]
-      [(Asserted ty)
-       (printf "Process ~a REACTS to the ASSERTION of ~a\n" pid (τ->string ty))]
-      [(Retracted ty)
-       (printf "Process ~a REACTS to the RETRACTION of ~a\n" pid (τ->string ty))])))
+    (match ts
+      [(== START-OF-CYCLE)
+       (printf "Start of Cycle (if this is the last step that means the final state is stuttered):\n")]
+      [(trace-step pid evt)
+       (match evt
+         [(assert ty)
+          (printf "Process ~a ASSERTS ~a\n" pid (τ->string ty))]
+         [(retract ty)
+          (printf "Process ~a RETRACTS ~a\n" pid (τ->string ty))]
+         [(Asserted ty)
+          (printf "Process ~a REACTS to the ASSERTION of ~a\n" pid (τ->string ty))]
+         [(Retracted ty)
+          (printf "Process ~a REACTS to the RETRACTION of ~a\n" pid (τ->string ty))])])))
 
 (define COMMENT-RX #px"/\\*(.*)\\*/")
 

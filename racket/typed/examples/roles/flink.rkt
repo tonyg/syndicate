@@ -204,6 +204,7 @@ The JobManager then performs the job and, when finished, asserts
 
 (define (spawn-task-runner [id : ID] [tm-id : ID])
   (spawn τc
+   (export-roles "task-runner-impl.rktd"
    (lift+define-role task-runner-impl
    (start-facet runner ;; #:includes-behavior TaskPerformer
     (assert (task-runner id))
@@ -222,7 +223,7 @@ The JobManager then performs the job and, when finished, asserts
          (set! state (finished wc))]
         [(reduce-work $left $right)
          (define wc (hash-union/combine left right +))
-         (set! state (finished wc))]))))))
+         (set! state (finished wc))])))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; TaskManager
@@ -231,7 +232,8 @@ The JobManager then performs the job and, when finished, asserts
 (define (spawn-task-manager [num-task-runners : Int])
   (define id (gensym 'task-manager))
   (spawn τc
-   (#;begin  lift+define-role task-manager-impl ;;export-roles "task-manager-impl.rktd"
+   (export-roles "task-manager-impl.rktd"
+   (#;begin  lift+define-role task-manager-impl
    (start-facet tm ;; #:includes-behavior TaskAssigner
     (log "Task Manager (TM) ~a is running" id)
     (during (job-manager-alive)
@@ -293,7 +295,7 @@ The JobManager then performs the job and, when finished, asserts
                [OVERLOAD/ts
                 (set! status OVERLOAD/ts)]
                [(finished discard)
-                (set! status st)])))))))))
+                (set! status st)]))))))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; JobManager
@@ -522,10 +524,12 @@ The JobManager then performs the job and, when finished, asserts
 ;; Job -> Void
 (define (spawn-client [j : JobDesc])
   (spawn τc
+   (export-roles "client-impl.rktd"
+   (lift+define-role client-impl
    (start-facet _
     (match-define (job $id $tasks) j)
     (on (asserted (job-completion id tasks $data))
-        (printf "job done!\n~a\n" data)))))
+        (printf "job done!\n~a\n" data)))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Main
@@ -544,6 +548,20 @@ The JobManager then performs the job and, when finished, asserts
   (spawn-task-manager 3)
   (spawn-client (file->job "lorem.txt"))
   (spawn-client (string->job INPUT)))
+
+(module+ test
+  (verify-actors (Eventually (A (JobCompletion ID (List InputTask) TaskResult)))
+                 #;(Always (Implies (A (Observe (JobCompletion ID (List InputTask) ★/t)))
+                                  (Eventually (A (JobCompletion ID (List InputTask) TaskResult)))))
+                 job-manager-impl
+                 task-manager-impl
+                 client-impl)
+
+  (verify-actors (And (Always (Implies (A (Observe (TaskPerformance ID ConcreteTask ★/t)))
+                                       (Eventually (A (TaskPerformance ID ConcreteTask TaskStateDesc)))))
+                      (Eventually (A (TaskPerformance ID ConcreteTask TaskStateDesc))))
+                 TaskAssigner
+                 TaskPerformer))
 
 (module+ test
   (check-simulates task-runner-impl task-runner-impl)
