@@ -5,6 +5,9 @@
 (require "proto.rkt")
 (require "ltl.rkt")
 (require racket/runtime-path)
+(require syndicate/trace syndicate/trace/msd)
+(require (prefix-in synd: (only-in syndicate/core assert retract))
+         (prefix-in synd: (only-in syndicate/patch patch-empty patch-seq)))
 
 (module+ test
   (require rackunit)
@@ -656,7 +659,8 @@ Examples:
   (define pid/line-trace (regexp-match* TRAIL-LINE-RX out #:match-select cdr))
   (define model-lines (file->vector spin-file))
   (define trace (interpret-spin-trace pid/line-trace model-lines))
-  (print-trace trace))
+  (print-trace trace)
+  (log-trace-msd trace))
 
 ;; a PID is a Nat
 
@@ -703,6 +707,48 @@ Examples:
           (printf "Process ~a REACTS to the ASSERTION of ~a\n" pid (τ->string ty))]
          [(Retracted ty)
           (printf "Process ~a REACTS to the RETRACTION of ~a\n" pid (τ->string ty))])])))
+
+;; (Listof TraceStep) -> Void
+;; use syndicate's msd logger logging
+(define (log-trace-msd trace)
+  (start-tracing! "trace.msd")
+  (define (end-turn! pid point patch)
+    (let* ([p (trace-turn-end point pid #f)]
+           [p (trace-actions-produced p pid (list patch))]
+           [p (trace-action-interpreted p pid patch)])
+      p))
+  (define-values (final-pid final-point final-patch)
+    (for/fold ([current-actor #f]
+               [point #f]
+               [current-patch synd:patch-empty])
+              ([ts (in-list trace)])
+      (match ts
+        [(== START-OF-CYCLE)
+         (values current-actor point current-patch)]
+        [(trace-step pid evt)
+         (define-values (next-point next-patch)
+           (cond
+             ;; either startup or the begin of a new actor's turn
+             [(and current-actor (not (equal? pid current-actor)))
+              (define p (end-turn! current-actor point current-patch))
+              (values (trace-turn-begin p pid #f)
+                      synd:patch-empty)]
+             [else
+              (values point current-patch)]))
+         (match evt
+           [(assert ty)
+            (define p (synd:assert ty))
+            (values pid next-point (synd:patch-seq next-patch p))]
+           [(retract ty)
+            (define p (synd:retract ty))
+            (values pid next-point (synd:patch-seq next-patch p))]
+           [(Asserted ty)
+            #;(trace-event-consumed ??? ??? pid ???)
+            (values pid next-point next-patch)]
+           [(Retracted ty)
+            #;(trace-event-consumed ??? ??? pid ???)
+            (values pid next-point next-patch)])])))
+  (end-turn! final-pid final-point final-patch))
 
 (define COMMENT-RX #px"/\\*(.*)\\*/")
 
