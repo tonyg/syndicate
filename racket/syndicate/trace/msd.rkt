@@ -1,5 +1,7 @@
 #lang racket/base
 
+(provide start-tracing!)
+
 (require racket/match)
 (require racket/set)
 (require racket/string)
@@ -12,7 +14,7 @@
 
 (define-logger syndicate/trace/msd)
 
-(let ((output-filename (getenv "SYNDICATE_MSD")))
+(define (start-tracing! output-filename)
   (when output-filename
     (define names (make-hash (list (cons '() "'ground"))))
     (define (open-output cause)
@@ -104,3 +106,5 @@
                     (loop)))))
       (channel-get ch)
       (current-trace-procedures (cons msd-trace (current-trace-procedures))))))
+
+(start-tracing! (getenv "SYNDICATE_MSD"))
