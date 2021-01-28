@@ -237,13 +237,14 @@
     (match-define (role-graph st0 st#) rg)
     (check-true (hash-has-key? st# (set 'x 'y)))))
 
-;; a DetectedCylce is a (List (Listof StateName) D D D), as in
-;;   (list path init evt D)
-;; where
-;;   - path represents the sequences of states containing a cycle,
-;;   - init is the external event that initiated this activity
-;;   - evt is the last-taken internal event
-;;   - D is the edge in the graph that matched evt
+;; a DetectedCylce is a (detected-cycle StateName (Listof TraversalStep)), as in
+;;   (detected-cycle start steps)
+;; where path represents the sequences of states containing a cycle,
+(struct detected-cycle (start steps) #:transparent)
+
+;; a TraversalStep is a (traversal-step D StateName)
+;; representing a state transition along an edge matching D to a destination state
+(struct traversal-step (evt dest) #:transparent)
 
 ;; RoleGraph Role -> (U RoleGraph DetectedCycle)
 ;; "Optimize" the given role graph with respect to internal events.
@@ -254,7 +255,7 @@
   (define orig-st#+ (hash-set orig-st# (set) (state (set) (hash) (set))))
 
   ;; a WorkItem is a
-  ;;   (work-item StateName (Listof StateName) D+ (Listof D+) (Listof TransitionEffect))
+  ;;   (work-item TraversalStep (Listof TraversalStep) D+ (Listof D+) (Listof TransitionEffect))
   ;; such as (work-item from path/r to by with effs), where
   ;;   - from is the origin state for this chain of events
   ;;   - path/r is the list of states in the path to this point, *after* from, in reverse
@@ -264,6 +265,7 @@
   ;;   - with is a list of pending events to be processed
   ;;   - effs are the external effects emitted on this path
   (struct work-item (from path/r to by with effs) #:transparent)
+
   (let/ec fail
     (define (walk work visited st#)
       (match work
@@ -290,20 +292,21 @@
            (set! states (hash-set states (set) (state (set) (hash) (set)))))
          (role-graph new-st0 states)]
         [(cons (work-item from path/r to by with effs) more-work)
-         (define prev (if (empty? path/r) from (first path/r)))
+         (match-define (traversal-step last-evt cur-st) to)
+         (define prev (if (empty? path/r) from (traversal-step-dest (first path/r))))
          (define prev-assertions (state-assertions (hash-ref orig-st#+ prev)))
-         (match-define (state _ txn# cur-assertions) (hash-ref orig-st#+ to))
+         (match-define (state _ txn# cur-assertions) (hash-ref orig-st#+ cur-st))
          (define new-state-changes (route-internal prev-assertions
                                                    cur-assertions))
          (define state-changes* (for/list ([D (in-set new-state-changes)]
                                            #:when (for/or ([D/actual (in-hash-keys txn#)])
                                                     (D<:? D D/actual)))
                                   D))
-         (define started (for*/list ([fn (in-set (set-subtract to prev))]
+         (define started (for*/list ([fn (in-set (set-subtract cur-st prev))]
                                      [D (in-value (StartOf fn))]
                                      #:when (hash-has-key? txn# D))
                            D))
-         (define stopped (for*/list ([fn (in-set (set-subtract prev to))]
+         (define stopped (for*/list ([fn (in-set (set-subtract prev cur-st))]
                                      [D (in-value (StopOf fn))]
                                      #:when (hash-has-key? txn# D))
                            D))
@@ -332,18 +335,12 @@
                           #:when (implies (DataflowEvt? D) (DataflowEvt? evt))
                           [t (in-set ts)])
                 (match-define (transition more-effs dest) t)
-                (when (and (member dest path/r+)
-                           ;; TODO - cycles involving Start/Stop are tricky. Punt for now
-                           (not (start/stop-evt? evt)))
-                  (fail (list (cons from (reverse (cons dest path/r+)))
-                              by
-                              evt
-                              D)))
+                (check-for-cycle! from path/r+ evt dest fail)
                 (define-values (internal-effs external-effs)
                   (partition-transition-effects more-effs))
                 (work-item from
                            path/r+
-                           dest
+                           (traversal-step evt dest)
                            by
                            (append more-pending internal-effs)
                            (append effs external-effs)))]))
@@ -361,9 +358,9 @@
          (cond
            [(ormap empty? induced-work)
             ;; this is the end of some path
-            (define visited+ (set-add visited to))
+            (define visited+ (set-add visited cur-st))
             (define new-paths-work
-              (for*/list (#:unless (set-member? visited to)
+              (for*/list (#:unless (set-member? visited cur-st)
                           [(D txns) (in-hash txn#)]
                           #:when (external-evt? D)
                           #:unless (equal? D DataflowEvt)
@@ -371,14 +368,36 @@
                 (match-define (transition es dst) t)
                 (define-values (internal-effs external-effs)
                   (partition-transition-effects es))
-                (work-item to '() dst D internal-effs external-effs)))
-            (define new-st# (update-path st# from to by effs))
+                (work-item cur-st '() (traversal-step D dst) D internal-effs external-effs)))
+            (define new-st# (update-path st# from cur-st by effs))
             (walk (append more-work induced-work* new-paths-work) visited+ new-st#)]
            [else
             (walk (append more-work induced-work*) visited st#)])]))
-    (walk (list (work-item (set) '() st0 StartEvt '() '()))
+    (walk (list (work-item (set) '() (traversal-step StartEvt st0) StartEvt '() '()))
           (set)
           (hash))))
+
+;; (Listof TraceStep) D StateName (DetectedCycle -> X) -> (U X Void)
+;; the path is in reverse, and the final step is the pair evt/dest;
+;; so their is a cycle if the sequence from the first occurrence of
+;; dest in the path matches the sequence from the second occurrence to
+;; the first.
+(define (check-for-cycle! from path/r evt dest fail)
+  ;; TraceStep -> Bool
+  (define (same-state? step) (equal? dest (traversal-step-dest step)))
+
+  ;; (Listof TraceStep) -> (Values (Listof TraceStep) (Listof TraceStep))
+  (define (split-at-same-state steps) (splitf-at steps (compose not same-state?)))
+
+  (define-values (loop1 trail) (split-at-same-state path/r))
+  (when (cons? trail)
+    (match-define (cons prior-last trail2) trail)
+    (define-values (loop2 trail3) (split-at-same-state trail2))
+    (define last-step (traversal-step evt dest))
+    (when (and (cons? trail3)
+               (equal? (cons last-step loop1)
+                       (cons prior-last loop2)))
+      (fail (detected-cycle from (reverse (cons last-step path/r)))))))
 
 (module+ test
   (test-case
@@ -411,14 +430,14 @@
     (define r (parse-T cyclic))
     (define rg (compile r))
     (define i (run/timeout (thunk (compile/internal-events rg))))
-    (check-true (list? i))
-    (check-equal? (length i) 4)
-    (match-define (list path kick-off evt edge) i)
-    ;; the first 'x -> 'x cycle is ignored because it's a Start event
-    (check-equal? path (list (set) (set 'x) (set 'x) (set 'x)))
-    (check-equal? kick-off StartEvt)
-    (check-match evt (Realize (internal-label _ (== Int))))
-    (check-match edge (Realize (internal-label _ (== Int)))))
+    (check-true (detected-cycle? i))
+    (check-match i
+                 (detected-cycle
+                  (== (set))
+                  (list (traversal-step 'Start (== (set 'x)))
+                        (traversal-step (StartOf 'x) (== (set 'x)))
+                        (traversal-step (Realize (internal-label _ (== Int))) (== (set 'x)))
+                        (traversal-step (Realize (internal-label _ (== Int))) (== (set 'x)))))))
   (test-case
       "interesting internal start event"
     (test-case
@@ -1547,15 +1566,29 @@
 
 ;; Role Role -> Bool
 (define (simulates?/report-error impl spec)
-  (define impl-rg (compile impl))
-  (define spec-rg (compile spec))
+  (define impl-rg (compile/internal-events (compile impl)))
+  (define spec-rg (compile/internal-events (compile spec)))
   (cond
+    [(detected-cycle? impl-rg)
+     (printf "Detected Cycle in Implementation!\n")
+     (describe-detected-cycle impl-rg)
+     #f]
+    [(detected-cycle? spec-rg)
+     (printf "Detected Cycle in Specification!\n")
+     (describe-detected-cycle spec-rg)
+     #f]
     [(simulates?/rg impl-rg spec-rg)
      #t]
     [else
      (define trace (find-simulation-counterexample impl-rg spec-rg))
      (print-failing-trace trace impl-rg spec-rg)
      #f]))
+
+;; DetectedCycle -> Void
+(define (describe-detected-cycle dc)
+  (printf "Initial State: ~a\n" (detected-cycle-start dc))
+  (for ([step (in-list (detected-cycle-steps dc))])
+    (printf "  :: ~a ==> ~a\n" (D->label (traversal-step-evt step)) (traversal-step-dest step))))
 
 ;; a FailingTrace is a (failing-trace (Listof Transition) (Listof Transition) (Listof TraceStep))
 (struct failing-trace (impl-path spec-path steps) #:transparent)
@@ -2938,7 +2971,7 @@
       "job manager subgraph(s) implement task assigner"
     (define jmr (run/timeout (thunk (parse-T job-manager-actual))))
     (define tar (parse-T task-assigner-spec))
-    (define ans (run/timeout (thunk (simulating-subgraphs jmr tar)) 2800))
+    (define ans (run/timeout (thunk (simulating-subgraphs jmr tar)) 4000))
     (check-true (list? ans))
     (check-false (empty? ans))))
 
