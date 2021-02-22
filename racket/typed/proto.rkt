@@ -998,19 +998,24 @@
             (for/fold ([st st])
                       ([c (in-list children)])
               (set-remove st c)))
-          (for/fold ([txns (set (transition '() st-))])
-                    ([f-name (in-list children)])
-            (define stop-effs (hash-ref (hash-ref txn# f-name) (StopOf f-name)))
-            (define stop-effs+ (if (set-empty? stop-effs)
-                                   (set '())
-                                   stop-effs))
-            (for*/set ([txn (in-set txns)]
-                       [st (in-value (transition-dest txn))]
-                       [effs* (in-set stop-effs+)]
-                       [next-txn (in-set (loop st (append effs* rest)))])
-              (transition (append (transition-effs txn)
-                                  (transition-effs next-txn))
-                          (transition-dest next-txn))))])])))
+          (define-values (final-txns _)
+            (for/fold ([txns (set (transition '() st-))]
+                       [pending-effs rest])
+                      ([f-name (in-list children)])
+              (define stop-effs (hash-ref (hash-ref txn# f-name) (StopOf f-name)))
+              (define stop-effs+ (if (set-empty? stop-effs)
+                                     (set '())
+                                     stop-effs))
+              (define new-txns
+                (for*/set ([txn (in-set txns)]
+                           [st (in-value (transition-dest txn))]
+                           [effs* (in-set stop-effs+)]
+                           [next-txn (in-set (loop st (append pending-effs effs*)))])
+                  (transition (append (transition-effs txn)
+                                      (transition-effs next-txn))
+                              (transition-dest next-txn))))
+              (values new-txns '())))
+          final-txns])])))
 
 (module+ test
   (test-case
@@ -1020,7 +1025,61 @@
                                 (set)
                                 (facet-tree (hash) (hash))
                                 (hash)))
-    (check-equal? txns (set (transition (list (realize Int) (realize String)) (set))))))
+    (check-equal? txns (set (transition (list (realize Int) (realize String)) (set)))))
+  (test-case
+      "another bug in apply-effects"
+    ;; was duplicating some effects
+    (define r #s(Role
+                 run-a-round342
+                 (#s(Shares
+                     #s(Struct
+                        RoundT
+                        (#s(Base Symbol) #s(Base String) #s(List #s(Base String)))))
+                  #s(Reacts
+                     Start
+                     #s(Role
+                        wait364
+                        (#s(Reacts
+                            #s(Asserted #s(Struct LaterThanT (#s(Base Int))))
+                            #s(Branch
+                               ((#s(Branch
+                                    ((#s(Stop
+                                         run-a-round342
+                                         (#s(Role
+                                             over356
+                                             (#s(Shares
+                                                 #s(Struct
+                                                    ElectedT
+                                                    (#s(Base String)
+                                                     #s(Base String)))))))))
+                                     (#s(Stop
+                                         run-a-round342
+                                         (#s(Realizes
+                                             #s(Struct
+                                                StartRoundT
+                                                (#s(Set #s(Base String))
+                                                 #s(Set #s(Base String)))))))))))
+                                ())))))))))
+    (define labeled-role (label-internal-events r))
+    (define roles# (describe-roles labeled-role))
+    (define ft (make-facet-tree r))
+    (define current (set 'wait364 'run-a-round342))
+    (define eff* (list
+                  (stop 'run-a-round342)
+                  (realize
+                   '#s(internal-label
+                       initial31336
+                       #s(Struct
+                          StartRoundT
+                          (#s(Set #s(Base String)) #s(Set #s(Base String))))))))
+    (check-equal? (apply-effects eff* current ft roles#)
+                  (set (transition
+                        (list
+                         (realize
+                          '#s(internal-label
+                              initial31336
+                              #s(Struct StartRoundT (#s(Set #s(Base String)) #s(Set #s(Base String)))))))
+                        (set))))))
 
 ;; FacetTree FacetName (Setof FacetName) -> (List FacetName)
 ;; return the facets in names that are children of the given facet nm, ordered
