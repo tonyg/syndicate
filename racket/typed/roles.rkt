@@ -67,7 +67,7 @@
          export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
          verify-actors
          ;; LTL Syntax
-         True False Always Eventually Until WeakUntil Implies And Or Not A
+         True False Always Eventually Until WeakUntil Implies And Or Not A M
          ;; Extensions
          match cond
          submod for-syntax for-meta only-in except-in
@@ -660,7 +660,8 @@
 (define-type And : LTL * -> LTL)
 (define-type Or : LTL * -> LTL)
 (define-type Not : LTL -> LTL)
-(define-type A : Type -> LTL)
+(define-type A : Type -> LTL) ;; Assertions
+(define-type M : Type -> LTL) ;; Messages
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Behavioral Analysis
@@ -712,7 +713,8 @@
                     And proto:&&
                     Or proto:||
                     Not proto:ltl-not
-                    A proto:atomic))
+                    A proto:atomic
+                    M (compose proto:atomic proto:Message)))
 
   (define (double-check)
     (for/first ([id (in-dict-keys TRANSLATION#)]
