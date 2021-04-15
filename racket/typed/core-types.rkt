@@ -749,7 +749,7 @@
              (match-define (list desc cons pred accs/rev muts sup) (extract-struct-info info))
              (when (false? (last accs/rev))
                (raise-syntax-error #f "number of slots must be exact" #'#,stx #'ucons))
-             (unless (equal? #t sup)
+             (unless (boolean? sup)
                (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
              (define accs (cleanup-accs #'ucons accs/rev))
              (define arity (length accs/rev))
