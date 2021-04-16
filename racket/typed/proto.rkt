@@ -646,9 +646,9 @@
     (check-equal? sn0 (set 'seller))
     (check-true (hash-has-key? seller# (set 'seller)))
     (check-true (hash-has-key? seller# (set 'seller 'fulfill)))
-    (check-equal? (hash-keys seller#)
-                  (list (set 'seller 'fulfill)
-                        (set 'seller)))
+    (check-equal? (list->set (hash-keys seller#))
+                  (set (set 'seller 'fulfill)
+                       (set 'seller)))
     (define st0 (hash-ref seller# (set 'seller)))
     (define transitions (state-transitions st0))
     (define quote-request
