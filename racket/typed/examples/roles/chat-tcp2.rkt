@@ -1,6 +1,6 @@
 #lang typed/syndicate/roles
 
-(require "../../drivers/tcp.rkt")
+(require typed/syndicate/drivers/tcp)
 
 ;; message
 (define-constructor (speak who what)
