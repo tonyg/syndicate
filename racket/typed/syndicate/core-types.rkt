@@ -1112,6 +1112,13 @@
      (reassemble-type #'τ-cons subitems)]
     [_ t]))
 
+;; Type -> Bool
+;; to prevent observing the linkage assertions used by during/spawn,
+;; disallow ?★ and ??★
+(define-for-syntax (allowed-interest? t)
+  (not (or (<: (type-eval #'(Observe ★/t)) t)
+           (<: (type-eval #'(Observe (Observe ★/t))) t))))
+
 ;; Type -> String
 (define-for-syntax (type->strX ty)
   ;; Identifier -> String

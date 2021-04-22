@@ -22,7 +22,7 @@
          →fn proc
          ;; Statements
          let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
-         when unless send! realize! define
+         when unless send! realize! define during/spawn
          ;; Derived Forms
          during During
          define/query-value
@@ -182,6 +182,26 @@
      (⇒ : ★/t)
      (⇒ ν-f (τ))]])
 
+(define-typed-syntax (during/spawn pat bdy ...+) ≫
+  #:with pat+ (elaborate-pattern/with-com-ty #'pat)
+  [⊢ pat+ ≫ pat-- (⇒ : τp)]
+  #:fail-unless (pure? #'pat--) "pattern not allowed to have effects"
+  #:fail-unless (allowed-interest? (pattern-sub-type #'τp)) "overly broad interest, ?̱̱★ and ??★ not allowed"
+  #:with ([x:id τ:type] ...) (pat-bindings #'pat+)
+  [[x ≫ x- : τ] ... ⊢ (block bdy ...) ≫ bdy-
+                (⇒ ν-ep (~effs τ-ep ...))
+                (⇒ ν-f (~effs))
+                (⇒ ν-s (~effs))]
+  #:with pat- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'pat+))
+  #:with τc:type (current-communication-type)
+  #:with τ-facet (type-eval #'(Role (_) τ-ep ...))
+  #:with τ-spawn (mk-ActorWithRole- #'(τc.norm τ-facet))
+  #:with τ-endpoint (type-eval #'(Reacts (Asserted τp) τ-spawn))
+  ------------------------------
+  [⊢ (syndicate:during/spawn pat- bdy-)
+     (⇒ : ★/t)
+     (⇒ ν-ep (τ-endpoint))])
+
 (define-typed-syntax field
   [(_ [x:id τ-f:type e:expr] ...) ≫
    #:cut
@@ -204,6 +224,7 @@
 (define-typed-syntax (assert e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
+  #:fail-unless (allowed-interest? #'τ) "overly broad interest, ?̱̱★ and ??★ not allowed"
   #:with τs (mk-Shares- #'(τ))
   -------------------------------------
   [⊢ (syndicate:assert e-) (⇒ : ★/t)
@@ -315,6 +336,7 @@
    #:with p/e (if msg? (stx-cadr elab) elab)
    [⊢ p/e ≫ p-- (⇒ : τp)]
    #:fail-unless (pure? #'p--) "pattern not allowed to have effects"
+   #:fail-unless (allowed-interest? (pattern-sub-type #'τp)) "overly broad interest, ?̱̱★ and ??★ not allowed"
    #:with ([x:id τ:type] ...) (pat-bindings #'p/e)
    [[x ≫ x- : τ] ... ⊢ (block s ...) ≫ s-
                  (⇒ ν-ep (~effs))

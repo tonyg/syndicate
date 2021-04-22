@@ -26,8 +26,7 @@
 
   (spawn chat-ds
    (start-facet chat-server
-     ;; TODO - should be during/spawn
-     (during (tcp-connection (bind id Symbol) (tcp-listener 5999))
+     (during/spawn (tcp-connection (bind id Symbol) (tcp-listener 5999))
              (assert (tcp-accepted id))
              (let ([me (gensym 'user)])
                (assert (present me))
