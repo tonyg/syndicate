@@ -1,2 +1,2 @@
 #lang s-exp syntax/module-reader
-typed/main
+typed/syndicate/roles

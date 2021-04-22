@@ -1,4 +1,4 @@
-#lang typed/syndicate/roles
+#lang typed/syndicate
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Protocol
@@ -550,8 +550,8 @@ The JobManager then performs the job and, when finished, asserts
   (spawn-client (string->job INPUT)))
 
 (module+ test
-  (verify-actors (Eventually (A (JobCompletion ID (List InputTask) TaskResult)))
-                 #;(Always (Implies (A (Observe (JobCompletion ID (List InputTask) ★/t)))
+  #;(verify-actors #;(Eventually (A (JobCompletion ID (List InputTask) TaskResult)))
+                 (Always (Implies (A (Observe (JobCompletion ID (List InputTask) ★/t)))
                                   (Eventually (A (JobCompletion ID (List InputTask) TaskResult)))))
                  job-manager-impl
                  task-manager-impl
@@ -570,3 +570,7 @@ The JobManager then performs the job and, when finished, asserts
   (check-has-simulating-subgraph task-manager-impl TaskPerformer)
   (check-has-simulating-subgraph task-manager-impl TaskAssigner)
   (check-has-simulating-subgraph job-manager-impl TaskAssigner))
+
+;; infinite loop?
+#;(module+ test
+  (check-simulates job-manager-impl job-manager-impl))

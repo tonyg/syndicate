@@ -1,4 +1,4 @@
-#lang typed/syndicate/roles
+#lang typed/syndicate
 
 (provide a-fun)
 

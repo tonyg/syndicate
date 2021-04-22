@@ -1,4 +1,4 @@
-#lang typed/syndicate/roles
+#lang typed/syndicate
 
 (require-struct msg #:as Msg
                 #:from "driver.rkt")

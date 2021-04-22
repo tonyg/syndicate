@@ -1,4 +1,4 @@
-#lang typed/syndicate/roles
+#lang typed/syndicate
 
 ;; Expected Output
 ;; leader learns that there are 5 copies of The Wind in the Willows

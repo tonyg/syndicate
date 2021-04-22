@@ -1,4 +1,4 @@
-#lang typed/syndicate/roles
+#lang typed/syndicate
 
 ;; adapted from section 8.3 of Tony's dissertation
 

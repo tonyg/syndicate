@@ -1,4 +1,4 @@
-#lang typed/syndicate/roles
+#lang typed/syndicate
 
 (define-constructor (file name content)
   #:type-constructor FileT

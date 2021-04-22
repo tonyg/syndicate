@@ -1,4 +1,4 @@
-#lang typed/syndicate/roles
+#lang typed/syndicate
 
 (assertion-struct ping : Ping (v))
 (assertion-struct pong : Pong (v))

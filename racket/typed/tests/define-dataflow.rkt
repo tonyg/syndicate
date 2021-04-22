@@ -1,4 +1,4 @@
-#lang typed/syndicate/roles
+#lang typed/syndicate
 
 (run-ground-dataspace (U)
 (spawn (U)
