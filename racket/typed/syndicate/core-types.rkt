@@ -730,7 +730,7 @@
 ;; TODO: this implementation shares a lot with that of define-constructor
 (define-syntax (require-struct stx)
   (syntax-parse stx
-    [(_ ucons:id #:as ty-cons:id #:from lib)
+    [(_ ucons:id #:as ty-cons:id #:from lib (~optional (~and omit-accs #:omit-accs)))
      (with-syntax* ([TypeCons #'ty-cons]
                     [MakeTypeCons (format-id #'TypeCons "make-~a" #'TypeCons)]
                     [GetTypeParams (format-id #'TypeCons "get-~a-type-params" #'TypeCons)]
@@ -751,7 +751,6 @@
                (raise-syntax-error #f "number of slots must be exact" #'#,stx #'ucons))
              (unless (boolean? sup)
                (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
-             (define accs (cleanup-accs #'ucons accs/rev))
              (define arity (length accs/rev))
              )
            (define-for-syntax (TypeConsExtraInfo stx)
@@ -767,10 +766,14 @@
            (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
            (define-syntax Cons- (mk-constructor-type-rule arity #'orig-struct-info #'TypeCons))
            (define-syntax ucons
-             (user-ctor #'Cons- #'orig-struct-info 'type-tag #'TypeCons (cleanup-accs #'ucons accs/rev) #;accs))
-           (define-syntax mk-struct-accs
-             (define-struct-accs accs/rev #'TypeCons #'lib))
-           (mk-struct-accs ucons))))]))
+             (user-ctor #'Cons- #'orig-struct-info 'type-tag #'TypeCons (cleanup-accs #'ucons accs/rev)))
+           #,(unless (attribute omit-accs)
+               (quasisyntax/loc stx
+                 (begin-
+                   (define-syntax mk-struct-accs
+                     (define-struct-accs accs/rev #'TypeCons #'lib))
+                   (mk-struct-accs ucons))))
+           )))]))
 
 (begin-for-syntax
   (define-syntax ~constructor-extra-info
@@ -838,21 +841,32 @@
 ;; Require & Provide
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(begin-for-syntax
+  (define-syntax-class opaque-require-clause
+    #:datum-literals (= > >=)
+    #:attributes (type-definition)
+    (pattern [#:opaque ty-name:id]
+             #:attr type-definition #'(define-base-type ty-name))
+    (pattern [#:opaque ty-name:id #:arity (~and op (~or* = > >=)) arity:nat]
+             #:attr type-definition #'(define-product-type ty-name #:arity op arity))))
+
 ;; Import and ascribe a type from an untyped module
 ;; TODO: this is where contracts would need to go
 (define-syntax (require/typed stx)
   (syntax-parse stx
     #:datum-literals (:)
-    [(_ lib [name:id : ty:type] ...)
+    [(_ lib
+        (~alt [name:id : ty]
+              opaque-clause:opaque-require-clause)
+        ...)
      #:with (name- ...) (format-ids "~a-" #'(name ...))
-     #:with (serialized-ty ...) (for/list ([t (in-syntax #'(ty.norm ...))])
-                                  (serialize-syntax t))
      (syntax/loc stx
        (begin-
+         opaque-clause.type-definition ...
          (require (only-in lib [name name-] ...))
          (define-syntax name
            (make-variable-like-transformer
-            (add-orig (assign-type #'name- (deserialize-syntax #'serialized-ty)
+            (add-orig (assign-type #'name- (deserialize-syntax (serialize-syntax (type-eval #'ty)))
                                    #:wrap? #f) #'name)))
          ...))]))
 
