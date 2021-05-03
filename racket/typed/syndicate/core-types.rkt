@@ -387,7 +387,6 @@
 #;(define-product-type Inbound #:arity = 1)
 #;(define-product-type Outbound #:arity = 1)
 (define-container-type AssertionSet #:arity = 1)
-(define-container-type Patch #:arity = 2)
 
 ;; functions and type abstractions
 (define-for-syntax (resugar-∀ ty)

@@ -203,7 +203,7 @@
      (⇒ ν-ep (τ-endpoint))])
 
 (define-typed-syntax field
-  [(_ [x:id τ-f:type e:expr] ...) ≫
+  [(_ [x:id (~optional (~datum :)) τ-f:type e:expr] ...) ≫
    #:cut
    #:fail-unless (stx-andmap flat-type? #'(τ-f ...)) "keep your uppity data outta my fields"
    [⊢ e ≫ e- (⇐ : τ-f)] ...
@@ -457,11 +457,6 @@
   #:with inst-p (instantiate-pattern #'p+)
   #:with start-e (if (attribute k) #'know #'asserted)
   #:with stop-e (if (attribute k) #'forget #'retracted)
-  #:with res #'(on (start-e p+)
-                   (start-facet during-inner
-                                (on (stop-e inst-p)
-                                    (stop during-inner))
-                                s ...))
   ----------------------------------------
   [≻ (on (start-e p+)
          (start-facet during-inner
