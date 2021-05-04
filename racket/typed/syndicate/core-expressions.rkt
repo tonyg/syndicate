@@ -210,8 +210,6 @@
     [(tuple p ...)
      #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
      #'([x τ] ... ...)]
-    #;[(k:kons1 p)
-     (pat-bindings #'p)]
     [(~constructor-exp cons p ...)
      #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
      #'([x τ] ... ...)]
@@ -265,9 +263,6 @@
       [(tuple p ...)
        (quasisyntax/loc pat
          (tuple #,@(stx-map elaborate-pattern #'(p ...))))]
-      [(k:kons1 p)
-       (quasisyntax/loc pat
-         (k #,(elaborate-pattern #'p)))]
       [(~constructor-exp ctor p ...)
        (quasisyntax/loc pat
          (ctor #,@(stx-map elaborate-pattern #'(p ...))))]
@@ -355,8 +350,6 @@
         #:datum-literals (tuple discard bind)
         [(tuple p ...)
          #`(#,list-binding 'tuple #,@(stx-map loop #'(p ...)))]
-        #;[(k:kons1 p)
-         #`(#,(kons1->constructor #'k) #,(loop #'p))]
         [(bind x:id τ:type)
          (bind-id-transformer #'x)]
         [discard

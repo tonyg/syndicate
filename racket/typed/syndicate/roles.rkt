@@ -12,7 +12,7 @@
          ;; Start dataspace programs
          run-ground-dataspace
          ;; Types
-         Tuple Bind Discard → ∀
+         Tuple Bind Discard → ∀ AssertionSet
          Role Reacts Shares Asserted Retracted Message OnDataflow Stop OnStart OnStop
          Know Forget Realize
          Branch Effs
@@ -21,7 +21,7 @@
          Computation Value Endpoints Roles Spawns Sends
          →fn proc
          ;; Statements
-         let let* if spawn dataspace start-facet set! begin stop begin/dataflow #;unsafe-do
+         let let* if spawn dataspace start-facet set! begin block stop begin/dataflow #;unsafe-do
          when unless send! realize! define during/spawn
          ;; Derived Forms
          during During
@@ -33,7 +33,7 @@
          ;; endpoints
          assert know on field
          ;; expressions
-         tuple select lambda λ ref observe inbound outbound
+         tuple select lambda λ ref (struct-out observe) (struct-out message) (struct-out inbound) (struct-out outbound)
          Λ inst call/inst
          ;; making types
          define-type-alias
@@ -482,8 +482,6 @@
       #:datum-literals (tuple discard bind)
       [(tuple p ...)
        #`(tuple #,@(stx-map loop #'(p ...)))]
-      [(k:kons1 p)
-       #`(k #,(loop #'p))]
       [(bind x:id τ)
        #'x]
       ;; not sure about this

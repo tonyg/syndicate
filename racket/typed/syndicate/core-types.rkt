@@ -921,33 +921,6 @@
 (require-struct outbound #:as Outbound #:from syndicate/protocol/standard-relay)
 (require-struct message #:as Message #:from syndicate/core)
 
-(begin-for-syntax
-
-  ;; constructors with arity one
-  (define-syntax-class kons1
-    (pattern (~or (~datum observe)
-                  (~datum inbound)
-                  (~datum outbound)
-                  (~datum message))))
-
-  (define (kons1->constructor stx)
-    (syntax-parse stx
-      #:datum-literals (observe inbound outbound)
-      [observe #'syndicate:observe]
-      [inbound #'syndicate:inbound]
-      [outbound #'syndicate:outbound]
-      [message #'syndicate:message]))
-
-  (define-syntax-class basic-val
-    (pattern (~or boolean
-                  integer
-                  string)))
-
-  (define-syntax-class prim-op
-    (pattern (~or (~literal +)
-                  (~literal -)
-                  (~literal displayln)))))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities Over Types
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1581,7 +1554,6 @@
            (make-variable-like-transformer (add-orig (attach #'x- ': (deserialize-syntax #'serialized-τ)) #'x)))
          (define- x- e))]))
 
-;; copied from ext-stlc
 (define-typed-syntax define
   [(_ x:id (~datum :) τ:type e:expr) ≫
    #:cut

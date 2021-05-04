@@ -1,8 +1,9 @@
 #lang scribble/manual
 
-@(require (for-label (only-in racket struct #;equal?)
+@(require (for-label (only-in racket struct)
                      typed/syndicate/roles)
-           (prefix-in untyped: (for-label syndicate/actor)))
+          (prefix-in racket: (for-label racket))
+          (prefix-in untyped: (for-label syndicate/actor)))
 
 @title{Typed Syndicate}
 
@@ -12,6 +13,14 @@
 @section{Overview}
 
 @section{Types}
+
+@deftogether[(@defidform[Int]
+              @defidform[Bool]
+              @defidform[String]
+              @defidform[ByteString]
+              @defidform[Symbol])]{
+Base types.
+}
 
 @defform[(U type ...)]{
 The type representing the union of @racket[type ...].
@@ -385,10 +394,205 @@ result of @racket[expr] each time any referenced field changes. When
 
 @section{Expressions}
 
+@defform*[#:literals (:)
+          [(ann expr : type)
+           (ann expr type)]]{
+Ensure that @racket[expr] has the given @racket[type].
+}
+
+@defform[(if test-expr then-expr else-expr)]{
+The same as Racket's @racket[racket:if].
+}
+
+@deftogether[(@defform[(cond [test-expr body-expr ...+] ...+)]
+              @defthing[else Bool #:value #t])]{
+Like Racket's @racket[racket:cond].
+}
+
+@defform[(when test-expr expr)]{
+Like Racket's @racket[racket:when], but results in @racket[#f] when
+@racket[test-expr] is @racket[#f].
+}
+
+@defform[(unless test-expr expr)]{
+Like Racket's @racket[racket:unless], but results in @racket[#f] when
+@racket[test-expr] is @racket[#f].
+}
+
+@defform[(let ([id expr] ...) body ...+)]{
+The same as Racket's @racket[racket:let].
+}
+
+@defform[(let* ([id expr] ...) body ...+)]{
+The same as Racket's @racket[racket:let*].
+}
+
+@defform[#:literals (:)
+         (lambda ([x opt-: type] ...) expr ...+)
+         #:grammar
+         [(opt-: (code:line)
+                 (code:line :))]]{
+Constructsa an anonymous function.
+}
+
+@defidform[λ]{Synonym for @racket[lambda].}
+
+@defform[(Λ (X ...) expr)]{
+Parametric abstraction over type variables @racket[X ...].
+}
+
+@defform[(inst expr type ...)]{
+Instantiates the type variables @racket[X ...] with @racket[type ...], where
+@racket[expr] has type @racket[(∀ (X ...) t)].
+}
+
+@defform*[#:literals (: → -> ∀)
+          [(define id : type expr)
+           (define id expr)
+           (define (id [arg-id opt-: arg-type] ... opt-res-ty) expr ...+)
+           (define (∀ (X ...) (id [arg-id opt-: arg-type] ... opt-res-ty)) expr ...+)]
+          #:grammar
+          [(opt-: (code:line) (code:line :))
+           (opt-res-ty (code:line)
+                       (code:line arr res-type))
+           (arr (code:line →) (code:line ->))]]{
+Define a constant or a (potentially polymorphic) function.
+}
+
+@defform[(define-tuple (id ...) expr)]{
+Define @racket[id ...] to each of the slots of the tuple produced by
+@racket[expr].
+}
+
+@defform[(match-define pattern expr)]{
+Define the binders of @racket[pattern] to the matching values of @racket[expr].
+}
+
+@defform[(begin expr ...+)]{
+Sequencing form whose value and type is that of the final @racket[expr].
+}
+
+@defform[(block expr ...+)]{
+Like @racket[begin], but also introduces a definition context for its body.
+}
+
+@defform[(match expr [pattern body-expr ...+] ...+)]{
+Like Racket's @racket[racket:match] but with the pattern syntax described by
+@racket[on].
+}
+
 @defform[(tuple expr ...)]{
 Constructs a tuple of arbitrary arity.
 }
 
-@section{Requiring From Outside Typed Syndicate}
+@defform[(select i expr)]{
+Extract the @racket[i]th element of a @racket[tuple].
+}
+
+@defform[(error format-expr arg-expr ...)]{
+Raises an exception using @racket[format-expr] as a format string together with
+@racket[arg-expr ...].
+}
+
+@defthing[unit Unit #:value (tuple)]
+
+@deftogether[(
+@defthing[+ (→fn Int Int Int)]
+@defthing[- (→fn Int Int Int)]
+@defthing[* (→fn Int Int Int)]
+@defthing[< (→fn Int Int Bool)]
+@defthing[> (→fn Int Int Bool)]
+@defthing[<= (→fn Int Int Bool)]
+@defthing[>= (→fn Int Int Bool)]
+@defthing[= (→fn Int Int Bool)]
+@defthing[even? (→fn Int Bool)]
+@defthing[odd? (→fn Int Bool)]
+@defthing[add1 (→fn Int Int)]
+@defthing[sub1 (→fn Int Int)]
+@defthing[max (→fn Int Int Int)]
+@defthing[min (→fn Int Int Int)]
+@defthing[zero? (→fn Int Bool)]
+@defthing[positive? (→fn Int Bool)]
+@defthing[negative? (→fn Int Bool)]
+@defthing[current-inexact-milleseconds? (→fn Int)]
+@defthing[string=? (→fn String String Bool)]
+@defthing[bytes->string/utf-8 (→fn ByteString String)]
+@defthing[string->bytes/utf-8 (→fn String ByteString)]
+@defthing[gensym (→fn Symbol Symbol)]
+@defthing[symbol->string (→fn Symbol String)]
+@defthing[string->symbol (→fn String Symbol)]
+@defthing[not (→fn Bool Bool)]
+@defform[(/ e1 e2)]
+@defform[(and e ...)]
+@defform[(or e ...)]
+@defform[(equal? e1 e2)]
+@defform[(displayln e)]
+@defform[(printf fmt-expr val-expr ...)]
+@defform[(~a e ...)]
+)]{
+Primitive operations imported from Racket.
+}
+
+@section{Require & Provide}
+
+@defform[(struct-out ctor-id)]{
+}
+
+@subsection{Requiring From Outside Typed Syndicate}
+
+@defform[#:literals (:)
+         (require/typed lib clause ...)
+         #:grammar
+         [(clause (code:line [id : type])
+                  (code:line opaque))
+          (opaque (code:line [#:opaque type-name])
+                  (code:line [#:opaque type-name #:arity op arity-nat]))
+          (opaque (code:line =) (code:line >) (code:line >=))]]{
+Import and assign types to bindings from outside Typed Syndicate.
+
+An @racket[#:opaque] declaration defines a type @racket[type-name] (or, in the
+@racket[#:arity] case, a type constructor) that may be used to describe imports
+but otherwise has no other operations.
+}
+
+@defform[(require-struct ctor-id #:as ty-ctor-id #:from lib maybe-omit-accs)
+         #:grammar
+         [(maybe-omit-accs (code:line)
+                           (code:line #:omit-accs))]]{
+Import a Racket @racket[struct] named @racket[ctor-id] and create a type
+constructor @racket[ty-ctor-id] for its instances.
+
+Unless @racket[#:omit-accs] is specified, defines the accessor functions for the
+struct.
+}
+
+
+@section{Builtin Data Structures}
+
+@deftogether[(@defstruct[observe ([claim any?]) #:omit-constructor]
+              @defform[(Observe type)])]{
+Constructs an assertion of interest.
+}
+
+@deftogether[(@defstruct[inbound ([assertion any?]) #:omit-constructor]
+              @defform[(Inbound type)])]{
+Constructor for an assertion inbound from an outer dataspace.
+}
+
+@deftogether[(@defstruct[outbound ([assertion any?]) #:omit-constructor]
+              @defform[(Outbound type)])]{
+Constructor for an assertion outbound to an outer dataspace.
+}
+
+@deftogether[(@defstruct[message ([body any?]) #:omit-constructor]
+              @defform[(Message type)])]{
+Constructor for a broadcast message.
+}
+
+@subsection{Lists}
+
+@subsection{Sets}
+
+@subsection{Hashes}
 
 @section{Behavioral Checking}
