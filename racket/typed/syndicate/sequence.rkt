@@ -17,12 +17,15 @@
          sequence-add-between
          in-list
          in-set
+         in-hash-keys
+         in-hash-values
          in-range
          )
 
 (require "core-types.rkt")
 (require (only-in "list.rkt" List))
 (require (only-in "set.rkt" Set))
+(require (only-in "hash.rkt" Hash))
 (require (only-in "prim.rkt" Int Bool))
 #;(require (postfix-in - racket/sequence))
 
@@ -50,25 +53,8 @@
 
 (require/typed racket/base
   [in-list : (∀ (X) (→fn (List X) (Sequence X)))]
+  [in-hash-keys : (∀ (K V) (→fn (Hash K V) (Sequence K)))]
+  [in-hash-values : (∀ (K V) (→fn (Hash K V) (Sequence V)))]
   [in-range : (→fn Int (Sequence Int))])
 (require/typed racket/set
   [in-set : (∀ (X) (→fn (Set X) (Sequence X)))])
-
-#;(define-typed-syntax empty-sequence
-  [_ ≫
-   --------------------
-   [⊢ empty-sequence- (⇒ : (Sequence (U)))]])
-
-;; er, this is making everything a macro, as opposed to a procedure...
-;; think I ought to add polymorphous first :\
-#;(define-typed-syntax (sequence->list s) ≫
-  [⊢ s ≫ s- (⇒ : (~Sequence τ))]
-  #:fail-unless (pure? #'s-)
-  ------------------------------
-  [⊢ (sequence->list- s-) (⇒ : (List τ))])
-
-#;(define-typed-syntax (sequence-length s) ≫
-    [⊢ s ≫ s- (⇒ : (~Sequence τ))]
-    #:fail-unless (pure? #'s-)
-    ------------------------------
-    [⊢ (sequence-length- s-) (⇒ : Int)])

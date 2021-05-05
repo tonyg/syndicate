@@ -3,12 +3,14 @@
 (provide List
          (for-syntax ~List)
          list
-         (typed-out [[cons- : (∀ (X) (→fn X (List X) (List X)))] cons]
+         (typed-out [[empty- : (List ⊥)] empty]
+                    [[empty?- : (∀ (X) (→fn X (List X) Bool))] empty?]
+                    [[cons- : (∀ (X) (→fn X (List X) (List X)))] cons]
+                    [[cons?- : (∀ (X) (→fn X (List X) Bool))] cons?]
                     [[first- : (∀ (X) (→fn (List X) X))] first]
                     [[second- : (∀ (X) (→fn (List X) X))] second]
                     [[rest- : (∀ (X) (→fn (List X) (List X)))] rest]
                     [[member?- (∀ (X) (→fn X (List X) Bool))] member?]
-                    [[empty?- (∀ (X) (→fn (List X) Bool))] empty?]
                     [[reverse- (∀ (X) (→fn (List X) (List X)))] reverse]
                     [[partition- (∀ (X) (→fn (List X) (→fn X Bool) (List X)))] partition]
                     [[map- (∀ (X Y) (→fn (→fn X Y) (List X) (List Y)))] map]

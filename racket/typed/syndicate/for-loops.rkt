@@ -5,9 +5,7 @@
          for/list
          for/set
          for/sum
-         for/first
-         in-hash-values
-         in-hash-keys)
+         for/first)
 
 (require "core-types.rkt")
 (require "sequence.rkt")
@@ -257,14 +255,3 @@
      (⇒ ν-ep (τ-ep ...))
      (⇒ ν-s (τ-s ...))
      (⇒ ν-f (τ-f ...))])
-
-
-(define-typed-syntax (in-hash-values h) ≫
-  [⊢ h ≫ h- (⇒ : (~Hash K V))]
-  --------------------
-  [⊢ (#%app- in-hash-values- h-) (⇒ : (Sequence V))])
-
-(define-typed-syntax (in-hash-keys h) ≫
-  [⊢ h ≫ h- (⇒ : (~Hash K V))]
-  --------------------
-  [⊢ (#%app- in-hash-keys- h-) (⇒ : (Sequence K))])

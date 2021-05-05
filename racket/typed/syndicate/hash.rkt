@@ -45,10 +45,8 @@
   #;[make-hash : (∀ (K V) (→fn (List (ConsPair K V)) (Hash K V)))]
   [hash-set : (∀ (K V) (→fn (Hash K V) K V (Hash K V)))]
   [hash-ref : (∀ (K V) (→fn (Hash K V) K V))]
-  ;; TODO hash-ref/failure
   [hash-has-key? : (∀ (K V) (→fn (Hash K V) K Bool))]
   [hash-update : (∀ (K V) (→fn (Hash K V) K (→fn V V) (Hash K V)))]
-  ;; TODO hash-update/failure
   [hash-remove : (∀ (K V) (→fn (Hash K V) K (Hash K V)))]
   [hash-map : (∀ (K V R) (→fn (Hash K V) (→fn K V R) (List R)))]
   [hash-keys : (∀ (K V) (→fn (Hash K V) (List K)))]
@@ -61,7 +59,6 @@
 
 (require/typed racket/hash
   [hash-union : (∀ (K1 V1 K2 V2) (→fn (Hash K1 V1) (Hash K2 V2) (Hash (U K1 K2) (U V1 V2))))]
-  ;; TODO - hash-union with #:combine
   )
 
 (define- (hash-ref/failure- h k err)

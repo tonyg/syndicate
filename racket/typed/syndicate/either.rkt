@@ -19,13 +19,8 @@
   (U (Left A)
      (Right B)))
 
-(define (∀ (X) (f [x : X] -> X))
-  x)
-
-
 (define (∀ (X Y Z) (partition/either [xs : (List X)]
-                                     [pred : (→fn X (U (Left Y)
-                                                       (Right Z)))]
+                                     [pred : (→fn X (Either Y Z))]
                                      -> (Tuple (List Y) (List Z))))
   (for/fold ([lefts (List Y) (list)]
              [rights (List Z) (list)])

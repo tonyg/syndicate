@@ -3,19 +3,24 @@
 (provide Set
          (for-syntax ~Set)
          set
-         set-member?
-         set-add
-         set-remove
-         set-count
+         ;; set-member?
+         ;; set-add
+         ;; set-remove
+         ;; set-count
          set-union
          set-subtract
          set-intersect
-         list->set
-         set->list
-         (typed-out [[set-first- : (∀ (X) (→fn (Set X) X))]
-                     set-first]
-                    [[set-empty?- : (∀ (X) (→fn (Set X) Bool))]
-                     set-empty?]))
+         ;; list->set
+         ;; set->list
+         (typed-out [[set-first- : (∀ (X) (→fn (Set X) X))] set-first]
+                    [[set-empty?- : (∀ (X) (→fn (Set X) Bool))] set-empty?]
+                    [[set-count- : (∀ (X) (→fn (Set X) Int))] set-count]
+                    [[set-add- : (∀ (X) (→fn (Set X) X (Set X)))] set-add]
+                    [[set-remove- : (∀ (X) (→fn (Set X) X (Set X)))] set-remove]
+                    [[set-member?- : (∀ (X) (→fn (Set X) X Bool))] set-member?]
+                    [[list->set- : (∀ (X) (→fn (List X) (Set X)))] list->set]
+                    [[set->list- : (∀ (X) (→fn (Set X) (List X)))] set->list]
+                    ))
 
 (require "core-types.rkt")
 (require (only-in "prim.rkt" Int Bool))
@@ -34,38 +39,6 @@
   #:fail-unless (all-pure? #'(e- ...)) "expressions must be pure"
   ---------------
   [⊢ (#%app- set- e- ...) ⇒ (Set (U τ ...))])
-
-(define-typed-syntax (set-count e) ≫
-  [⊢ e ≫ e- ⇒ (~Set _)]
-  #:fail-unless (pure? #'e-) "expression must be pure"
-  ----------------------
-  [⊢ (#%app- set-count- e-) ⇒ Int])
-
-(define-typed-syntax (set-add st v) ≫
-  [⊢ st ≫ st- ⇒ (~Set τs)]
-  #:fail-unless (pure? #'st-) "expression must be pure"
-  [⊢ v ≫ v- ⇒ τv]
-  #:fail-unless (pure? #'v-) "expression must be pure"
-  -------------------------
-  [⊢ (#%app- set-add- st- v-) ⇒ (Set (U τs τv))])
-
-(define-typed-syntax (set-remove st v) ≫
-  [⊢ st ≫ st- ⇒ (~Set τs)]
-  #:fail-unless (pure? #'st-) "expression must be pure"
-  [⊢ v ≫ v- ⇐ τs]
-  #:fail-unless (pure? #'v-) "expression must be pure"
-  -------------------------
-  [⊢ (#%app- set-remove- st- v-) ⇒ (Set τs)])
-
-(define-typed-syntax (set-member? st v) ≫
-  [⊢ st ≫ st- ⇒ (~Set τs)]
-  #:fail-unless (pure? #'st-) "expression must be pure"
-  [⊢ v ≫ v- ⇒ τv]
-  #:fail-unless (pure? #'v-) "expression must be pure"
-  #:fail-unless (<: #'τv #'τs)
-    "type mismatch"
-  -------------------------------------
-  [⊢ (#%app- set-member?- st- v-) ⇒ Bool])
 
 (define-typed-syntax (set-union st0 st ...) ≫
   [⊢ st0 ≫ st0- ⇒ (~Set τ-st0)]
@@ -91,15 +64,3 @@
   #:fail-unless (all-pure? #'(st- ...)) "expressions must be pure"
   -------------------------------------
   [⊢ (#%app- set-subtract- st0- st- ...) ⇒ (Set τ-st0)])
-
-(define-typed-syntax (list->set l) ≫
-  [⊢ l ≫ l- ⇒ (~List τ)]
-  #:fail-unless (pure? #'l-) "expression must be pure"
-  -----------------------
-  [⊢ (#%app- list->set- l-) ⇒ (Set τ)])
-
-(define-typed-syntax (set->list s) ≫
-  [⊢ s ≫ s- ⇒ (~Set τ)]
-  #:fail-unless (pure? #'s-) "expression must be pure"
-  -----------------------
-  [⊢ (#%app- set->list- s-) ⇒ (List τ)])
