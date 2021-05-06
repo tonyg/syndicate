@@ -4,7 +4,7 @@
          (for-syntax ~List)
          list
          (typed-out [[empty- : (List ⊥)] empty]
-                    [[empty?- : (∀ (X) (→fn X (List X) Bool))] empty?]
+                    [[empty?- : (∀ (X) (→fn (List X) Bool))] empty?]
                     [[cons- : (∀ (X) (→fn X (List X) (List X)))] cons]
                     [[cons?- : (∀ (X) (→fn X (List X) Bool))] cons?]
                     [[first- : (∀ (X) (→fn (List X) X))] first]
