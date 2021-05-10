@@ -13,6 +13,7 @@
 (require (for-syntax syntax/parse))
 (require rackunit)
 (require racket/engine)
+(require racket/exn)
 
 (define mt-scn (scn trie-empty))
 
@@ -289,7 +290,7 @@
 ;; leaf behavior function
 (define (actor-behavior e s)
   (when e
-    (with-handlers ([exn:fail? (lambda (e) (eprintf "exception: ~v\n" e) (quit #:exception e (list)))])
+    (with-handlers ([exn:fail? (lambda (e) (printf "exception: ~v\n" (exn->string e)) (quit #:exception e (list)))])
       (match-define (actor-state π-old fts) s)
       (define-values (actions next-fts)
         (for/fold ([as '()]
@@ -545,7 +546,7 @@
 ;; boot-actor : actor Γ -> Action
 (define (boot-actor a Γ)
   (with-handlers ([exn:fail? (lambda (e)
-                               (eprintf "booting actor died with: ~v\n" e)
+                               (printf "booting actor died with: ~a\n" (exn->string e))
                                #f)])
     (match a
       [`(spawn ,O ...)

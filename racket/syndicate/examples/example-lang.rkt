@@ -60,7 +60,10 @@
          (quit))]
     [_ #f]))
 
-(message (set-timer 'tick 1000 'relative))
+(actor (lambda (e s) (quit))
+       #f
+       (message (set-timer 'tick 1000 'relative)))
+
 (actor ticker
        1
        (patch-seq (sub (observe (set-timer ? ? ?)))
