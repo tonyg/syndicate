@@ -1006,10 +1006,10 @@ Examples:
 
 (module+ flink
   (define (import r)
-    (define r+ (parse-T r))
+    (define r+ r #;(parse-T r))
     (compile/internal-events (compile r+) #f))
-  (define jm-rg (import job-manager-actual))
-  (define tm-rg (import task-manager-ty))
-  (define tr-rg (import task-runner-ty))
+  (define jm-rg (import (file->value "examples/roles/job-manager-impl.rktd")))
+  (define tm-rg (import (file->value "examples/roles/task-manager-impl.rktd")))
+  (define tr-rg (import (file->value "examples/roles/task-runner-impl.rktd")))
   (define flink-spin (program->spin (list tr-rg tm-rg jm-rg)))
-  (gen-spin/to-file flink-spin "gen-flink.pml"))
+  #;(gen-spin/to-file flink-spin "gen-flink.pml"))

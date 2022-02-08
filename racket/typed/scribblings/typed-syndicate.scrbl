@@ -12,6 +12,8 @@
 
 @section{Overview}
 
+Concepts: Dataspace communication types; facet effect tracking; local inference.
+
 @section{Types}
 
 @deftogether[(@defidform[Int]
@@ -772,5 +774,3 @@ left-type) (Right right-type))].
 @defthing[partition/either (∀ (X Y Z) (→fn (List X) (→fn X (Either Y Z)) (Tuple (List Y) (List Z))))]{
 Partition a list based on a function that returns an @racket[Either] value.
 }
-
-@section{Behavioral Checking}

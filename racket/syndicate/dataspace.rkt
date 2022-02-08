@@ -24,14 +24,36 @@
 (require (for-syntax syntax/srcloc))
 (require "syntax-classes.rkt")
 
+;; a DataspaceEvt is a (dataspace-event Patch (Listof Message))
+(struct dataspace-event (p ms) #:transparent)
+
+;; a PendingEvent is (U #f DataspaceEvt)
+
+;; SpaceTime PendingEvent Event -> PendingEvent
+(define (compose-pending-event produced-point pe e)
+  (match* (pe e)
+    [(_ #f) pe]
+    [(#f (? patch?))
+     (dataspace-event e '())]
+    [(#f (? message?))
+     (dataspace-event patch-empty (list e))]
+    [((dataspace-event p ms) (? patch?))
+     (dataspace-event (compose-patch e p) ms)]
+    [((dataspace-event p ms) (? message?))
+     (dataspace-event p (cons e ms))]))
+
+;; a DsProcess is a (dc-process PendingEvent Process)
+(struct ds-process (evt proc) #:transparent)
+
 ;; Sentinel
-(define missing-process (process #f #f #f))
+(define missing-process (ds-process #f (process #f #f #f)))
+
 
 ;; VM private states
 (struct dataspace (mux ;; Multiplexer
                    pending-action-queue ;; (Queueof (Vector Label (U Action 'quit) SpaceTime))
                    runnable-pids ;; (Setof PID)
-                   process-table ;; (HashTable PID Process)
+                   process-table ;; (HashTable PID DsProcess)
                    )
   #:transparent
   #:methods gen:syndicate-pretty-printable
@@ -40,8 +62,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (send-event interpreted-point produced-point e pid w)
-  (match-define (and the-process (process process-name behavior old-state))
+#;(define (send-event interpreted-point produced-point e pid w)
+  (match-define (ds-process pe (and the-process (process process-name behavior old-state)))
     (hash-ref (dataspace-process-table w) pid missing-process))
   (if (not behavior)
       w
@@ -80,6 +102,15 @@
                                            (disable-process pid exn w)
                                            pid
                                            (list 'quit)))))))
+
+(define (send-event interpreted-point produced-point e pid w)
+  (match-define (ds-process pe (and the-process (process process-name behavior old-state)))
+    (hash-ref (dataspace-process-table w) pid missing-process))
+  (if (not behavior)
+      w
+      (let ([updated-evt (compose-pending-event produced-point pe e)]
+            [w (mark-pid-runnable w pid)])
+        (update-process-entry w pid (lambda (_old-p) (ds-process updated-evt the-process))))))
 
 (define (update-process-entry w pid f)
   (define old-pt (dataspace-process-table w))
@@ -154,14 +185,22 @@
       (sequence-transitions (transition w '())
                             (inject-event e)
                             perform-actions
+                            dispatch-events
                             (lambda (w) (or (step-children w) (transition w '()))))
       (step-children w)))
 
+;; DataspaceEvent -> Dataspace -> Transition
 (define ((inject-event e) w)
   ;; TODO: What is the best way of getting something sensible to
   ;; supply to `enqueue-actions` as `turn-end-point`? Similar applies
   ;; to use of #f in `make-dataspace` for the boot actions and to
   ;; relaying of `targeted-event`s.
+  (match e
+    [(dataspace-event p msgs)
+     (define actions (if (patch-empty? p) msgs (cons p msgs)))
+     (transition (enqueue-actions #f w 'meta actions) '())]
+    [#f
+     (transition w '())])
   (transition (if (not e) w (enqueue-actions #f w 'meta (list e))) '()))
 
 (define (perform-actions w)
@@ -264,9 +303,10 @@
   (let ((w (struct-copy dataspace w
              [process-table (hash-set (dataspace-process-table w)
                                       new-pid
-                                      (process name
-                                               behavior
-                                               initial-state))])))
+                                      (ds-process #f
+                                                  (process name
+                                                           behavior
+                                                           initial-state)))])))
     (let-values (((points w) (postprocess w new-pid)))
       (match-define (cons spawn-point initial-patch-produced-point) points)
       (let ((w (enqueue-actions spawn-point w new-pid initial-actions)))
@@ -295,6 +335,51 @@
                 (match-define (cons label event) entry)
                 (send-event/guard interpreted-point produced-point event label w))
               (and (patch-non-empty? meta-action) meta-action)))
+
+(define (dispatch-events w)
+  (define runnable-pids (dataspace-runnable-pids w))
+  (cond
+    [(set-empty? runnable-pids)
+     ;; dataspace is inert.
+     #f]
+    [else
+     (transition (for/fold [(w (struct-copy dataspace w [runnable-pids (set)]))]
+                           [(pid (in-set runnable-pids))]
+                   (dispatch-event w pid))
+                 '())])
+  (match-define (ds-process pe (and the-process (process process-name behavior old-state)))
+    (hash-ref (dataspace-process-table w) pid missing-process))
+  (if (not behavior)
+      w
+      (invoke-process pid
+                      (lambda () (clean-transition (ensure-transition (behavior pe old-state))))
+                      (match-lambda
+                        [#f
+                         w]
+                        [(and q (<quit> exn final-actions))
+                         (define turn-end-point (trace-turn-end turn-begin-point pid the-process))
+                         (trace-actor-exit turn-end-point pid exn)
+                         (enqueue-actions turn-end-point
+                                          (disable-process pid exn w)
+                                          pid
+                                          (append final-actions (list 'quit)))]
+                        [(and t (transition new-state new-actions))
+                         (enqueue-actions (trace-turn-end turn-begin-point
+                                                          pid
+                                                          (process process-name
+                                                                   behavior
+                                                                   new-state))
+                                          (mark-pid-runnable (update-state w pid new-state) pid)
+                                          pid
+                                          new-actions)])
+                      (lambda (exn)
+                        (define turn-end-point (trace-turn-end turn-begin-point pid the-process))
+                        (trace-actor-exit turn-end-point pid exn)
+                        (enqueue-actions turn-end-point
+                                         (disable-process pid exn w)
+                                         pid
+                                         (list 'quit))))))
+
 
 (define (step-children w)
   (define runnable-pids (dataspace-runnable-pids w))

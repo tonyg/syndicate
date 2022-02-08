@@ -191,7 +191,7 @@
                     [txn (in-set (apply-effects eff* current ft roles#))]
                     ;; TODO - why?
                     ;; filter effect-free self-loops
-                    #:unless (and (empty? (transition-effs txn))
+                    #;#:unless #;(and (empty? (transition-effs txn))
                                   (equal? (transition-dest txn) current)))
            txn))
        (define transitions
@@ -277,6 +277,7 @@
                    (empty? (transition-effs (set-first mt-txns))))
               (transition-dest (set-first mt-txns))]
              [else
+              (pretty-print mt-txns)
               (set)]))
          (define states
            (for/hash ([(sn txns) (in-hash st#)]
@@ -1575,7 +1576,11 @@
 
   ;; Goal (Setof Equation) -> Bool
   (define not-equiv (mutable-set))
+  (define calls (mutable-set))
   (define (verify goal assumptions)
+    #;(if (set-member? calls (list goal assumptions))
+        (error "~a" (list goal assumptions))
+        (set-add! calls (list goal assumptions)))
     (let/ec esc
       (define (return ans)
         (when (and (equiv? goal)
@@ -1621,6 +1626,8 @@
                [else
                 #f])
              ))])))
+  #;(local-require racket/trace)
+  #;(trace verify)
   (verify (equiv st0-1 st0-2) (set)))
 
 ;; Role Role -> Bool
@@ -2646,7 +2653,7 @@
 (define task-assigner-spec
   '(Role
     (assign)
-    (Shares
+    #;(Shares
      (Observe
       (TaskPerformance
        Symbol
@@ -2661,8 +2668,10 @@
        (Task
         (Tuple Int Symbol)
         (U (MapWork String) (ReduceWork (Hash String Int) (Hash String Int))))
-       ★/t))
-     (Branch (Stop assign) (Effs)))))
+       (U (Finished (Hash String Int))
+          Symbol)
+       #;★/t))
+     #;(Branch (Stop assign) (Effs)))))
 
 (module+ test
   (test-case "parse and compile task-assigner-spec"
@@ -2893,6 +2902,20 @@
     (check-true (role-graph? jmi))
     ;; TODO : times out, probably due to infinite loop
     #;(check-true (run/timeout (thunk (simulates?/rg jmi jmi)) 100000))))
+
+#|
+(define jmr (parse-T job-manager-actual))
+(define jm (compile jmr))
+(define jmi (compile/internal-events jm))
+(simulates?/rg jmi jmi)
+|#
+
+#|
+(define r (file->value "job-manager-impl.rktd"))
+(define rg (compile r))
+(define rgi (compile/internal-events rg))
+(simulates?/rg rgi rgi)
+|#
 
 (define task-runner-ty
   '(Role
@@ -3306,6 +3329,44 @@
   (render-to-file rg "before.dot")
   (render-to-file rgi "after.dot")
 )
+
+#|
+(define si (file->value "examples/roles/seller-impl.rktd"))
+(define sr (file->value "examples/roles/seller-role.rktd"))
+(define sig (compile/internal-events (compile si)))
+(define ss (compile sr))
+(find-simulating-subgraph/report-error si sr)
+(define ft (find-simulation-counterexample sig ss))
+|#
+
+#|
+(define jmr (file->value "examples/roles/job-manager-impl.rktd"))
+(define jm (compile/internal-events (compile jmr)))
+(define tar (file->value "examples/roles/task-assigner.rktd"))
+(define ta (compile tar))
+(define-values (ft sg) (find-largest-simulating-subgraph-counterexample jm ta))
+(print-failing-trace ft jm ta)
+
+(define jmr (file->value "examples/roles/job-manager-impl.rktd"))
+(define jm (compile jmr))
+(define jmi (compile/internal-events jm))
+(role-graph-size jm)
+(role-graph-size jmi)
+
+(find-simulating-subgraph/report-error jmr tar)
+
+(render-to-file jm "jmdbg.dot")
+(render-to-file jmi "jmidbg.dot")
+
+(with-output-to-file "jm-trace.rktd" (lambda () (compile/internal-events jm)))
+|#
+
+#|
+(require racket/trace)
+(trace check-for-cycle!)
+(define cl (file->value "caucus-leader-cycle.rktd"))
+(define compiled (compile/internal-events (compile cl)))
+|#
 
 (module+ test
   (test-case
