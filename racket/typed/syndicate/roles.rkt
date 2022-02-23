@@ -384,7 +384,7 @@
                  "expected exactly one Role for body"
   #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
   #:fail-unless (<: #'τ-o #'τ-c.norm)
-                (format "Output ~a not valid in dataspace ~a" (type->str #'τ-o) (type->str #'τ-c.norm))
+                (format "Outputs ~a not valid in dataspace ~a" (make-output-error-message #'τ-o #'τ-c.norm) (type->str #'τ-c.norm))
   #:with τ-final #;(mk-Actor- #'(τ-c.norm)) (mk-ActorWithRole- #'(τ-c.norm τ-f ...))
   #:fail-unless (<: #'τ-a #'τ-final)
                 "Spawned actors not valid in dataspace"
@@ -402,10 +402,29 @@
    ----------------------------------------
    [≻ (spawn #,τc s)]])
 
+;; (Listof Type) -> String
+(define-for-syntax (tys->str tys)
+  (string-join (map type->str tys) ",\n"))
+
+;; Type Type -> String
+(define-for-syntax (make-output-error-message τ-o τ-c)
+  ;; Type -> (Listof Type)
+  (define (flatten-U τ)
+    (syntax-parse τ
+      [(~U* τs ...)
+       (apply append (stx-map flatten-U #'(τs ...)))]
+      [_
+       (list τ)]))
+  (define offenders
+    (for/list ([t (in-list (flatten-U τ-o))]
+               #:unless (<: t τ-c))
+      t))
+  (tys->str offenders))
+
 ;; Type Type Type -> String
 (define-for-syntax (make-actor-error-message τ-i τ-o τ-c)
   (define mismatches (find-surprising-inputs τ-i τ-o τ-c))
-  (string-join (map type->str mismatches) ",\n"))
+  (tys->str mismatches))
 
 ;; Type Type Type -> (Listof Type)
 (define-for-syntax (find-surprising-inputs τ-i τ-o τ-c)
