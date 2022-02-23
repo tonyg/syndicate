@@ -746,7 +746,7 @@
              (unless (struct-info? info)
                (raise-syntax-error #f "expected struct" #'#,stx #'ucons))
              (match-define (list desc cons pred accs/rev muts sup) (extract-struct-info info))
-             (when (false? (last accs/rev))
+             (when (and (cons? accs/rev) (false? (last accs/rev)))
                (raise-syntax-error #f "number of slots must be exact" #'#,stx #'ucons))
              (unless (boolean? sup)
                (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
