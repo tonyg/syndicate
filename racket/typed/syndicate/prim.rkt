@@ -5,7 +5,7 @@
 
 (require "core-types.rkt")
 (require (rename-in racket/math [exact-truncate exact-truncate-]))
-(require (postfix-in - (only-in racket/format ~a)))
+(require (postfix-in - (only-in racket/format ~a ~v)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Primitives
@@ -95,6 +95,21 @@
                 "expressions must be string-able"
   --------------------------------------------------
   [⊢ (#%app- ~a- e- ...) (⇒ : String)])
+
+(define-typed-syntax (~v e ...) ≫
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:fail-unless (stx-andmap flat-type? #'(τ ...))
+  "expressions must be string-able"
+  --------------------------------------------------
+  [⊢ (#%app- ~v- e- ...) (⇒ : String)])
+
+(define-typed-syntax (format s e ...) ≫
+  [⊢ s ≫ s- (⇐ : String)]
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:fail-unless (stx-andmap flat-type? #'(τ ...))
+  "expressions must be string-able"
+  --------------------------------------------------
+  [⊢ (#%app- format- s- e- ...) (⇒ : String)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Basic Values
