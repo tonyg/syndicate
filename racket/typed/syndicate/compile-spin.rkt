@@ -780,12 +780,15 @@
   (indent) (display "(") (gen-ltl q) (displayln ")"))
 
 ;; Assignment -> Void
+;; SPIN errors if there are more than 33 items in this, error messages such as:
+;;   tl_spin: expected ')', saw 'predicate'
 (define (gen-sanity-ltl assignment)
   (gen-spec "sanity"
             (lambda ()
               (indent) (displayln "[](")
               (with-indent
-                (for ([assertion-var (in-hash-keys assignment)])
+                (for ([assertion-var (in-hash-keys assignment)]
+                      [i (in-range 33)])
                   (indent) (printf "~a >= 0 &&\n" (svar-name assertion-var)))
                 (indent) (displayln "true"))
               (indent) (displayln ")"))))
@@ -798,25 +801,39 @@
 
 ;; [LTL τ] [Listof Role] -> Bool
 (define (compile+verify spec roles)
-  (define role-graphs (for/list ([r (in-list roles)]) (compile/internal-events (compile r))))
-  (run-spin (program->spin role-graphs spec)))
+  (let/ec stop
+    (define role-graphs
+      (for/list ([r (in-list roles)])
+        (define ans (compile/internal-events (compile r)))
+        (when (detected-cycle? ans)
+          (printf "detected cycle!\n")
+          (describe-detected-cycle ans)
+          (stop #f))
+        ans))
+    (run-spin (program->spin role-graphs spec))))
 
 ;; SpinThang String -> Bool
 (define (run-spin spin [spec-name "spec"])
   (define tmp (make-temporary-file "typed-syndicate-spin~a.pml"))
   (gen-spin/to-file spin tmp)
-  (define out (with-output-to-string
-                (thunk (system* RUN-SPIN.EXE tmp spec-name))))
+  (define script-completed? #f)
+  (define script-output (with-output-to-string
+                          (thunk (set! script-completed? (system* RUN-SPIN.EXE tmp spec-name)))))
   (define trail-file (format "~a.trail" (path->string tmp)))
   (define trail-exists? (file-exists? trail-file))
-  (when (file-exists? trail-file)
-    (displayln "Detected Trail File!")
-    (analyze-spin-trail tmp)
-    (copy-file tmp (build-path (current-directory) "model.pml") #t)
-    (copy-file trail-file (build-path (current-directory) "model.pml.trail") #t)
-    (delete-file trail-file))
+  (cond
+    [(not script-completed?)
+     (displayln "Error running SPIN; Output:")
+     (display script-output)]
+    [trail-exists?
+       (displayln "Detected Trail File!")
+       (analyze-spin-trail tmp)
+       (copy-file tmp (build-path (current-directory) "model.pml") #t)
+       (copy-file trail-file (build-path (current-directory) "model.pml.trail") #t)
+       (delete-file trail-file)])
+  (flush-output)
   (delete-file tmp)
-  (not trail-exists?))
+  (and script-completed? (not trail-exists?)))
 
 (define SPIN-REPORT-RX #px"(?m:^State-vector \\d+ byte, depth reached \\d+, errors: (\\d+)$)")
 
