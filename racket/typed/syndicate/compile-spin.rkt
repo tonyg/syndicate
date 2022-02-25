@@ -551,7 +551,7 @@
     (for ([a init-actions])
       (gen-spin-form a name-env name))
     (indent) (displayln "}")
-    (indent) (displayln "end: do")
+    (indent) (printf "~a: do\n" (format-end-label name))
     (with-indent
       (for ([st states])
         (gen-spin-form st name-env name)))
@@ -566,7 +566,7 @@
      (cond
        [(empty? branches)
         ;; no transitions out of this state
-        (indent) (displayln "end: false;")]
+        (indent) (printf "~a: false;\n" (format-end-label name))]
        [else
         (with-indent
           (indent) (displayln "if")
@@ -716,6 +716,11 @@
   (for/first ([(k v) (in-hash name-env)]
               #:when (equal? v sname))
     k))
+
+;; String -> String
+;; format a suitable end label based on the process/state name
+(define (format-end-label s)
+  (format "end_~a" s))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LTL
