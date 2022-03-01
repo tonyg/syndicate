@@ -36,3 +36,8 @@
                      "scribble-lib"
                      "sha"
                      ))
+
+(define test-omit-paths
+  ;; There's some shared library related build issue with the syndicate-gl things
+  '("syndicate-gl/"
+    "syndicate-ide/"))
