@@ -66,14 +66,18 @@
        #:with τ-in- (attach (loop #'τ-in) KIND-TAG var-ty)
        #:with X- (attach #'X KIND-TAG var-ty)
        #:with τ-out- (loop #'τ-out)
-       (define reconstructed #`(#%plain-app tycons τ-in- (#%plain-lambda (X-) τ-out-)))
+       (define reconstructed
+         (quasisyntax/loc t
+           (#%plain-app tycons τ-in- (#%plain-lambda (X-) τ-out-))))
        (attach (add-orig reconstructed t) KIND-TAG TYPE)]
       [(#%plain-app tycons (~or* (~seq ty ... (#%plain-app (~and lst list) . more-tys))
                                  (~seq ty ...)) )
        #:with more-tys- (if (attribute more-tys) (stx-map loop #'more-tys) #'())
-       (define reconstructed #`(#%plain-app tycons
-                                            #,@(stx-map loop #'(ty ...))
-                                            (~? (#%plain-app lst . more-tys-))))
+       (define reconstructed
+         (quasisyntax/loc t
+           (#%plain-app tycons
+                        #,@(stx-map loop #'(ty ...))
+                        (~? (#%plain-app lst . more-tys-)))))
        (attach (add-orig reconstructed t) KIND-TAG TYPE)])))
 (define-for-syntax serialize-syntax lazy-serialize)
 (define-for-syntax deserialize-syntax lazy-deserialize)
