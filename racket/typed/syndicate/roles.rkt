@@ -448,14 +448,36 @@
      [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs τ-s ...)) (⇒ ν-f (~effs))] ...
     ]
   #:with τ-actor (mk-Actor- #'(τ-c.norm))
-  #:fail-unless (stx-andmap (lambda (t) (<: t #'τ-actor)) #'(τ-s ... ...))
-                "Not all actors conform to communication type"
+  #:do [(define errs (for/list ([t (in-syntax #'(τ-s ... ...))]
+                                #:unless (<: t #'τ-actor))
+                       t))]
+  #:fail-unless (empty? errs) (make-dataspace-error-message errs #'τ-c.norm)
+  ;; #:fail-unless (stx-andmap (lambda (t) (<: t #'τ-actor)) #'(τ-s ... ...))
+  ;;               "Not all actors conform to communication type"
   #:with τ-ds-i (strip-inbound #'τ-c.norm)
   #:with τ-ds-o (strip-outbound #'τ-c.norm)
   #:with τ-relay (relay-interests #'τ-c.norm)
   -----------------------------------------------------------------------------------
   [⊢ (syndicate:dataspace s- ...) (⇒ : ★/t)
                                   (⇒ ν-s ((Actor (U τ-ds-i τ-ds-o τ-relay))))])
+
+;; (Listof Type) Type -> String
+(define-for-syntax (make-dataspace-error-message errs tc)
+  (with-output-to-string
+    (lambda ()
+      (printf "Not all actors conform to communication type; found the following mismatches:\n")
+      (for ([err (in-list errs)])
+        (syntax-parse err
+          [(~AnyActor τ)
+           (printf "Actor with communication type ~a:\n" (type->str #'τ))
+           (cond
+             [(<: #'τ tc)
+              (define msg (make-actor-error-message #'τ #'τ tc))
+              (printf "  unprepared to handle inputs: ~a\n" msg)]
+             [else
+              (define msg (make-output-error-message #'τ tc))
+              (printf "  outputs not valid: ~a\n" msg)])
+           ])))))
 
 (define-typed-syntax (set! x:id e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
