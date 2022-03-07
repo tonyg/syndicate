@@ -8,8 +8,8 @@
 ;;  - (weak-until [LTL X] [LTL X])
 ;;  - (strong-until [LTL X] [LTL X])
 ;;  - (ltl-implies [LTL X] [LTL X])
-;;  - (ltl-and [Listof [LTL X]])
-;;  - (ltl-or  [Listof [LTL X]])
+;;  - (ltl-and [LTL X] [LTL X])
+;;  - (ltl-or  [LTL X] [LTL X])
 ;;  - (ltl-not [LTL X])
 ;;  - (atomic X)
 ;;  - Bool

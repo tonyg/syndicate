@@ -90,11 +90,12 @@
   (define assertion-tys (all-assertions rgs))
   (define message-tys (all-messages rgs))
   (define event-tys (all-events rgs))
+  (define-values (spec-asserts spec-msgs) (spec-types spec))
   (define-values (message-evts assertion-evts) (set-partition Message? event-tys))
   (define msg-event-tys (list->set (set-map message-evts Message-ty)))
-  (define msg-bodies (set-union message-tys msg-event-tys))
+  (define msg-bodies (set-union message-tys msg-event-tys spec-msgs))
   (define event-subty# (make-event-map assertion-tys assertion-evts))
-  (define all-assertion-tys (set-union assertion-tys assertion-evts))
+  (define all-assertion-tys (set-union assertion-tys assertion-evts spec-asserts))
   (define all-mentioned-tys (set-union all-assertion-tys msg-bodies))
   (define name-env (make-name-env all-mentioned-tys))
   (define procs (for/list ([rg rgs]) (rg->spin rg event-subty# name-env)))
@@ -102,7 +103,6 @@
   (define messages-vars (initial-message-vars-for msg-bodies name-env))
   (define mailbox-vars (initial-mailbox-vars msg-bodies (map sproc-name procs) name-env))
   (define msg-table (make-message-table message-tys msg-event-tys name-env))
-  ;; TODO : should make sure all types mentioned in spec have variables, too
   (define globals (hash-union assertion-vars messages-vars mailbox-vars))
   (define spec-spin (rename-ltl spec name-env))
   (sprog globals procs spec-spin msg-table name-env))
@@ -292,6 +292,34 @@
        D+]
       [_
        (raise-argument-error 'all-event-types "internal events not allowed" D+)])))
+
+;; SpinLTL -> (Values (Setof τ) (Setof τ))
+;; extract the types of assertions and messages mentioned in a spec
+(define (spec-types ltl)
+  (let loop ([ltls (list ltl)]
+             [asserts (set)]
+             [msgs (set)])
+    (match ltls
+      ['()
+       (values asserts msgs)]
+      [(cons ltl more-ltls)
+       (match ltl
+         [(or (always more-ltl)
+              (eventually more-ltl)
+              (ltl-not more-ltl))
+          (loop (cons more-ltl more-ltls) asserts msgs)]
+         [(or (weak-until ltl1 ltl2)
+              (strong-until ltl1 ltl2)
+              (ltl-implies ltl1 ltl2)
+              (ltl-and ltl1 ltl2)
+              (ltl-or ltl1 ltl2))
+          (loop (list* ltl1 ltl2 more-ltls) asserts msgs)]
+         [(atomic (Message τ))
+          (loop more-ltls asserts (set-add msgs τ))]
+         [(atomic τ)
+          (loop more-ltls (set-add asserts τ) msgs)]
+         [_
+          (loop more-ltls asserts msgs)])])))
 
 ;; SName [Setof [U τ D+] NameEnvironment -> Assignment
 (define (local-variables-for st0 all-events name-env)
