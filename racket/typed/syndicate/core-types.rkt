@@ -644,6 +644,20 @@
 ;; User Defined Types, aka Constructors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Default type constructor naming convention: camel-cased, with a T at the end
+;; (assuming that data constructors are lowercase, hyphenated by convention)
+;; e.g. book-club -> BookClubT
+
+(begin-for-syntax
+  ;; Identifier -> Identifier
+  (define (camel-case-T nm)
+    (define nm/s (symbol->string (syntax-e nm)))
+    (define nm/camel (string-append* (map string-titlecase (string-split nm/s "-"))))
+    (format-id nm "~aT" nm/camel))
+
+  (define current-type-constructor-convention
+    (make-parameter camel-case-T)))
+
 (begin-for-syntax
   (define-splicing-syntax-class type-constructor-decl
     (pattern (~seq #:type-constructor TypeCons:id))
@@ -664,7 +678,13 @@
     [(_ (Cons:id : TyCons:id slot:id ...) clause ...)
      #'(define-constructor (Cons slot ...)
          #:type-constructor TyCons
-         clause ...)]))
+         clause ...)]
+    [(_ (Cons:id slot:id ...) clause ...)
+     #:with TyCons ((current-type-constructor-convention) #'Cons)
+     (syntax/loc stx
+       (define-constructor (Cons slot ...)
+         #:type-constructor TyCons
+         clause ...))]))
 
 (begin-for-syntax
   (define ((mk-type-params-fetcher TypeCons) ty)
