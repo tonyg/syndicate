@@ -111,17 +111,25 @@
 ;; making certain judgments and metafunctions extensible.
 
 (begin-for-syntax
-  (struct type-metadata (isec cons) #:transparent)
+  (struct type-metadata (isec cons arity) #:transparent)
+
+  ;; an Arity is one of
+  ;;   - (arity-eq Nat)
+  ;;   - (arity-ge Nat)
+  (struct arity-eq (n) #:prefab)
+  (struct arity-ge (n) #:prefab)
+  (define (arity-gt n) (arity-ge (add1 n)))
+
   ;; (MutableHashOf Symbol type-metadata)
   (define TypeInfo# (make-hash))
   ;; Identifier isect-desc TypeCons -> Void
-  (define (set-type-info! ty-cons isec cons)
+  (define (set-type-info! ty-cons isec cons arity)
     (when (hash-has-key? TypeInfo# ty-cons)
       ;; TODO
       #f)
     (hash-set! TypeInfo#
                ty-cons
-               (type-metadata isec cons)))
+               (type-metadata isec cons arity)))
 
   ;; Identifier -> (U #f type-metadata)
   (define (get-type-info ty-cons)
@@ -131,10 +139,16 @@
   (define (get-type-isec-desc ty-cons)
     (define result? (get-type-info ty-cons))
     (and result? (type-metadata-isec result?)))
+
   ;; Identifier -> (U #f TypeCons)
   (define (get-type-cons ty-cons)
     (define result? (get-type-info ty-cons))
     (and result? (type-metadata-cons result?)))
+
+  ;; Identifier -> (U #f Arity)
+  (define (get-type-arity ty-cons)
+    (define result? (get-type-info ty-cons))
+    (and result? (type-metadata-arity result?)))
 
   ;; a isect-desc describes how a type (constructor) behaves with respect to
   ;; intersection, and is one of
@@ -159,6 +173,16 @@
     (pattern PRODUCT-LIKE
              #:attr val PRODUCT-LIKE))
 
+  (define-splicing-syntax-class arity-desc
+    #:attributes (op n arity)
+    #:datum-literals (= >= >)
+    (pattern (~seq (~and = op) n:nat)
+             #:attr arity (arity-eq (syntax-e #'n)))
+    (pattern (~seq (~and >= op) n:nat)
+             #:attr arity (arity-ge (syntax-e #'n)))
+    (pattern (~seq (~and > op) n:nat)
+             #:attr arity (arity-gt (syntax-e #'n))))
+
   ;; Any -> Bool
   ;; recognize isect-descs
   (define (isect-desc? x)
@@ -172,7 +196,7 @@
   ;; Identifier -> Bool
   ;; check if the type has a syntax property allowing us to create new instances
   (define (reassemblable? t)
-    (and (get-type-cons t) #t))
+    (get-type-cons t))
 
   ;; Identifier (Listof Type) -> Type
   ;; Create a new instance of the type with the given arguments
@@ -200,7 +224,7 @@
 (define-syntax (define-type-constructor+ stx)
   (syntax-parse stx
     [(_ Name:id
-        #:arity op arity
+        #:arity arity:arity-desc
         #:arg-variances variances
         #:isect-desc desc:isect-desc
         (~optional (~seq #:extra-info extra-info))
@@ -213,12 +237,12 @@
      (quasisyntax/loc stx
        (begin-
          (define-type-constructor Name
-           #:arity op arity
+           #:arity arity.op arity.n
            #:arg-variances variances
            (~? (~@ #:extra-info extra-info))
            (~? (~@ #:implements meths ...)))
          (begin-for-syntax
-           (set-type-info! 'Name '#,(attribute desc.val) mk))))]))
+           (set-type-info! 'Name '#,(attribute desc.val) mk #,(attribute arity.arity)))))]))
 
 (begin-for-syntax
   ;; Syntax -> (Listof Variant)
@@ -233,12 +257,12 @@
 ;;   - has an empty element (i.e. intersection always non-empty)
 (define-syntax (define-container-type stx)
   (syntax-parse stx
-    [(_ Name:id #:arity op arity
+    [(_ Name:id #:arity arity:arity-desc
         (~optional (~seq #:extra-info extra-info))
         (~optional (~seq #:implements meths ...)))
      (quasisyntax/loc stx
        (define-type-constructor+ Name
-         #:arity op arity
+         #:arity arity.op arity.n
          #:arg-variances mk-covariant
          #:isect-desc CONTAINER-LIKE
          (~? (~@ #:extra-info extra-info))
@@ -249,12 +273,12 @@
 ;;   - does not have an empty element (i.e. intersection may be empty)
 (define-syntax (define-product-type stx)
   (syntax-parse stx
-    [(_ Name:id #:arity op arity
+    [(_ Name:id #:arity arity:arity-desc
         (~optional (~seq #:extra-info extra-info))
         (~optional (~seq #:implements meths ...)))
      (quasisyntax/loc stx
        (define-type-constructor+ Name
-         #:arity op arity
+         #:arity arity.op arity.n
          #:arg-variances mk-covariant
          #:isect-desc PRODUCT-LIKE
          (~? (~@ #:extra-info extra-info))
@@ -310,14 +334,14 @@
 
 (define-syntax (define-type-constructor stx)
   (syntax-parse stx
-    [(_ Name:id #:arity op arity:nat
+    [(_ Name:id #:arity arity:arity-desc
                 (~optional (~seq #:arg-variances variances))
                 (~optional (~seq #:extra-info extra-info))
                 (~optional (~seq #:implements meths ...)))
      #:with Name- (mk-- #'Name)
      #:with mk- (mk-mk #'Name-)
      #:with Name? (mk-? #'Name)
-     #:with dom (make-arity-domain #'op (syntax-e #'arity))
+     #:with dom (make-arity-domain #'arity.op (syntax-e #'arity.n))
      #:do [
            (define implements? (if (or (attribute variances) (attribute extra-info) (attribute meths))
                                    #'(#:implements)
@@ -894,7 +918,7 @@
        [(_ ctor:id)
         (define val (syntax-local-value #'ctor (const #f)))
         (unless (user-ctor? val)
-          (raise-syntax-error (format "not a constructor: ~a" (syntax-e #'ctor)) this-syntax))
+          (raise-syntax-error #f (format "not a constructor: ~a" (syntax-e #'ctor)) this-syntax))
         (define accs (user-ctor-field-ids val))
         (for/list ([f (in-list (list* #'ctor (user-ctor-type-ctor val) accs))])
           (make-export f (syntax-e f) (syntax-local-phase-level) #f f))]))))

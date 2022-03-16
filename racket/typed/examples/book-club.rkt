@@ -34,14 +34,14 @@
 (define-type-alias τc
   (U BookQuote
      (Observe (BookQuoteT String ★/t))
-     (Observe (Observe (BookQuoteT ★/t ★/t)))
+     (Observe (Observe★ BookQuoteT))
      ClubMember
-     (Observe (ClubMemberT ★/t))
+     (Observe★ ClubMemberT)
      BookInterest
      (Observe (BookInterestT String ★/t ★/t))
-     (Observe (Observe (BookInterestT ★/t ★/t ★/t)))
+     (Observe (Observe★ BookInterestT))
      BookOfTheMonth
-     (Observe (BookOfTheMonthT ★/t))))
+     (Observe★ BookOfTheMonthT)))
 
 (define-type-alias Inventory (List (Tuple String Int)))
 

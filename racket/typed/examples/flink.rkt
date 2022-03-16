@@ -161,12 +161,12 @@ The JobManager then performs the job and, when finished, asserts
      (Observe (Observe (TaskPerformance ID ★/t ★/t)))
      (JobManagerAlive)
      (Observe (JobManagerAlive))
-     (Observe (TaskRunner ★/t))
+     (Observe★ TaskRunner)
      (TaskManager ID Int)
-     (Observe (TaskManager ★/t ★/t))
+     (Observe★ TaskManager)
      (JobCompletion ID (List InputTask) TaskResult)
      (Observe (JobCompletion ID (List InputTask) ★/t))
-     (Observe (Observe (JobCompletion ★/t ★/t ★/t)))))
+     (Observe (Observe★ JobCompletion))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Util Macros

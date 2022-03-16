@@ -20,6 +20,7 @@
          Observe Inbound Outbound Actor U ⊥
          Computation Value Endpoints Roles Spawns Sends
          →fn proc
+         (all-from-out "sugar.rkt")
          ;; Statements
          let let* if spawn dataspace start-facet set! begin block stop begin/dataflow #;unsafe-do
          when unless send! realize! define during/spawn
@@ -84,6 +85,7 @@
 (require "for-loops.rkt")
 (require "maybe.rkt")
 (require "either.rkt")
+(require "sugar.rkt")
 
 (require (prefix-in syndicate: syndicate/actor-lang))
 (require (submod syndicate/actor priorities))
@@ -679,11 +681,16 @@
 ;; Utilities
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-typed-syntax (print-type e) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
-  #:do [(pretty-display (type->strX #'τ))]
-  ----------------------------------
-  [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
+(define-typed-syntax print-type
+  [(print-type τ:type) ≫
+   #:do [(pretty-display (type->strX #'τ.norm))]
+   ----------------------------------
+   [⊢ 0 (⇒ : Int)]]
+  [(print-type e) ≫
+    [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
+    #:do [(pretty-display (type->strX #'τ))]
+    ----------------------------------
+    [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))]])
 
 (define-typed-syntax (print-role e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
