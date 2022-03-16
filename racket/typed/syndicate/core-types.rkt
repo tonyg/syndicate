@@ -895,7 +895,20 @@
     (pattern [#:opaque ty-name:id]
              #:attr type-definition #'(define-base-type ty-name))
     (pattern [#:opaque ty-name:id #:arity (~and op (~or* = > >=)) arity:nat]
-             #:attr type-definition #'(define-product-type ty-name #:arity op arity))))
+             #:attr type-definition #'(define-product-type ty-name #:arity op arity)))
+
+  (define-splicing-syntax-class maybe-omit-accs
+    #:attributes (omit?)
+    (pattern #:omit-accs #:attr omit? #t)
+    (pattern (~seq) #:attr omit? #f))
+
+  (define-syntax-class struct-require-clause
+    #:datum-literals (:)
+    #:attributes (Cons TyCons omit-accs)
+    (pattern [#:struct Cons:id #:as TyCons:id (~optional (~and omit-accs #:omit-accs))])
+    (pattern [#:struct Cons:id (~optional (~and omit-accs #:omit-accs))]
+             #:attr TyCons ((current-type-constructor-convention) #'Cons)))
+  )
 
 ;; Import and ascribe a type from an untyped module
 ;; TODO: this is where contracts would need to go
@@ -904,11 +917,13 @@
     #:datum-literals (:)
     [(_ lib
         (~alt [name:id : ty]
+              struct-clause:struct-require-clause
               opaque-clause:opaque-require-clause)
         ...)
      #:with (name- ...) (format-ids "~a-" #'(name ...))
      (syntax/loc stx
        (begin-
+         (require-struct struct-clause.Cons #:as struct-clause.TyCons #:from lib (~? struct-clause.omit-accs)) ...
          opaque-clause.type-definition ...
          (require (only-in lib [name name-] ...))
          (define-syntax name
