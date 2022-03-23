@@ -808,7 +808,9 @@
   (indent) (display "(") (gen-ltl q) (displayln ")"))
 
 ;; Assignment -> Void
-;; SPIN errors if there are more than 33 items in this, error messages such as:
+;; SPIN sometimes errors (seemingly in the front end) if this is "too big." What
+;; constitutes too big seems to change. At first setting the limit to 33 worked,
+;; but then I lowered it again, so IDK. It gives an error message like:
 ;;   tl_spin: expected ')', saw 'predicate'
 (define (gen-sanity-ltl assignment)
   (gen-spec "sanity"
@@ -816,7 +818,7 @@
               (indent) (displayln "[](")
               (with-indent
                 (for ([assertion-var (in-hash-keys assignment)]
-                      [i (in-range 33)])
+                      [i (in-range 14)])
                   (indent) (printf "~a >= 0 &&\n" (svar-name assertion-var)))
                 (indent) (displayln "true"))
               (indent) (displayln ")"))))
