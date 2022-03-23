@@ -778,6 +778,7 @@
 (define-syntax (require-struct stx)
   (syntax-parse stx
     [(_ ucons:id #:as ty-cons:id #:from lib (~optional (~and omit-accs #:omit-accs)))
+     ;; TBH I'm not sure why I don't need to SLIAB TypeCons and Cons-
      (with-syntax* ([TypeCons #'ty-cons]
                     [MakeTypeCons (format-id #'TypeCons "make-~a" #'TypeCons)]
                     [GetTypeParams (format-id #'TypeCons "get-~a-type-params" #'TypeCons)]
@@ -800,27 +801,44 @@
                (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
              (define arity (length accs/rev))
              )
-           (define-for-syntax (TypeConsExtraInfo stx)
-             (list #'type-tag #'MakeTypeCons #'GetTypeParams)
-             )
-           (define-product-type TypeCons
-             ;; issue: arity needs to parse as an exact-nonnegative-integer
-             ;; fix: check arity in MakeTypeCons
-             #:arity >= 0
-             #:extra-info TypeConsExtraInfo
-             #:implements get-resugar-info (resugar-ctor #'TypeCons))
-           (define-syntax MakeTypeCons (mk-ctor-rewriter #'TypeCons))
-           (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
-           (define-syntax Cons- (mk-constructor-type-rule arity #'orig-struct-info #'TypeCons))
-           (define-syntax ucons
-             (user-ctor #'Cons- #'orig-struct-info 'type-tag #'TypeCons (cleanup-accs #'ucons accs/rev)))
-           #,(unless (attribute omit-accs)
-               (quasisyntax/loc stx
-                 (begin-
-                   (define-syntax mk-struct-accs
-                     (define-struct-accs accs/rev #'TypeCons #'lib))
-                   (mk-struct-accs ucons))))
+           (define-syntax finish-type-defs
+             (finish-require-struct-typedef #'lib #'Cons- #'TypeConsExtraInfo #'type-tag #'MakeTypeCons #'GetTypeParams #'orig-struct-info #'accs/rev arity #,(attribute omit-accs)))
+           (finish-type-defs ucons TypeCons)
            )))]))
+
+;; This is so that the arity of the struct can be included in the generated typedef
+(define-for-syntax ((finish-require-struct-typedef lib
+                                                   Cons-
+                                                   TypeConsExtraInfo
+                                                   type-tag
+                                                   MakeTypeCons
+                                                   GetTypeParams
+                                                   orig-struct-info
+                                                   accs/rev
+                                                   arity
+                                                   omit-accs?)
+                    stx)
+  (syntax-parse stx
+    [(_ ucons:id TypeCons:id)
+     (quasisyntax/loc #'ucons
+       (begin-
+         (define-for-syntax (#,TypeConsExtraInfo stx)
+           (list #'#,type-tag #'#,MakeTypeCons #'#,GetTypeParams))
+         (define-product-type TypeCons
+           #:arity = #,arity
+           #:extra-info #,TypeConsExtraInfo
+           #:implements get-resugar-info (resugar-ctor #'TypeCons))
+         (define-syntax #,MakeTypeCons (mk-ctor-rewriter #'TypeCons))
+         (define-syntax #,GetTypeParams (mk-type-params-fetcher #'TypeCons))
+         (define-syntax #,Cons- (mk-constructor-type-rule #,arity #'#,orig-struct-info #'TypeCons))
+         (define-syntax ucons
+           (user-ctor #'#,Cons- #'#,orig-struct-info '#,type-tag #'TypeCons (cleanup-accs #'ucons #,accs/rev)))
+         #,(unless omit-accs?
+             (quasisyntax/loc #'ucons
+               (begin-
+                 (define-syntax mk-struct-accs
+                   (define-struct-accs #,accs/rev #'TypeCons #'#,lib))
+                 (mk-struct-accs ucons))))))]))
 
 (begin-for-syntax
   (define-syntax ~constructor-extra-info
