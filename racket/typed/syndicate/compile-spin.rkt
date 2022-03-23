@@ -844,14 +844,14 @@
 (define (run-spin spin [spec-name "spec"])
   (define tmp (make-temporary-file "typed-syndicate-spin~a.pml"))
   (gen-spin/to-file spin tmp)
-  (define script-completed? #f)
-  (define script-output (with-output-to-string
-                          (thunk (set! script-completed? (system* RUN-SPIN.EXE tmp spec-name)))))
+  (define-values (script-completed? script-output script-err)
+    (run-script RUN-SPIN.EXE (list tmp spec-name)))
   (define trail-file (format "~a.trail" (path->string tmp)))
   (define trail-exists? (file-exists? trail-file))
   (cond
     [(not script-completed?)
      (displayln "Error running SPIN; Output:")
+     (display script-err)
      (display script-output)]
     [trail-exists?
        (displayln "Detected Trail File!")
@@ -859,7 +859,6 @@
        (copy-file tmp (build-path (current-directory) "model.pml") #t)
        (copy-file trail-file (build-path (current-directory) "model.pml.trail") #t)
        (delete-file trail-file)])
-  (flush-output)
   (delete-file tmp)
   (and script-completed? (not trail-exists?)))
 
@@ -884,14 +883,24 @@ Examples:
 ;; Path -> Void
 ;; assume the trail file exists in the same directory as the spin (model) file
 (define (analyze-spin-trail spin-file)
-  (define out (with-output-to-string
-                (thunk (system* REPLAY-TRAIL.EXE spin-file))))
-  (pretty-display out)
+  (define-values (_ out __) (run-script REPLAY-TRAIL.EXE (list spin-file)))
+  #;(pretty-display out)
   (define pid/line-trace (regexp-match* TRAIL-LINE-RX out #:match-select cdr))
   (define model-lines (file->vector spin-file))
   (define trace (interpret-spin-trace pid/line-trace model-lines))
   (print-trace trace)
   (log-trace-msd trace))
+
+;; String (Listof String) -> (Values Bool String String)
+(define (run-script cmd args)
+  (match-define (list stdo stdin pid stderr ctrl)
+    (apply process* cmd args))
+  (ctrl 'wait)
+  (define script-completed? (equal? (ctrl 'status) 'done-ok))
+  (define script-output (port->string stdo))
+  (define script-err (port->string stderr))
+  (close-output-port stdin)
+  (values script-completed? script-output script-err))
 
 ;; a PID is a Nat
 
@@ -924,6 +933,8 @@ Examples:
 
 ;; (Listof TraceStep) -> Void
 (define (print-trace trace)
+  (when (empty? trace)
+    (printf "Starting state of program violates specification\n"))
   (for ([ts (in-list trace)])
     (match ts
       [(== START-OF-CYCLE)
