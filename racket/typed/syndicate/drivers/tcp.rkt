@@ -62,7 +62,7 @@
   (U (Observe (Observe (TcpConnection ★/t (TcpListener ★/t))))
      (Observe (TcpConnection ★/t (TcpListener Int)))
      (Observe (TcpConnection ★/t (TcpListener Int)))
-     (Advertise (Observe (TcpChannel ★/t (TcpListener (TcpHandle (Seal ★/t)) ★/t))))
+     (Advertise (Observe (TcpChannel ★/t (TcpListener (TcpHandle (Seal ★/t))) ★/t)))
      (Observe (Advertise (TcpChannel (TcpAddress String Int) (TcpHandle (Seal ★/t)) ★/t)))
      (TcpAccepted ★/t)
      (Advertise (TcpChannel (TcpHandle (Seal ★/t)) (TcpAddress String Int) ★/t))
