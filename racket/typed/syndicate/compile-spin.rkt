@@ -6,7 +6,7 @@
 (require "ltl.rkt")
 (require racket/runtime-path)
 (require syndicate/trace syndicate/trace/msd)
-(require (prefix-in synd: (only-in syndicate/core assert retract))
+(require (prefix-in synd: (only-in syndicate/core assert retract message))
          (prefix-in synd: (only-in syndicate/patch patch-empty patch-seq)))
 
 (require (only-in racket/hash hash-union))
@@ -857,9 +857,9 @@
      (display script-output)]
     [trail-exists?
        (displayln "Detected Trail File!")
-       (analyze-spin-trail tmp)
        (copy-file tmp (build-path (current-directory) "model.pml") #t)
        (copy-file trail-file (build-path (current-directory) "model.pml.trail") #t)
+       (analyze-spin-trail tmp)
        (delete-file trail-file)])
   (delete-file tmp)
   (and script-completed? (not trail-exists?)))
@@ -947,34 +947,39 @@ Examples:
           (printf "Process ~a ASSERTS ~a\n" pid (τ->string ty))]
          [(retract ty)
           (printf "Process ~a RETRACTS ~a\n" pid (τ->string ty))]
+         [(send ty)
+          (printf "Process ~a SENDS ~a\n" pid (τ->string ty))]
          [(Asserted ty)
           (printf "Process ~a REACTS to the ASSERTION of ~a\n" pid (τ->string ty))]
          [(Retracted ty)
-          (printf "Process ~a REACTS to the RETRACTION of ~a\n" pid (τ->string ty))])])))
+          (printf "Process ~a REACTS to the RETRACTION of ~a\n" pid (τ->string ty))]
+         [(Message ty)
+          (printf "Process ~a REACTS to the MESSAGE of ~a\n" pid (τ->string ty))])])))
 
 ;; (Listof TraceStep) -> Void
 ;; use syndicate's msd logger logging
 (define (log-trace-msd trace)
   (start-tracing! "trace.msd")
-  (define (end-turn! pid point patch)
+  (define (end-turn! pid point patch messages)
     (let* ([p (trace-turn-end point pid #f)]
-           [p (trace-actions-produced p pid (list patch))]
+           [p (trace-actions-produced p pid (cons patch messages))]
            [p (trace-action-interpreted p pid patch)])
       p))
-  (define-values (final-pid final-point final-patch)
+  (define-values (final-pid final-point final-patch final-messages)
     (for/fold ([current-actor #f]
                [point #f]
-               [current-patch synd:patch-empty])
+               [current-patch synd:patch-empty]
+               [messages (list)])
               ([ts (in-list trace)])
       (match ts
         [(== START-OF-CYCLE)
-         (values current-actor point current-patch)]
+         (values current-actor point current-patch messages)]
         [(trace-step pid evt)
          (define-values (next-point next-patch)
            (cond
              ;; either startup or the begin of a new actor's turn
              [(and current-actor (not (equal? pid current-actor)))
-              (define p (end-turn! current-actor point current-patch))
+              (define p (end-turn! current-actor point current-patch messages))
               (values (trace-turn-begin p pid #f)
                       synd:patch-empty)]
              [else
@@ -982,17 +987,23 @@ Examples:
          (match evt
            [(assert ty)
             (define p (synd:assert ty))
-            (values pid next-point (synd:patch-seq next-patch p))]
+            (values pid next-point (synd:patch-seq next-patch p) messages)]
            [(retract ty)
             (define p (synd:retract ty))
-            (values pid next-point (synd:patch-seq next-patch p))]
+            (values pid next-point (synd:patch-seq next-patch p) messages)]
+           [(send ty)
+            (define a (synd:message ty))
+            (values pid next-point next-patch (cons a messages))]
            [(Asserted ty)
             #;(trace-event-consumed ??? ??? pid ???)
-            (values pid next-point next-patch)]
+            (values pid next-point next-patch messages)]
            [(Retracted ty)
             #;(trace-event-consumed ??? ??? pid ???)
-            (values pid next-point next-patch)])])))
-  (end-turn! final-pid final-point final-patch))
+            (values pid next-point next-patch messages)]
+           [(Message ty)
+            #;(trace-event-consumed ??? ??? pid ???)
+            (values pid next-point next-patch messages)])])))
+  (end-turn! final-pid final-point final-patch final-messages))
 
 (define COMMENT-RX #px"/\\*(.*)\\*/")
 
@@ -1007,10 +1018,13 @@ Examples:
       "extracting values back out from spin model"
     (define evt-str "        :: ASSERTED(BookQuoteT_String_Int) && !know_BookQuoteT_String_Int -> /*#s(Asserted #s(Struct BookQuoteT (#s(Base String) #s(Base Int))))*/\n")
     (define assert-str "  ASSERT(Obs_Obs_BookInterestT); /*#s(assert #s(Observe #s(Observe #s(Struct BookInterestT (#s(Base String) #s(Mk⋆) #s(Mk⋆))))))*/\n")
+    (define send-str "            SEND(FlipSwitchCmdT_Symbol); /*#s(send #s(Struct FlipSwitchCmdT (#s(Base Symbol))))*/\n")
     (check-equal? (extract-comment-value evt-str)
                   #s(Asserted #s(Struct BookQuoteT (#s(Base String) #s(Base Int)))))
     (check-equal? (extract-comment-value assert-str)
-                  #s(assert #s(Observe #s(Observe #s(Struct BookInterestT (#s(Base String) #s(Mk⋆) #s(Mk⋆)))))))))
+                  #s(assert #s(Observe #s(Observe #s(Struct BookInterestT (#s(Base String) #s(Mk⋆) #s(Mk⋆)))))))
+    (check-equal? (extract-comment-value send-str)
+                  #s(send #s(Struct FlipSwitchCmdT (#s(Base Symbol)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Misc Utils

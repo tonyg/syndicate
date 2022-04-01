@@ -133,8 +133,8 @@
 ;; a TransitionEffect is one of
 ;;   - (send τ)
 ;;   - (realize τ)
-(struct send (ty) #:transparent)
-(struct realize (ty) #:transparent)
+(struct send (ty) #:prefab)
+(struct realize (ty) #:prefab)
 
 ;; a TransitionDesc is a (Hashof D+ (Setof (Listof RoleEffect)), describing the
 ;; possible ways an event (+/- of an assertion) can alter the facet tree.
