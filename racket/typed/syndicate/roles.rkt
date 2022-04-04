@@ -459,9 +459,10 @@
   #:with τ-ds-i (strip-inbound #'τ-c.norm)
   #:with τ-ds-o (strip-outbound #'τ-c.norm)
   #:with τ-relay (relay-interests #'τ-c.norm)
+  #:with τ-ds-act (mk-Actor- (list (mk-U*- #'(τ-ds-i τ-ds-o τ-relay))))
   -----------------------------------------------------------------------------------
   [⊢ (syndicate:dataspace s- ...) (⇒ : ★/t)
-                                  (⇒ ν-s ((Actor (U τ-ds-i τ-ds-o τ-relay))))])
+                                  (⇒ ν-s (τ-ds-act))])
 
 ;; (Listof Type) Type -> String
 (define-for-syntax (make-dataspace-error-message errs tc)
