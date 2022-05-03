@@ -663,7 +663,18 @@
     (pattern (~seq #:type-constructor TypeCons:id))
     (pattern (~seq) #:attr TypeCons #f))
 
-  (struct user-ctor (typed-ctor untyped-ctor type-tag type-ctor field-ids)
+  (define-syntax-class slot-decl
+    #:attributes (name type)
+    (pattern name:id #:attr type #f)
+    (pattern [name:id (~optional (~datum :)) type]))
+
+  ;; typed-ctor   : ID; the name of function implementing the type rule
+  ;; untyped-ctor : ID; the name of the constructor for the (run time) struct
+  ;; type-tag     : ID; a unique tag for instances of this type
+  ;; type-ctor    : ID: the name of the type constructor for instances of this struct
+  ;; field-ids    : (Listof ID): the names of each field accessor
+  ;; field-tys    : (Listof (U #f Syntax)): the default type (serialized) of each field, if known
+  (struct user-ctor (typed-ctor untyped-ctor type-tag type-ctor field-ids field-tys)
     #:property prop:procedure
     (lambda (v stx)
       (define transformer (user-ctor-typed-ctor v))
@@ -675,11 +686,11 @@
 (define-syntax (define-constructor* stx)
   (syntax-parse stx
     #:datum-literals (:)
-    [(_ (Cons:id : TyCons:id slot:id ...) clause ...)
+    [(_ (Cons:id : TyCons:id slot:slot-decl ...) clause ...)
      #'(define-constructor (Cons slot ...)
          #:type-constructor TyCons
          clause ...)]
-    [(_ (Cons:id slot:id ...) clause ...)
+    [(_ (Cons:id slot:slot-decl ...) clause ...)
      #:with TyCons ((current-type-constructor-convention) #'Cons)
      (syntax/loc stx
        (define-constructor (Cons slot ...)
@@ -711,7 +722,7 @@
 
 (define-syntax (define-constructor stx)
   (syntax-parse stx
-    [(_ (Cons:id slot:id ...)
+    [(_ (Cons:id slot:slot-decl ...)
         ty-cons:type-constructor-decl
         (~seq #:with
               Alias AliasBody) ...)
@@ -721,14 +732,18 @@
      #:with TypeConsExpander (format-id #'TypeCons "~~~a" #'TypeCons)
      #:with TypeConsExtraInfo (format-id #'TypeCons "~a-extra-info" #'TypeCons)
      #:with (StructName Cons- type-tag) (generate-temporaries #'(Cons Cons Cons))
-     #:with (accessor ...) (for/list ([slot-name (in-syntax #'(slot ...))])
+     #:with (accessor ...) (for/list ([slot-name (in-syntax #'(slot.name ...))])
                              (format-id slot-name "~a-~a" #'Cons slot-name))
-     #:with (accessor- ...) (for/list ([slot-name (in-syntax #'(slot ...))])
+     #:with (accessor- ...) (for/list ([slot-name (in-syntax #'(slot.name ...))])
                               (format-id #'StructName "~a-~a" #'StructName slot-name))
-     #:with (acc-defs ...) (mk-accessors #'(accessor ...) #'(accessor- ...) #'TypeCons #'(slot ...))
+     #:with (acc-defs ...) (mk-accessors #'(accessor ...) #'(accessor- ...) #'TypeCons #'(slot.name ...))
+     #:with (field-ty? ...) (for/list ([ty? (in-list (attribute slot.type))])
+                              (if ty?
+                                  (serialize-syntax (type-eval ty?))
+                                  #'#f))
      (define arity (stx-length #'(slot ...)))
      #`(begin-
-         (struct- StructName (slot ...) #:reflection-name 'Cons #:transparent)
+         (struct- StructName (slot.name ...) #:reflection-name 'Cons #:transparent)
          (define-for-syntax (TypeConsExtraInfo stx)
            (list #'type-tag #'MakeTypeCons #'GetTypeParams))
          (define-product-type TypeCons
@@ -739,9 +754,14 @@
          (define-syntax MakeTypeCons (mk-ctor-rewriter #'TypeCons))
          (define-syntax GetTypeParams (mk-type-params-fetcher #'TypeCons))
          (define-syntax Cons
-           (user-ctor #'Cons- #'StructName 'type-tag #'TypeCons (list #'accessor ...)))
+           (user-ctor #'Cons-
+                      #'StructName
+                      'type-tag
+                      #'TypeCons
+                      (list #'accessor ...)
+                      (list #'field-ty? ...)))
          (define-syntax Cons- (mk-constructor-type-rule #,arity #'StructName #'TypeCons))
-         #,@(mk-accessors #'(accessor ...) #'(accessor- ...) #'TypeCons #'(slot ...)))]))
+         acc-defs ...)]))
 
 (define-for-syntax (mk-accessors accessors accessors- TypeCons slots)
   (for/list ([accessor (in-syntax accessors)]
@@ -750,13 +770,16 @@
     (quasisyntax/loc TypeCons
       (define-typed-variable-rename+ #,accessor ≫ #,accessor- : (∀+ #,slots (→fn (#,TypeCons #,@slots) #,slot))))))
 
-(define-for-syntax ((define-struct-accs accs/rev TypeCons lib) stx)
+(define-for-syntax ((define-struct-accs accs/rev field-accs? TypeCons lib) stx)
   (syntax-parse stx
     [(_ ucons:id)
-     (define accs (cleanup-accs #'ucons accs/rev))
-     (define accs- (map mk-- accs))
+     (define cleaned-accs (cleanup-accs #'ucons accs/rev))
+     (define accs (if (empty? field-accs?)
+                      cleaned-accs
+                      (format-all #'ucons field-accs?)))
+     (define accs- (map mk-- cleaned-accs))
      (define slots (generate-temporaries accs))
-     (define renames (for/list ([acc (in-list accs)]
+     (define renames (for/list ([acc (in-list cleaned-accs)]
                                 [acc- (in-list accs-)])
                        #`[#,acc #,acc-]))
      (quasisyntax/loc TypeCons
@@ -764,9 +787,12 @@
          (require- (only-in- #,lib #,@renames))
          #,@(mk-accessors accs accs- TypeCons slots)))]))
 
-(define-for-syntax (cleanup-accs ucons accs/rev)
-  (for/list ([acc (in-list (reverse accs/rev))])
+(define-for-syntax (format-all ucons accs)
+  (for/list ([acc (in-list accs)])
     (format-id ucons "~a" (syntax-e acc))))
+
+(define-for-syntax (cleanup-accs ucons accs/rev)
+  (format-all ucons (reverse accs/rev)))
 
 ;; (require-struct chicken #:as Chicken #:from "some-mod.rkt") will
 ;;  - extract the struct-info for chicken, and ensure that it is immutable, has a set number of fields
@@ -777,34 +803,66 @@
 ;; TODO: this implementation shares a lot with that of define-constructor
 (define-syntax (require-struct stx)
   (syntax-parse stx
-    [(_ ucons:id #:as ty-cons:id #:from lib (~optional (~and omit-accs #:omit-accs)))
+    [(_ ucons:id #:as ty-cons:id #:from lib
+        (~optional (~seq slot:slot-decl ...))
+        (~optional (~and omit-accs #:omit-accs)))
      ;; TBH I'm not sure why I don't need to SLIAB TypeCons and Cons-
-     (with-syntax* ([TypeCons #'ty-cons]
-                    [MakeTypeCons (format-id #'TypeCons "make-~a" #'TypeCons)]
-                    [GetTypeParams (format-id #'TypeCons "get-~a-type-params" #'TypeCons)]
-                    [TypeConsExpander (format-id #'TypeCons "~~~a" #'TypeCons)]
-                    [TypeConsExtraInfo (format-id #'TypeCons "~a-extra-info" #'TypeCons)]
-                    [Cons- (format-id #'ucons "~a/checked" #'ucons)]
-                    [orig-struct-info (generate-temporary #'ucons)]
-                    [type-tag (generate-temporary #'ucons)])
-       (quasisyntax/loc stx
-         (begin-
-           (require- (only-in- lib [ucons orig-struct-info]))
-           (begin-for-syntax
-             (define info (syntax-local-value #'orig-struct-info))
-             (unless (struct-info? info)
-               (raise-syntax-error #f "expected struct" #'#,stx #'ucons))
-             (match-define (list desc cons pred accs/rev muts sup) (extract-struct-info info))
-             (when (and (cons? accs/rev) (false? (last accs/rev)))
-               (raise-syntax-error #f "number of slots must be exact" #'#,stx #'ucons))
-             (unless (boolean? sup)
-               (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
-             (define arity (length accs/rev))
-             )
-           (define-syntax finish-type-defs
-             (finish-require-struct-typedef #'lib #'Cons- #'TypeConsExtraInfo #'type-tag #'MakeTypeCons #'GetTypeParams #'orig-struct-info #'accs/rev arity #,(attribute omit-accs)))
-           (finish-type-defs ucons TypeCons)
-           )))]))
+     #:with TypeCons #'ty-cons
+     #:with MakeTypeCons (format-id #'TypeCons "make-~a" #'TypeCons)
+     #:with GetTypeParams (format-id #'TypeCons "get-~a-type-params" #'TypeCons)
+     #:with TypeConsExpander (format-id #'TypeCons "~~~a" #'TypeCons)
+     #:with TypeConsExtraInfo (format-id #'TypeCons "~a-extra-info" #'TypeCons)
+     #:with Cons- (format-id #'ucons "~a/checked" #'ucons)
+     #:with orig-struct-info (generate-temporary #'ucons)
+     #:with type-tag (generate-temporary #'ucons)
+     #:with (field-ty? ...) (for/list ([ty? (in-list (attribute slot.type))])
+                              (if ty?
+                                  #`#,(serialize-syntax (type-eval ty?))
+                                  #f))
+     #:with (field-acc ...) (for/list ([name? (in-list (attribute slot.name))])
+                              (if name?
+                                  (format-id #'ucons "~a-~a" #'ucons name?)
+                                  #f))
+     (quasisyntax/loc stx
+       (begin-
+         (require- (only-in- lib [ucons orig-struct-info]))
+         (begin-for-syntax
+           (define info (syntax-local-value #'orig-struct-info))
+           (unless (struct-info? info)
+             (raise-syntax-error #f "expected struct" #'#,stx #'ucons))
+           (match-define (list desc cons pred accs/rev muts sup) (extract-struct-info info))
+           (when (and (cons? accs/rev) (false? (last accs/rev)))
+             (raise-syntax-error #f "number of slots must be exact" #'#,stx #'ucons))
+           (unless (boolean? sup)
+             (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
+           (define arity (length accs/rev))
+           (define field-tys (list #'field-ty? ...))
+           (define field-accs? (list #'field-acc ...))
+           (define slots-given (length field-tys))
+           (unless (or (zero? slots-given)
+                       (equal? slots-given arity))
+             (raise-syntax-error
+              #f
+              (format "incorrect number of slots specified, given ~a expected ~a" slots-given arity)
+              #'#,stx
+              #'(slot ...)))
+           )
+         (define-syntax finish-type-defs
+           (finish-require-struct-typedef #'lib
+                                          #'Cons-
+                                          #'TypeConsExtraInfo
+                                          #'type-tag
+                                          #'MakeTypeCons
+                                          #'GetTypeParams
+                                          #'orig-struct-info
+                                          #'accs/rev
+                                          arity
+                                          #,(attribute omit-accs)
+                                          #'field-tys
+                                          #'field-accs?
+                                          #;(list #'field-acc ...)))
+         (finish-type-defs ucons TypeCons)
+         ))]))
 
 ;; This is so that the arity of the struct can be included in the generated typedef
 (define-for-syntax ((finish-require-struct-typedef lib
@@ -816,10 +874,15 @@
                                                    orig-struct-info
                                                    accs/rev
                                                    arity
-                                                   omit-accs?)
+                                                   omit-accs?
+                                                   field-tys
+                                                   field-accs?)
                     stx)
   (syntax-parse stx
     [(_ ucons:id TypeCons:id)
+     #:with field-accs #`(if (empty? #,field-accs?)
+                             (cleanup-accs #'ucons #,accs/rev)
+                             (format-all #'ucons #,field-accs?))
      (quasisyntax/loc #'ucons
        (begin-
          (define-for-syntax (#,TypeConsExtraInfo stx)
@@ -832,12 +895,17 @@
          (define-syntax #,GetTypeParams (mk-type-params-fetcher #'TypeCons))
          (define-syntax #,Cons- (mk-constructor-type-rule #,arity #'#,orig-struct-info #'TypeCons))
          (define-syntax ucons
-           (user-ctor #'#,Cons- #'#,orig-struct-info '#,type-tag #'TypeCons (cleanup-accs #'ucons #,accs/rev)))
+           (user-ctor #'#,Cons-
+                      #'#,orig-struct-info
+                      '#,type-tag
+                      #'TypeCons
+                      field-accs
+                      #,field-tys))
          #,(unless omit-accs?
              (quasisyntax/loc #'ucons
                (begin-
                  (define-syntax mk-struct-accs
-                   (define-struct-accs #,accs/rev #'TypeCons #'#,lib))
+                   (define-struct-accs #,accs/rev #,field-accs? #'TypeCons #'#,lib))
                  (mk-struct-accs ucons))))))]))
 
 (begin-for-syntax
@@ -900,7 +968,15 @@
   ;; requires (ctor-id? stx)
   ;; fetch the type tag
   (define (ctor-type-tag stx)
-    (user-ctor-type-tag (syntax-local-value stx (const #f)))))
+    (user-ctor-type-tag (syntax-local-value stx (const #f))))
+
+  ;; requires (ctor-id? stx)
+  ;; fetch the field types
+  (define (ctor-field-tys stx)
+    (define tys (user-ctor-field-tys (syntax-local-value stx (const #f))))
+    (for/list ([ty? (in-list tys)])
+      (and ty? (deserialize-syntax ty?))))
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Require & Provide
@@ -922,9 +998,13 @@
 
   (define-syntax-class struct-require-clause
     #:datum-literals (:)
-    #:attributes (Cons TyCons omit-accs)
-    (pattern [#:struct Cons:id #:as TyCons:id (~optional (~and omit-accs #:omit-accs))])
-    (pattern [#:struct Cons:id (~optional (~and omit-accs #:omit-accs))]
+    #:attributes (Cons TyCons omit-accs [slot 1] [slot.name 1] [slot.type 1])
+    (pattern [#:struct Cons:id #:as TyCons:id
+              (~optional (~seq slot:slot-decl ...))
+              (~optional (~and omit-accs #:omit-accs))])
+    (pattern [#:struct Cons:id
+              (~optional (~seq slot:slot-decl ...))
+              (~optional (~and omit-accs #:omit-accs))]
              #:attr TyCons ((current-type-constructor-convention) #'Cons)))
   )
 
@@ -941,7 +1021,10 @@
      #:with (name- ...) (format-ids "~a-" #'(name ...))
      (syntax/loc stx
        (begin-
-         (require-struct struct-clause.Cons #:as struct-clause.TyCons #:from lib (~? struct-clause.omit-accs)) ...
+         (require-struct struct-clause.Cons #:as struct-clause.TyCons
+                         #:from lib
+                         (~? (~@ struct-clause.slot ...))
+                         (~? struct-clause.omit-accs)) ...
          opaque-clause.type-definition ...
          (require (only-in lib [name name-] ...))
          (define-syntax name

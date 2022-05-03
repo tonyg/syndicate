@@ -264,8 +264,15 @@
        (quasisyntax/loc pat
          (tuple #,@(stx-map elaborate-pattern #'(p ...))))]
       [(~constructor-exp ctor p ...)
+       (define field-tys (ctor-field-tys #'ctor))
+       (define sub-pats
+         (for/list ([field-pat (in-syntax #'(p ...))]
+                    [field-ty? (in-list field-tys)])
+           (if field-ty?
+               (elaborate-pattern/with-type field-pat field-ty?)
+               (elaborate-pattern field-pat))))
        (quasisyntax/loc pat
-         (ctor #,@(stx-map elaborate-pattern #'(p ...))))]
+         (ctor #,@sub-pats))]
       [e:expr
        #'e]))
 

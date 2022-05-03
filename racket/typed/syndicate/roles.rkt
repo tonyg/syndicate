@@ -386,7 +386,7 @@
                  "expected exactly one Role for body"
   #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
   #:fail-unless (<: #'τ-o #'τ-c.norm)
-                (format "Outputs ~a not valid in dataspace ~a" (make-output-error-message #'τ-o #'τ-c.norm) (type->str #'τ-c.norm))
+                (format "Outputs ~a not valid in dataspace ~a" (make-output-error-message #'τ-o #'τ-c.norm) (type->strX #'τ-c.norm))
   #:with τ-final #;(mk-Actor- #'(τ-c.norm)) (mk-ActorWithRole- #'(τ-c.norm τ-f ...))
   #:fail-unless (<: #'τ-a #'τ-final)
                 "Spawned actors not valid in dataspace"
@@ -402,11 +402,33 @@
    #:do [(define τc (current-communication-type))]
    #:when τc
    ----------------------------------------
-   [≻ (spawn #,τc s)]])
+   [≻ (spawn #,τc s)]]
+  [(spawn s) ≫
+   [⊢ (block s) ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
+   ;; TODO: s shouldn't refer to facets or fields!
+   #:fail-unless (and (stx-andmap Role? #'(τ-f ...))
+                      (= 1 (length (syntax->list #'(τ-f ...)))))
+   "expected exactly one Role for body"
+   #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
+   #:fail-unless (project-safe? (∩ (strip-? #'τ-o/i) #'τ-o/i) #'τ-i/i)
+                 (string-append "Not prepared to handle internal events:\n" (make-actor-error-message #'τ-i/i #'τ-o/i #'τ-o/i))
+  #:with τ-i/o (pattern-matching-assertions #'τ-i)
+  #:with (~U* (~AnyActor τ-c/spawned) ...) #'τ-a
+  #:with τ-c/this-actor (type-eval #'(U τ-i/o τ-o))
+  #:with τ-c/final (type-eval #'(U τ-c/this-actor τ-c/spawned ...))
+  #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c/final)
+                               #'τ-i)
+                (string-append "Not prepared to handle inputs:\n" (make-actor-error-message #'τ-i #'τ-o #'τ-c/final))
+  #:with τ-final (mk-ActorWithRole- #'(τ-c/final τ-f ...))
+  #:fail-unless (<: #'τ-a #'τ-final)
+                "Spawned actors not valid in dataspace"
+  ----------------------------------------
+  [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
+                                               (⇒ ν-s (τ-final))]])
 
 ;; (Listof Type) -> String
 (define-for-syntax (tys->str tys)
-  (string-join (map type->str tys) ",\n"))
+  (string-join (map type->strX tys) ",\n"))
 
 ;; Type Type -> String
 (define-for-syntax (make-output-error-message τ-o τ-c)
@@ -425,11 +447,12 @@
 
 ;; Type Type Type -> String
 (define-for-syntax (make-actor-error-message τ-i τ-o τ-c)
-  (define mismatches (find-surprising-inputs τ-i τ-o τ-c))
+  (define mismatches (find-surprising-inputs τ-i τ-o τ-c
+                                             (lambda (t1 t2) (not (project-safe? t1 t2)))))
   (tys->str mismatches))
 
 ;; Type Type Type -> (Listof Type)
-(define-for-syntax (find-surprising-inputs τ-i τ-o τ-c)
+(define-for-syntax (find-surprising-inputs τ-i τ-o τ-c surprising?)
   (define incoming (∩ (strip-? τ-o) τ-c))
   ;; Type -> (Listof Type)
   (let loop ([ty incoming])
@@ -438,44 +461,56 @@
        (apply append (map loop (syntax->list #'(τ ...))))]
       [_
        (cond
-         [(project-safe? ty τ-i)
-          '()]
+         [(surprising? ty τ-i)
+          (list ty)]
          [else
-          (list ty)])])))
+          (list)])])))
 
-(define-typed-syntax (dataspace τ-c:type s ...) ≫
-  #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  #:mode (communication-type-mode #'τ-c.norm)
-    [
-     [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs τ-s ...)) (⇒ ν-f (~effs))] ...
-    ]
-  #:with τ-actor (mk-Actor- #'(τ-c.norm))
-  #:do [(define errs (for/list ([t (in-syntax #'(τ-s ... ...))]
-                                #:unless (<: t #'τ-actor))
-                       t))]
-  #:fail-unless (empty? errs) (make-dataspace-error-message errs #'τ-c.norm)
-  ;; #:fail-unless (stx-andmap (lambda (t) (<: t #'τ-actor)) #'(τ-s ... ...))
-  ;;               "Not all actors conform to communication type"
-  #:with τ-ds-i (strip-inbound #'τ-c.norm)
-  #:with τ-ds-o (strip-outbound #'τ-c.norm)
-  #:with τ-relay (relay-interests #'τ-c.norm)
-  #:with τ-ds-act (mk-Actor- (list (mk-U*- #'(τ-ds-i τ-ds-o τ-relay))))
-  -----------------------------------------------------------------------------------
-  [⊢ (syndicate:dataspace s- ...) (⇒ : ★/t)
-                                  (⇒ ν-s (τ-ds-act))])
+(define-typed-syntax dataspace
+  [(dataspace τ-c:type s ...) ≫
+   #:cut
+   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
+   #:mode (communication-type-mode #'τ-c.norm)
+     [
+      [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs τ-s ...)) (⇒ ν-f (~effs))] ...
+     ]
+   #:with τ-actor (mk-Actor- #'(τ-c.norm))
+   #:do [(define errs (for/list ([t (in-syntax #'(τ-s ... ...))]
+                                 #:unless (<: t #'τ-actor))
+                        t))]
+   #:fail-unless (empty? errs) (make-dataspace-error-message errs #'τ-c.norm)
+   ;; #:fail-unless (stx-andmap (lambda (t) (<: t #'τ-actor)) #'(τ-s ... ...))
+   ;;               "Not all actors conform to communication type"
+   #:with τ-ds-i (strip-inbound #'τ-c.norm)
+   #:with τ-ds-o (strip-outbound #'τ-c.norm)
+   #:with τ-relay (relay-interests #'τ-c.norm)
+   #:with τ-ds-act (mk-Actor- (list (mk-U*- #'(τ-ds-i τ-ds-o τ-relay))))
+   -----------------------------------------------------------------------------------
+   [⊢ (syndicate:dataspace s- ...) (⇒ : ★/t)
+                                   (⇒ ν-s (τ-ds-act))]]
+  [(dataspace s ...) ≫
+   [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs τ-s ...)) (⇒ ν-f (~effs))] ...
+   #:cut
+   #:with ((~AnyActor τc/spawned) ...) #'(τ-s ... ...)
+   #:with τc (type-eval #'(U τc/spawned ...))
+   -----------------------------------------------------------------------------------
+   [≻ (dataspace τc s- ...)]])
 
 ;; (Listof Type) Type -> String
 (define-for-syntax (make-dataspace-error-message errs tc)
   (with-output-to-string
     (lambda ()
-      (printf "Not all actors conform to communication type; found the following mismatches:\n")
+      (printf "Not all actors conform to communication type:\n")
+      (pretty-display (type->strX tc))
+      (printf "found the following mismatches:\n")
       (for ([err (in-list errs)])
         (syntax-parse err
           [(~AnyActor τ)
-           (printf "Actor with communication type ~a:\n" (type->str #'τ))
+           (printf "Actor with communication type ~a:\n" (type->strX #'τ))
            (cond
              [(<: #'τ tc)
-              (define msg (make-actor-error-message #'τ #'τ tc))
+              (define mismatches (find-surprising-inputs #'τ #'τ tc (lambda (t1 t2) (not (<: t1 t2)))))
+              (define msg (tys->str mismatches))
               (printf "  unprepared to handle inputs: ~a\n" msg)]
              [else
               (define msg (make-output-error-message #'τ tc))
@@ -666,17 +701,26 @@
 
 ;; n.b. this is a blocking operation, so an actor that uses this internally
 ;; won't necessarily terminate.
-(define-typed-syntax (run-ground-dataspace τ-c:type s ...) ≫
-  ;;#:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  #:mode (communication-type-mode #'τ-c.norm)
-  [
+(define-typed-syntax run-ground-dataspace
+  [(run-ground-dataspace τ-c:type s ...) ≫
+   ;;#:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
+   #:mode (communication-type-mode #'τ-c.norm)
+   [
+    [⊢ s ≫ s- (⇒ : t1)] ...
+    [⊢ (dataspace τ-c.norm s- ...) ≫ _ (⇒ : t2)]
+   ]
+   #:with τ-out (strip-outbound #'τ-c.norm)
+   -----------------------------------------------------------------------------------
+   [⊢ (#%app- syndicate:run-ground (#%app- syndicate:capture-actor-actions (lambda- () (#%app- list- s- ...))))
+      (⇒ : (AssertionSet τ-out))]]
+  [(run-ground-dataspace s ...) ≫
    [⊢ s ≫ s- (⇒ : t1)] ...
-   [⊢ (dataspace τ-c.norm s- ...) ≫ _ (⇒ : t2)]
-  ]
-  #:with τ-out (strip-outbound #'τ-c.norm)
-  -----------------------------------------------------------------------------------
-  [⊢ (#%app- syndicate:run-ground (#%app- syndicate:capture-actor-actions (lambda- () (#%app- list- s- ...))))
-     (⇒ : (AssertionSet τ-out))])
+   [⊢ (dataspace s- ...) ≫ _ (⇒ : t2)]
+   #:with τ-out (strip-outbound #'τ-c.norm)
+   -----------------------------------------------------------------------------------
+   [⊢ (#%app- syndicate:run-ground (#%app- syndicate:capture-actor-actions (lambda- () (#%app- list- s- ...))))
+      (⇒ : (AssertionSet τ-out))]
+   ])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities
