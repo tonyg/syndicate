@@ -531,10 +531,12 @@
 ;; The input types are already expanded/normalized
 ;; avoids namespace module mismatch issue in some cases
 (define-for-syntax (mk-U- tys)
-  (define tys- (prune+sort tys))
-  (if (= 1 (stx-length tys-))
-      (stx-car tys-)
-      (mk-U*- tys-)))
+  (syntax-parse tys
+    [((~or (~U* ty1- ...) ty2-) ...)
+     (define tys- (prune+sort #'(ty1- ... ... ty2- ...)))
+     (if (= 1 (stx-length tys-))
+         (stx-car tys-)
+         (mk-U*- tys-))]))
 
 (define-syntax (U stx)
   (syntax-parse stx
@@ -545,6 +547,10 @@
      (if (= 1 (stx-length #'tys-))
          (stx-car #'tys-)
          (syntax/loc stx (U* . tys-)))]))
+
+;; Listof Type -> Type
+(define-for-syntax (mk-U tys)
+  (type-eval #`(U #,@tys)))
 
 (define-simple-macro (→fn ty-in ... ty-out)
   (→+ ty-in ... (Computation (Value ty-out)
@@ -649,12 +655,14 @@
 ;; e.g. book-club -> BookClubT
 
 (begin-for-syntax
-  ;; Identifier -> Identifier
+  ;; Identifier -> (list Identifier Identifier)
   (define (camel-case-T nm)
     (define nm/s (symbol->string (syntax-e nm)))
     (define nm/camel (string-append* (map string-titlecase (string-split nm/s "-"))))
-    (format-id nm "~aT" nm/camel))
+    (list (format-id nm "~aT" nm/camel)
+          (format-id nm "~a" nm/camel)))
 
+  ;; (Parameterof (Identifier -> (list Identifier Identifier)))
   (define current-type-constructor-convention
     (make-parameter camel-case-T)))
 
@@ -691,11 +699,16 @@
          #:type-constructor TyCons
          clause ...)]
     [(_ (Cons:id slot:slot-decl ...) clause ...)
-     #:with TyCons ((current-type-constructor-convention) #'Cons)
-     (syntax/loc stx
+     #:with (TyCons Ty) ((current-type-constructor-convention) #'Cons)
+     (define provided-tys (attribute slot.type))
+     (define all-provided? (andmap values provided-tys))
+     (quasisyntax/loc stx
        (define-constructor (Cons slot ...)
          #:type-constructor TyCons
-         clause ...))]))
+         clause ...
+         #,@(if all-provided?
+                #'(#:with Ty (TyCons slot.type ...))
+                #'())))]))
 
 (begin-for-syntax
   (define ((mk-type-params-fetcher TypeCons) ty)
@@ -803,11 +816,13 @@
 ;; TODO: this implementation shares a lot with that of define-constructor
 (define-syntax (require-struct stx)
   (syntax-parse stx
-    [(_ ucons:id #:as ty-cons:id #:from lib
+    [(_ ucons:id
+        (~optional (~seq #:as ty-cons:id))
+        #:from lib
         (~optional (~seq slot:slot-decl ...))
         (~optional (~and omit-accs #:omit-accs)))
      ;; TBH I'm not sure why I don't need to SLIAB TypeCons and Cons-
-     #:with TypeCons #'ty-cons
+     #:with (TypeCons Ty) #`(~? (ty-cons ty-cons) #,((current-type-constructor-convention) #'ucons))
      #:with MakeTypeCons (format-id #'TypeCons "make-~a" #'TypeCons)
      #:with GetTypeParams (format-id #'TypeCons "get-~a-type-params" #'TypeCons)
      #:with TypeConsExpander (format-id #'TypeCons "~~~a" #'TypeCons)
@@ -858,11 +873,10 @@
                                           #'accs/rev
                                           arity
                                           #,(attribute omit-accs)
+                                          (list #'field-ty? ...)
                                           #'field-tys
-                                          #'field-accs?
-                                          #;(list #'field-acc ...)))
-         (finish-type-defs ucons TypeCons)
-         ))]))
+                                          #'field-accs?))
+         (finish-type-defs ucons TypeCons Ty)))]))
 
 ;; This is so that the arity of the struct can be included in the generated typedef
 (define-for-syntax ((finish-require-struct-typedef lib
@@ -875,14 +889,23 @@
                                                    accs/rev
                                                    arity
                                                    omit-accs?
-                                                   field-tys
+                                                   field-tys?
+                                                   field-tys-nm
                                                    field-accs?)
                     stx)
   (syntax-parse stx
-    [(_ ucons:id TypeCons:id)
+    [(_ ucons:id TypeCons:id Ty:id)
+     #:do [(define all-types-given? (and (equal? arity (length field-tys?))
+                                         (andmap values field-tys?)))
+           (define define-ty-alias?
+             (and all-types-given?
+                  (not (bound-identifier=? #'TypeCons #'Ty))))]
      #:with field-accs #`(if (empty? #,field-accs?)
                              (cleanup-accs #'ucons #,accs/rev)
                              (format-all #'ucons #,field-accs?))
+     #:with field-tys (if all-types-given?
+                          field-tys-nm
+                          #`(list #,@(make-list arity #f)))
      (quasisyntax/loc #'ucons
        (begin-
          (define-for-syntax (#,TypeConsExtraInfo stx)
@@ -900,13 +923,15 @@
                       '#,type-tag
                       #'TypeCons
                       field-accs
-                      #,field-tys))
+                      field-tys))
          #,(unless omit-accs?
              (quasisyntax/loc #'ucons
                (begin-
                  (define-syntax mk-struct-accs
                    (define-struct-accs #,accs/rev #,field-accs? #'TypeCons #'#,lib))
-                 (mk-struct-accs ucons))))))]))
+                 (mk-struct-accs ucons))))
+         #,(when define-ty-alias?
+             #`(define-type-alias Ty (TypeCons #,@field-tys?)))))]))
 
 (begin-for-syntax
   (define-syntax ~constructor-extra-info
@@ -1005,7 +1030,7 @@
     (pattern [#:struct Cons:id
               (~optional (~seq slot:slot-decl ...))
               (~optional (~and omit-accs #:omit-accs))]
-             #:attr TyCons ((current-type-constructor-convention) #'Cons)))
+             #:attr TyCons #f))
   )
 
 ;; Import and ascribe a type from an untyped module
@@ -1021,7 +1046,8 @@
      #:with (name- ...) (format-ids "~a-" #'(name ...))
      (syntax/loc stx
        (begin-
-         (require-struct struct-clause.Cons #:as struct-clause.TyCons
+         (require-struct struct-clause.Cons
+                         (~? (~@ #:as struct-clause.TyCons))
                          #:from lib
                          (~? (~@ struct-clause.slot ...))
                          (~? struct-clause.omit-accs)) ...

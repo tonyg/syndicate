@@ -372,8 +372,10 @@
                    identity))
 
 (define-typed-syntax spawn
-  ;; TODO - do the lack of #:cut-s cause bad error messages here?
-  [(spawn τ-c:type s) ≫
+  [(spawn tc s) ≫
+   ;; this setup is to avoid re-expansion of the tc position :<
+   #:cut
+   #:with τ-c:type #'tc
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   ;; TODO: check that each τ-f is a Role
   #:mode (communication-type-mode #'τ-c.norm)
@@ -401,9 +403,11 @@
   [(spawn s) ≫
    #:do [(define τc (current-communication-type))]
    #:when τc
+   #:cut
    ----------------------------------------
    [≻ (spawn #,τc s)]]
   [(spawn s) ≫
+   #:cut
    [⊢ (block s) ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
    ;; TODO: s shouldn't refer to facets or fields!
    #:fail-unless (and (stx-andmap Role? #'(τ-f ...))
@@ -412,7 +416,8 @@
    #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
    #:fail-unless (project-safe? (∩ (strip-? #'τ-o/i) #'τ-o/i) #'τ-i/i)
                  (string-append "Not prepared to handle internal events:\n" (make-actor-error-message #'τ-i/i #'τ-o/i #'τ-o/i))
-  #:with τ-i/o (pattern-matching-assertions #'τ-i)
+  ;; if there are Discards in pattern types, this will take more specific instances from other patterns
+  #:with τ-i/o (replace-bind-and-discard-with-★ (instantiate-pattern-type #'τ-i))
   #:with (~U* (~AnyActor τ-c/spawned) ...) #'τ-a
   #:with τ-c/this-actor (type-eval #'(U τ-i/o τ-o))
   #:with τ-c/final (type-eval #'(U τ-c/this-actor τ-c/spawned ...))
@@ -484,7 +489,7 @@
    #:with τ-ds-i (strip-inbound #'τ-c.norm)
    #:with τ-ds-o (strip-outbound #'τ-c.norm)
    #:with τ-relay (relay-interests #'τ-c.norm)
-   #:with τ-ds-act (mk-Actor- (list (mk-U*- #'(τ-ds-i τ-ds-o τ-relay))))
+   #:with τ-ds-act (mk-Actor- (list (mk-U- #'(τ-ds-i τ-ds-o τ-relay))))
    -----------------------------------------------------------------------------------
    [⊢ (syndicate:dataspace s- ...) (⇒ : ★/t)
                                    (⇒ ν-s (τ-ds-act))]]
@@ -702,8 +707,9 @@
 ;; n.b. this is a blocking operation, so an actor that uses this internally
 ;; won't necessarily terminate.
 (define-typed-syntax run-ground-dataspace
+  ;; TODO : this has the same problem with re-expansion of what's in the τ-c position as spawn
   [(run-ground-dataspace τ-c:type s ...) ≫
-   ;;#:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
+   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
    #:mode (communication-type-mode #'τ-c.norm)
    [
     [⊢ s ≫ s- (⇒ : t1)] ...
