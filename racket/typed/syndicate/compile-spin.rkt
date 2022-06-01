@@ -880,7 +880,7 @@ Examples:
   4:	proc  2 (proc824:1) model.pml:140 (state 2)	[ClubMemberT_String_assertions = (ClubMemberT_String_assertions+1)]
   <<<<<START OF CYCLE>>>>>
 |#
-(define TRAIL-LINE-RX #px"(?m:^  <<<<<START OF CYCLE>>>>>|^\\s*\\d+:\\s*proc\\s*(\\d+)\\s*\\(.*\\) \\S+\\.pml:(\\d+))")
+(define TRAIL-LINE-RX #px"(?m:^\\s*<<<<<START OF CYCLE>>>>>|^\\s*\\d+:\\s*proc\\s*(\\d+)\\s*\\(.*\\) \\S+\\.pml:(\\d+))")
 
 ;; Path -> Void
 ;; assume the trail file exists in the same directory as the spin (model) file
