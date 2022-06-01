@@ -897,10 +897,9 @@ Examples:
 (define (run-script cmd args)
   (match-define (list stdo stdin pid stderr ctrl)
     (apply process* cmd args))
-  (ctrl 'wait)
-  (define script-completed? (equal? (ctrl 'status) 'done-ok))
   (define script-output (port->string stdo))
   (define script-err (port->string stderr))
+  (define script-completed? (equal? (ctrl 'status) 'done-ok))
   (close-output-port stdin)
   (values script-completed? script-output script-err))
 
