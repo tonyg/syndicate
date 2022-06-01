@@ -1,6 +1,8 @@
 #lang turnstile
 
-(provide Observe★)
+(provide Observe★
+         RoleNTimes
+         (for-syntax RoleNTimes*))
 
 (require "core-types.rkt")
 (require turnstile/typedefs)
@@ -24,3 +26,22 @@
     (match a
       [(arity-eq n) n]
       [(arity-ge n) n])))
+
+(define-for-syntax (RoleNTimes* n Step behav)
+  (let loop ([i 1])
+  (define nm (format-id behav "step~a" i))
+  (define reacts-to (if (= i 1) #'Observe #'Message))
+  (quasisyntax/loc behav
+    (Role (#,nm)
+      (Reacts (#,reacts-to #,Step)
+              (Sends #,Step))
+      (Reacts (Message #,Step)
+              (Effs #,behav
+                    (Stop #,nm
+                          #,@(if (< i n)
+                                 (list #`(Sends #,Step) (loop (add1 i)))
+                                 (list)))))))))
+
+(define-syntax-parser RoleNTimes
+  [(_ ~! n:nat Step:type behav:type)
+   (RoleNTimes* (syntax-e #'n) #'Step.norm #'behav.norm)])
