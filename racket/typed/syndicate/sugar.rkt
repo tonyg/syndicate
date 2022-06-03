@@ -30,10 +30,14 @@
 (define-for-syntax (RoleNTimes* n Step behav)
   (let loop ([i 1])
   (define nm (format-id behav "step~a" i))
-  (define reacts-to (if (= i 1) #'Observe #'Message))
   (quasisyntax/loc behav
     (Role (#,nm)
-      (Reacts (#,reacts-to #,Step)
+      #,@(if (= i 1)
+             (list #'(Shares Unit))
+             (list))
+      (Reacts #,(if (= i 1)
+                    #'(Asserted Unit)
+                    #`(Message #,Step))
               (Sends #,Step))
       (Reacts (Message #,Step)
               (Effs #,behav
