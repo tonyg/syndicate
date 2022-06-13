@@ -38,12 +38,16 @@
       (Reacts #,(if (= i 1)
                     #'(Asserted Unit)
                     #`(Message #,Step))
-              (Sends #,Step))
+              #,@(if (= i n)
+                     (list)
+                     (list #`(Sends #,Step))))
       (Reacts (Message #,Step)
               (Effs #,behav
                     (Stop #,nm
                           #,@(if (< i n)
-                                 (list #`(Sends #,Step) (loop (add1 i)))
+                                 (if (= i 1)
+                                     (list #`(Sends #,Step) (loop (add1 i)))
+                                     (list (loop (add1 i))))
                                  (list)))))))))
 
 (define-syntax-parser RoleNTimes
