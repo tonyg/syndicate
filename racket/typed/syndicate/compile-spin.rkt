@@ -10,6 +10,7 @@
          (prefix-in synd: (only-in syndicate/patch patch-empty patch-seq)))
 
 (require (only-in racket/hash hash-union))
+(require syntax/parse/define)
 
 (module+ test
   (require rackunit)
@@ -560,29 +561,88 @@
      (display SPIN-PRELUDE)
      (gen-assignment assignment)
      (newline)
+     (gen-assign GLOBAL-CLOCK-VAR GLOBAL-CLOCK-INIT-VAL #:declare #t)
      (for ([p procs])
        (gen-spin-proc p name-env)
        (newline))
-     (gen-msg-dispatcher msg-table (map sproc-name procs))
+     (gen-clock-ticker (map sproc-name procs) msg-table)
+     (newline)
      (gen-spec "spec" (lambda () (gen-ltl spec)))
      (newline)
      (gen-sanity-ltl assignment)]))
 
+;; (-> Void) -> Void
+;; generate the prelude for spin atomic sequences, call `gen-bdy`,
+;; then end the atomic block
+(define (with-spin-atomic* gen-bdy)
+  (indent) (displayln "atomic {")
+  (with-indent (gen-bdy))
+  (indent) (displayln "}"))
+
+(define-syntax-parse-rule (with-spin-atomic bdy ...+)
+  (with-spin-atomic* (lambda () bdy ...)))
+
+;; (-> Void) -> Void
+;; generate the prelude for spin dstep sequences, call `gen-bdy`,
+;; then end the dstep block
+(define (gen-spin-dstep gen-bdy)
+  (indent) (printf "d_step { ~a\n" (format-as-comment DSTEP-EVENT))
+  (with-indent (gen-bdy))
+  (indent) (displayln "}"))
+
+(define-syntax-parse-rule (with-spin-dstep bdy ...+)
+  (gen-spin-dstep (lambda () bdy ...)))
+
+;; (-> Void) -> Void
+(define (gen-spin-if gen-bdy)
+  (indent) (displayln "if")
+  (with-indent (gen-bdy))
+  (indent) (displayln "fi;"))
+
+(define-syntax-parse-rule (with-spin-if bdy ...+)
+  (gen-spin-if (lambda () bdy ...)))
+
+;; (-> Void) -> Void
+(define (gen-spin-do gen-bdy)
+  (indent) (displayln "do")
+  (with-indent (gen-bdy))
+  (indent) (displayln "od;"))
+
+(define-syntax-parse-rule (with-spin-do bdy ...+)
+  (gen-spin-do (lambda () bdy ...)))
+
+(define (gen-spin-branch pred gen-body [comment ""])
+  (indent) (printf ":: ~a -> ~a\n" pred comment)
+  (with-indent (gen-body)))
+
+(define-syntax-parse-rule (with-spin-branch pred (~optional (~seq #:comment comment))
+                            body ...+)
+  (gen-spin-branch pred (lambda () body ...) (~? comment)))
+
+(define (gen-spin-break)
+  (indent) (displayln "break;"))
+
 ;; SpinProcess NameEnvironment -> Void
 (define (gen-spin-proc proc name-env)
   (match-define (sproc name state-names locals init-actions states) proc)
+  (define my-clock (proc-clock-var name))
   (indent) (declare-mtype state-names)
+  (indent) (gen-assign my-clock GLOBAL-CLOCK-INIT-VAL #:declare #t)
   (indent) (printf "active proctype ~a() {\n" name)
   (with-indent
     (gen-assignment locals)
-    (indent) (displayln "atomic {")
-    (for ([a init-actions])
-      (gen-spin-form a name-env name))
-    (indent) (displayln "}")
+    (with-spin-dstep
+      (for ([a init-actions])
+        (gen-spin-form a name-env name)))
     (indent) (printf "~a: do\n" (format-end-label name))
     (with-indent
-      (for ([st states])
-        (gen-spin-form st name-env name)))
+      (with-spin-branch "true"
+        (indent) (printf "~a;\n" (clock-predicate my-clock))
+        (with-spin-atomic
+        (indent) (update-clock my-clock)
+        (with-spin-if
+          (for ([st states])
+            (gen-spin-form st name-env name))))))
     (indent) (displayln "od;"))
   (indent) (displayln "}"))
 
@@ -594,22 +654,20 @@
      (cond
        [(empty? branches)
         ;; no transitions out of this state
-        (indent) (printf "~a: false;\n" (format-end-label name))]
+        (gen-spin-break)
+        ]
        [else
         (with-indent
-          (indent) (displayln "if")
-          (with-indent
+          (with-spin-do
             (for ([branch branches])
-              (gen-spin-form branch name-env proc-name)))
-          (indent) (displayln "fi;"))])]
+              (gen-spin-form branch name-env proc-name))
+            (gen-spin-branch "else" gen-spin-break)))])]
     [(sbranch event dest actions)
      (indent) (printf ":: ~a -> ~a\n" (predicate-for event proc-name) (embed-event-as-comment event name-env))
      (with-indent
-       (indent) (displayln "atomic {")
        (with-indent
          (for ([act actions])
-           (gen-spin-form act name-env proc-name)))
-       (indent) (displayln "}"))]
+           (gen-spin-form act name-env proc-name))))]
     [(assert x)
      (indent) (printf "ASSERT(~a); ~a\n" x (embed-value-as-comment assert x name-env))]
     [(retract x)
@@ -627,29 +685,32 @@
     [(transition-to dest)
      (indent) (printf "~a = ~a;\n" (svar-name CURRENT-STATE) dest)]))
 
-;; MessageTable [Listof SName] -> Void
-(define (gen-msg-dispatcher msg-table proc-names)
-  (unless (hash-empty? msg-table)
-    (indent) (displayln "active proctype __msg_dispatcher__() {")
-    (with-indent
-      (indent) (displayln "end: do")
-      (with-indent
-        (for ([(sent-msg matching-evts) (in-hash msg-table)])
-          (gen-msg-dispatch sent-msg matching-evts proc-names)))
-      (indent) (displayln "od;"))
-    (indent) (displayln "}")))
+;; [Listof SName] MessageTable -> Void
+(define (gen-clock-ticker proc-names msg-table)
+  (define clock-names (for/list ([pn (in-list proc-names)])
+                        (svar-name (proc-clock-var pn))))
+  (indent) (displayln "active proctype __clock_ticker__() {")
+  (with-indent
+    (indent) (displayln "end_clock_ticker:")
+    (with-spin-do
+      (with-spin-branch (all-procs-ready-predicate clock-names)
+        (with-spin-dstep
+          (indent) (update-clock GLOBAL-CLOCK-VAR (format-as-comment TURN-BEGIN-EVENT))
+          (unless (hash-empty? msg-table)
+            (with-spin-do
+              (gen-spin-branch "else" gen-spin-break)
+              (for ([(sent-msg matching-evts) (in-hash msg-table)])
+                (gen-msg-dispatch sent-msg matching-evts proc-names))))))))
+  (indent) (displayln "}"))
 
 ;; SName (Setof SName) [Listof SName] -> Void
 (define (gen-msg-dispatch sent-msg matching-evts proc-names)
   (define mailbox-nm (messages-var-name sent-msg))
   (indent) (printf ":: ~a > 0 ->\n" mailbox-nm)
   (with-indent
-    (indent) (displayln "atomic {")
-    (with-indent
-      (indent) (printf "~a--;\n" mailbox-nm)
-      (for ([proc (in-list proc-names)])
-        (dispatch-to matching-evts proc)))
-    (indent) (displayln "}")))
+    (indent) (printf "~a--;\n" mailbox-nm)
+    (for ([proc (in-list proc-names)])
+      (dispatch-to matching-evts proc))))
 
 ;; [Setof SName] SName -> Void
 (define (dispatch-to matching-evts proc)
@@ -671,12 +732,16 @@
 ;; Assignment -> Void
 (define (gen-assignment assign)
   (for ([(var val) (in-hash assign)])
-    (indent) (printf "~a = ~a;\n"
-                     (declare-var var)
-                     (spin-val->string val))))
+    (gen-assign var val #:declare #t)))
 
-;; SVar -> Void
-(define (declare-var var)
+;; SVar SValue [Bool] -> Void
+(define (gen-assign var val #:declare [declare? #f])
+  (indent) (printf "~a = ~a;\n"
+                   (if declare? (var-decl var) (svar-name var))
+                   (spin-val->string val)))
+
+;; SVar -> String
+(define (var-decl var)
   (match-define (svar name ty) var)
   (format "~a ~a" (spin-type->string ty) name))
 
@@ -737,7 +802,11 @@
 ;; (τ -> Any) SName NameEnvironment -> String
 (define (embed-value-as-comment tag sname name-env)
   (define ty (reverse-lookup name-env sname))
-  (format "/*~a*/" (tag ty)))
+  (format-as-comment (tag ty)))
+
+;; Any -> String
+(define (format-as-comment v)
+  (format "/*~a*/" v))
 
 ;; NameEnvironment SName -> τ
 (define (reverse-lookup name-env sname)
@@ -749,6 +818,30 @@
 ;; format a suitable end label based on the process/state name
 (define (format-end-label s)
   (format "end_~a" s))
+
+;; SName -> SVar
+;; SVar for a process's clock
+(define (proc-clock-var proc-name)
+  (svar (string->symbol (format "~a_clock" proc-name))
+        SBool))
+
+(define GLOBAL-CLOCK-VAR (svar 'GLOBAL_CLOCK SBool))
+(define GLOBAL-CLOCK-INIT-VAL #t)
+
+;; SVar -> String
+(define (clock-predicate clock-var)
+  (format "~a == ~a" (svar-name clock-var) (svar-name GLOBAL-CLOCK-VAR)))
+
+;; SVar -> Void
+(define (update-clock clock [comment ""])
+  (printf "~a = !~a;~a\n" (svar-name clock) (svar-name clock) comment))
+
+;; (Listof SName) -> String
+(define (all-procs-ready-predicate clock-names)
+  (define global-name (svar-name GLOBAL-CLOCK-VAR))
+  (define preds (for/list ([cn (in-list clock-names)])
+                  (format "(~a != ~a)" global-name cn)))
+  (string-join preds " && "))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LTL
@@ -918,6 +1011,13 @@ Examples:
 ;;   - (retract τ)
 ;;   - (Asserted τ)
 ;;   - (Retracted τ)
+;;   - 'dstep
+;;   - 'turn-begin
+
+;; the first statement in a d_step sequence (possibly atomic too) has the line
+;; number of the d_step block itself in the trace
+(define DSTEP-EVENT 'dstep)
+(define TURN-BEGIN-EVENT 'turn-begin)
 
 ;; (Listof (List String String)) (Vectorof String) -> (Listof TraceStep)
 (define (interpret-spin-trace pid/line-trace model-lines)
@@ -927,12 +1027,21 @@ Examples:
         ['(#f #f)
          START-OF-CYCLE]
         [(list pid-str line-no-str)
-         (define line (vector-ref model-lines (sub1 (string->number line-no-str))))
-         (define evt (extract-comment-value line))
-         (and evt
-              (trace-step (string->number pid-str) evt))]
-        )))
+         (define line-no (string->number line-no-str))
+         (extract-trace-step pid-str line-no model-lines)])))
   (filter values maybe-steps))
+
+;; String Nat (Vectorof String) -> (Maybe TraceEvent)
+(define (extract-trace-step pid-str line-no model-lines)
+  (define line (vector-ref model-lines (sub1 line-no)))
+  (define evt (extract-comment-value line))
+  (cond
+    [(equal? evt DSTEP-EVENT)
+     (extract-trace-step pid-str (add1 line-no) model-lines)]
+    [evt
+     (trace-step (string->number pid-str) evt)]
+    [else
+     #f]))
 
 ;; (Listof TraceStep) -> Void
 (define (print-trace trace)
@@ -944,6 +1053,10 @@ Examples:
        (printf "Start of Cycle (if this is the last step that means the final state is stuttered):\n")]
       [(trace-step pid evt)
        (match evt
+         [(== TURN-BEGIN-EVENT)
+          (printf "A new turn begins\n")]
+         [(== DSTEP-EVENT)
+          (printf "\nERROR ERROR!! SAW DSTEP EVENT!! ERROR ERROR\n\n")]
          [(assert ty)
           (printf "Process ~a ASSERTS ~a\n" pid (τ->string ty))]
          [(retract ty)
@@ -986,6 +1099,8 @@ Examples:
              [else
               (values point current-patch)]))
          (match evt
+           [(== DSTEP-EVENT)
+            (printf "\nERROR ERROR!! SAW DSTEP EVENT!! ERROR ERROR\n\n")]
            [(assert ty)
             (define p (synd:assert ty))
             (values pid next-point (synd:patch-seq next-patch p) messages)]
@@ -1003,6 +1118,9 @@ Examples:
             (values pid next-point next-patch messages)]
            [(Message ty)
             #;(trace-event-consumed ??? ??? pid ???)
+            (values pid next-point next-patch messages)]
+           [(or (== TURN-BEGIN-EVENT)
+                (== DSTEP-EVENT))
             (values pid next-point next-patch messages)])])))
   (end-turn! final-pid final-point final-patch final-messages))
 
