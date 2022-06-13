@@ -68,7 +68,7 @@
          export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
          verify-actors
          ;; LTL Syntax
-         True False Always Eventually Until WeakUntil Implies And Or Not A M
+         True False Always Eventually Until WeakUntil Release Implies And Or Not A M
          ;; Extensions
          match cond
          submod for-syntax for-meta only-in except-in
@@ -770,6 +770,7 @@
 (define-type Eventually : LTL -> LTL)
 (define-type Until : LTL LTL -> LTL)
 (define-type WeakUntil : LTL LTL -> LTL)
+(define-type Release : LTL LTL -> LTL)
 (define-type Implies : LTL LTL -> LTL)
 (define-type And : LTL * -> LTL)
 (define-type Or : LTL * -> LTL)
@@ -823,6 +824,7 @@
                     Eventually proto:eventually
                     Until proto:strong-until
                     WeakUntil proto:weak-until
+                    Release proto:release
                     Implies proto:ltl-implies
                     And proto:&&
                     Or proto:||

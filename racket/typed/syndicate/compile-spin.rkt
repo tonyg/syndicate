@@ -779,6 +779,8 @@
      (gen-ltl-bin-op "W" p q)]
     [(strong-until p q)
      (gen-ltl-bin-op "U" p q)]
+    [(release p q)
+     (gen-ltl-bin-op "V" p q)]
     [(ltl-implies p q)
      (gen-ltl-bin-op "->" p q)]
     [(ltl-and p q)

@@ -7,6 +7,7 @@
 ;;  - (eventually [LTL X])
 ;;  - (weak-until [LTL X] [LTL X])
 ;;  - (strong-until [LTL X] [LTL X])
+;;  - (release [LTL X] [LTL X])
 ;;  - (ltl-implies [LTL X] [LTL X])
 ;;  - (ltl-and [LTL X] [LTL X])
 ;;  - (ltl-or  [LTL X] [LTL X])
@@ -20,6 +21,7 @@
 (struct atomic [p] #:prefab)
 (struct weak-until [p q] #:prefab)
 (struct strong-until [p q] #:prefab)
+(struct release [p q] #:prefab)
 (struct ltl-implies [p q] #:prefab)
 (struct ltl-and [p q] #:prefab)
 (struct ltl-or [p q] #:prefab)
@@ -37,6 +39,8 @@
        (weak-until (loop p) (loop q))]
       [(strong-until p q)
        (strong-until (loop p) (loop q))]
+      [(release p q)
+       (release (loop p) (loop q))]
       [(ltl-implies p q)
        (ltl-implies (loop p) (loop q))]
       [(ltl-and p q)
