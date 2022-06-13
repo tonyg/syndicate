@@ -204,13 +204,14 @@
            (values D txns)))
        (define assertions (assertions-in-state current assertion#))
        (define new-work
-         (for*/list ([txns (in-hash-values transitions)]
+         (for*/set ([txns (in-hash-values transitions)]
                      [txn (in-set txns)]
                      [st (in-value (transition-dest txn))]
-                     #:unless (equal? st current)
-                     #:unless (hash-has-key? states st))
+                     #:unless (or (equal? st current)
+                                  (hash-has-key? states st)
+                                  (member st more)))
            st))
-       (loop (append more new-work)
+       (loop (append more (set->list new-work))
              (hash-set states current (state current transitions assertions)))]
       ['()
        (role-graph (set (Role-nm role)) states)])))
