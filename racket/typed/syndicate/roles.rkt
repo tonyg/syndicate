@@ -66,7 +66,7 @@
          print-type print-role role-strings
          ;; Behavioral Roles
          export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
-         verify-actors
+         verify-actors verify-actors/fail
          ;; LTL Syntax
          True False Always Eventually Until WeakUntil Release Implies And Or Not A M
          ;; Extensions
@@ -960,6 +960,12 @@
    #:with spec- #`(quote- #,(synd->proto (type-eval #'spec)))
    (syntax/loc this-syntax
      (check-true (#%app- proto:compile+verify spec- (#%app- list- actor-ty.role ...))))])
+
+(define-syntax-parser verify-actors/fail
+  [(_ spec actor-ty:type-or-proto ...)
+   #:with spec- #`(quote- #,(synd->proto (type-eval #'spec)))
+   (syntax/loc this-syntax
+     (check-false (#%app- proto:compile+verify spec- (#%app- list- actor-ty.role ...))))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
