@@ -24,6 +24,7 @@
          ;; Statements
          let let* if spawn dataspace start-facet set! begin block stop begin/dataflow #;unsafe-do
          when unless send! realize! define during/spawn
+         with-facets start WithFacets Start
          ;; Derived Forms
          during During
          define/query-value
@@ -529,6 +530,39 @@
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
   ----------------------------------------------------
   [⊢ (#%app- x- e-) (⇒ : ★/t)])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; With Facets
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-typed-syntax (with-facets ([x:id impl:expr] ...) fst:id) ≫
+  #:fail-unless (for/or ([y (in-syntax #'(x ...))]) (free-identifier=? #'fst y))
+                "must select one facet to start"
+  [[x ≫ x- : StartableFacet] ... ⊢ (with-facets-impls ([x impl] ...) fst) ≫ impl- (⇒ ν-f (~effs wsf-body))]
+  ----------------------------------------
+  [⊢ impl- (⇒ ν-f ((WithStartableFacets [x ...] wsf-body)))])
+
+(define-typed-syntax (with-facets-impls ([x impl] ...) fst) ≫
+  ;; need to set use-stop-list to true mb?
+  [⊢ (facet-impl x impl) ≫ x-impl- (⇒ ν-f (~effs FI))] ...
+  [⊢ fst ≫ fst-]
+  ----------------------------------------
+  [⊢ (let- ()
+           x-impl- ...
+           (#%app- fst-))
+     (⇒ ν-f ((WSFBody (FacetImpls FI ...) fst)))])
+
+(define-typed-syntax (facet-impl x ((~datum facet) impl ...+)) ≫
+  [⊢ x ≫ x-]
+  [⊢ (start-facet x impl ...) ≫ impl- (⇒ ν-f (~effs (~and R (~Role (x--) Body ...))))]
+  ----------------------------------------
+  [⊢ (define- (x-) impl-) (⇒ ν-f ((FacetImpl x R)))])
+
+(define-typed-syntax (start x:id) ≫
+  [⊢ x ≫ x- (⇒ : ~StartableFacet)]
+  ----------------------------------------
+  [⊢ (#%app- x-) (⇒ ν-f ((Start x)))])
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Derived Forms

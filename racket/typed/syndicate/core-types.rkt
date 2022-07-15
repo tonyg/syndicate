@@ -46,9 +46,6 @@
   (require rackunit)
   (require rackunit/turnstile))
 
-(begin-for-syntax
-  (current-use-stop-list? #f))
-
 (define-for-syntax KIND-TAG ':)
 
 #;(require (for-syntax "syntax-serializer.rkt"))
@@ -376,6 +373,61 @@
     [(~Role (_ : _) _) #t]
     [_ #f]))
 
+(define-type StartableFacet : StartableFacet)
+(define-type Start : StartableFacet -> Type)
+(define-type WithStartableFacet #:with-binders [X : StartableFacet] : Type -> Type)
+(define-type FacetImpl : StartableFacet Type -> Type)
+(define-type FacetImpls : Type * -> Type)
+(define-type WSFBody : Type StartableFacet -> Type)
+
+(define-syntax (WithFacets stx)
+  (syntax-parse stx
+    [(WithFacets ([X:id FacetBody] ...+) Y:id)
+     #:with Bodys #'(FacetImpls [FacetImpl X FacetBody] ...)
+     (syntax/loc stx
+       (WithStartableFacets [X ...] (WSFBody Bodys Y)))]))
+
+(define-syntax (WithStartableFacets stx)
+  (syntax-parse stx
+    [(_ [] Body)
+     (syntax/loc stx
+       Body)]
+    [(_ [X Xs ...] Body)
+     (syntax/loc stx
+       (WithStartableFacet [X : StartableFacet]
+         (WithStartableFacets [Xs ...] Body)))]))
+
+(begin-for-syntax
+  (define (flatten-startable-facets ty)
+    (define-values (body vars)
+      (let loop ([ty ty]
+                 [vars/rev '()])
+        (syntax-parse ty
+          [(~WithStartableFacet (X : _) τ)
+           (loop #'τ (cons #'X vars/rev))]
+          [τ
+           (values #'τ (reverse vars/rev))])))
+    #`(#,vars #,body))
+
+  (define-syntax ~WithStartableFacets
+    (pattern-expander
+     (syntax-parser
+       [(_ vars-pat impls-pat body-pat)
+        #'(~and (~WithStartableFacet (_ : _) _)
+                TY
+                (~parse (vars-pat (~WSFBody impls-pat body-pat))
+                        (flatten-startable-facets #'TY)))])))
+
+  (define-syntax ~WithFacets
+    (pattern-expander
+     (syntax-parser
+       [(_ impls-pat body-pat)
+        #'(~and (~WithStartableFacets [_ (... ...)] [~FacetImpls (~FacetImpl name impl) (... ...)] body)
+                (~parse impls-pat
+                        #'([name impl] (... ...)))
+                (~parse body-pat
+                        body))]))))
+
 (define-type-constructor Shares #:arity = 1)
 (define-type-constructor Sends #:arity = 1)
 (define-type-constructor Realizes #:arity = 1)
@@ -420,7 +472,7 @@
 (define-for-syntax (resugar-∀ ty)
   (syntax-parse (flatten-∀ ty)
     [((X ...) body)
-     (list* #'∀ (syntax->list #'(X ...)) (resugar-type #'body))]))
+     (list #'∀ (syntax->list #'(X ...)) (resugar-type #'body))]))
 
 (define-type ∀ #:with-binders [X : Type] : Type -> Type
   #:implements get-resugar-info
@@ -484,7 +536,6 @@
                 (~parse var-pat #'(internal-name))
                 (~parse ty-pat #'tys)))]))))
 
-
 ;; for describing the RHS
 ;; a value and a description of the effects
 (define-type-constructor Computation #:arity = 4)
@@ -494,6 +545,12 @@
 (define-type-constructor Spawns #:arity >= 0)
 
 
+
+#;(begin-for-syntax
+  (define type-eval0 (current-type-eval))
+  (current-type-eval (lambda args
+                       (parameterize ([current-use-stop-list? #f])
+                         (apply type-eval0 args)))))
 
 (define-for-syntax (type-eval t)
   ((current-type-eval) t))
@@ -635,7 +692,7 @@
   (define-syntax ~effs
     (pattern-expander
      (syntax-parser
-       [(_ eff:id ...)
+       [(_ eff ...)
         #:with tmp (generate-temporary 'effss)
         #'(~and tmp
                 (~parse (eff ...) (stx-or #'tmp #'())))])))
@@ -1384,7 +1441,11 @@
      [(~Discard _)
       #t]
      [(X:id Y:id)
-      (free-identifier=? #'X #'Y)]
+      (if (free-identifier=? #'X #'Y)
+          #t
+          #f #;(begin (pretty-print (syntax-debug-info #'X))
+                 (pretty-print (syntax-debug-info #'Y))
+                 #f))]
      [((~∀+ (X:id ...) τ1) (~∀+ (Y:id ...) τ2))
       #:when (stx-length=? #'(X ...) #'(Y ...))
       #:with τ2-X/Y (substs #'(X ...) #'(Y ...) #'τ2)
@@ -1794,7 +1855,9 @@
                      (~or (~datum →) (~datum ->)) ty_out))
       e ...+) ≫
    #:cut
-   #:with e+ #'(Λ (X ...)
+   #:with e+ #'(lambda ([x : ty] ...)
+                 (block e ...))
+              #;#'(Λ (X ...)
                   (lambda ([x : ty] ...)
                     (block e ...)))
    [[X ≫ X- : Type] ... ⊢ e+ ≫ e- (⇒ : TTTT)
@@ -1803,12 +1866,18 @@
                                       (~→ (~not (~Computation _ _ _ _)) ...
                                           (~Computation (~Value τ-v) _ _ _)))))]
    #:with (~and res-ty
+                (~→+ (~not (~Computation _ _ _ _)) ...
+                     (~Computation (~Value τ-v) _ _ _)))
+           #;(~and res-ty
                 (~∀+ (Y ...)
                      (~→+ (~not (~Computation _ _ _ _)) ...
                           (~Computation (~Value τ-v) _ _ _)))) #'TTTT
-   #:with ty_out- (substs #'(X- ...) #'(X ...) #'ty_out)
-   #:with actual (type-eval #'(∀+ (Y ...) τ-v))
-   #:with expected (type-eval #'(∀+ (X- ...) ty_out-))
+   ;; #:with ty_out- (substs #'(X- ...) #'(X ...) #'ty_out)
+   ;; #:with actual (substs #'(X ...) #'(X- ...) #'τ-v) #;(type-eval #'(∀+ (Y ...) τ-v))
+   ;; #:with expected (type-eval #'(∀+ (X- ...) ty_out-))
+   #:with τ-v+ (substs #'(X ...) #'(X- ...) #'τ-v)
+   #:with actual (type-eval #'(∀+ (X ...) τ-v+))
+   #:with expected (type-eval #'(∀+ (X ...) ty_out))
    #:fail-unless (<: #'actual #'expected)
                  (format "expected different return type\n got ~a\n expected ~a\n"
                          (resugar-type #'actual) (resugar-type #'expected))
