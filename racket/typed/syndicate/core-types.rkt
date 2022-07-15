@@ -380,6 +380,14 @@
 (define-type FacetImpls : Type * -> Type)
 (define-type WSFBody : Type StartableFacet -> Type)
 
+(define-for-syntax (WithStartableFacet? stx)
+  (syntax-parse stx
+    [(~WithStartableFacet (_ : _) _) #t]
+    [_ #f]))
+
+(define-for-syntax (TypeStartsFacet? t)
+  (or (Role? t) (WithStartableFacet? t)))
+
 (define-syntax (WithFacets stx)
   (syntax-parse stx
     [(WithFacets ([X:id FacetBody] ...+) Y:id)

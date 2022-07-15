@@ -314,7 +314,7 @@
 
 (define-typed-syntax on
   #:datum-literals (start stop)
-  [(on start s ...) ≫
+  [(on start s ...+) ≫
    [⊢ (block s ...) ≫ s- (⇒ ν-ep (~effs))
                           (⇒ ν-f (~effs τ-f ...))
                           (⇒ ν-s (~effs τ-s ...))]
@@ -322,7 +322,7 @@
    -----------------------------------
    [⊢ (syndicate:on-start s-) (⇒ : ★/t)
       (⇒ ν-ep (τ-r))]]
-  [(on stop s ...) ≫
+  [(on stop s ...+) ≫
    [⊢ (block s ...) ≫ s- (⇒ ν-ep (~effs))
                           (⇒ ν-f (~effs τ-f ...))
                           (⇒ ν-s (~effs τ-s ...))]
@@ -332,7 +332,7 @@
       (⇒ ν-ep (τ-r))]]
   [(on (evt:event-cons p)
        priority:priority
-       s ...) ≫
+       s ...+) ≫
    #:do [(define msg? (free-identifier=? #'syndicate:message (attribute evt.syndicate-kw)))
          (define elab
            (elaborate-pattern/with-com-ty (if msg? #'(message p) #'p)))]
@@ -384,7 +384,7 @@
      [⊢ (block s) ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
     ]
   ;; TODO: s shouldn't refer to facets or fields!
-  #:fail-unless (and (stx-andmap Role? #'(τ-f ...))
+  #:fail-unless (and (stx-andmap TypeStartsFacet? #'(τ-f ...))
                      (= 1 (length (syntax->list #'(τ-f ...)))))
                  "expected exactly one Role for body"
   #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
@@ -411,7 +411,8 @@
    #:cut
    [⊢ (block s) ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
    ;; TODO: s shouldn't refer to facets or fields!
-   #:fail-unless (and (stx-andmap Role? #'(τ-f ...))
+   #:do [(displayln #'(τ-f ...))]
+   #:fail-unless (and (stx-andmap TypeStartsFacet? #'(τ-f ...))
                       (= 1 (length (syntax->list #'(τ-f ...)))))
    "expected exactly one Role for body"
    #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
@@ -535,34 +536,55 @@
 ;; With Facets
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define-for-syntax (walk/with-facets e... [unique (gensym 'walk/with-facets)])
+  (define-values (rev-e-... facet-effects)
+    (let loop ([e... (syntax->list e...)]
+               [rev-e-... '()]
+               [facet-effects '()])
+      (match e...
+        ['()
+         (values rev-e-... facet-effects)]
+        [(cons e more)
+         (define e- (local-expand e (list unique) (list #'erased)))
+         (syntax-parse e-
+           #:literals (erased)
+           [(erased impl)
+            (define f-effs (syntax->list (get-effect e- 'ν-f)))
+            (loop more
+                  (cons #'impl rev-e-...)
+                  (append f-effs facet-effects))])])))
+  (values (reverse rev-e-...)
+          facet-effects))
+
 (define-typed-syntax (with-facets ([x:id impl:expr] ...) fst:id) ≫
   #:fail-unless (for/or ([y (in-syntax #'(x ...))]) (free-identifier=? #'fst y))
                 "must select one facet to start"
   [[x ≫ x- : StartableFacet] ... ⊢ (with-facets-impls ([x impl] ...) fst) ≫ impl- (⇒ ν-f (~effs wsf-body))]
+  #:with WSFs (type-eval #'(WithStartableFacets [x ...] wsf-body))
   ----------------------------------------
-  [⊢ impl- (⇒ ν-f ((WithStartableFacets [x ...] wsf-body)))])
+  [⊢ impl- (⇒ : ★/t) (⇒ ν-f (WSFs))])
 
 (define-typed-syntax (with-facets-impls ([x impl] ...) fst) ≫
   ;; need to set use-stop-list to true mb?
-  [⊢ (facet-impl x impl) ≫ x-impl- (⇒ ν-f (~effs FI))] ...
+  #:do [(define-values (bodies FIs) (walk/with-facets #'([facet-impl x impl] ...)))]
+  ;; [⊢ (facet-impl x impl) ≫ x-impl- (⇒ ν-f (~effs FI))] ...
   [⊢ fst ≫ fst-]
   ----------------------------------------
   [⊢ (let- ()
-           x-impl- ...
+           #,@bodies
            (#%app- fst-))
-     (⇒ ν-f ((WSFBody (FacetImpls FI ...) fst)))])
+     (⇒ ν-f ((WSFBody (FacetImpls #,@FIs) fst)))])
 
 (define-typed-syntax (facet-impl x ((~datum facet) impl ...+)) ≫
   [⊢ x ≫ x-]
   [⊢ (start-facet x impl ...) ≫ impl- (⇒ ν-f (~effs (~and R (~Role (x--) Body ...))))]
   ----------------------------------------
-  [⊢ (define- (x-) impl-) (⇒ ν-f ((FacetImpl x R)))])
+  [⊢ (erased (define- (x-) impl-)) (⇒ ν-f ((FacetImpl x R)))])
 
 (define-typed-syntax (start x:id) ≫
   [⊢ x ≫ x- (⇒ : ~StartableFacet)]
   ----------------------------------------
-  [⊢ (#%app- x-) (⇒ ν-f ((Start x)))])
-
+  [⊢ (#%app- x-) (⇒ : ★/t) (⇒ ν-f ((Start x)))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Derived Forms
