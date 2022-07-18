@@ -434,7 +434,7 @@
                 (~parse impls-pat
                         #'([name impl] (... ...)))
                 (~parse body-pat
-                        body))]))))
+                        #'body))]))))
 
 (define-type-constructor Shares #:arity = 1)
 (define-type-constructor Sends #:arity = 1)
@@ -1274,7 +1274,11 @@
      (values bot (mk-Message- #'(τ-m)) bot bot bot)]
     [(~Realizes τ-m)
      (values bot bot bot (mk-Realize- #'(τ-m)) bot)]
-    [(~Role+Body (name:id)
+    [(~Start _)
+     (values bot bot bot bot bot)]
+    [(~WithFacets ([nm impl] ...) fst)
+     (apply values (syntax->list (analyze-roles #'(impl ...))))]
+    [(~Role+Body (_)
        (~or (~Shares τ-s)
             (~Know τ-k)
             (~Sends τ-m)

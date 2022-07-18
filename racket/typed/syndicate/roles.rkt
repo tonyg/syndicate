@@ -411,7 +411,6 @@
    #:cut
    [⊢ (block s) ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
    ;; TODO: s shouldn't refer to facets or fields!
-   #:do [(displayln #'(τ-f ...))]
    #:fail-unless (and (stx-andmap TypeStartsFacet? #'(τ-f ...))
                       (= 1 (length (syntax->list #'(τ-f ...)))))
    "expected exactly one Role for body"
@@ -560,26 +559,24 @@
   #:fail-unless (for/or ([y (in-syntax #'(x ...))]) (free-identifier=? #'fst y))
                 "must select one facet to start"
   [[x ≫ x- : StartableFacet] ... ⊢ (with-facets-impls ([x impl] ...) fst) ≫ impl- (⇒ ν-f (~effs wsf-body))]
-  #:with WSFs (type-eval #'(WithStartableFacets [x ...] wsf-body))
+  #:with WSFs (type-eval #'(WithStartableFacets [x- ...] wsf-body))
   ----------------------------------------
   [⊢ impl- (⇒ : ★/t) (⇒ ν-f (WSFs))])
 
 (define-typed-syntax (with-facets-impls ([x impl] ...) fst) ≫
-  ;; need to set use-stop-list to true mb?
   #:do [(define-values (bodies FIs) (walk/with-facets #'([facet-impl x impl] ...)))]
-  ;; [⊢ (facet-impl x impl) ≫ x-impl- (⇒ ν-f (~effs FI))] ...
   [⊢ fst ≫ fst-]
   ----------------------------------------
   [⊢ (let- ()
            #,@bodies
            (#%app- fst-))
-     (⇒ ν-f ((WSFBody (FacetImpls #,@FIs) fst)))])
+     (⇒ ν-f ((WSFBody (FacetImpls #,@FIs) fst-)))])
 
 (define-typed-syntax (facet-impl x ((~datum facet) impl ...+)) ≫
   [⊢ x ≫ x-]
   [⊢ (start-facet x impl ...) ≫ impl- (⇒ ν-f (~effs (~and R (~Role (x--) Body ...))))]
   ----------------------------------------
-  [⊢ (erased (define- (x-) impl-)) (⇒ ν-f ((FacetImpl x R)))])
+  [⊢ (erased (define- (x-) impl-)) (⇒ ν-f ((FacetImpl x- R)))])
 
 (define-typed-syntax (start x:id) ≫
   [⊢ x ≫ x- (⇒ : ~StartableFacet)]
