@@ -5,9 +5,12 @@
          None*
          Some
          some
-         none)
+         none
+         has?)
 
 (require "core-types.rkt")
+(require "prim.rkt")
+(require "core-expressions.rkt")
 
 
 (define-constructor* (none* : None*))
@@ -35,3 +38,10 @@
      (error "some")]
     [none
      (error "none")]))
+
+(define (∀ (X) (has? [v : (Maybe X)] [p : (→fn X Bool)] -> Bool))
+  (match v
+    [none
+     #f]
+    [(some $x)
+     (p x)]))
