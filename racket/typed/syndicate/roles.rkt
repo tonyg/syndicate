@@ -663,13 +663,23 @@
              #:attr expr #'#f)))
 
 
-(define-typed-syntax (define/query-value x:id e0 p e
+(define-typed-syntax (define/query-value (~or* x:id
+                                               [x:id (~optional (~datum :)) τ:type])
+                       e0
+                       p
+                       e
                        (~optional add:on-add)
                        (~optional remove:on-remove)) ≫
-  [⊢ e0 ≫ e0- (⇒ : τ)]
+  [⊢ e0 ≫ e0- (⇒ : τ0)]
+  #:do [(when (and (attribute τ)
+                   (not (<: #'τ0 (attribute τ.norm))))
+          (type-error #:src #'e0
+                      #:msg "initial expression doesn't match given type;\ngot ~a\nexpected ~a"
+                      (type->strX #'τ0)
+                      (type->strX #'τ.norm)))]
   #:fail-unless (pure? #'e0-) "expression must be pure"
   ----------------------------------------
-  [≻ (begin (field [x τ e0-])
+  [≻ (begin (field [x (~? τ.norm) e0-])
             (on (asserted p)
                 #:priority *query-priority*
                 (set! x e)
