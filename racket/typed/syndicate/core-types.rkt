@@ -1894,8 +1894,9 @@
                  (format "expected different return type\n got ~a\n expected ~a\n"
                          (resugar-type #'actual) (resugar-type #'expected))
    #:with f- (add-orig (generate-temporary #'f) #'f)
+   #:with final-ty (type-eval #'(∀+ (X- ...) res-ty))
    -------------------------------------------------------
-   [⊢ (erased (define/intermediate f f- res-ty e-)) (⇒ : ★/t)]]
+   [⊢ (erased (define/intermediate f f- final-ty e-)) (⇒ : ★/t)]]
   [(_ ((~datum ∀) (X:id ...)
                   (f [x (~optional (~datum :)) ty] ...))
       e ...+) ≫
