@@ -364,7 +364,9 @@ Like @racket[during], but spawns an actor for the behavior @racket[expr ...].
                         (code:line #:on-add on-add-expr))
           (maybe-on-remove (code:line)
                            (code:line #:on-remove on-remove-expr))]]{
-Equivalent to the untyped @racket[untyped:define/query-value].
+Equivalent to the untyped @racket[untyped:define/query-value]. The
+@racket[on-add-expr] and @racket[on-remove-expr], when given, execute after
+@racket[name] has been updated.
 }
 
 @defform[(define/query-set name pattern expr
