@@ -1,6 +1,7 @@
 #lang turnstile
 
 (provide (all-defined-out)
+         True False Bool
          (for-syntax (all-defined-out)))
 
 (require "core-types.rkt")
@@ -11,7 +12,7 @@
 ;; Primitives
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-base-types Int Bool String ByteString Symbol)
+(define-base-types Int String ByteString Symbol)
 
 ;; hmmm
 (define-primop + (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
@@ -119,9 +120,11 @@
   [(_ . n:integer) ≫
   ----------------
   [⊢ (#%datum- . n) (⇒ : Int)]]
-  [(_ . b:boolean) ≫
+  [(_ . b:boolean)
+   ≫
+   #:with T (if (syntax-e #'b) #'True #'False)
   ----------------
-  [⊢ (#%datum- . b) (⇒ : Bool)]]
+  [⊢ (#%datum- . b) (⇒ : T)]]
   [(_ . s:string) ≫
   ----------------
   [⊢ (#%datum- . s) (⇒ : String)]])

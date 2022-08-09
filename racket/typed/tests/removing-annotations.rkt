@@ -38,4 +38,4 @@
    (start-facet longer
                 (on (asserted (run $d $w?))
                     (printf "run ~a ~a\n" (add1 d) (if w? "brr" ""))))))
- #:verb-msg "unprepared to handle inputs: (RunT String Bool)")
+ #:verb-msg "unprepared to handle inputs: (RunT String True)")

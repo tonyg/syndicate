@@ -617,6 +617,10 @@
 (define-for-syntax (mk-U tys)
   (type-eval #`(U #,@tys)))
 
+(define-base-types True False)
+(define-type-alias Bool (U True False))
+
+
 (define-simple-macro (→fn ty-in ... ty-out)
   (→+ ty-in ... (Computation (Value ty-out)
                              (Endpoints)

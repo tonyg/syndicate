@@ -20,6 +20,7 @@
          Observe Inbound Outbound Actor U ⊥
          Computation Value Endpoints Roles Spawns Sends
          →fn proc
+         True False Bool
          (all-from-out "sugar.rkt")
          ;; Statements
          let let* if spawn dataspace start-facet set! begin block stop begin/dataflow #;unsafe-do
@@ -69,7 +70,7 @@
          export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
          verify-actors verify-actors/fail
          ;; LTL Syntax
-         True False Always Eventually Until WeakUntil Release Implies And Or Not A M
+         TT FF Always Eventually Until WeakUntil Release Implies And Or Not A M
          ;; Extensions
          match cond
          submod for-syntax for-meta only-in except-in
@@ -827,8 +828,8 @@
 
 (define-type LTL : LTL)
 
-(define-type True : LTL)
-(define-type False : LTL)
+(define-type TT : LTL)
+(define-type FF : LTL)
 (define-type Always : LTL -> LTL)
 (define-type Eventually : LTL -> LTL)
 (define-type Until : LTL LTL -> LTL)
@@ -881,8 +882,8 @@
                     OnStop proto:StopEvt
                     OnDataflow proto:DataflowEvt
                     ;; LTL
-                    True #t
-                    False #f
+                    TT #t
+                    FF #f
                     Always proto:always
                     Eventually proto:eventually
                     Until proto:strong-until
