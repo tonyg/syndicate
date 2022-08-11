@@ -44,39 +44,30 @@
 
 ;; copied from stlc
 (define-typed-syntax (ann e (~optional (~datum :)) τ:type) ≫
-  [⊢ e ≫ e- (⇐ : τ.norm)]
-  #:fail-unless (pure? #'e-) "expression must be pure"
+  [⊢ e ≫ e- (⇐ : τ.norm) (⇒ ν (~effs eff ...))]
   ------------------------------------------------
-  [⊢ e- (⇒ : τ.norm) ])
+  [⊢ e- (⇒ : τ.norm) (⇒ ν (eff ...))])
 
 ;; copied from ext-stlc
 (define-typed-syntax if
   [(_ e_tst e1 e2) ⇐ τ-expected ≫
    [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
    #:fail-unless (pure? #'e_tst-) "expression must be pure"
-   [⊢ e1 ≫ e1- (⇐ : τ-expected)
-      (⇒ ν-ep (~effs eps1 ...)) (⇒ ν-f (~effs fs1 ...)) (⇒ ν-s (~effs ss1 ...))]
-   [⊢ e2 ≫ e2- (⇐ : τ-expected)
-      (⇒ ν-ep (~effs eps2 ...)) (⇒ ν-f (~effs fs2 ...)) (⇒ ν-s (~effs ss2 ...))]
+   [⊢ e1 ≫ e1- (⇐ : τ-expected) (⇒ ν (~effs eff1 ...))]
+   [⊢ e2 ≫ e2- (⇐ : τ-expected) (⇒ ν (~effs eff2 ...))]
    --------
    [⊢ (if- e_tst- e1- e2-)
       (⇒ : τ-expected)
-      (⇒ ν-ep (eps1 ... eps2 ...))
-      (⇒ ν-f #,(make-Branch #'((fs1 ...) (fs2 ...))))
-      (⇒ ν-s (ss1 ... ss2 ...))]]
+      (⇒ ν #,(make-Branch #'((eff1 ...) (eff2 ...))))]]
   [(_ e_tst e1 e2) ≫
    [⊢ e_tst ≫ e_tst- ⇒ _] ; Any non-false value is truthy.
    #:fail-unless (pure? #'e_tst-) "expression must be pure"
-   [⊢ e1 ≫ e1- (⇒ : τ1)
-      (⇒ ν-ep (~effs eps1 ...)) (⇒ ν-f (~effs fs1 ...)) (⇒ ν-s (~effs ss1 ...))]
-   [⊢ e2 ≫ e2- (⇒ : τ2)
-      (⇒ ν-ep (~effs eps2 ...)) (⇒ ν-f (~effs fs2 ...)) (⇒ ν-s (~effs ss2 ...))]
+   [⊢ e1 ≫ e1- (⇒ : τ1) (⇒ ν (~effs eff1 ...))]
+   [⊢ e2 ≫ e2- (⇒ : τ2) (⇒ ν (~effs eff2 ...))]
    #:with τ (mk-U- #'(τ1 τ2))
    --------
    [⊢ (if- e_tst- e1- e2-) (⇒ : τ)
-      (⇒ ν-ep (eps1 ... eps2 ...))
-      (⇒ ν-f #,(make-Branch #'((fs1 ...) (fs2 ...))))
-      (⇒ ν-s (ss1 ... ss2 ...))]])
+      (⇒ ν #,(make-Branch #'((eff1 ...) (eff2 ...))))]])
 
 (define-typed-syntax (when e s ...+) ≫
   ------------------------------------
@@ -93,26 +84,18 @@
    [⊢ e ≫ e- ⇒ : τ_x] ...
    #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
    [[x ≫ x- : τ_x] ... ⊢ (block e_body ...) ≫ e_body- (⇐ : τ_expected)
-                   (⇒ ν-ep (~effs eps ...))
-                   (⇒ ν-f (~effs fs ...))
-                   (⇒ ν-s (~effs ss ...))]
+                   (⇒ ν (~effs eff ...))]
    ----------------------------------------------------------
    [⊢ (let- ([x- e-] ...) e_body-) (⇒ : τ_expected)
-      (⇒ ν-ep (eps ...))
-      (⇒ ν-f (fs ...))
-      (⇒ ν-s (ss ...))]]
+      (⇒ ν (eff ...))]]
   [(_ ([x e] ...) e_body ...) ≫
    [⊢ e ≫ e- ⇒ : τ_x] ...
    #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions must be pure"
    [[x ≫ x- : τ_x] ... ⊢ (block e_body ...) ≫ e_body- (⇒ : τ_body)
-                   (⇒ ν-ep (~effs eps ...))
-                   (⇒ ν-f (~effs fs ...))
-                   (⇒ ν-s (~effs ss ...))]
+                   (⇒ ν (~effs eff ...))]
    ----------------------------------------------------------
    [⊢ (let- ([x- e-] ...) e_body-) (⇒ : τ_body)
-      (⇒ ν-ep (eps ...))
-      (⇒ ν-f (fs ...))
-      (⇒ ν-s (ss ...))]])
+      (⇒ ν (eff ...))]])
 
 ;; copied from ext-stlc
 (define-typed-syntax let*
@@ -127,14 +110,10 @@
   [⊢ pred ≫ pred- (⇐ : Bool)] ...
   #:fail-unless (stx-andmap pure? #'(pred- ...)) "predicates must be pure"
   [⊢ (block s ...) ≫ s- (⇒ : τ-s)
-                   (⇒ ν-ep (~effs eps ...))
-                   (⇒ ν-f (~effs fs ...))
-                   (⇒ ν-s (~effs ss ...))] ...
+                   (⇒ ν (~effs eff ...))] ...
   ------------------------------------------------
   [⊢ (cond- [pred- s-] ...) (⇒ : (U τ-s ...))
-     (⇒ ν-ep (eps ... ...))
-     (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
-     (⇒ ν-s (ss ... ...))])
+     (⇒ ν #,(make-Branch #'((eff ...) ...)))])
 
 (define else #t)
 
@@ -145,9 +124,7 @@
                      (elaborate-pattern/with-type pat #'τ-e))
   #:with (([x τ:type] ...) ...) (stx-map pat-bindings #'(p/e ...))
   [[x ≫ x- : τ.norm] ... ⊢ (block s ...) ≫ s- (⇒ : τ-s)
-                (⇒ ν-ep (~effs eps ...))
-                (⇒ ν-f (~effs fs ...))
-                (⇒ ν-s (~effs ss ...))] ...
+                (⇒ ν (~effs eff ...))] ...
   ;; REALLY not sure how to handle p/p-/p.match-pattern,
   ;; particularly w.r.t. typed terms that appear in p.match-pattern
   [⊢ p/e ≫ p-- ⇒ τ-p] ...
@@ -161,9 +138,7 @@
   [⊢ (match- e- [p- s-] ...
                 [_ (#%app- error- "incomplete pattern match")])
      (⇒ : (U τ-s ...))
-     (⇒ ν-ep #,(make-Branch #'((eps ...) ...)))
-     (⇒ ν-f #,(make-Branch #'((fs ...) ...)))
-     (⇒ ν-s #,(make-Branch #'((ss ...) ...)))])
+     (⇒ ν #,(make-Branch #'((eff ...) ...)))])
 
 
 ;; (Listof Value) -> Value
@@ -171,21 +146,21 @@
   (#%app- cons- 'tuple es))
 
 (define-typed-syntax (tuple e:expr ...) ≫
-  [⊢ e ≫ e- (⇒ : τ)] ...
-  #:fail-unless (stx-andmap pure? #'(e- ...)) "expressions not allowed to have effects"
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))] ...
   -----------------------
-  [⊢ (#%app- mk-tuple (#%app- list- e- ...)) (⇒ : (Tuple τ ...))])
+  [⊢ (#%app- mk-tuple (#%app- list- e- ...))
+     (⇒ : (Tuple τ ...))
+     (⇒ ν (F ... ...))])
 
 (define unit : Unit (tuple))
 
 (define-typed-syntax (select n:nat e:expr) ≫
-  [⊢ e ≫ e- (⇒ : (~Tuple τ ...))]
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
+  [⊢ e ≫ e- (⇒ : (~Tuple τ ...)) (⇒ ν (~effs F ...))]
   #:do [(define i (syntax->datum #'n))]
   #:fail-unless (< i (stx-length #'(τ ...))) "index out of range"
   #:with τr (list-ref (stx->list #'(τ ...)) i)
   --------------------------------------------------------------
-  [⊢ (#%app- tuple-select n e-) (⇒ : τr)])
+  [⊢ (#%app- tuple-select n e-) (⇒ : τr) (⇒ ν (F ...))])
 
 (define- (tuple-select n t)
   (#%app- list-ref- t (#%app- add1- n)))
@@ -383,7 +358,6 @@
   [⊢ e ≫ e- (⇒ (~Tuple τ ...))]
   #:fail-unless (stx-length=? #'(x ...) #'(τ ...))
                 "mismatched size"
-  #:fail-unless (pure? #'e-) "expr must be pure"
   #:with (sel ...) (for/list ([y (in-syntax #'(x ...))]
                               [t (in-syntax #'(τ ...))]
                               [i (in-naturals)])

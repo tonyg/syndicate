@@ -18,4 +18,4 @@
     (on start (call/inst perform-task push-results))))
  : (List String)
  -> (list
-     "(Role (x) (Reacts OnStart (Role (perform) (Reacts OnStart (Stop perform (Branch (Effs (Role (done) (Shares Bool))) (Effs)))))))"))
+     "(Role (x) (Reacts OnStart (Role (perform) (Reacts OnStart (Stop perform (Branch (Effs (Role (done) (Shares True))) (Effs)))))))"))

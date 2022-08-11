@@ -13,12 +13,11 @@
          run-ground-dataspace
          ;; Types
          Tuple Bind Discard → ∀ AssertionSet
-         Role Reacts Shares Asserted Retracted Message OnDataflow Stop OnStart OnStop
+         Role Reacts Shares Asserted Retracted Message OnDataflow Stop OnStart OnStop Sends
          Know Forget Realize
          Branch Effs
          FacetName Field ★/t
-         Observe Inbound Outbound Actor U ⊥
-         Computation Value Endpoints Roles Spawns Sends
+         Observe Inbound Outbound Actor ActorWithRole U ⊥
          →fn proc
          True False Bool
          (all-from-out "sugar.rkt")
@@ -137,19 +136,58 @@
         (elaborate-pattern/with-type pat τ?)
         (elaborate-pattern pat))))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Effect Categories
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(begin-for-syntax
+  (define (effects-andmap p eff)
+    (syntax-parse eff
+      [(~or* (~Effs F ...)
+             (~Branch F ...))
+       (stx-andmap (curry effects-andmap p) #'(F ...))]
+      [_
+       (p eff)]))
+
+  ;; Any -> Bool
+  ;; Recognizes effects that are allowed in an endpoint installation context
+  (define (endpoint-effect? eff)
+    (or (Shares? eff)
+        (Know? eff)
+        (Reacts? eff)
+        (MakesField? eff)
+        (row-variable? eff)))
+
+  ;; Any -> Bool
+  ;; Recognizes effects that are allowed in a script context
+  (define (script-effect? eff)
+    (or (TypeStartsFacet? eff)
+        (Stop? eff)
+        (Sends? eff)
+        (Realizes? eff)
+        (AnyActor? eff)
+        (Start? eff)
+        (row-variable? eff)))
+
+  (define endpoint-effects? (curry effects-andmap endpoint-effect?))
+  (define script-effects? (curry effects-andmap script-effect?))
+
+  )
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core forms
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax start-facet
   [(_ name:id #:implements ~! spec:type ep ...+) ≫
-   [⊢ (start-facet name ep ...) ≫ e- (⇒ ν-f (~effs impl-ty))]
+   [⊢ (start-facet name ep ...) ≫ e- (⇒ ν (~effs impl-ty))]
    #:fail-unless (simulating-types? #'impl-ty #'spec.norm)
                  "facet does not implement specification"
    ------------------------------------------------------------
    [≻ e-]]
   [(_ name:id #:includes-behavior ~! spec:type ep ...+) ≫
-   [⊢ (start-facet name ep ...) ≫ e- (⇒ ν-f (~effs impl-ty))]
+   [⊢ (start-facet name ep ...) ≫ e- (⇒ ν (~effs impl-ty))]
    #:fail-unless (type-has-simulating-subgraphs? #'impl-ty #'spec.norm)
                  "no subset implements specified behavior"
    ------------------------------------------------------------
@@ -163,28 +201,30 @@
         (define name-- (add-orig (internal-definition-context-introduce ctx #'name- 'add)
                                  #'name))
         (int-def-ctx-bind-type-rename #'name+ #'name- #'facet-name-ty ctx)
-        (define-values (ep-... τ... ep-effects facet-effects spawn-effects)
-          (walk/bind #'(ep ...) ctx unique))
-        (unless (and (stx-null? facet-effects) (stx-null? spawn-effects))
+        (define-values (ep-... τ... effects) (walk/bind #'(ep ...) ctx unique))
+        (ensure-all! endpoint-effects? effects "only endpoint effects allowed")
+        #;(unless (andmap endpoint-effect? effects)
           (type-error #:src #'(ep ...) #:msg "only endpoint effects allowed"))]
   #:with ((~or (~and τ-a (~Shares _))
                (~and τ-k (~Know _))
                ;; untyped syndicate might allow this - TODO
                #;(~and τ-m (~Sends _))
                (~and τ-r (~Reacts _ _ ...))
-               ~MakesField)
+               ~MakesField
+               τ-other)
           ...)
-         ep-effects
+         effects
   #:with τ (type-eval #`(Role (#,name--)
                           τ-a ...
                           τ-k ...
                           ;; τ-m ...
-                          τ-r ...))
+                          τ-r ...
+                          τ-other ...))
   --------------------------------------------------------------
   [⊢ (syndicate:react (let- ([#,name-- (#%app- syndicate:current-facet-id)])
                         #,@ep-...))
      (⇒ : ★/t)
-     (⇒ ν-f (τ))]])
+     (⇒ ν (τ))]])
 
 (define-typed-syntax (during/spawn pat bdy ...+) ≫
   #:with pat+ (elaborate-pattern/with-com-ty #'pat)
@@ -193,32 +233,31 @@
   #:fail-unless (allowed-interest? (pattern-sub-type #'τp)) "overly broad interest, ?̱̱★ and ??★ not allowed"
   #:with ([x:id τ:type] ...) (pat-bindings #'pat+)
   [[x ≫ x- : τ] ... ⊢ (block bdy ...) ≫ bdy-
-                (⇒ ν-ep (~effs τ-ep ...))
-                (⇒ ν-f (~effs))
-                (⇒ ν-s (~effs))]
+                (⇒ ν (~effs F ...))]
+  #:fail-unless (stx-andmap endpoint-effects? #'(F ...)) "only endpoint effects allowed"
   #:with pat- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'pat+))
   #:with τc:type (current-communication-type)
-  #:with τ-facet (type-eval #'(Role (_) τ-ep ...))
+  #:with τ-facet (type-eval #'(Role (_) F ...))
   #:with τ-spawn (mk-ActorWithRole- #'(τc.norm τ-facet))
   #:with τ-endpoint (type-eval #'(Reacts (Asserted τp) τ-spawn))
   ------------------------------
   [⊢ (syndicate:during/spawn pat- bdy-)
      (⇒ : ★/t)
-     (⇒ ν-ep (τ-endpoint))])
+     (⇒ ν (τ-endpoint))])
 
 (define-typed-syntax field
   [(_ [x:id (~optional (~datum :)) τ-f:type e:expr] ...) ≫
    #:cut
    #:fail-unless (stx-andmap flat-type? #'(τ-f ...)) "keep your uppity data outta my fields"
    [⊢ e ≫ e- (⇐ : τ-f)] ...
-   #:fail-unless (stx-andmap pure? #'(e- ...)) "field initializers not allowed to have effects"
+   #:fail-unless (all-pure? #'(e- ...)) "field initializers not allowed to have effects"
    #:with (x- ...) (generate-temporaries #'(x ...))
    #:with (τ ...) (stx-map type-eval #'((Field τ-f.norm) ...))
    #:with MF (type-eval #'MakesField)
    ----------------------------------------------------------------------
    [⊢ (erased (field/intermediate [x x- τ e-] ...))
       (⇒ : ★/t)
-      (⇒ ν-ep (MF))]]
+      (⇒ ν (MF))]]
   [(_ flds ... [x:id e:expr] more-flds ...) ≫
    #:cut
    [⊢ e ≫ e- (⇒ : τ)]
@@ -232,7 +271,7 @@
   #:with τs (mk-Shares- #'(τ))
   -------------------------------------
   [⊢ (syndicate:assert e-) (⇒ : ★/t)
-                           (⇒ ν-ep (τs))])
+                           (⇒ ν (τs))])
 
 (define-typed-syntax (know e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
@@ -240,7 +279,7 @@
   #:with τs (mk-Know- #'(τ))
   -------------------------------------
   [⊢ (syndicate:know e-) (⇒ : ★/t)
-     (⇒ ν-ep (τs))])
+     (⇒ ν (τs))])
 
 (define-typed-syntax (send! e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
@@ -248,26 +287,26 @@
   #:with τm (mk-Sends- #'(τ))
   --------------------------------------
   [⊢ (#%app- syndicate:send! e-) (⇒ : ★/t)
-                                 (⇒ ν-f (τm))])
+                                 (⇒ ν (τm))])
 
 (define-typed-syntax (realize! e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   #:with τm (mk-Realizes- #'(τ))
   --------------------------------------
-  [⊢ (#%app- syndicate:realize! e-) (⇒ : ★/t)
-     (⇒ ν-f (τm))])
+  [⊢ (#%app- syndicate:realize! e-)
+     (⇒ : ★/t)
+     (⇒ ν (τm))])
 
 (define-typed-syntax (stop facet-name:id cont ...) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
-  [⊢ (block #f cont ...) ≫ cont-
-                         (⇒ ν-ep (~effs))
-                         (⇒ ν-s (~effs))
-                         (⇒ ν-f (~effs τ-f ...))]
-  #:with τ #'(Stop facet-name- τ-f ...)
+  [⊢ (block #f cont ...) ≫ cont- (⇒ ν (F ...))]
+  #:do [(ensure-all! script-effects? (syntax->list #'(F ...)) "only script effects allowed in stop continuation")]
+  ;; #:fail-unless (stx-andmap script-effects? #'(F ...)) "only script effects allowed"
+  #:with τ (type-eval #'(Stop facet-name- F ...))
   ---------------------------------------------------------------------------------
   [⊢ (syndicate:stop-facet facet-name- cont-) (⇒ : ★/t)
-                                              (⇒ ν-f (τ))])
+                                              (⇒ ν (τ))])
 
 (begin-for-syntax
   (define-syntax-class event-cons
@@ -316,21 +355,21 @@
 (define-typed-syntax on
   #:datum-literals (start stop)
   [(on start s ...+) ≫
-   [⊢ (block s ...) ≫ s- (⇒ ν-ep (~effs))
-                          (⇒ ν-f (~effs τ-f ...))
-                          (⇒ ν-s (~effs τ-s ...))]
-   #:with τ-r (type-eval #'(Reacts OnStart τ-f ... τ-s ...))
+   [⊢ (block s ...) ≫ s- (⇒ ν (~effs F ...))]
+   #:fail-unless (stx-andmap script-effects? #'(F ...)) "only script effects allowed"
+   #:with τ-r (type-eval #'(Reacts OnStart F ...))
    -----------------------------------
-   [⊢ (syndicate:on-start s-) (⇒ : ★/t)
-      (⇒ ν-ep (τ-r))]]
+   [⊢ (syndicate:on-start s-)
+      (⇒ : ★/t)
+      (⇒ ν (τ-r))]]
   [(on stop s ...+) ≫
-   [⊢ (block s ...) ≫ s- (⇒ ν-ep (~effs))
-                          (⇒ ν-f (~effs τ-f ...))
-                          (⇒ ν-s (~effs τ-s ...))]
-   #:with τ-r (type-eval #'(Reacts OnStop τ-f ... τ-s ...))
+   [⊢ (block s ...) ≫ s- (⇒ ν (~effs F ...))]
+   #:fail-unless (stx-andmap script-effects? #'(F ...)) "only script effects allowed"
+   #:with τ-r (type-eval #'(Reacts OnStop F ...))
    -----------------------------------
-   [⊢ (syndicate:on-stop s-) (⇒ : ★/t)
-      (⇒ ν-ep (τ-r))]]
+   [⊢ (syndicate:on-stop s-)
+      (⇒ : ★/t)
+      (⇒ ν (τ-r))]]
   [(on (evt:event-cons p)
        priority:priority
        s ...+) ≫
@@ -343,29 +382,25 @@
    #:fail-unless (allowed-interest? (pattern-sub-type #'τp)) "overly broad interest, ?̱̱★ and ??★ not allowed"
    #:with ([x:id τ:type] ...) (pat-bindings #'p/e)
    [[x ≫ x- : τ] ... ⊢ (block s ...) ≫ s-
-                 (⇒ ν-ep (~effs))
-                 (⇒ ν-f (~effs τ-f ...))
-                 (⇒ ν-s (~effs τ-s ...))]
+                 (⇒ ν (~effs F ...))]
+   #:fail-unless (stx-andmap script-effects? #'(F ...)) "only script effects allowed"
    #:with p- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'p/e))
-   #:with τ-r (type-eval #'(Reacts (evt.ty-cons τp) τ-f ... τ-s ...))
+   #:with τ-r (type-eval #'(Reacts (evt.ty-cons τp) F ...))
    -----------------------------------
    [⊢ (syndicate:on (evt.syndicate-kw p-)
                     #:priority priority.level
                     s-)
       (⇒ : ★/t)
-      (⇒ ν-ep (τ-r))]])
+      (⇒ ν (τ-r))]])
 
 (define-typed-syntax (begin/dataflow s ...+) ≫
   [⊢ (block s ...) ≫ s-
-     (⇒ : _)
-     (⇒ ν-ep (~effs))
-     (⇒ ν-f (~effs τ-f ...))
-     (⇒ ν-s (~effs τ-s ...))]
-  #:with τ-r (type-eval #'(Reacts OnDataflow τ-f ... τ-s ...))
+     (⇒ ν (~effs F ...))]
+  #:with τ-r (type-eval #'(Reacts OnDataflow F ...))
   --------------------------------------------------
   [⊢ (syndicate:begin/dataflow s-)
      (⇒ : ★/t)
-     (⇒ ν-ep (τ-r))])
+     (⇒ ν (τ-r))])
 
 (define-for-syntax (compile-syndicate-pattern pat)
   (compile-pattern pat
@@ -382,16 +417,18 @@
   ;; TODO: check that each τ-f is a Role
   #:mode (communication-type-mode #'τ-c.norm)
     [
-     [⊢ (block s) ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
+     [⊢ (block s) ≫ s- (⇒ ν (~effs F ...))]
     ]
   ;; TODO: s shouldn't refer to facets or fields!
-  #:fail-unless (and (stx-andmap TypeStartsFacet? #'(τ-f ...))
-                     (= 1 (length (syntax->list #'(τ-f ...)))))
-                 "expected exactly one Role for body"
-  #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
+    #:do [(ensure! (lambda (Fs) (= 1 (stx-length Fs))) #'(F ...) "expected exactly one Role for body")
+          (ensure-all! TypeStartsFacet? (syntax->list #'(F ...)) "only effects that start a facet allowed")]
+  ;;#:fail-unless (and (stx-andmap TypeStartsFacet? #'(F ...))
+                     ;;(= 1 (length (syntax->list #'(F ...)))))
+                 ;;"expected exactly one Role for body"
+  #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(F ...))
   #:fail-unless (<: #'τ-o #'τ-c.norm)
                 (format "Outputs ~a not valid in dataspace ~a" (make-output-error-message #'τ-o #'τ-c.norm) (type->strX #'τ-c.norm))
-  #:with τ-final #;(mk-Actor- #'(τ-c.norm)) (mk-ActorWithRole- #'(τ-c.norm τ-f ...))
+  #:with τ-final #;(mk-Actor- #'(τ-c.norm)) (mk-ActorWithRole- #'(τ-c.norm F ...))
   #:fail-unless (<: #'τ-a #'τ-final)
                 "Spawned actors not valid in dataspace"
   #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c.norm)
@@ -401,7 +438,7 @@
                 (string-append "Not prepared to handle internal events:\n" (make-actor-error-message #'τ-i/i #'τ-o/i #'τ-o/i))
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
-                                               (⇒ ν-s (τ-final))]]
+                                               (⇒ ν (τ-final))]]
   [(spawn s) ≫
    #:do [(define τc (current-communication-type))]
    #:when τc
@@ -410,12 +447,12 @@
    [≻ (spawn #,τc s)]]
   [(spawn s) ≫
    #:cut
-   [⊢ (block s) ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs)) (⇒ ν-f (~effs τ-f ...))]
+   [⊢ (block s) ≫ s- (⇒ ν (~effs F ...))]
    ;; TODO: s shouldn't refer to facets or fields!
-   #:fail-unless (and (stx-andmap TypeStartsFacet? #'(τ-f ...))
-                      (= 1 (length (syntax->list #'(τ-f ...)))))
+   #:fail-unless (and (stx-andmap TypeStartsFacet? #'(F ...))
+                      (= 1 (length (syntax->list #'(F ...)))))
    "expected exactly one Role for body"
-   #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-f ...))
+   #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(F ...))
    #:fail-unless (project-safe? (∩ (strip-? #'τ-o/i) #'τ-o/i) #'τ-i/i)
                  (string-append "Not prepared to handle internal events:\n" (make-actor-error-message #'τ-i/i #'τ-o/i #'τ-o/i))
   ;; if there are Discards in pattern types, this will take more specific instances from other patterns
@@ -426,12 +463,12 @@
   #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c/final)
                                #'τ-i)
                 (string-append "Not prepared to handle inputs:\n" (make-actor-error-message #'τ-i #'τ-o #'τ-c/final))
-  #:with τ-final (mk-ActorWithRole- #'(τ-c/final τ-f ...))
+  #:with τ-final (mk-ActorWithRole- #'(τ-c/final F ...))
   #:fail-unless (<: #'τ-a #'τ-final)
                 "Spawned actors not valid in dataspace"
   ----------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
-                                               (⇒ ν-s (τ-final))]])
+                                               (⇒ ν (τ-final))]])
 
 ;; (Listof Type) -> String
 (define-for-syntax (tys->str tys)
@@ -479,10 +516,11 @@
    #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
    #:mode (communication-type-mode #'τ-c.norm)
      [
-      [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs τ-s ...)) (⇒ ν-f (~effs))] ...
+      [⊢ s ≫ s- (⇒ ν (~effs F ...))] ...
      ]
    #:with τ-actor (mk-Actor- #'(τ-c.norm))
-   #:do [(define errs (for/list ([t (in-syntax #'(τ-s ... ...))]
+   #:fail-unless (stx-andmap AnyActor? #'(F ... ...)) "only actor spawning effects allowed"
+   #:do [(define errs (for/list ([t (in-syntax #'(F ... ...))]
                                  #:unless (<: t #'τ-actor))
                         t))]
    #:fail-unless (empty? errs) (make-dataspace-error-message errs #'τ-c.norm)
@@ -496,9 +534,10 @@
    [⊢ (syndicate:dataspace s- ...) (⇒ : ★/t)
                                    (⇒ ν-s (τ-ds-act))]]
   [(dataspace s ...) ≫
-   [⊢ s ≫ s- (⇒ ν-ep (~effs)) (⇒ ν-s (~effs τ-s ...)) (⇒ ν-f (~effs))] ...
+   [⊢ s ≫ s- (⇒ ν (~effs F ...))] ...
    #:cut
-   #:with ((~AnyActor τc/spawned) ...) #'(τ-s ... ...)
+   #:fail-unless (stx-andmap AnyActor? #'(F ... ...)) "only actor spawning effects allowed"
+   #:with ((~AnyActor τc/spawned) ...) #'(F ... ...)
    #:with τc (type-eval #'(U τc/spawned ...))
    -----------------------------------------------------------------------------------
    [≻ (dataspace τc s- ...)]])
@@ -525,44 +564,43 @@
            ])))))
 
 (define-typed-syntax (set! x:id e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ)]
-  #:fail-unless (pure? #'e-) "expression not allowed to have effects"
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
   [⊢ x ≫ x- (⇒ : (~Field τ-x:type))]
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
   ----------------------------------------------------
-  [⊢ (#%app- x- e-) (⇒ : ★/t)])
+  [⊢ (#%app- x- e-) (⇒ : ★/t) (⇒ ν (F ...))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; With Facets
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-for-syntax (walk/with-facets e... [unique (gensym 'walk/with-facets)])
-  (define-values (rev-e-... facet-effects)
+  (define-values (rev-e-... effects)
     (let loop ([e... (syntax->list e...)]
                [rev-e-... '()]
-               [facet-effects '()])
+               [effects '()])
       (match e...
         ['()
-         (values rev-e-... facet-effects)]
+         (values rev-e-... effects)]
         [(cons e more)
          (define e- (local-expand e (list unique) (list #'erased)))
          (syntax-parse e-
            #:literals (erased)
            [(erased impl)
-            (define f-effs (syntax->list (get-effect e- 'ν-f)))
+            (define effs (syntax->list (get-effect e- EFF-KEY)))
             (loop more
                   (cons #'impl rev-e-...)
-                  (append f-effs facet-effects))])])))
+                  (append effs effects))])])))
   (values (reverse rev-e-...)
-          facet-effects))
+          effects))
 
 (define-typed-syntax (with-facets ([x:id impl:expr] ...) fst:id) ≫
   #:fail-unless (for/or ([y (in-syntax #'(x ...))]) (free-identifier=? #'fst y))
                 "must select one facet to start"
-  [[x ≫ x- : StartableFacet] ... ⊢ (with-facets-impls ([x impl] ...) fst) ≫ impl- (⇒ ν-f (~effs wsf-body))]
+  [[x ≫ x- : StartableFacet] ... ⊢ (with-facets-impls ([x impl] ...) fst) ≫ impl- (⇒ ν (~effs wsf-body))]
   #:with WSFs (type-eval #'(WithStartableFacets [x- ...] wsf-body))
   ----------------------------------------
-  [⊢ impl- (⇒ : ★/t) (⇒ ν-f (WSFs))])
+  [⊢ impl- (⇒ : ★/t) (⇒ ν (WSFs))])
 
 (define-typed-syntax (with-facets-impls ([x impl] ...) fst) ≫
   #:do [(define-values (bodies FIs) (walk/with-facets #'([facet-impl x impl] ...)))]
@@ -571,18 +609,19 @@
   [⊢ (let- ()
            #,@bodies
            (#%app- fst-))
-     (⇒ ν-f ((WSFBody (FacetImpls #,@FIs) fst-)))])
+     (⇒ ν ((WSFBody (FacetImpls #,@FIs) fst-)))])
 
 (define-typed-syntax (facet-impl x ((~datum facet) impl ...+)) ≫
   [⊢ x ≫ x-]
-  [⊢ (start-facet x impl ...) ≫ impl- (⇒ ν-f (~effs (~and R (~Role (x--) Body ...))))]
+  [⊢ (start-facet x impl ...) ≫ impl- (⇒ ν (~effs (~and R (~Role (x--) Body ...))))]
   ----------------------------------------
-  [⊢ (erased (define- (x-) impl-)) (⇒ ν-f ((FacetImpl x- R)))])
+  [⊢ (erased (define- (x-) impl-)) (⇒ ν ((FacetImpl x- R)))])
 
 (define-typed-syntax (start x:id) ≫
   [⊢ x ≫ x- (⇒ : ~StartableFacet)]
+  #:with Sx (type-eval #'(Start x))
   ----------------------------------------
-  [⊢ (#%app- x-) (⇒ : ★/t) (⇒ ν-f ((Start x)))])
+  [⊢ (#%app- x-) (⇒ : ★/t) (⇒ ν (Sx))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Derived Forms
@@ -802,22 +841,24 @@
    ----------------------------------
    [⊢ 0 (⇒ : Int)]]
   [(print-type e) ≫
-    [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
+    [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
     #:do [(pretty-display (type->strX #'τ))]
     ----------------------------------
-    [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))]])
+    [⊢ e- (⇒ : τ) (⇒ ν (F ...))]])
 
 (define-typed-syntax (print-role e) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
-  #:do [(for ([r (in-syntax #'(fs ...))])
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
+  #:do [(for ([r (in-syntax #'(F ...))]
+              #:when (TypeStartsFacet? r))
           (pretty-display (type->strX r)))]
   ----------------------------------
-  [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
+  [⊢ e- (⇒ : τ) (⇒ ν (F ...))])
 
 ;; this is mainly for testing
 (define-typed-syntax (role-strings e) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ ν-f (~effs fs ...))]
-  #:with (s ...) (for/list ([r (in-syntax #'(fs ...))])
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
+  #:with (s ...) (for/list ([r (in-syntax #'(F ...))]
+                            #:when (TypeStartsFacet? r))
                    (type->strX r))
   ----------------------------------------
   [⊢ (#%app- list- (#%datum- . s) ...) (⇒ : (List String))])
@@ -861,8 +902,7 @@
     (proto:Branch args))
 
   (define TRANSLATION#
-    (build-id-table Spawns proto:Spawn
-                    Sends proto:Sends
+    (build-id-table Sends proto:Sends
                     Realizes proto:Realizes
                     Shares proto:Shares
                     Know proto:Know
@@ -948,13 +988,14 @@
         [unrecognized (error (format "unrecognized type: ~a" #'unrecognized))]))))
 
 (define-typed-syntax (export-roles dest:string e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs eps ...)) (⇒ ν-f (~effs fs ...)) (⇒ ν-s (~effs ss ...))]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
   #:do [(with-output-to-file (syntax-e #'dest)
-          (thunk (for ([f (in-syntax #'(fs ...))])
+          (thunk (for ([f (in-syntax #'(F ...))]
+                       #:when (TypeStartsFacet? f))
                    (pretty-write (synd->proto f))))
           #:exists 'replace)]
   ----------------------------------------
-  [⊢ e- (⇒ : τ) (⇒ ν-ep (eps ...)) (⇒ ν-f (fs ...)) (⇒ ν-s (ss ...))])
+  [⊢ e- (⇒ : τ) (⇒ ν (F ...))])
 
 (define-typed-syntax (export-type dest:string τ:type) ≫
   #:do [(with-output-to-file (syntax-e #'dest)
@@ -964,14 +1005,14 @@
   [⊢ (#%app- void-) (⇒ : ★/t)])
 
 (define-typed-syntax (lift+define-role x:id e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs)) (⇒ ν-f ((~and r  (~Role (_) _ ...)))) (⇒ ν-s (~effs))]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs (~and r  (~Role (_) _ ...))))]
   ;; because turnstile introduces a lot of intdef scopes; ideally, we'd be able to synthesize somethign
   ;; with the right module scopes
   #:with x+ (syntax-local-introduce (datum->syntax #f (syntax-e #'x)))
   #:do [(define r- (synd->proto #'r))
         (syntax-local-lift-module-end-declaration #`(define- x+ '#,r-))]
   ----------------------------------------
-  [⊢ e- (⇒ : τ) (⇒ ν-ep ()) (⇒ ν-f (r)) (⇒ ν-s ())])
+  [⊢ e- (⇒ : τ) (⇒ ν (r))])
 
 
 ;; Type Type -> Bool

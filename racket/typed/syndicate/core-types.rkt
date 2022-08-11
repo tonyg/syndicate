@@ -85,6 +85,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; : describes the immediate result of evaluation
+;; ν describes the effects
+(define-for-syntax EFF-KEY 'ν)
+
+;; OLD
 ;; ν-ep key aggregates endpoint affects:
 ;;   `Shares`, `Reacts`, and `MakesField`
 ;; Note thar MakesField is only an effect, not a type
@@ -467,7 +471,17 @@
     (syntax-parser
       [(_ τc-pat)
        #'(~or* (~Actor τc-pat)
-               (~ActorWithRole τc-pat _))]))))
+               (~ActorWithRole τc-pat _))])))
+
+  (define (AnyActor? t)
+    (syntax-parse t
+      [(~AnyActor _) #t]
+      [_ #f]))
+
+  (define (MakesField? t)
+    (syntax-parse t
+      [~MakesField #t]
+      [_ #f])))
 
 #;(define-product-type Message #:arity = 1)
 (define-product-type Tuple #:arity >= 0)
@@ -546,12 +560,8 @@
 
 ;; for describing the RHS
 ;; a value and a description of the effects
-(define-type-constructor Computation #:arity = 4)
-(define-type-constructor Value #:arity = 1)
-(define-type-constructor Endpoints #:arity >= 0)
-(define-type-constructor Roles #:arity >= 0)
-(define-type-constructor Spawns #:arity >= 0)
 
+(define-type-constructor FnResult #:arity >= 1)
 
 
 #;(begin-for-syntax
@@ -622,10 +632,7 @@
 
 
 (define-simple-macro (→fn ty-in ... ty-out)
-  (→+ ty-in ... (Computation (Value ty-out)
-                             (Endpoints)
-                             (Roles)
-                             (Spawns))))
+  (→+ ty-in ... (FnResult ty-out)))
 
 (begin-for-syntax
   (define-syntax ~Base
@@ -639,10 +646,7 @@
     (pattern-expander
      (syntax-parser
        [(_ ty-in:id ... ty-out)
-        #'(~→+ ty-in ... (~Computation (~Value ty-out)
-                                       (~Endpoints)
-                                       (~Roles)
-                                       (~Spawns)))])))
+        #'(~→+ ty-in ... (~FnResult ty-out))])))
 
   ;; matching possibly polymorphic types
   (define-syntax ~?∀
@@ -659,19 +663,19 @@
 (define-syntax-parser proc
   [(_ (~optional (~seq #:forall (X:id ...)))
       ty-in ...
-      (~or (~datum ->) (~datum →))
+      (~or* (~datum ->) (~datum →))
       ty-out
-      (~or (~optional (~seq #:spawns (s ...+)))
-           (~optional (~seq #:roles (r ...+)))
-           (~optional (~seq #:endpoints (e ...+))))
+      (~alt (~optional (~seq #:spawns (s ...+)))
+            (~optional (~seq #:roles (r ...+)))
+            (~optional (~seq #:endpoints (e ...+)))
+            (~optional (~seq #:effects (~or* (F ...+)
+                                             (~seq F ...+)))))
       ...)
    #:with spawns (if (attribute s) #'(s ...) #'())
    #:with roles (if (attribute r) #'(r ...) #'())
    #:with endpoints (if (attribute e) #'(e ...) #'())
-   #:with body #`(→+ ty-in ... (Computation (Value ty-out)
-                                            (Endpoints #,@#'endpoints)
-                                            (Roles #,@#'roles)
-                                            (Spawns #,@#'spawns)))
+   #:with effects (if (attribute F) #'(F ...) #'())
+   #:with body #`(→+ ty-in ... (FnResult ty-out #,@#'endpoints #,@#'roles #,@#'spawns #,@#'effects))
    (if (attribute X)
        #'(∀+ (X ...) body)
        #'body)])
@@ -684,17 +688,9 @@
            ty-in ...
            (~or (~datum ->) (~datum →))
            ty-out
-           (~or (~optional (~seq #:spawns s))
-                (~optional (~seq #:roles r))
-                (~optional (~seq #:endpoints e)))
-           ...)
-        #:with spawns (if (attribute s) #'(s) #'())
-        #:with roles (if (attribute r) #'(r) #'())
-        #:with endpoints (if (attribute e) #'(e) #'())
-        #:with body #`(~→+ ty-in ... (~Computation (~Value ty-out)
-                                                  (~Endpoints #,@#'endpoints)
-                                                  (~Roles #,@#'roles)
-                                                  (~Spawns #,@#'spawns)))
+           (~optional (~seq #:effects F)))
+        #:with effects (if (attribute F) #'(F) #'())
+        #:with body #`(~→+ ty-in ... (~FnResult ty-out #,@#'effects))
         (if (attribute X)
             #'(~∀+ (X ...) body)
             #'body)]))))
@@ -790,10 +786,11 @@
     (syntax-parse/typecheck stx
       [(_ e ...) ≫
        #:fail-unless (= arity (stx-length #'(e ...))) "arity mismatch"
-       [⊢ e ≫ e- (⇒ : τ)] ...
-       #:fail-unless (all-pure? #'(e- ...)) "expressions must be pure"
+       [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs eff ...))] ...
        ----------------------
-       [⊢ (#%app- #,StructName e- ...) (⇒ : (#,TypeCons τ ...))]])))
+       [⊢ (#%app- #,StructName e- ...)
+          (⇒ : (#,TypeCons τ ...))
+          (⇒ ν (eff ... ...))]])))
 
 (define-for-syntax ((resugar-ctor ty-cons) t)
   ;; because typedefs defines 0-arity constructors as base types,
@@ -941,7 +938,7 @@
                                           #'orig-struct-info
                                           #'accs/rev
                                           arity
-                                          #,(attribute omit-accs)
+                                          #,(and (attribute omit-accs) #t)
                                           (list #'field-ty? ...)
                                           #'field-tys
                                           #'field-accs?))
@@ -1283,32 +1280,41 @@
     [(~WithFacets ([nm impl] ...) fst)
      (apply values (syntax->list (analyze-roles #'(impl ...))))]
     [(~Role+Body (_)
-       (~or (~Shares τ-s)
+                 EP ...
+       #;(~or (~Shares τ-s)
             (~Know τ-k)
-            (~Sends τ-m)
-            (~Realizes τ-rlz)
-            (~Reacts τ-if τ-then ...)) ...
-       (~and (~Role+Body _ _ ...) sub-role) ...)
-     #:with (msg ...) (for/list ([m (in-syntax #'(τ-m ...))])
-                        (mk-Message- (list m)))
-     #:with (rlz ...) (for/list ([r (in-syntax #'(τ-rlz ...))])
-                        (mk-Realize- (list r)))
+            #;(~Sends τ-m)
+            #;(~Realizes τ-rlz)
+            (~Reacts τ-if τ-then ...)) #;...
+       ;; TODO - is this sub-role clause acutally needed?
+       ;;(~and (~Role+Body _ _ ...) sub-role) ...
+       )
+     #:with ((~or (~Shares τ-s)
+                  (~Know τ-k)
+                  #;(~Sends τ-m)
+                  #;(~Realizes τ-rlz)
+                  (~Reacts τ-if τ-then ...))
+             ...) (flatten-effects #'(EP ...))
+     ;; #:with (msg ...) (for/list ([m (in-syntax #'(τ-m ...))])
+                        ;; (mk-Message- (list m)))
+     ;;#:with (rlz ...) (for/list ([r (in-syntax #'(τ-rlz ...))])
+                        ;; (mk-Realize- (list r)))
      (define-values (is/e os/e is/i os/i ss)
        (for/fold ([ins '()]
                   [outs '()]
                   [ins/int '()]
                   [outs/int '()]
                   [spawns '()])
-                 ([t (in-syntax #'(τ-then ... ... sub-role ...))])
+                 ([t (in-syntax #'(τ-then ... ... #;sub-role #;...))])
          (define-values (i o i/i o/i s) (analyze-role-input/output t))
          (values (cons i ins) (cons o outs) (cons i/i ins/int) (cons o/i outs/int) (cons s spawns))))
      (define-values (ifs/ext ifs/int) (partition external-evt? (stx->list #'(τ-if ...))))
      (define pat-types/ext (map event-desc-type ifs/ext))
      (define pat-types/int (map event-desc-type ifs/int))
      (values (mk-U- #`(#,@is/e #,@pat-types/ext))
-             (mk-U- #`(τ-s ... msg ... #,@os/e #,@(map pattern-sub-type pat-types/ext)))
+             (mk-U- #`(τ-s ... #;msg #;... #,@os/e #,@(map pattern-sub-type pat-types/ext)))
              (mk-U- #`(#,@is/i #,@pat-types/int))
-             (mk-U- #`(τ-k ... rlz ... #,@os/i #,@(map pattern-sub-type pat-types/int)))
+             (mk-U- #`(τ-k ... #;rlz #;... #,@os/i #,@(map pattern-sub-type pat-types/int)))
              (mk-U- ss))]))
 
 ;; EventType -> Bool
@@ -1437,23 +1443,13 @@
      [((~AnyActor τ1) (~AnyActor τ2))
       (and (<: #'τ1 #'τ2)
            (<: (∩ (strip-? #'τ1) #'τ2) #'τ1))]
-     [((~proc τ-in1 ... -> τ-out1 #:spawns (~seq S1 ...)
-                                  #:roles (~seq R1 ...)
-                                  #:endpoints (~seq E1 ...))
-       (~proc τ-in2 ... -> τ-out2 #:spawns (~seq S2 ...)
-                                  #:roles (~seq R2 ...)
-                                  #:endpoints (~seq E2 ...)))
+     [((~proc τ-in1 ... -> τ-out1 #:effects (~seq F1 ...))
+       (~proc τ-in2 ... -> τ-out2 #:effects (~seq F2 ...)))
       (and (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
            (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
            (<: #'τ-out1 #'τ-out2)
            ;; TODO!
-           (<: (mk-U*- #'(S1 ...)) (mk-U*- #'(S2 ...)))
-           #;(<: (mk-Actor- (list (mk-U*- #'(S1 ...))))
-               (mk-Actor- (list (mk-U*- #'(S2 ...)))))
-           (<: (mk-U*- #'(R1 ...))
-               (mk-U*- #'(R2 ...)))
-           (<: (mk-U*- #'(E1 ...))
-               (mk-U*- #'(E2 ...))))]
+           (<: (mk-U*- #'(F1 ...)) (mk-U*- #'(F2 ...))))]
      [(~Discard _)
       #t]
      [(X:id Y:id)
@@ -1624,27 +1620,49 @@
 
 ;; DesugaredSyntax -> Bool
 (define-for-syntax (pure? e-)
-  (for/and ([key (in-list '(ν-ep ν-f ν-s))])
-    (effect-free? e- key)))
+  (effect-free? e- EFF-KEY))
 
 ;; (SyntaxOf DesugaredSyntax ...) -> Bool
 (define-for-syntax (all-pure? es)
   (stx-andmap pure? es))
+
+(begin-for-syntax
+  ;; (Syntax -> Bool) Syntax String -> Void
+  (define (ensure! p stx msg)
+    (unless (p stx)
+      (type-error #:src stx #:msg msg)))
+
+  ;; (Syntax -> Bool) (Sequenceof Syntax) String -> Void
+  (define (ensure-all! p stxs msg)
+    (for ([stx (in-list stxs)])
+      (ensure! p stx msg)))
+
+  ;; (SyntaxListof EffectType) -> (SyntaxListof EffectType)
+  (define (flatten-effects effs)
+    (let loop ([work (syntax->list effs)]
+               [effs '()])
+      (match work
+        ['() effs]
+        [(cons eff more)
+         (syntax-parse eff
+           [(~or* (~Branch F ...)
+                  (~Effs F ...))
+            (loop (append (syntax->list #'(F ...)) more)
+                  effs)]
+           [_
+            (loop more (cons eff effs))])])))
+)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Lambdas
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax (lambda ([x:id (~optional (~datum :)) τ:type] ...) body ...+) ≫
-  [[x ≫ x- : τ] ... ⊢ (block body ...) ≫ body- (⇒ : τ-e)
-                (⇒ ν-ep (~effs τ-ep ...))
-                (⇒ ν-s (~effs τ-s ...))
-                (⇒ ν-f (~effs τ-f ...))]
+  [[x ≫ x- : τ] ... ⊢ (block body ...) ≫ body-
+                (⇒ : τ-e)
+                (⇒ ν (~effs eff ...))]
   ----------------------------------------
-  [⊢ (lambda- (x- ...) body-) (⇒ : (→+ τ ... (Computation (Value τ-e)
-                                                          (Endpoints τ-ep ...)
-                                                          (Roles τ-f ...)
-                                                          (Spawns τ-s ...))))])
+  [⊢ (lambda- (x- ...) body-) (⇒ : (→+ τ ... (FnResult τ-e eff ...)))])
 
 (define-syntax λ (make-variable-like-transformer #'lambda))
 
@@ -1653,24 +1671,28 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-typed-syntax (Λ (tv:id ...) e) ≫
-  [([tv ≫ tv- : Type] ...) () ⊢ e ≫ e- ⇒ τ]
+  [([tv ≫ tv- : Type] ...) () ⊢ e ≫ e-
+                           (⇒ : τ)
+                           (⇒ ν (~effs eff ...))]
   --------
   ;; can't use internal mk-∀- constructor here
   ;; - will cause the bound-id=? quirk to show up
   ;;   (when subsequent tyvar refs are expanded with `type` stx class)
   ;; - requires converting type= and subst to use free-id=?
   ;;   (which is less performant)
-  [⊢ e- ⇒ (∀+ (tv- ...) τ)])
+  [⊢ e- (⇒ : (∀+ (tv- ...) τ))
+        (⇒ ν (eff ...))])
 
 (define-typed-syntax inst
   [(_ e τ:type ...) ≫
    #:cut
-   [⊢ e ≫ e- ⇒ (~∀+ tvs τ_body)]
+   [⊢ e ≫ e- (⇒ : (~∀+ tvs τ_body)) (⇒ ν (~effs eff ...))]
    #:fail-unless (stx-andmap instantiable? #'tvs #'(τ.norm ...))
                  "types must be instantiable"
    #:fail-unless (pure? #'e-) "expression must be pure"
    --------
-   [⊢ e- ⇒ #,(substs #'(τ.norm ...) #'tvs #'τ_body)]]
+   [⊢ e- (⇒ : #,(substs #'(τ.norm ...) #'tvs #'τ_body))
+         (⇒ ν #,(substs #'(τ.norm ...) #'tvs #'(eff ...)))]]
   [(_ e) ≫ --- [≻ e]])
 
 ;; Identifier Type -> Bool
@@ -1699,18 +1721,13 @@
   #:fail-unless (all-pure? #'(e- args- ...))
                 "expressions must be pure"
   ;; ordering pretty arbitrary
-  #:with ((~or (~proc _ ... -> _
-                      #:spawns (~seq S ...)
-                      #:roles (~seq R ...)
-                      #:endpoints (~seq E ...))
-              _) ...) #'(τ-a ...)
-  #:with (SS ...) (if (attribute S) #'(S ... ...) #'())
-  #:with (RR ...) (if (attribute R) #'(R ... ...) #'())
-  #:with (EE ...) (if (attribute E) #'(E ... ...) #'())
-  #:fail-unless (stx-length=? #'(X ...) #'(SS ... RR ... EE ...))
+  #:with ((~alt (~proc _ ... -> _ #:effects (~seq F ...))
+                _) ...) #'(τ-a ...)
+  #:with (FF ...) (if (attribute F) #'(F ... ...) #'())
+  #:fail-unless (stx-length=? #'(X ...) #'(FF ...))
                 "found the wrong number of effects"
   -------------------------------------------------------
-  [≻ ((inst e- SS ... RR ... EE ...) args- ...)])
+  [≻ ((inst e- FF ...) args- ...)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Sequencing & Definitions
@@ -1754,23 +1771,21 @@
   (for ([x (in-list (internal-definition-context-binding-identifiers ctx))])
     (printf ">>~a\n" (syntax-debug-info x))))
 
-;; -> (Values e-... (Listof Type) (Listof EndpointEffects) (Listof FacetEffects) (Listof SpawnEffects))
+;; -> (Values e-... (Listof Type) (Listof Effect))
 ;; recognizes local binding forms
 ;; (field/intermediate [x e] ...
 ;; (define/intermediate x x- τ e)
 (define-for-syntax (walk/bind e...
                               [def-ctx (syntax-local-make-definition-context)]
                               [unique (gensym 'walk/bind)])
-  (define-values (rev-e-... rev-τ... ep-effects facet-effects spawn-effects)
+  (define-values (rev-e-... rev-τ... effects)
     (let loop ([e... (syntax->list e...)]
                [rev-e-... '()]
                [rev-τ... '()]
-               [ep-effects '()]
-               [facet-effects '()]
-               [spawn-effects '()])
+               [effects '()])
       (match e...
         ['()
-         (values rev-e-... rev-τ... ep-effects facet-effects spawn-effects)]
+         (values rev-e-... rev-τ... effects)]
         [(cons e more)
          (when (and DEBUG-BINDINGS?
                     (identifier? e))
@@ -1783,27 +1798,18 @@
             (loop (append (syntax->list #'(e ...)) more)
                   rev-e-...
                   rev-τ...
-                  ep-effects
-                  facet-effects
-                  spawn-effects)]
+                  effects)]
            [_
             (define τ (syntax-property e- ':))
-            (define-values (ep-effs f-effs s-effs)
-              (values (syntax->list (get-effect e- 'ν-ep))
-                      (syntax->list (get-effect e- 'ν-f))
-                      (syntax->list (get-effect e- 'ν-s))))
+            (define effs (syntax->list (get-effect e- EFF-KEY)))
             (add-bindings-to-ctx e- def-ctx)
             (loop more
                   (cons e- rev-e-...)
                   (cons τ rev-τ...)
-                  (append ep-effs ep-effects)
-                  (append f-effs facet-effects)
-                  (append s-effs spawn-effects))])])))
+                  (append effs effects))])])))
   (values (reverse rev-e-...)
           (reverse rev-τ...)
-          ep-effects
-          facet-effects
-          spawn-effects))
+          effects))
 
 (define-syntax (field/intermediate stx)
   (syntax-parse stx
@@ -1824,34 +1830,30 @@
 (define-typed-syntax define
   [(_ x:id (~datum :) τ:type e:expr) ≫
    #:cut
-   [⊢ e ≫ e- (⇐ : τ.norm) (⇒ ν-ep (~effs τ-ep ...)) (⇒ ν-f (~effs τ-f ...)) (⇒ ν-s (~effs τ-s ...))]
+   [⊢ e ≫ e- (⇐ : τ.norm) (⇒ ν (~effs eff ...))]
    #:with x- (generate-temporary #'x)
    #:with x+ (syntax-local-identifier-as-binding #'x)
    --------
    [⊢ (erased (define/intermediate x+ x- τ.norm e-))
       (⇒ : ★/t)
-      (⇒ ν-ep (τ-ep ...))
-      (⇒ ν-f (τ-f ...))
-      (⇒ ν-s (τ-s ...))]]
+      (⇒ ν (eff ...))]]
   [(_ x:id e) ≫
    #:cut
    ;This won't work with mutually recursive definitions
-   [⊢ e ≫ e- (⇒ : τ) (⇒ ν-ep (~effs τ-ep ...)) (⇒ ν-f (~effs τ-f ...)) (⇒ ν-s (~effs τ-s ...))]
+   [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs eff ...))]
    #:with x- (generate-temporary #'x)
    #:with x+ (syntax-local-identifier-as-binding #'x)
    --------
    [⊢ (erased (define/intermediate x+ x- τ e-))
       (⇒ : ★/t)
-      (⇒ ν-ep (τ-ep ...))
-      (⇒ ν-f (τ-f ...))
-      (⇒ ν-s (τ-s ...))]]
+      (⇒ ν (eff ...))]]
   [(_ (f [x (~optional (~datum :)) ty:type] ...
          (~or (~datum →) (~datum ->)) ty_out:type)
          e ...+) ≫
    #:cut
    [⊢ (lambda ([x : ty] ...) (block e ...)) ≫ e- (⇒ : (~and fun-ty
-                                                            (~→+ (~not (~Computation _ _ _ _)) ...
-                                                                (~Computation (~Value τ-v) _ _ _))))]
+                                                            (~→ (~FnResult τ-v _ ...)
+                                                                _ ...)))]
    #:fail-unless (<: #'τ-v #'ty_out.norm)
      (format "expected different return type\n got ~a\n expected ~a\n"
        #'τ-v #'ty_out
@@ -1876,18 +1878,7 @@
               #;#'(Λ (X ...)
                   (lambda ([x : ty] ...)
                     (block e ...)))
-   [[X ≫ X- : Type] ... ⊢ e+ ≫ e- (⇒ : TTTT)
-                       #;(⇒ : (~and res-ty
-                                  (~∀+ (Y ...)
-                                      (~→ (~not (~Computation _ _ _ _)) ...
-                                          (~Computation (~Value τ-v) _ _ _)))))]
-   #:with (~and res-ty
-                (~→+ (~not (~Computation _ _ _ _)) ...
-                     (~Computation (~Value τ-v) _ _ _)))
-           #;(~and res-ty
-                (~∀+ (Y ...)
-                     (~→+ (~not (~Computation _ _ _ _)) ...
-                          (~Computation (~Value τ-v) _ _ _)))) #'TTTT
+   [[X ≫ X- : Type] ... ⊢ e+ ≫ e- (⇒ : (~and res-ty (~→ (~FnResult τ-v _ ...) _ ...)))]
    ;; #:with ty_out- (substs #'(X- ...) #'(X ...) #'ty_out)
    ;; #:with actual (substs #'(X ...) #'(X- ...) #'τ-v) #;(type-eval #'(∀+ (Y ...) τ-v))
    ;; #:with expected (type-eval #'(∀+ (X- ...) ty_out-))
@@ -1910,24 +1901,20 @@
 
 (define-typed-syntax block
   [(_ e_unit ... e) ≫
-   #:do [(define-values (e-... τ... ep-effs f-effs s-effs) (walk/bind #'(e_unit ... e)))]
+   #:do [(define-values (e-... τ... effs) (walk/bind #'(e_unit ... e)))]
    #:with τ (last τ...)
    --------
    [⊢ (let- () #,@e-...) (⇒ : τ)
-      (⇒ ν-ep (#,@ep-effs))
-      (⇒ ν-f (#,@f-effs))
-      (⇒ ν-s (#,@s-effs))]])
+      (⇒ ν (#,@effs))]])
 
 
 (define-typed-syntax begin
   [(_ e_unit ... e) ≫
-   #:do [(define-values (e-... τ... ep-effs f-effs s-effs) (walk/bind #'(e_unit ... e)))]
+   #:do [(define-values (e-... τ... effs) (walk/bind #'(e_unit ... e)))]
    #:with τ (last τ...)
    --------
    [⊢ (begin- #,@e-...) (⇒ : τ)
-      (⇒ ν-ep (#,@ep-effs))
-      (⇒ ν-f (#,@f-effs))
-      (⇒ ν-s (#,@s-effs))]])
+      (⇒ ν (#,@effs))]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Sequencing & Definitions
@@ -1937,6 +1924,8 @@
   ;; Polymorphic, Effectful Function - Perform Simple Matching on Argument Types
   [(_ e_fn e_arg ...) ≫
    [⊢ e_fn ≫ e_fn- (⇒ : (~∀+ (X:row-id ...+) τ))]
+   #:cut
+   #:fail-unless (pure? #'e_fn-) "function expression must be pure"
    ---------------------------------------------
    [≻ (call/inst e_fn- e_arg ...)]]
   ;; Polymorphic, Pure Function - Perform Local Inference
@@ -1984,21 +1973,17 @@
   ;; All Other Functions
   [(_ e_fn e_arg ...) ≫
    #:cut
-   [⊢ e_fn ≫ e_fn- (⇒ : (~→+ τ_in ... (~Computation (~Value τ-out)
-                                                            (~Endpoints τ-ep ...)
-                                                            (~Roles τ-f ...)
-                                                            (~Spawns τ-s ...))))]
+   [⊢ e_fn ≫ e_fn- (⇒ : (~→+ τ_in ... (~FnResult τ-out F ...)))]
    ;; TODO - don't know why this cut is needed for error messages
    #:fail-unless (pure? #'e_fn-) "expression not allowed to have effects"
    #:fail-unless (stx-length=? #'[τ_in ...] #'[e_arg ...])
                  (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
    [⊢ e_arg ≫ e_arg- (⇐ : τ_in)] ...
-   #:fail-unless (stx-andmap pure? #'(e_arg- ...)) "expressions not allowed to have effects"
+   #:fail-unless (all-pure? #'(e_arg- ...)) "expressions not allowed to have effects"
    ------------------------------------------------------------------------
-   [⊢ (#%app- e_fn- e_arg- ...) (⇒ : τ-out)
-      (⇒ ν-ep (τ-ep ...))
-      (⇒ ν-s (τ-s ...))
-      (⇒ ν-f (τ-f ...))]])
+   [⊢ (#%app- e_fn- e_arg- ...)
+      (⇒ : τ-out)
+      (⇒ ν (F ...))]])
 
 (begin-for-syntax
   ;; find-free-Xs : (Stx-Listof Id) Type -> (Listof Id)

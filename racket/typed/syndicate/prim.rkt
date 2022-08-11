@@ -15,15 +15,15 @@
 (define-base-types Int String ByteString Symbol)
 
 ;; hmmm
-(define-primop + (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
-(define-primop - (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
-(define-primop * (→ Int Int (Computation (Value Int) (Endpoints) (Roles) (Spawns))))
-(define-primop not (→ Bool (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
-(define-primop < (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
-(define-primop > (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
-(define-primop <= (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
-(define-primop >= (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
-(define-primop = (→ Int Int (Computation (Value Bool) (Endpoints) (Roles) (Spawns))))
+(define-primop + (→fn Int Int Int))
+(define-primop - (→fn Int Int Int))
+(define-primop * (→fn Int Int Int))
+(define-primop not (→fn Bool Bool))
+(define-primop < (→fn Int Int Bool))
+(define-primop > (→fn Int Int Bool))
+(define-primop <= (→fn Int Int Bool))
+(define-primop >= (→fn Int Int Bool))
+(define-primop = (→fn Int Int Bool))
 (define-primop even? (→fn Int Bool))
 (define-primop odd? (→fn Int Bool))
 (define-primop add1 (→fn Int Int))
@@ -36,11 +36,11 @@
 (define-primop current-inexact-milliseconds (→fn Int))
 (define-primop string=? (→fn String String Bool))
 
-(define-primop bytes->string/utf-8 (→ ByteString (Computation (Value String) (Endpoints) (Roles) (Spawns))))
-(define-primop string->bytes/utf-8 (→ String (Computation (Value ByteString) (Endpoints) (Roles) (Spawns))))
-(define-primop gensym (→ Symbol (Computation (Value Symbol) (Endpoints) (Roles) (Spawns))))
-(define-primop symbol->string (→ Symbol (Computation (Value String) (Endpoints) (Roles) (Spawns))))
-(define-primop string->symbol (→ String (Computation (Value Symbol) (Endpoints) (Roles) (Spawns))))
+(define-primop bytes->string/utf-8 (→fn ByteString String))
+(define-primop string->bytes/utf-8 (→fn String ByteString))
+(define-primop gensym (→fn Symbol Symbol))
+(define-primop symbol->string (→fn Symbol String))
+(define-primop string->symbol (→fn String Symbol))
 
 (define-typed-syntax (/ e1 e2) ≫
   [⊢ e1 ≫ e1- (⇐ : Int)]

@@ -22,7 +22,7 @@
   (Role (cell-factory)
         (Reacts (Message (CreateCellT ID Value))
                 ;; want to say that what it spawns is a Cell
-                (Spawns ★/t))))
+                (ActorWithRole ★/t Cell))))
 
 (define-type-alias Reader
   (Role (reader)

@@ -471,7 +471,7 @@ The JobManager then performs the job and, when finished, asserts
       ;; Requires (task-ready? t)
       (define (∀ (ρ) (perform-task [t : ConcreteTask]
                                    [k : (proc TaskID TaskResult -> ★/t
-                                              #:roles (ρ))]))
+                                              #:effects (ρ))]))
         (start-facet perform
          (on start (set! tasks-in-progress (add1 (ref tasks-in-progress))))
          (on stop (set! tasks-in-progress (sub1 (ref tasks-in-progress))))

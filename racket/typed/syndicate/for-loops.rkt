@@ -139,18 +139,14 @@
   [[[x ≫ x-- : τ] ...]
    [[acc ≫ acc- : τ-acc] ...] ⊢ (block e-body ...) ≫ e-body-
                                (⇐ : body-ty)
-                               (⇒ ν-ep (~effs τ-ep ...))
-                               (⇒ ν-s (~effs τ-s ...))
-                               (⇒ ν-f (~effs τ-f ...))]
+                               (⇒ ν (~effs F ...))]
   -------------------------------------------------------
   [⊢ (values->tuple #,num-accs
        (for/fold- ([acc- init-] ...)
          clauses-
          #,(bind-renames #'([x-- x-] ...) #`(tuple->values #,num-accs e-body-))))
      (⇒ : body-ty)
-     (⇒ ν-ep (τ-ep ...))
-     (⇒ ν-s (τ-s ...))
-     (⇒ ν-f (τ-f ...))]]
+     (⇒ ν (F ...))]]
   [(for/fold (accs ... [acc:id init] more-accs ...)
              clauses
      e-body ...+) ≫
@@ -208,16 +204,12 @@
   #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
   [[x ≫ x-- : τ] ... ⊢ (block e-body ...) ≫ e-body-
                            (⇒ : τ-body)
-                           (⇒ ν-ep (~effs τ-ep ...))
-                           (⇒ ν-s (~effs τ-s ...))
-                           (⇒ ν-f (~effs τ-f ...))]
+                           (⇒ ν (~effs F ...))]
   ----------------------------------------------------------------------
   [⊢ (for/set- clauses-
        #,(bind-renames #'([x-- x-] ...) #'e-body-))
               (⇒ : (Set τ-body))
-              (⇒ ν-ep (τ-ep ...))
-              (⇒ ν-s (τ-s ...))
-              (⇒ ν-f (τ-f ...))])
+              (⇒ ν (F ...))])
 
 (define-typed-syntax (for/sum (clause ...)
                        e-body ...+) ≫
@@ -239,9 +231,7 @@
   #:with (clauses- ([x x- τ] ...)) (analyze-for-clauses #'(clause.parend ...))
   [[x ≫ x-- : τ] ... ⊢ (block e-body ...) ≫ e-body-
                  (⇒ : τ-body)
-                 (⇒ ν-ep (~effs τ-ep ...))
-                 (⇒ ν-s (~effs τ-s ...))
-                 (⇒ ν-f (~effs τ-f ...))]
+                 (⇒ ν (~effs F ...))]
   [[res ≫ _ : τ-body] ⊢ res  ≫ res- (⇒ : _)]
   ----------------------------------------------------------------------
   [⊢ (let- ()
@@ -252,6 +242,4 @@
             (some res-)
             none))
      (⇒ : (Maybe τ-body))
-     (⇒ ν-ep (τ-ep ...))
-     (⇒ ν-s (τ-s ...))
-     (⇒ ν-f (τ-f ...))])
+     (⇒ ν (F ...))])

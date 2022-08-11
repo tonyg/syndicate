@@ -102,7 +102,7 @@
 
 (require/typed syndicate/drivers/tcp2)
 (require/typed (submod syndicate/drivers/tcp2 syndicate-main)
-               [activate! : (→ (Computation (Value (U))
+  [activate! : (proc → (U) #:effects ((Actor Tcp2Driver))) #;(→ (Computation (Value (U))
                                             (Endpoints)
                                             (Roles)
                                             (Spawns (Actor Tcp2Driver))))])
