@@ -71,7 +71,7 @@
       ;; Give quotes to interested parties.
       (during (observe (book-quote $title _))
         ;; TODO - lookup
-        (assert (book-quote title (lookup title (ref books))))))))))
+        (assert (book-quote title (lookup title (! books))))))))))
 
 (define-type-alias leader-role
   (Role (leader)
@@ -111,52 +111,52 @@
             [title String (first titles)])
      (define (next-book)
        (cond
-         [(empty? (ref book-list))
+         [(empty? (! book-list))
           (printf "leader fails to find a suitable book\n")
           (stop get-quotes)]
          [#t
-          (set! title (first (ref book-list)))
-          (set! book-list (rest (ref book-list)))]))
+          (:= title (first (! book-list)))
+          (:= book-list (rest (! book-list)))]))
 
      ;; keep track of book club members
      (define/query-set members (club-member $name) name
          #;#:on-add #;(printf "leader acknowledges member ~a\n" name))
 
-     (on (asserted (book-quote (ref title) $quantity))
-         (printf "leader learns that there are ~a copies of ~a\n" quantity (ref title))
+     (on (asserted (book-quote (! title) $quantity))
+         (printf "leader learns that there are ~a copies of ~a\n" quantity (! title))
          (cond
-           [(< quantity (+ 1 (set-count (ref members))))
+           [(< quantity (+ 1 (set-count (! members))))
             ;; not enough in stock for each member
             (next-book)]
            [#t
             ;; find out if at least half of the members want to read the book
             (start-facet poll-members
-             (define/query-set yays (book-interest (ref title) $name #t) name)
-             (define/query-set nays (book-interest (ref title) $name #f) name)
-             (on (asserted (book-interest (ref title) $name _))
+             (define/query-set yays (book-interest (! title) $name #t) name)
+             (define/query-set nays (book-interest (! title) $name #f) name)
+             (on (asserted (book-interest (! title) $name _))
                  ;; count the leader as a 'yay'
-                 (when (>= (set-count (ref yays))
-                           (/ (set-count (ref members)) 2))
-                   (printf "leader finds enough affirmation for ~a\n" (ref title))
+                 (when (>= (set-count (! yays))
+                           (/ (set-count (! members)) 2))
+                   (printf "leader finds enough affirmation for ~a\n" (! title))
                    (stop get-quotes
                          (start-facet announce
-                                      (assert (book-of-the-month (ref title))))))
-                 (when (> (set-count (ref nays))
-                          (/ (set-count (ref members)) 2))
-                   (printf "leader finds enough negative nancys for ~a\n" (ref title))
+                                      (assert (book-of-the-month (! title))))))
+                 (when (> (set-count (! nays))
+                          (/ (set-count (! members)) 2))
+                   (printf "leader finds enough negative nancys for ~a\n" (! title))
                    (stop poll-members (next-book))))
              ;; begin/dataflow is a problem for simulation checking
              #;(begin/dataflow
                ;; count the leader as a 'yay'
-               (when (>= (set-count (ref yays))
-                         (/ (set-count (ref members)) 2))
-                 (printf "leader finds enough affirmation for ~a\n" (ref title))
+               (when (>= (set-count (! yays))
+                         (/ (set-count (! members)) 2))
+                 (printf "leader finds enough affirmation for ~a\n" (! title))
                  (stop get-quotes
                        (start-facet announce
-                         (assert (book-of-the-month (ref title))))))
-               (when (> (set-count (ref nays))
-                        (/ (set-count (ref members)) 2))
-                 (printf "leader finds enough negative nancys for ~a\n" (ref title))
+                         (assert (book-of-the-month (! title))))))
+               (when (> (set-count (! nays))
+                        (/ (set-count (! members)) 2))
+                 (printf "leader finds enough negative nancys for ~a\n" (! title))
                  (stop poll-members (next-book)))))])))))))
 
 (define-type-alias member-role

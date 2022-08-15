@@ -22,7 +22,7 @@
          True False Bool
          (all-from-out "sugar.rkt")
          ;; Statements
-         let let* if spawn dataspace start-facet set! begin block stop begin/dataflow #;unsafe-do
+         let let* if spawn dataspace start-facet set! := begin block stop begin/dataflow #;unsafe-do
          when unless send! realize! define during/spawn
          with-facets start WithFacets Start
          ;; Derived Forms
@@ -35,7 +35,7 @@
          ;; endpoints
          assert know on field
          ;; expressions
-         tuple select lambda λ ref (struct-out observe) (struct-out message) (struct-out inbound) (struct-out outbound)
+         tuple select lambda λ ref ! (struct-out observe) (struct-out message) (struct-out inbound) (struct-out outbound)
          Λ inst call/inst
          ;; making types
          define-type-alias
@@ -570,6 +570,9 @@
   ----------------------------------------------------
   [⊢ (#%app- x- e-) (⇒ : ★/t) (⇒ ν (F ...))])
 
+(define-simple-macro (:= e ...)
+  (set! e ...))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; With Facets
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -802,6 +805,8 @@
   [⊢ x ≫ x- ⇒ (~Field τ)]
   ------------------------
   [⊢ (#%app- x-) (⇒ : τ)])
+
+(define-simple-macro (! e ...) (ref e ...))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ground Dataspace
