@@ -107,8 +107,10 @@
 
 (module+ test
   (require rackunit)
-  (require rackunit/turnstile))
+  (require rackunit/turnstile)
 
+  (begin-for-syntax
+    (require rackunit)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Creating Communication Types
@@ -210,7 +212,7 @@
                ;; untyped syndicate might allow this - TODO
                #;(~and τ-m (~Sends _))
                (~and τ-r (~Reacts _ _ ...))
-               ~MakesField
+               (~MakesField _ _)
                τ-other)
           ...)
          effects
@@ -253,11 +255,12 @@
    #:fail-unless (all-pure? #'(e- ...)) "field initializers not allowed to have effects"
    #:with (x- ...) (generate-temporaries #'(x ...))
    #:with (τ ...) (stx-map type-eval #'((Field τ-f.norm) ...))
-   #:with MF (type-eval #'MakesField)
+   [[x ≫ _ : Type] ⊢ x ≫ x--] ...
+   #:with (MF ...) (stx-map mk-MakesField- #'((x-- τ-f.norm) ...))
    ----------------------------------------------------------------------
    [⊢ (erased (field/intermediate [x x- τ e-] ...))
       (⇒ : ★/t)
-      (⇒ ν (MF))]]
+      (⇒ ν (MF ...))]]
   [(_ flds ... [x:id e:expr] more-flds ...) ≫
    #:cut
    [⊢ e ≫ e- (⇒ : τ)]
@@ -265,13 +268,119 @@
    [≻ (field flds ... [x τ e-] more-flds ...)]])
 
 (define-typed-syntax (assert e:expr) ≫
-  [⊢ e ≫ e- (⇒ : τ)]
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   #:fail-unless (allowed-interest? #'τ) "overly broad interest, ?̱̱★ and ??★ not allowed"
   #:with τs (mk-Shares- #'(τ))
+  #:with kont (if (stx-null? #'(F ...))
+                  #'(just-assert e-)
+                  #'(type-varying-assert e e-))
   -------------------------------------
-  [⊢ (syndicate:assert e-) (⇒ : ★/t)
-                           (⇒ ν (τs))])
+  [≻ kont])
+
+(define-typed-syntax (just-assert e-) ≫
+  #:with τ (detach #'e- ':)
+  #:with τs (mk-Shares- #'(τ))
+  -------------------------------------
+  [⊢ (syndicate:assert e-)
+     (⇒ : ★/t)
+     (⇒ ν (τs))])
+
+;; need to make sure that the type has exactly one, binary union
+(define-typed-syntax (type-varying-assert e e-) ≫
+  #:with ((~ReadsField x)) (detach #'e- EFF-KEY)
+  #:with τe (detach #'e- ':)
+  [⊢ x ≫ x- (⇒ : (~Field τ))]
+  #:with (~and union (~U* τi ...)) (find-union #'τ)
+  #:with ((τ-specific τe_i) ...) (for/list ([ti (in-syntax #'(τi ...))])
+                      (define specific (type-subst #'union ti #'τ))
+                      (syntax-parse/typecheck null
+                        [_ ≫
+                           [[x ≫ _ : (Field #,specific)] ⊢ e ≫ _ (⇒ : τe_i)]
+                           --------------------
+                           [≻ (#,specific τe_i)]]))
+  [[x ≫ _ : Type] ⊢ x ≫ x--]
+  #:with VA (type-eval #`(VarAssert x-- [--> τ τe] [--> τ-specific τe_i] ...))
+  -------------------------------------------------------------------------
+  [⊢ (syndicate:assert e-)
+     (⇒ : ★/t)
+     (⇒ ν (VA))])
+
+(begin-for-syntax
+
+  ;; Type -> Type
+  (define (find-union t)
+    (syntax-parse t
+      [(~U* _ ...)
+       t]
+      [(~Any/new tycons tsub ...)
+       (stx-ormap find-union #'(tsub ...))]
+      [_
+       #f]))
+
+  ;; replace τ1 with τ2 in e
+  ;; TODO - possibly want a version that performs at most one substitution
+  (define (type-subst τ1 τ2 e)
+    (syntax-parse e
+      [t
+       #:when (type=? e τ1)
+       #;(transfer-stx-props τ (merge-type-tags (syntax-track-origin τ e e)))
+       τ2]
+      [(~Any/new tycons tsub ...)
+       #:when (reassemblable? #'tycons)
+       #:with subs (stx-map (λ (t1) (type-subst τ1 τ2 t1)) #'(tsub ...))
+       (transfer-stx-props (reassemble-type #'tycons #'subs) e #:ctx e)]
+      [_ e]))
+  )
+
+(module+ test
+  (define-constructor* (bacon [pieces Int] [crispyness Bool]))
+  (begin-for-syntax
+    (test-case
+        "find-union"
+      (define T (type-eval #'(U Int String)))
+      (check type=? (find-union T)
+             T)
+      (check-false (find-union (type-eval #'Int)))
+      (check type=? (find-union (type-eval #`(Tuple #,T)))
+                    T))
+
+    (test-case
+        "find-union struct"
+      (define B (type-eval #'Bacon))
+      (check type=? (find-union B)
+             (type-eval #'Bool))
+
+      (test-case
+          "type-subst"
+        (define I (type-eval #'Int))
+        (define S (type-eval #'String))
+        (check type=? (type-subst I S I)
+               S)
+        (check type=? (type-subst I S S)
+               S)
+        (define T (type-eval #'(Tuple Int String)))
+        (define TII (type-eval #'(Tuple Int Int)))
+        (check type=? (type-subst S I T)
+               TII)
+        (check type=? (type-subst I S T)
+               (type-eval #'(Tuple String String))))
+
+      (test-case
+          "type-subst union"
+        (define B (type-eval #'Bool))
+        (define TB (type-eval #'(Tuple Bool)))
+        (define T (type-eval #'True))
+        (check type=? (type-subst B T B)
+               T)
+        (check type=? (type-subst B T TB)
+               (type-eval #'(Tuple True)))
+
+        (define BCN (type-eval #'Bacon))
+        (define BCT (type-eval #'(BaconT Int True)))
+        (check type=? (type-subst B T BCN)
+               BCT))
+      )))
 
 (define-typed-syntax (know e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
@@ -803,8 +912,12 @@
 
 (define-typed-syntax (ref x:id) ≫
   [⊢ x ≫ x- ⇒ (~Field τ)]
+  [[x- ≫ _ : Type] ⊢ x- ≫ x--]
+  #:with RF (mk-ReadsField- #'(x--))
   ------------------------
-  [⊢ (#%app- x-) (⇒ : τ)])
+  [⊢ (#%app- x-)
+     (⇒ : τ)
+     (⇒ ν (RF))])
 
 (define-simple-macro (! e ...) (ref e ...))
 

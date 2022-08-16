@@ -458,8 +458,14 @@
 (define-type-constructor Branch #:arity >= 0)
 ;; sequence of effects
 (define-type-constructor Effs #:arity >= 0)
-(define-base-types OnStart OnStop OnDataflow MakesField)
-(define-for-syntax field-prop-name 'fields)
+(define-base-types OnStart OnStop OnDataflow)
+;; (MakesField x τ)
+(define-type-constructor MakesField #:arity = 2)
+;; (ReadsField x)
+(define-type-constructor ReadsField #:arity = 1)
+;; (VarAssert x [--> τ τ])
+(define-type-constructor VarAssert #:arity > 1)
+(define-type-constructor --> #:arity = 2)
 (define-type-constructor Actor #:arity = 1)
 (define-type-constructor ActorWithRole #:arity >= 1)
 ;; usage: (ActorWithRole τc τr)
@@ -478,10 +484,7 @@
       [(~AnyActor _) #t]
       [_ #f]))
 
-  (define (MakesField? t)
-    (syntax-parse t
-      [~MakesField #t]
-      [_ #f])))
+  )
 
 #;(define-product-type Message #:arity = 1)
 (define-product-type Tuple #:arity >= 0)
@@ -1616,7 +1619,10 @@
 ;; DesugaredSyntax EffectName -> Bool
 (define-for-syntax (effect-free? e- eff)
   (define prop (syntax-property e- eff))
-  (or (false? prop) (stx-null? prop)))
+  (or (false? prop)
+      (stx-null? prop)
+      (and (stx-list? prop)
+           (stx-andmap ReadsField? prop))))
 
 ;; DesugaredSyntax -> Bool
 (define-for-syntax (pure? e-)
