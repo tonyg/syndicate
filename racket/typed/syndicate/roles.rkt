@@ -260,8 +260,7 @@
    #:fail-unless (all-pure? #'(e- ...)) "field initializers not allowed to have effects"
    #:with (x- ...) (generate-temporaries #'(x ...))
    #:with (τ ...) (stx-map type-eval #'((Field τ-f.norm) ...))
-   [[x ≫ _ : Type] ⊢ x ≫ x--] ...
-   #:with (MF ...) (stx-map mk-MakesField- #'((x-- τ-f.norm) ...))
+   #:with (MF ...) (stx-map mk-MakesField #'(x ...) #'(τ-f.norm ...))
    ----------------------------------------------------------------------
    [⊢ (erased (field/intermediate [x x- τ e-] ...))
       (⇒ : ★/t)
@@ -280,7 +279,7 @@
   #:with kont (syntax-parse #'(F ...)
                 [(~and ((~and RF (~ReadsField _)))
                        #;(~do (displayln 0))
-                       (~parse x (get-ReadsField-orig-field #'RF))
+                       (~parse x:id (get-orig-field-name #'RF))
                        (~typecheck [⊢ x ≫ x- (⇒ : (~Field τ-f))])
                        #;(~do (displayln 'B))
                        (~parse (~and τ-U (~U* τ1 τ2)) (find-union #'τ-f)))
@@ -316,9 +315,9 @@
                                         ----------------------------------------
                                         [≻ (#,specific τe_i)]]))
   #:do [(displayln 'D)]
-  [[x ≫ _ : Type] ⊢ x ≫ x--]
+  ;; [[x ≫ _ : Type] ⊢ x ≫ x--]
   #:do [(displayln 'E)]
-  #:with VA (type-eval #`(VarAssert x-- [--> τ-f τe] [--> τ-specific τe_i] ...))
+  #:with VA (mk-VarAssert #'x #'[--> τ-f τe] #'([--> τ-specific τe_i] ...))
   #:do [(pretty-display (type->strX #'VA))]
   -------------------------------------------------------------------------
   [⊢ (syndicate:assert e-)
@@ -695,8 +694,7 @@
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
   [⊢ x ≫ x- (⇒ : (~Field τ-x:type))]
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
-  [[x- ≫ _ : Type] ⊢ x- ≫ x--]
-  #:with WF (mk-WritesField #'x #'x-- #'τ-x)
+  #:with WF (mk-WritesField #'x #'τ-x)
   ----------------------------------------------------
   [⊢ (#%app- x- e-) (⇒ : ★/t) (⇒ ν (WF F ...))])
 
@@ -933,8 +931,7 @@
 
 (define-typed-syntax (ref x:id) ≫
   [⊢ x ≫ x- ⇒ (~Field τ)]
-  [[x- ≫ _ : Type] ⊢ x- ≫ x--]
-  #:with RF (mk-ReadsField #'x #'x--)
+  #:with RF (mk-ReadsField #'x)
   ------------------------
   [⊢ (#%app- x-)
      (⇒ : τ)
@@ -1060,6 +1057,11 @@
                     OnStart proto:StartEvt
                     OnStop proto:StopEvt
                     OnDataflow proto:DataflowEvt
+                    ;; Type Varying Assertion Stuff
+                    MakesField (lambda (nm ty) (proto:Field (syntax-e nm) ty))
+                    ReadsField (lambda (nm) (proto:ReadField (syntax-e nm)))
+                    WritesField (lambda (nm ty) (proto:WriteField (syntax-e nm) ty))
+                    --> list
                     ;; LTL
                     TT #t
                     FF #f
@@ -1084,7 +1086,8 @@
   (define (synd->proto ty)
     (let convert ([ty (resugar-type ty)])
       (syntax-parse ty
-        #:literals (★/t Bind Discard ∀/internal →/internal Role/internal Stop Reacts Actor ActorWithRole)
+        #:literals (★/t Bind Discard ∀/internal →/internal Role/internal Stop Reacts Actor ActorWithRole
+                        VarAssert)
         [(ctor:id t ...)
          #:when (dict-has-key? TRANSLATION# #'ctor)
          (apply (dict-ref TRANSLATION# #'ctor) (stx-map convert #'(t ...)))]
@@ -1119,6 +1122,9 @@
                (first converted-body)
                converted-body))
          (proto:Reacts (convert #'evt) body+)]
+        [(VarAssert nm t1 . ts)
+         (define convs (stx-map convert #'(t1 . ts)))
+         (proto:Shares (proto:VarTy (syntax-e #'nm) convs))]
         [t:id
          (proto:Base (syntax-e #'t))]
         [(ctor:id args ...)
@@ -1174,7 +1180,7 @@
 
 (define- (ensure-Role! r)
   (unless- (#%app- proto:Role? r)
-    (#%app- error- 'check-simulates "expected a Role type, got " r))
+    (#%app- error- 'check-simulates "expected a Role type, got ~a" r))
   r)
 
 (begin-for-syntax

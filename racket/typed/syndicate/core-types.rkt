@@ -461,32 +461,69 @@
 (define-base-types OnStart OnStop OnDataflow)
 
 ;; (MakesField x τ)
-(define-type-constructor MakesField #:arity = 2)
+(define-type-constructor MakesField #:arity = 2
+  #:implements get-resugar-info
+  (syntax-parser
+    [(~and stx (~MakesField _ τ))
+     (list #'MakesField (get-orig-field-name #'stx) (resugar-type #'τ))]))
+(begin-for-syntax
+  (define FN-KEY 'FIELD-NAME)
+
+  (define (as-type x)
+    (with-syntax ([x* x])
+      (syntax-parse/typecheck null
+        [_ ≫
+           [[x* ≫ _ : Type] ⊢ x* ≫ x-]
+           ---
+           (≻ x-)])))
+
+  (define (mk-MakesField x t)
+    (define x-T (as-type x))
+    (attach (type-eval #`(MakesField #,x-T #,t)) FN-KEY x))
+
+  (define (get-orig-field-name MF)
+    (detach MF FN-KEY)))
 
 ;; (ReadsField x)
-(define-type-constructor ReadsField #:arity = 1)
+(define-type-constructor ReadsField #:arity = 1
+  #:implements get-resugar-info
+  (syntax-parser
+    [(~and stx (~ReadsField _))
+     (list #'ReadsField (get-orig-field-name #'stx))]))
 ;; need the original name so that we can re-typecheck an assert expression with
 ;; different types for that name. Could also subst the original name in after
 ;; constructing a valid type.
 (begin-for-syntax
-  (define RF-KEY 'ReadsField)
-  (define (mk-ReadsField x x-)
-    (attach (type-eval #`(ReadsField #,x-)) RF-KEY x))
-  (define (get-ReadsField-orig-field RF)
-    (detach RF RF-KEY)))
+  (define (mk-ReadsField x)
+    (define x-T (as-type x))
+    (attach (type-eval #`(ReadsField #,x-T)) FN-KEY x)))
 
 ;; (WritesField x τ)
-(define-type-constructor WritesField #:arity = 2)
+(define-type-constructor WritesField #:arity = 2
+  #:implements get-resugar-info
+  (syntax-parser
+    [(~and stx (~WritesField _ τ))
+     (list #'WritesField (get-orig-field-name #'stx) (resugar-type #'τ))]))
+
 (begin-for-syntax
-  (define WF-KEY 'WritesField)
-  (define (mk-WritesField x x- t)
-    (attach (type-eval #`(WritesField #,x- #,t)) WF-KEY x))
-  (define (get-WritesField-orig-field WF)
-    (detach WF WF-KEY)))
+  (define (mk-WritesField x t)
+    (define x-T (as-type x))
+    (attach (type-eval #`(WritesField #,x-T #,t)) FN-KEY x)))
 
 ;; (VarAssert x [--> τ-field τ-assert])
-(define-type-constructor VarAssert #:arity > 1)
+(define-type-constructor VarAssert #:arity > 1
+  #:implements get-resugar-info
+  (syntax-parser
+    [(~and stx (~VarAssert _ t1 ts ...))
+     (list* #'VarAssert (get-orig-field-name #'stx) (resugar-type #'t1) (stx-map resugar-type #'(ts ...)))]))
+
 (define-type-constructor --> #:arity = 2)
+
+(begin-for-syntax
+  (define (mk-VarAssert x t ts)
+    (define x-T (as-type x))
+    (attach (type-eval #`(VarAssert #,x-T #,t #,@ts)) FN-KEY x)))
+
 
 (define-type-constructor Actor #:arity = 1)
 (define-type-constructor ActorWithRole #:arity >= 1)

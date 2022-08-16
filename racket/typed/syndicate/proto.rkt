@@ -13,6 +13,7 @@
 ;; Role Type Data Definitions
 
 ;; a FacetName is a symbol
+;; a Name is a Symbol
 
 ;; a T is one of
 ;;   - (Role FacetName (Listof EP)), also abbreviated as just Role
@@ -20,19 +21,24 @@
 ;;   - (Sends τ)
 ;;   - (Realizes τ)
 ;;   - (Stop FacetName Body)
+;;   - (WriteField Name τ)
 (struct Role (nm eps) #:prefab)
 (struct Spawn (ty) #:prefab)
 (struct Sends (ty) #:prefab)
 (struct Realizes (ty) #:prefab)
 (struct Stop (nm body) #:prefab)
+(struct WriteField (nm ty) #:prefab)
+(struct ReadField (nm) #:prefab)
 
 ;; a EP is one of
 ;;   - (Reacts D Body), describing an event handler
 ;;   - (Shares τ), describing an assertion
 ;;   - (Know τ), describing an internal assertion
+;;   - (Field Name τ), describing a field declaration
 (struct Reacts (evt body) #:prefab)
 (struct Shares (ty) #:prefab)
 (struct Know (ty) #:prefab)
+(struct Field (nm ty) #:prefab)
 
 ;; a Body describes actions carried out in response to some event, and
 ;; is one of
@@ -84,6 +90,8 @@
 ;;   - ⋆
 ;;   - (Base Symbol)
 ;;   - (internal-label Symbol τ)
+;;   - (VarTy Name (NEListof (List τ τ))), describing an assertion endpoint
+;;       whose type varies depending on the type of the named field
 (struct U (tys) #:prefab)
 (struct Struct (nm tys) #:prefab)
 (struct Observe (ty) #:prefab)
@@ -92,6 +100,7 @@
 (struct Hash (ty-k ty-v) #:prefab)
 (struct Mk⋆ () #:prefab)
 (struct internal-label (actor-id ty) #:prefab)
+(struct VarTy (nm tys) #:prefab)
 ;; TODO this might be a problem when used as a match pattern
 (define ⋆ (Mk⋆))
 (struct Base (name) #:prefab)
