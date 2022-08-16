@@ -459,13 +459,35 @@
 ;; sequence of effects
 (define-type-constructor Effs #:arity >= 0)
 (define-base-types OnStart OnStop OnDataflow)
+
 ;; (MakesField x τ)
 (define-type-constructor MakesField #:arity = 2)
+
 ;; (ReadsField x)
 (define-type-constructor ReadsField #:arity = 1)
-;; (VarAssert x [--> τ τ])
+;; need the original name so that we can re-typecheck an assert expression with
+;; different types for that name. Could also subst the original name in after
+;; constructing a valid type.
+(begin-for-syntax
+  (define RF-KEY 'ReadsField)
+  (define (mk-ReadsField x x-)
+    (attach (type-eval #`(ReadsField #,x-)) RF-KEY x))
+  (define (get-ReadsField-orig-field RF)
+    (detach RF RF-KEY)))
+
+;; (WritesField x τ)
+(define-type-constructor WritesField #:arity = 2)
+(begin-for-syntax
+  (define WF-KEY 'WritesField)
+  (define (mk-WritesField x x- t)
+    (attach (type-eval #`(WritesField #,x- #,t)) WF-KEY x))
+  (define (get-WritesField-orig-field WF)
+    (detach WF WF-KEY)))
+
+;; (VarAssert x [--> τ-field τ-assert])
 (define-type-constructor VarAssert #:arity > 1)
 (define-type-constructor --> #:arity = 2)
+
 (define-type-constructor Actor #:arity = 1)
 (define-type-constructor ActorWithRole #:arity >= 1)
 ;; usage: (ActorWithRole τc τr)
@@ -1280,6 +1302,9 @@
      (values bot bot bot (mk-Realize- #'(τ-m)) bot)]
     [(~Start _)
      (values bot bot bot bot bot)]
+    [(~or* (~ReadsField _)
+           (~WritesField _ _))
+     (values bot bot bot bot bot)]
     [(~WithFacets ([nm impl] ...) fst)
      (apply values (syntax->list (analyze-roles #'(impl ...))))]
     [(~Role+Body (_)
@@ -1292,11 +1317,14 @@
        ;; TODO - is this sub-role clause acutally needed?
        ;;(~and (~Role+Body _ _ ...) sub-role) ...
        )
-     #:with ((~or (~Shares τ-s)
-                  (~Know τ-k)
-                  #;(~Sends τ-m)
-                  #;(~Realizes τ-rlz)
-                  (~Reacts τ-if τ-then ...))
+     #:with ((~alt (~Shares τ-s)
+                   (~VarAssert _ [~--> _ τ-va] _ ...)
+                   (~Know τ-k)
+                   #;(~Sends τ-m)
+                   #;(~Realizes τ-rlz)
+                   (~Reacts τ-if τ-then ...)
+                   (~ReadsField _)
+                   (~WritesField _ _))
              ...) (flatten-effects #'(EP ...))
      ;; #:with (msg ...) (for/list ([m (in-syntax #'(τ-m ...))])
                         ;; (mk-Message- (list m)))
@@ -1315,7 +1343,7 @@
      (define pat-types/ext (map event-desc-type ifs/ext))
      (define pat-types/int (map event-desc-type ifs/int))
      (values (mk-U- #`(#,@is/e #,@pat-types/ext))
-             (mk-U- #`(τ-s ... #;msg #;... #,@os/e #,@(map pattern-sub-type pat-types/ext)))
+             (mk-U- #`(τ-s ... τ-va ... #;msg #;... #,@os/e #,@(map pattern-sub-type pat-types/ext)))
              (mk-U- #`(#,@is/i #,@pat-types/int))
              (mk-U- #`(τ-k ... #;rlz #;... #,@os/i #,@(map pattern-sub-type pat-types/int)))
              (mk-U- ss))]))

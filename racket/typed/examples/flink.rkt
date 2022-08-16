@@ -479,8 +479,8 @@ The JobManager then performs the job and, when finished, asserts
          (log "JM begins on task ~a" this-id)
 
          ;; ID -> ...
-         (define (assign-task [mngr : ID]
-                              [request-again! : (→fn ★/t)])
+         (define (∀ (ρ) (assign-task [mngr : ID]
+                                     [request-again! : (proc -> ★/t #:effects (ρ))]))
            (start-facet assign
             (on (retracted (task-manager mngr _))
                 ;; our task manager has crashed

@@ -159,6 +159,9 @@
         (Know? eff)
         (Reacts? eff)
         (MakesField? eff)
+        (ReadsField? eff)
+        (WritesField? eff)
+        (VarAssert? eff)
         (row-variable? eff)))
 
   ;; Any -> Bool
@@ -170,6 +173,8 @@
         (Realizes? eff)
         (AnyActor? eff)
         (Start? eff)
+        (ReadsField? eff)
+        (WritesField? eff)
         (row-variable? eff)))
 
   (define endpoint-effects? (curry effects-andmap endpoint-effect?))
@@ -272,9 +277,18 @@
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   #:fail-unless (allowed-interest? #'τ) "overly broad interest, ?̱̱★ and ??★ not allowed"
   #:with τs (mk-Shares- #'(τ))
-  #:with kont (if (stx-null? #'(F ...))
-                  #'(just-assert e-)
-                  #'(type-varying-assert e e-))
+  #:with kont (syntax-parse #'(F ...)
+                [(~and ((~and RF (~ReadsField _)))
+                       #;(~do (displayln 0))
+                       (~parse x (get-ReadsField-orig-field #'RF))
+                       (~typecheck [⊢ x ≫ x- (⇒ : (~Field τ-f))])
+                       #;(~do (displayln 'B))
+                       (~parse (~and τ-U (~U* τ1 τ2)) (find-union #'τ-f)))
+                 #'(type-varying-assert e e- x x- τ-f τ-U)]
+                [_ #'(just-assert e-)])
+  ;; #:with kont (if (stx-null? #'(F ...))
+  ;;                 #'(just-assert e-)
+  ;;                 #'(type-varying-assert e e-))
   -------------------------------------
   [≻ kont])
 
@@ -287,20 +301,25 @@
      (⇒ ν (τs))])
 
 ;; need to make sure that the type has exactly one, binary union
-(define-typed-syntax (type-varying-assert e e-) ≫
-  #:with ((~ReadsField x)) (detach #'e- EFF-KEY)
+(define-typed-syntax (type-varying-assert e e- x x- τ-f τ-U) ≫
+  #:do [(displayln 'A)]
   #:with τe (detach #'e- ':)
-  [⊢ x ≫ x- (⇒ : (~Field τ))]
-  #:with (~and union (~U* τi ...)) (find-union #'τ)
+  #:do [(displayln 'B)]
+  #:with (~U* τi ...) #'τ-U
+  #:do [(displayln 'C)]
   #:with ((τ-specific τe_i) ...) (for/list ([ti (in-syntax #'(τi ...))])
-                      (define specific (type-subst #'union ti #'τ))
-                      (syntax-parse/typecheck null
-                        [_ ≫
-                           [[x ≫ _ : (Field #,specific)] ⊢ e ≫ _ (⇒ : τe_i)]
-                           --------------------
-                           [≻ (#,specific τe_i)]]))
+                                   (define specific (type-subst #'τ-U ti #'τ-f))
+                                   (syntax-parse/typecheck null
+                                     [_ ≫
+                                        ;; perhaps I should make sure the result is a subtype of the original?
+                                        [[x ≫ _ : (Field #,specific)] ⊢ e ≫ _ (⇒ : τe_i)]
+                                        ----------------------------------------
+                                        [≻ (#,specific τe_i)]]))
+  #:do [(displayln 'D)]
   [[x ≫ _ : Type] ⊢ x ≫ x--]
-  #:with VA (type-eval #`(VarAssert x-- [--> τ τe] [--> τ-specific τe_i] ...))
+  #:do [(displayln 'E)]
+  #:with VA (type-eval #`(VarAssert x-- [--> τ-f τe] [--> τ-specific τe_i] ...))
+  #:do [(pretty-display (type->strX #'VA))]
   -------------------------------------------------------------------------
   [⊢ (syndicate:assert e-)
      (⇒ : ★/t)
@@ -676,8 +695,10 @@
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
   [⊢ x ≫ x- (⇒ : (~Field τ-x:type))]
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
+  [[x- ≫ _ : Type] ⊢ x- ≫ x--]
+  #:with WF (mk-WritesField #'x #'x-- #'τ-x)
   ----------------------------------------------------
-  [⊢ (#%app- x- e-) (⇒ : ★/t) (⇒ ν (F ...))])
+  [⊢ (#%app- x- e-) (⇒ : ★/t) (⇒ ν (WF F ...))])
 
 (define-simple-macro (:= e ...)
   (set! e ...))
@@ -913,7 +934,7 @@
 (define-typed-syntax (ref x:id) ≫
   [⊢ x ≫ x- ⇒ (~Field τ)]
   [[x- ≫ _ : Type] ⊢ x- ≫ x--]
-  #:with RF (mk-ReadsField- #'(x--))
+  #:with RF (mk-ReadsField #'x #'x--)
   ------------------------
   [⊢ (#%app- x-)
      (⇒ : τ)
