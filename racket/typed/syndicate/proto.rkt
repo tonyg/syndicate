@@ -387,6 +387,15 @@
           (set)
           (hash))))
 
+#|
+(define input (file->value "va2.rktd"))
+(define rg (compile input))
+(render-to-file rg "va2.dot")
+
+(define rgi (compile/internal-events rg))
+(render-to-file rgi "va2i.dot")
+|#
+
 ;; (Listof TraceStep) D StateName (DetectedCycle -> X) -> (U X Void)
 ;; the path is in reverse, and the final step is the pair evt/dest;
 ;; so their is a cycle if the sequence from the first occurrence of

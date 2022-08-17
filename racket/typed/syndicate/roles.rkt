@@ -694,7 +694,7 @@
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
   [⊢ x ≫ x- (⇒ : (~Field τ-x:type))]
   #:fail-unless (<: #'τ #'τ-x) "Ill-typed field write"
-  #:with WF (mk-WritesField #'x #'τ-x)
+  #:with WF (mk-WritesField #'x #'τ)
   ----------------------------------------------------
   [⊢ (#%app- x- e-) (⇒ : ★/t) (⇒ ν (WF F ...))])
 
@@ -1058,9 +1058,8 @@
                     OnStop proto:StopEvt
                     OnDataflow proto:DataflowEvt
                     ;; Type Varying Assertion Stuff
-                    MakesField (lambda (nm ty) (proto:Field (syntax-e nm) ty))
-                    ReadsField (lambda (nm) (proto:ReadField (syntax-e nm)))
-                    WritesField (lambda (nm ty) (proto:WriteField (syntax-e nm) ty))
+                    MakesField (lambda (nm ty) (list))
+                    ReadsField (lambda (nm) (list))
                     --> list
                     ;; LTL
                     TT #t
@@ -1083,11 +1082,26 @@
       (pretty-print id)
       (pretty-print (syntax-debug-info id))))
 
+  ;; used for communicating field type/internal message types between synd->proto and VarAssertCompiler
+  (define FIELD-TY#-KEY 'FIELD-TY#)
+
   (define (synd->proto ty)
+    ;; (Hashof Symbol (Listof (List Type Type)))
+    ;; for each VarAssert field name, keep track of the message type associated with each field type
+    (define write-field# (make-weak-hash))
+    (define (lookup field-nm field-ty)
+      (match (hash-ref write-field# field-nm #f)
+        [#f #f]
+        [ty#
+         #;(printf "got type#: ~a\n" ty#)
+         (for/first ([l (in-list ty#)]
+                     #:when (type=? (first l) field-ty))
+           (second l))]))
+
     (let convert ([ty (resugar-type ty)])
       (syntax-parse ty
         #:literals (★/t Bind Discard ∀/internal →/internal Role/internal Stop Reacts Actor ActorWithRole
-                        VarAssert)
+                        VarAssert WritesField)
         [(ctor:id t ...)
          #:when (dict-has-key? TRANSLATION# #'ctor)
          (apply (dict-ref TRANSLATION# #'ctor) (stx-map convert #'(t ...)))]
@@ -1111,8 +1125,10 @@
         [(→/internal ty-in ... ty-out)
          ;; TODO
          (error "unimplemented")]
-        [(Role/internal (nm) body ...)
-         (proto:Role (syntax-e #'nm) (stx-map convert #'(body ...)))]
+        [(Role/internal (nm) (~alt (~and VA (VarAssert . _))
+                                   body) ...)
+         ;; need to do VarAsserts first so they update the hash in time for the WriteFields to see
+         (proto:Role (syntax-e #'nm) (stx-map convert #'(VA ... body ...)))]
         [(Stop nm body ...)
          (proto:Stop (syntax-e #'nm) (stx-map convert #'(body ...)))]
         [(Reacts evt body ...)
@@ -1123,14 +1139,66 @@
                converted-body))
          (proto:Reacts (convert #'evt) body+)]
         [(VarAssert nm t1 . ts)
-         (define convs (stx-map convert #'(t1 . ts)))
-         (proto:Shares (proto:VarTy (syntax-e #'nm) convs))]
+         (define VA- (type-eval (syntax/loc ty (VarAssertCompiler nm t1 . ts))))
+         (define type# (syntax-property VA- FIELD-TY#-KEY))
+         (hash-set! write-field# (syntax-e #'nm) type#)
+         (convert (resugar-type VA-))
+         #;(syntax-parse/typecheck null
+           [_ ≫
+              -------
+              (≻ void)])
+         #;(proto:Shares (proto:VarTy (syntax-e #'nm) convs))]
+        [(WritesField nm t)
+         (printf "WritesField ~a\n" #'t)
+         #;(pretty-display write-field#)
+         (match (lookup (syntax-e #'nm) #'t)
+           [#f '()]
+           [msg-nm (proto:Realizes (proto:Base (syntax-e msg-nm)))])]
         [t:id
          (proto:Base (syntax-e #'t))]
         [(ctor:id args ...)
          ;; assume it's a struct
          (proto:Struct (syntax-e #'ctor) (stx-map convert #'(args ...)))]
         [unrecognized (error (format "unrecognized type: ~a" #'unrecognized))]))))
+
+;; need to translate (WritesField x τ) to the appropriate UpdateMsgNm
+(define-typed-syntax (VarAssertCompiler nm t1 ts ...) ≫
+  #:with all-ts #'(t1 ts ...)
+  ;; NB these have been resugared so ~--> won't work, but is in principle the right thing
+  #:do [(displayln 'AA)
+        (printf "nm: ~a\n" #'nm)]
+  #:with ([_ τf τa] ...) #'all-ts
+  ;; Relying on synd->proto interpreting each UpdateMsg as a Base type
+  #:with ((UpdateMsgNmi VAi) ...) (for/list ([t (in-syntax #'all-ts)]
+                                             [i (in-naturals)])
+                                    (list (format-id #f "Update~aMsg~a" #'nm i)
+                                          (format-id #f "VA~a~a" #'nm i)))
+  #:do [(displayln 'BB)]
+  #:with (role-i-starter ...)
+           (for/list ([stx (in-syntax #'((UpdateMsgNmi VAi) ...))]
+                      [t-a (in-syntax #'(τa ...))])
+             (with-syntax ([(myUMN myVA) stx]
+                           [my-τ-a t-a])
+               #'(Reacts (Realize myUMN)
+                         (Role (myVA)
+                               (Shares my-τ-a)
+                               (Reacts (Realize UpdateMsgNmi) (Stop myVA))
+                               ...))))
+  #:do [(displayln 'CC)]
+  #:with (UpdateMsg0 . _) #'(UpdateMsgNmi ...)
+  [[UpdateMsgNmi ≫ UpdateMsgNmi- : Type] ...
+   ⊢ (Reacts OnStart
+             (Role (dispatcher)
+                   role-i-starter ...
+                   (Reacts OnStart (Realizes UpdateMsg0))))
+   ≫ compiled]
+  #:do [(displayln 'DD)
+        #;(pretty-display (resugar-type #'compiled))]
+  #:do [(define type# (for/list ([tf (in-syntax #'(τf ...))]
+                                 [msg-nm (in-syntax #'(UpdateMsgNmi ...))])
+                        (list tf msg-nm)))]
+  ------------------------------------------------------
+  [≻ #,(syntax-property #'compiled FIELD-TY#-KEY type#)])
 
 (define-typed-syntax (export-roles dest:string e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]

@@ -75,7 +75,11 @@
            (#%plain-app tycons
                         #,@(stx-map loop #'(ty ...))
                         (~? (#%plain-app lst . more-tys-)))))
-       (attach (add-orig reconstructed t) KIND-TAG TYPE)])))
+       (define with-kind (attach (add-orig reconstructed t) KIND-TAG TYPE))
+       ;; propagate the field name used by VarAssert
+       (if (syntax-property t FN-KEY)
+           (attach with-kind FN-KEY (syntax-property t FN-KEY))
+           with-kind)])))
 (define-for-syntax serialize-syntax lazy-serialize)
 (define-for-syntax deserialize-syntax lazy-deserialize)
 
@@ -511,7 +515,7 @@
     (attach (type-eval #`(WritesField #,x-T #,t)) FN-KEY x)))
 
 ;; (VarAssert x [--> τ-field τ-assert])
-(define-type-constructor VarAssert #:arity > 1
+(define-type VarAssert : Type Type Type * -> Type
   #:implements get-resugar-info
   (syntax-parser
     [(~and stx (~VarAssert _ t1 ts ...))
@@ -521,6 +525,7 @@
 
 (begin-for-syntax
   (define (mk-VarAssert x t ts)
+    (when (false? x) (printf "\n\n————FALSE————\n\n"))
     (define x-T (as-type x))
     (attach (type-eval #`(VarAssert #,x-T #,t #,@ts)) FN-KEY x)))
 
