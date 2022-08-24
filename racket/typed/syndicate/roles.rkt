@@ -70,6 +70,7 @@
          verify-actors verify-actors/fail
          ;; LTL Syntax
          TT FF Always Eventually Until WeakUntil Release Implies And Or Not A M
+         define-ltl
          ;; Extensions
          match cond
          submod for-syntax for-meta only-in except-in
@@ -1005,6 +1006,11 @@
 
 (define-type LTL : LTL)
 
+(define-for-syntax (LTL? stx)
+  (syntax-parse (detach stx KIND-TAG)
+    [~LTL #t]
+    [_ #f]))
+
 (define-type TT : LTL)
 (define-type FF : LTL)
 (define-type Always : LTL -> LTL)
@@ -1018,6 +1024,18 @@
 (define-type Not : LTL -> LTL)
 (define-type A : Type -> LTL) ;; Assertions
 (define-type M : Type -> LTL) ;; Messages
+
+(define-syntax define-ltl
+  (syntax-parser
+    [(_ alias:id ltl)
+     #:cut
+     #:with ltl- (type-eval #'ltl)
+     #:fail-unless (LTL? #'ltl-) "expected an LTL formula"
+     #:with serialized (serialize-syntax #'ltl-)
+     #'(define-syntax- alias
+         (make-variable-like-transformer (deserialize-syntax #'serialized)))]
+    [(_ (f:id x:id ...) ltl)
+     #'(define-syntax- f (mk-type-alias-rewriter #'(x ...) #'ltl))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Behavioral Analysis
