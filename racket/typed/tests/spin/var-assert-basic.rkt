@@ -1,6 +1,5 @@
 #lang typed/syndicate
 
-#|
 (define (fut1)
 (lift+define-role va1
 (start-facet X
@@ -11,7 +10,6 @@
   (verify-actors (Eventually (A (Tuple Bool)))
                  va1)
   )
-|#
 
 (define-constructor* (go-true))
 (define-constructor* (go-false))
@@ -36,6 +34,6 @@
                  va2
                  gt)
   ;; Not good that this passes
-  (verify-actors (Always (Not (A (Tuple False))))
-                 va2
-                 gt))
+  (verify-actors/fail (Always (Not (A (Tuple False))))
+    va2
+    gt))

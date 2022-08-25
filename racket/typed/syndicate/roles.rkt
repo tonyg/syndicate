@@ -218,11 +218,12 @@
                ;; untyped syndicate might allow this - TODO
                #;(~and τ-m (~Sends _))
                (~and τ-r (~Reacts _ _ ...))
-               (~MakesField _ _)
+               (~MakesField _ _ _)
                τ-other)
           ...)
          effects
-  #:with τ (type-eval #`(Role (#,name--)
+  #:with τ (type-eval #`(Role (#,name--) #,@effects)
+                      #;#`(Role (#,name--)
                           τ-a ...
                           τ-k ...
                           ;; τ-m ...
@@ -261,7 +262,7 @@
    #:fail-unless (all-pure? #'(e- ...)) "field initializers not allowed to have effects"
    #:with (x- ...) (generate-temporaries #'(x ...))
    #:with (τ ...) (stx-map type-eval #'((Field τ-f.norm) ...))
-   #:with (MF ...) (stx-map mk-MakesField #'(x ...) #'(τ-f.norm ...))
+   #:with (MF ...) (stx-map mk-MakesField #'(x ...) #'(τ-f.norm ...) (stx-map typeof #'(e- ...)))
    ----------------------------------------------------------------------
    [⊢ (erased (field/intermediate [x x- τ e-] ...))
       (⇒ : ★/t)
@@ -279,16 +280,11 @@
   #:with τs (mk-Shares- #'(τ))
   #:with kont (syntax-parse #'(F ...)
                 [(~and ((~and RF (~ReadsField _)))
-                       #;(~do (displayln 0))
                        (~parse x:id (get-orig-field-name #'RF))
                        (~typecheck [⊢ x ≫ x- (⇒ : (~Field τ-f))])
-                       #;(~do (displayln 'B))
-                       (~parse (~and τ-U (~U* τ1 τ2)) (find-union #'τ-f)))
+                       (~parse (~and τ-U (~U* _ _)) (find-union #'τ-f)))
                  #'(type-varying-assert e e- x x- τ-f τ-U)]
                 [_ #'(just-assert e-)])
-  ;; #:with kont (if (stx-null? #'(F ...))
-  ;;                 #'(just-assert e-)
-  ;;                 #'(type-varying-assert e e-))
   -------------------------------------
   [≻ kont])
 
@@ -1076,7 +1072,6 @@
                     OnStop proto:StopEvt
                     OnDataflow proto:DataflowEvt
                     ;; Type Varying Assertion Stuff
-                    MakesField (lambda (nm ty) (list))
                     ReadsField (lambda (nm) (list))
                     --> list
                     ;; LTL
@@ -1107,6 +1102,7 @@
     ;; (Hashof Symbol (Listof (List Type Type)))
     ;; for each VarAssert field name, keep track of the message type associated with each field type
     (define write-field# (make-weak-hash))
+    (define field-ty0# (make-weak-hash))
     (define (lookup field-nm field-ty)
       (match (hash-ref write-field# field-nm #f)
         [#f #f]
@@ -1119,7 +1115,7 @@
     (let convert ([ty (resugar-type ty)])
       (syntax-parse ty
         #:literals (★/t Bind Discard ∀/internal →/internal Role/internal Stop Reacts Actor ActorWithRole
-                        VarAssert WritesField)
+                        VarAssert WritesField MakesField)
         [(ctor:id t ...)
          #:when (dict-has-key? TRANSLATION# #'ctor)
          (apply (dict-ref TRANSLATION# #'ctor) (stx-map convert #'(t ...)))]
@@ -1143,10 +1139,12 @@
         [(→/internal ty-in ... ty-out)
          ;; TODO
          (error "unimplemented")]
-        [(Role/internal (nm) (~alt (~and VA (VarAssert . _))
+        [(Role/internal (nm) (~alt (~and MF (MakesField . _))
+                                   (~and VA (VarAssert . _))
                                    body) ...)
          ;; need to do VarAsserts first so they update the hash in time for the WriteFields to see
-         (proto:Role (syntax-e #'nm) (stx-map convert #'(VA ... body ...)))]
+         ;; and MakesField before VarAsserts to get the initial type
+         (proto:Role (syntax-e #'nm) (stx-map convert #'(MF ... VA ... body ...)))]
         [(Stop nm body ...)
          (proto:Stop (syntax-e #'nm) (stx-map convert #'(body ...)))]
         [(Reacts evt body ...)
@@ -1156,16 +1154,17 @@
                (first converted-body)
                converted-body))
          (proto:Reacts (convert #'evt) body+)]
+        [(MakesField nm t t0)
+         (printf "MakesField: ~a\n" (syntax-e #'nm))
+         (hash-set! field-ty0# (syntax-e #'nm) #'t0)
+         (list)]
         [(VarAssert nm t1 . ts)
-         (define VA- (type-eval (syntax/loc ty (VarAssertCompiler nm t1 . ts))))
+         ;; pretty confident that the language forces field declarations to appear before any references
+         (define t0 (hash-ref field-ty0# (syntax-e #'nm)))
+         (define VA- (type-eval (quasisyntax/loc ty (VarAssertCompiler nm #,t0 t1 . ts))))
          (define type# (syntax-property VA- FIELD-TY#-KEY))
          (hash-set! write-field# (syntax-e #'nm) type#)
-         (convert (resugar-type VA-))
-         #;(syntax-parse/typecheck null
-           [_ ≫
-              -------
-              (≻ void)])
-         #;(proto:Shares (proto:VarTy (syntax-e #'nm) convs))]
+         (convert (resugar-type VA-))]
         [(WritesField nm t)
          (printf "WritesField ~a\n" #'t)
          #;(pretty-display write-field#)
@@ -1180,7 +1179,7 @@
         [unrecognized (error (format "unrecognized type: ~a" #'unrecognized))]))))
 
 ;; need to translate (WritesField x τ) to the appropriate UpdateMsgNm
-(define-typed-syntax (VarAssertCompiler nm t1 ts ...) ≫
+(define-typed-syntax (VarAssertCompiler nm t0 t1 ts ...) ≫
   #:with all-ts #'(t1 ts ...)
   ;; NB these have been resugared so ~--> won't work, but is in principle the right thing
   #:do [(displayln 'AA)
@@ -1203,7 +1202,14 @@
                                (Reacts (Realize UpdateMsgNmi) (Stop myVA))
                                ...))))
   #:do [(displayln 'CC)]
-  #:with (UpdateMsg0 . _) #'(UpdateMsgNmi ...)
+  #:do [(displayln #'t0)
+        (displayln #'(τf ...))]
+  #:with UpdateMsg0 (for/first ([t-a (in-syntax #'(τf ...))]
+                                [msgi (in-syntax #'(UpdateMsgNmi ...))]
+                                #:when (type=? #'t0 t-a))
+                      msgi)
+  #:do [(printf "UpdateMsg0: ~a\n" (syntax-e #'UpdateMsg0))]
+  ;; #:with (UpdateMsg0 . _) #'(UpdateMsgNmi ...)
   [[UpdateMsgNmi ≫ UpdateMsgNmi- : Type] ...
    ⊢ (Reacts OnStart
              (Role (dispatcher)

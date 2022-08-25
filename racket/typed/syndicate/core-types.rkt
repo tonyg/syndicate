@@ -464,12 +464,12 @@
 (define-type-constructor Effs #:arity >= 0)
 (define-base-types OnStart OnStop OnDataflow)
 
-;; (MakesField x τ)
-(define-type-constructor MakesField #:arity = 2
+;; (MakesField x τ τ0)
+(define-type-constructor MakesField #:arity = 3
   #:implements get-resugar-info
   (syntax-parser
-    [(~and stx (~MakesField _ τ))
-     (list #'MakesField (get-orig-field-name #'stx) (resugar-type #'τ))]))
+    [(~and stx (~MakesField _ τ τ0))
+     (list #'MakesField (get-orig-field-name #'stx) (resugar-type #'τ) (resugar-type #'τ0))]))
 (begin-for-syntax
   (define FN-KEY 'FIELD-NAME)
 
@@ -481,9 +481,9 @@
            ---
            (≻ x-)])))
 
-  (define (mk-MakesField x t)
+  (define (mk-MakesField x t t0)
     (define x-T (as-type x))
-    (attach (type-eval #`(MakesField #,x-T #,t)) FN-KEY x))
+    (attach (type-eval #`(MakesField #,x-T #,t #,t0)) FN-KEY x))
 
   (define (get-orig-field-name MF)
     (detach MF FN-KEY)))
@@ -1345,7 +1345,8 @@
     [(~Start _)
      (values bot bot bot bot bot)]
     [(~or* (~ReadsField _)
-           (~WritesField _ _))
+           (~WritesField _ _)
+           (~MakesField _ _ _))
      (values bot bot bot bot bot)]
     [(~WithFacets ([nm impl] ...) fst)
      (apply values (syntax->list (analyze-roles #'(impl ...))))]
@@ -1365,6 +1366,7 @@
                    #;(~Sends τ-m)
                    #;(~Realizes τ-rlz)
                    (~Reacts τ-if τ-then ...)
+                   (~MakesField _ _ _)
                    (~ReadsField _)
                    (~WritesField _ _))
              ...) (flatten-effects #'(EP ...))

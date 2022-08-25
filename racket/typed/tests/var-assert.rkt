@@ -8,7 +8,7 @@
     (field [state Bool #t])
     (assert (tuple (! state)))))
   : (List String)
-  -> (list "(Role (X) (VarAssert state (--> (U False True) (Tuple (U False True))) (--> False (Tuple False)) (--> True (Tuple True))))"))
+  -> (list "(Role (X) (VarAssert state (--> (U False True) (Tuple (U False True))) (--> False (Tuple False)) (--> True (Tuple True))) (MakesField state (U False True) True))"))
 
 (define (spawn-B)
   (spawn

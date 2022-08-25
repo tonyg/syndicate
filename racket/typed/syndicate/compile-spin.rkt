@@ -107,7 +107,7 @@
   (define-values (message-evts assertion-evts) (set-partition Message? event-tys))
   (define msg-event-tys (list->set (set-map message-evts Message-ty)))
   (define msg-bodies (set-union message-tys msg-event-tys spec-msgs))
-  (define event-subty# (make-event-map assertion-tys assertion-evts))
+  (define event-subty# (make-event-map assertion-tys (set-union assertion-evts spec-asserts)))
   (define all-assertion-tys (set-union assertion-tys assertion-evts spec-asserts))
   (define all-mentioned-tys (set-union all-assertion-tys msg-bodies))
   (define name-env (make-name-env all-mentioned-tys))
