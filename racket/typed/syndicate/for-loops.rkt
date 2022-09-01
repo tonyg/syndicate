@@ -12,7 +12,7 @@
 (require (only-in "list.rkt" List ~List))
 (require (only-in "set.rkt" Set ~Set))
 (require (only-in "hash.rkt" Hash ~Hash))
-(require (only-in "prim.rkt" Bool + #%datum))
+(require (only-in "prim.rkt" Int Bool + #%datum))
 (require (only-in "core-expressions.rkt" let unit tuple-select mk-tuple))
 (require "maybe.rkt")
 
@@ -214,7 +214,7 @@
 (define-typed-syntax (for/sum (clause ...)
                        e-body ...+) ≫
   ----------------------------------------------------------------------
-  [≻ (for/fold ([acc 0])
+  [≻ (for/fold ([acc Int 0])
                (clause ...)
        (+ acc (let () e-body ...)))])
 

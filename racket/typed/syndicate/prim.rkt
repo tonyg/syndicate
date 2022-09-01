@@ -12,7 +12,9 @@
 ;; Primitives
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-base-types Int String ByteString Symbol)
+(define-base-types Zero NonZero String ByteString Symbol)
+
+(define-type-alias Int (U Zero NonZero))
 
 ;; hmmm
 (define-primop + (→fn Int Int Int))
@@ -118,8 +120,9 @@
 
 (define-typed-syntax #%datum
   [(_ . n:integer) ≫
+   #:with T (if (zero? (syntax-e #'n)) #'Zero #'NonZero)
   ----------------
-  [⊢ (#%datum- . n) (⇒ : Int)]]
+  [⊢ (#%datum- . n) (⇒ : T)]]
   [(_ . b:boolean)
    ≫
    #:with T (if (syntax-e #'b) #'True #'False)

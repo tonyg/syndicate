@@ -8,13 +8,12 @@
 (define (test-fun)
   (call/inst assert-something! (lambda () (assert 5))))
 
-
-(check-type test-fun : (proc → ★/t #:effects ((Shares Int))))
+(check-type test-fun : (proc → ★/t #:effects ((Shares NonZero))))
 
 (define (test-call/inst-insertion)
   (assert-something! (lambda () (assert 5))))
 
-(check-type test-call/inst-insertion : (proc → ★/t #:effects ((Shares Int))))
+(check-type test-call/inst-insertion : (proc → ★/t #:effects ((Shares NonZero))))
 
 (define (∀ (ρ) (start-something! [p : (proc → ★/t #:effects (ρ))]))
   (p))

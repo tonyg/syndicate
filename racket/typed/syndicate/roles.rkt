@@ -64,7 +64,7 @@
          (all-from-out "maybe.rkt")
          (all-from-out "either.rkt")
          ;; DEBUG and utilities
-         print-type print-role role-strings
+         print-type print-role role-strings print-effects
          ;; Behavioral Roles
          export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
          verify-actors verify-actors/fail
@@ -298,11 +298,11 @@
 
 ;; need to make sure that the type has exactly one, binary union
 (define-typed-syntax (type-varying-assert e e- x x- τ-f τ-U) ≫
-  #:do [(displayln 'A)]
+  ;; #:do [(displayln 'A)]
   #:with τe (detach #'e- ':)
-  #:do [(displayln 'B)]
+  ;; #:do [(displayln 'B)]
   #:with (~U* τi ...) #'τ-U
-  #:do [(displayln 'C)]
+  ;; #:do [(displayln 'C)]
   #:with ((τ-specific τe_i) ...) (for/list ([ti (in-syntax #'(τi ...))])
                                    (define specific (type-subst #'τ-U ti #'τ-f))
                                    (syntax-parse/typecheck null
@@ -311,11 +311,11 @@
                                         [[x ≫ _ : (Field #,specific)] ⊢ e ≫ _ (⇒ : τe_i)]
                                         ----------------------------------------
                                         [≻ (#,specific τe_i)]]))
-  #:do [(displayln 'D)]
+  ;; #:do [(displayln 'D)]
   ;; [[x ≫ _ : Type] ⊢ x ≫ x--]
-  #:do [(displayln 'E)]
+  ;; #:do [(displayln 'E)]
   #:with VA (mk-VarAssert #'x #'[--> τ-f τe] #'([--> τ-specific τe_i] ...))
-  #:do [(pretty-display (type->strX #'VA))]
+  ;; #:do [(pretty-display (type->strX #'VA))]
   -------------------------------------------------------------------------
   [⊢ (syndicate:assert e-)
      (⇒ : ★/t)
@@ -349,14 +349,14 @@
   )
 
 (module+ test
-  (define-constructor* (bacon [pieces Int] [crispyness Bool]))
+  (define-constructor* (bacon [pieces NonZero] [crispyness Bool]))
   (begin-for-syntax
     (test-case
         "find-union"
       (define T (type-eval #'(U Int String)))
       (check type=? (find-union T)
              T)
-      (check-false (find-union (type-eval #'Int)))
+      (check-false (find-union (type-eval #'Symbol)))
       (check type=? (find-union (type-eval #`(Tuple #,T)))
                     T))
 
@@ -392,7 +392,7 @@
                (type-eval #'(Tuple True)))
 
         (define BCN (type-eval #'Bacon))
-        (define BCT (type-eval #'(BaconT Int True)))
+        (define BCT (type-eval #'(BaconT NonZero True)))
         (check type=? (type-subst B T BCN)
                BCT))
       )))
@@ -577,22 +577,54 @@
                       (= 1 (length (syntax->list #'(F ...)))))
    "expected exactly one Role for body"
    #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(F ...))
-   #:fail-unless (project-safe? (∩ (strip-? #'τ-o/i) #'τ-o/i) #'τ-i/i)
-                 (string-append "Not prepared to handle internal events:\n" (make-actor-error-message #'τ-i/i #'τ-o/i #'τ-o/i))
+   #:do [(ensure-inputs! #'τ-i/i #'τ-o/i #'τ-o/i this-syntax)]
+   ;; #:fail-unless (project-safe? (∩ (strip-? #'τ-o/i) #'τ-o/i) #'τ-i/i)
+                 ;; (string-append "Not prepared to handle internal events:\n" (make-actor-error-message #'τ-i/i #'τ-o/i #'τ-o/i))
   ;; if there are Discards in pattern types, this will take more specific instances from other patterns
   #:with τ-i/o (replace-bind-and-discard-with-★ (instantiate-pattern-type #'τ-i))
   #:with (~U* (~AnyActor τ-c/spawned) ...) #'τ-a
   #:with τ-c/this-actor (type-eval #'(U τ-i/o τ-o))
   #:with τ-c/final (type-eval #'(U τ-c/this-actor τ-c/spawned ...))
-  #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c/final)
-                               #'τ-i)
-                (string-append "Not prepared to handle inputs:\n" (make-actor-error-message #'τ-i #'τ-o #'τ-c/final))
+  #:do [(ensure-inputs! #'τ-i #'τ-o #'τ-c/final this-syntax)]
+  ;; #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c/final)
+                               ;; #'τ-i)
+                ;; (string-append "Not prepared to handle inputs:\n" (make-actor-error-message #'τ-i #'τ-o #'τ-c/final))
   #:with τ-final (mk-ActorWithRole- #'(τ-c/final F ...))
-  #:fail-unless (<: #'τ-a #'τ-final)
-                "Spawned actors not valid in dataspace"
+  #:do [(for ([t/spawned (in-syntax #'(τ-c/spawned ...))])
+          (ensure-actor-sub! t/spawned #'τ-c/final this-syntax))]
+  ;; #:fail-unless (<: #'τ-a #'τ-final)
+                ;; "Spawned actors not valid in dataspace"
   ----------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ ν (τ-final))]])
+
+(define-for-syntax (ensure-outputs! τ-o τ-c [loc τ-o])
+  (unless (<: τ-o τ-c)
+    (define msg (format "Outputs ~a not valid in dataspace ~a"
+                        (make-output-error-message τ-o τ-c)
+                        (type->strX τ-c)))
+    (type-error #:src loc #:msg msg)))
+
+(define-for-syntax (ensure-inputs! τ-i τ-o τ-c [loc τ-i])
+  (unless (project-safe? (∩ (strip-? τ-o) τ-c) τ-i)
+    (define msg (string-append "Not prepared to handle inputs:\n"
+                               (make-actor-error-message τ-i τ-o τ-c)))
+    (type-error #:src loc #:msg msg)))
+
+(define-for-syntax (ensure-actor-type! τ-i τ-o τ-c [loc τ-i])
+  (ensure-outputs! τ-o τ-c loc)
+  (ensure-inputs! τ-i τ-o τ-c loc))
+
+(define-for-syntax (ensure-actor-sub! τ-a τ-c [loc τ-a])
+  (ensure-outputs! τ-a τ-c loc)
+  (unless (<: (∩ (strip-? τ-a) τ-c) τ-a)
+    (define mismatches (find-surprising-inputs τ-a τ-a τ-c (lambda (t1 t2) (not (<: t1 t2)))))
+    (define msg (string-append "Spawned actor not prepared to handle inputs:\n"
+                               (tys->str mismatches)
+                               "\nContext:\n"
+                               (type->strX τ-a)))
+    (type-error #:src loc
+                #:msg msg)))
 
 ;; (Listof Type) -> String
 (define-for-syntax (tys->str tys)
@@ -987,6 +1019,13 @@
   ----------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν (F ...))])
 
+(define-typed-syntax (print-effects e) ≫
+  [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
+  #:do [(for ([f (in-syntax #'(F ...))])
+          (pretty-display (type->strX f)))]
+  ----------------------------------
+  [⊢ e- (⇒ : τ) (⇒ ν (F ...))])
+
 ;; this is mainly for testing
 (define-typed-syntax (role-strings e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
@@ -1155,7 +1194,7 @@
                converted-body))
          (proto:Reacts (convert #'evt) body+)]
         [(MakesField nm t t0)
-         (printf "MakesField: ~a\n" (syntax-e #'nm))
+         #;(printf "MakesField: ~a\n" (syntax-e #'nm))
          (hash-set! field-ty0# (syntax-e #'nm) #'t0)
          (list)]
         [(VarAssert nm t1 . ts)
@@ -1166,7 +1205,7 @@
          (hash-set! write-field# (syntax-e #'nm) type#)
          (convert (resugar-type VA-))]
         [(WritesField nm t)
-         (printf "WritesField ~a\n" #'t)
+         #;(printf "WritesField ~a\n" #'t)
          #;(pretty-display write-field#)
          (match (lookup (syntax-e #'nm) #'t)
            [#f '()]
@@ -1182,15 +1221,15 @@
 (define-typed-syntax (VarAssertCompiler nm t0 t1 ts ...) ≫
   #:with all-ts #'(t1 ts ...)
   ;; NB these have been resugared so ~--> won't work, but is in principle the right thing
-  #:do [(displayln 'AA)
-        (printf "nm: ~a\n" #'nm)]
+  ;; #:do [(displayln 'AA)
+  ;;       (printf "nm: ~a\n" #'nm)]
   #:with ([_ τf τa] ...) #'all-ts
   ;; Relying on synd->proto interpreting each UpdateMsg as a Base type
   #:with ((UpdateMsgNmi VAi) ...) (for/list ([t (in-syntax #'all-ts)]
                                              [i (in-naturals)])
                                     (list (format-id #f "Update~aMsg~a" #'nm i)
                                           (format-id #f "VA~a~a" #'nm i)))
-  #:do [(displayln 'BB)]
+  ;; #:do [(displayln 'BB)]
   #:with (role-i-starter ...)
            (for/list ([stx (in-syntax #'((UpdateMsgNmi VAi) ...))]
                       [t-a (in-syntax #'(τa ...))])
@@ -1201,14 +1240,14 @@
                                (Shares my-τ-a)
                                (Reacts (Realize UpdateMsgNmi) (Stop myVA))
                                ...))))
-  #:do [(displayln 'CC)]
-  #:do [(displayln #'t0)
-        (displayln #'(τf ...))]
+  ;; #:do [(displayln 'CC)]
+  ;; #:do [(displayln #'t0)
+  ;;       (displayln #'(τf ...))]
   #:with UpdateMsg0 (for/first ([t-a (in-syntax #'(τf ...))]
                                 [msgi (in-syntax #'(UpdateMsgNmi ...))]
                                 #:when (type=? #'t0 t-a))
                       msgi)
-  #:do [(printf "UpdateMsg0: ~a\n" (syntax-e #'UpdateMsg0))]
+  ;; #:do [(printf "UpdateMsg0: ~a\n" (syntax-e #'UpdateMsg0))]
   ;; #:with (UpdateMsg0 . _) #'(UpdateMsgNmi ...)
   [[UpdateMsgNmi ≫ UpdateMsgNmi- : Type] ...
    ⊢ (Reacts OnStart
@@ -1216,8 +1255,8 @@
                    role-i-starter ...
                    (Reacts OnStart (Realizes UpdateMsg0))))
    ≫ compiled]
-  #:do [(displayln 'DD)
-        #;(pretty-display (resugar-type #'compiled))]
+  ;; #:do [(displayln 'DD)
+  ;;       #;(pretty-display (resugar-type #'compiled))]
   #:do [(define type# (for/list ([tf (in-syntax #'(τf ...))]
                                  [msg-nm (in-syntax #'(UpdateMsgNmi ...))])
                         (list tf msg-nm)))]

@@ -33,7 +33,6 @@
   (verify-actors (Eventually (A (Tuple True)))
                  va2
                  gt)
-  ;; Not good that this passes
   (verify-actors/fail (Always (Not (A (Tuple False))))
     va2
     gt))
