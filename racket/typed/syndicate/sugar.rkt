@@ -14,7 +14,8 @@
      #:do [(define arity? (get-type-arity #'TyCons))]
      #:when arity?
      (mk-Observe- (list (reassemble-type #'TyCons (make-list (arity-min arity?) star))))]
-    [(_ (~Any/new TyCons τ ...))
+    [(_ t)
+     #:with (~Any/new TyCons τ ...) (type-eval #'t)
      #:when (reassemblable? #'TyCons)
      (mk-Observe- (list (reassemble-type #'TyCons (stx-map (lambda (_) star) #'(τ ...)))))]
     [_
