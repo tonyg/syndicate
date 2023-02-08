@@ -28,7 +28,7 @@
   #:macro-definer-name define-assertion-expander
   #:introducer-parameter-name current-assertion-expander-introducer
   #:local-introduce-name syntax-local-assertion-expander-introduce
-  #:expander-id-predicate-name assertion-expander-id?
+  #:expander-form-predicate-name assertion-expander-form?
   #:expander-transform-name assertion-expander-transform)
 
 (provide (for-syntax
@@ -36,7 +36,7 @@
           assertion-expander?
           assertion-expander-proc
           syntax-local-assertion-expander-introduce
-          assertion-expander-id?
+          assertion-expander-form?
           assertion-expander-transform)
          define-assertion-expander)
 
@@ -153,8 +153,8 @@
                    bs
                    ins))]
 
-        [(expander args ...)
-         (assertion-expander-id? #'expander)
+        [expander
+         (assertion-expander-form? #'expander)
          (assertion-expander-transform pat-stx (lambda (r) (walk (syntax-rearm r pat-stx))))]
 
         [(ctor p ...)

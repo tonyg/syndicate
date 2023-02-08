@@ -803,7 +803,7 @@
   #:macro-definer-name define-event-expander
   #:introducer-parameter-name current-event-expander-introducer
   #:local-introduce-name syntax-local-event-expander-introduce
-  #:expander-id-predicate-name event-expander-id?
+  #:expander-form-predicate-name event-expander-form?
   #:expander-transform-name event-expander-transform)
 
 (provide (for-syntax
@@ -811,7 +811,7 @@
           event-expander?
           event-expander-proc
           syntax-local-event-expander-introduce
-          event-expander-id?
+          event-expander-form?
           event-expander-transform)
          define-event-expander)
 
@@ -949,8 +949,8 @@
   (define event-stx (syntax-disarm armed-event-stx orig-insp))
   (syntax-parse event-stx
     #:literals [core:message asserted retracted rising-edge know forget realize]
-    [(expander args ...)
-     #:when (event-expander-id? #'expander)
+    [expander
+     #:when (event-expander-form? #'expander)
      (event-expander-transform
       event-stx
       (lambda (result)
