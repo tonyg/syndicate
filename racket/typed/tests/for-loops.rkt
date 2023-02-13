@@ -9,7 +9,7 @@
             : Int
             ⇒ 0)
 
-(check-type (for/fold ([x 0])
+(check-type (for/fold ([x : Int 0])
                       ([y (list 1 2 3)])
               y)
             : Int
@@ -20,13 +20,13 @@
 (define inventory0 (list (tuple "The Wind in the Willows" 5)
                            (tuple "Catch 22" 2)
                            (tuple "Candide" 33)))
-(check-type (for/fold ([stock 0])
+(check-type (for/fold ([stock : Int 0])
                       ([item inventory0])
               (select 1 item))
             : Int
             ⇒ 33)
 
-(check-type (for/fold ([stock 0])
+(check-type (for/fold ([stock : Int 0])
                       ([item inventory0])
               (if (equal? "Catch 22" (select 0 item))
                   (select 1 item)
@@ -36,7 +36,7 @@
 
 (define (lookup [title : String]
                 [inv : Inventory] -> Int)
-  (for/fold ([stock 0])
+  (for/fold ([stock : Int 0])
             ([item inv])
     (if (equal? title (select 0 item))
         (select 1 item)
