@@ -68,6 +68,7 @@
          ;; Behavioral Roles
          export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
          verify-actors verify-actors/fail
+         check-deadlock-free
          ;; LTL Syntax
          TT FF Always Eventually Until WeakUntil Release Implies And Or Not A M
          define-ltl
@@ -99,6 +100,7 @@
 (require turnstile/typedefs)
 (require (postfix-in - racket/list))
 (require (postfix-in - racket/set))
+(require (postfix-in - racket/pretty))
 
 (require (for-syntax (prefix-in proto: "proto.rkt")
                      (prefix-in proto: "ltl.rkt")
@@ -1286,7 +1288,7 @@
   ;; with the right module scopes
   #:with x+ (syntax-local-introduce (datum->syntax #f (syntax-e #'x)))
   #:do [(define r- (synd->proto #'r))
-        (syntax-local-lift-module-end-declaration #`(define- x+ '#,r-))]
+        (syntax-local-lift-module-end-declaration #`(define-type-alias x+ r #;'#,r-))]
   ----------------------------------------
   [⊢ e- (⇒ : τ) (⇒ ν (r))])
 
@@ -1338,15 +1340,69 @@
 
 (define-syntax-parser verify-actors
   [(_ spec actor-ty:type-or-proto ...)
-   #:with spec- #`(quote- #,(synd->proto (type-eval #'spec)))
+   #:with spec+ (type-eval #'spec)
+   #:with spec- #`(quote- #,(synd->proto #'spec+))
+   #:with spec-str (with-output-to-string (lambda () (pretty-display (syntax->datum (datum->syntax #f (resugar-type #'spec+))))))
    (syntax/loc this-syntax
-     (check-true (#%app- proto:compile+verify spec- (#%app- list- actor-ty.role ...))))])
+     (check-equal? (#%app- v spec- 'spec-str (#%app- list- actor-ty.role ...) #t)
+                   'pass
+                   #;(#%app- proto:compile+verify spec- (#%app- list- actor-ty.role ...))))])
 
 (define-syntax-parser verify-actors/fail
   [(_ spec actor-ty:type-or-proto ...)
-   #:with spec- #`(quote- #,(synd->proto (type-eval #'spec)))
+   #:with spec+ (type-eval #'spec)
+   #:with spec- #`(quote- #,(synd->proto #'spec+))
+   #:with spec-str (with-output-to-string (lambda () (pretty-display (syntax->datum (datum->syntax #f (resugar-type #'spec+))))))
    (syntax/loc this-syntax
-     (check-false (#%app- proto:compile+verify spec- (#%app- list- actor-ty.role ...))))])
+     (check-equal? (#%app- v spec- spec-str (#%app- list- actor-ty.role ...) #f)
+                   'counter))])
+
+(define- (v spec spec-str roles pass?)
+  (define- ans (#%app- proto:compile+verify spec roles))
+  (cond-
+   [(#%app- string?- ans)
+    (#%app- displayln- ans)
+    'error]
+   [(#%app- list?- ans)
+    (when- pass?
+      (#%app- displayln- "Property:")
+      (#%app- pretty-display- spec-str)
+      (#%app- proto:print-trace ans))
+    'counter]
+   [else
+    'pass]))
+
+(define-ltl (DeadlockLTL T)
+  (Always (Implies (A (Observe★ T))
+                   (Eventually (Or (A T)
+                                   (Not (A (Observe★ T))))))))
+
+(define-syntax-parser deadlock-free
+  [(_ obs-ty)
+   #:with (~Observe ty) #'obs-ty
+   #`(Always (Implies (A obs-ty)
+                      (Eventually (Or (A ty)
+                                      (M ty)
+                                      (Not (A obs-ty))))))])
+
+;; recognizes ?τ but not ??τ
+(define-for-syntax (Observe1? ty)
+  (syntax-parse ty
+    [(~Observe τ)
+     (not (Observe? #'τ))]
+    [_
+     #f]))
+
+(define-syntax-parser check-deadlock-free
+  [(_ actor-ty:type ...+)
+   #:when (stx-andmap Role? #'(actor-ty.norm ...))
+   #:with (_ (~U* outs ...) _ _ _) (analyze-roles #'(actor-ty.norm ...))
+   #:with (interest ...) (stx-filter Observe1? #'(outs ...))
+   #:with (VA ...) (for/list ([i (in-syntax #'(interest ...))])
+                     (quasisyntax/loc this-syntax
+                       (verify-actors (deadlock-free #,i)
+                         actor-ty.norm ...)))
+   #'(begin- VA ...)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests

@@ -1,6 +1,6 @@
 #lang racket
 
-(provide run-spin compile+verify)
+(provide run-spin compile+verify print-trace)
 
 (require "proto.rkt")
 (require "ltl.rkt")
@@ -978,7 +978,10 @@
 (define-runtime-path RUN-SPIN.EXE "run-spin.sh")
 (define-runtime-path REPLAY-TRAIL.EXE "replay-trail.sh")
 
-;; [LTL τ] [Listof Role] -> Bool
+;; [LTL τ] [Listof Role] -> (U #t String SpinTrace)
+;; returns #true if verification succeeds
+;; returns a string error message if compilation fails
+;; returns a SpinTrace of a counterexample if verification fails
 (define (compile+verify spec roles)
   (let/ec stop
     (define role-graphs
@@ -987,11 +990,11 @@
         (when (detected-cycle? ans)
           (printf "detected cycle!\n")
           (describe-detected-cycle ans)
-          (stop #f))
+          (stop "compilation failed"))
         ans))
     (run-spin (program->spin role-graphs spec))))
 
-;; SpinThang String -> Bool
+;; SpinThang String -> (U #t String SpinTrace)
 (define (run-spin spin [spec-name "spec"])
   (define tmp (make-temporary-file "typed-syndicate-spin~a.pml"))
   (gen-spin/to-file spin tmp)
@@ -999,19 +1002,24 @@
     (run-script RUN-SPIN.EXE (list tmp spec-name)))
   (define trail-file (format "~a.trail" (path->string tmp)))
   (define trail-exists? (file-exists? trail-file))
+  (define maybe-trace #f)
+  (define maybe-err #f)
   (cond
     [(not script-completed?)
-     (displayln "Error running SPIN; Output:")
-     (display script-err)
-     (display script-output)]
+     (set! maybe-err
+           (with-output-to-string
+             (lambda ()
+               (displayln "Error running SPIN; Output:")
+               (display script-err)
+               (display script-output))))]
     [trail-exists?
-       (displayln "Detected Trail File!")
-       (copy-file tmp (build-path (current-directory) "model.pml") #t)
-       (copy-file trail-file (build-path (current-directory) "model.pml.trail") #t)
-       (analyze-spin-trail tmp)
-       (delete-file trail-file)])
+     #;(displayln "Detected Trail File!")
+     (copy-file tmp (build-path (current-directory) "model.pml") #t)
+     (copy-file trail-file (build-path (current-directory) "model.pml.trail") #t)
+     (set! maybe-trace (analyze-spin-trail tmp))
+     (delete-file trail-file)])
   (delete-file tmp)
-  (and script-completed? (not trail-exists?)))
+  (or maybe-err maybe-trace #t))
 
 (define SPIN-REPORT-RX #px"(?m:^State-vector \\d+ byte, depth reached \\d+, errors: (\\d+)$)")
 
@@ -1031,16 +1039,17 @@ Examples:
 |#
 (define TRAIL-LINE-RX #px"(?m:^\\s*<<<<<START OF CYCLE>>>>>|^\\s*\\d+:\\s*proc\\s*(\\d+)\\s*\\(.*\\) \\S+\\.pml:(\\d+))")
 
-;; Path -> Void
+;; Path -> SpinTrace
 ;; assume the trail file exists in the same directory as the spin (model) file
 (define (analyze-spin-trail spin-file)
   (define-values (_ out __) (run-script REPLAY-TRAIL.EXE (list spin-file)))
   #;(pretty-display out)
   (define trace (spin-trace->syndicate-trace out spin-file))
-  (print-trace trace)
+  trace
+  #;(print-trace trace)
   #;(log-trace-msd trace))
 
-;; String Path -> (Listof TraceStep)
+;; String Path -> SpinTrace
 (define (spin-trace->syndicate-trace spin-out spin-file)
   (define pid/line-trace (regexp-match* TRAIL-LINE-RX spin-out #:match-select cdr))
   (define model-lines (file->vector spin-file))
@@ -1056,6 +1065,7 @@ Examples:
   (close-output-port stdin)
   (values script-completed? script-output script-err))
 
+;; a SpinTrace is a (Listof TraceStep)
 ;; a PID is a Nat
 
 ;; a TraceStep is one of
@@ -1077,7 +1087,7 @@ Examples:
 (define DSTEP-EVENT 'dstep)
 (define TURN-BEGIN-EVENT 'turn-begin)
 
-;; (Listof (List String String)) (Vectorof String) -> (Listof TraceStep)
+;; (Listof (List String String)) (Vectorof String) -> SpinTrace
 (define (interpret-spin-trace pid/line-trace model-lines)
   (define maybe-steps
     (for/list ([item (in-list pid/line-trace)])
