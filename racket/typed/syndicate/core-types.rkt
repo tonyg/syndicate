@@ -1350,47 +1350,26 @@
      (values bot bot bot bot bot)]
     [(~WithFacets ([nm impl] ...) fst)
      (apply values (syntax->list (analyze-roles #'(impl ...))))]
-    [(~Role+Body (_)
-                 EP ...
-       #;(~or (~Shares τ-s)
-            (~Know τ-k)
-            #;(~Sends τ-m)
-            #;(~Realizes τ-rlz)
-            (~Reacts τ-if τ-then ...)) #;...
-       ;; TODO - is this sub-role clause acutally needed?
-       ;;(~and (~Role+Body _ _ ...) sub-role) ...
-       )
-     #:with ((~alt (~Shares τ-s)
-                   (~VarAssert _ [~--> _ τ-va] _ ...)
-                   (~Know τ-k)
-                   #;(~Sends τ-m)
-                   #;(~Realizes τ-rlz)
-                   (~Reacts τ-if τ-then ...)
-                   (~MakesField _ _ _)
-                   (~ReadsField _)
-                   (~WritesField _ _))
-             ...) (flatten-effects #'(EP ...))
-     ;; #:with (msg ...) (for/list ([m (in-syntax #'(τ-m ...))])
-                        ;; (mk-Message- (list m)))
-     ;;#:with (rlz ...) (for/list ([r (in-syntax #'(τ-rlz ...))])
-                        ;; (mk-Realize- (list r)))
-     (define-values (is/e os/e is/i os/i ss)
-       (for/fold ([ins '()]
-                  [outs '()]
-                  [ins/int '()]
-                  [outs/int '()]
-                  [spawns '()])
-                 ([t (in-syntax #'(τ-then ... ... #;sub-role #;...))])
-         (define-values (i o i/i o/i s) (analyze-role-input/output t))
-         (values (cons i ins) (cons o outs) (cons i/i ins/int) (cons o/i outs/int) (cons s spawns))))
-     (define-values (ifs/ext ifs/int) (partition external-evt? (stx->list #'(τ-if ...))))
-     (define pat-types/ext (map event-desc-type ifs/ext))
-     (define pat-types/int (map event-desc-type ifs/int))
-     (values (mk-U- #`(#,@is/e #,@pat-types/ext))
-             (mk-U- #`(τ-s ... τ-va ... #;msg #;... #,@os/e #,@(map pattern-sub-type pat-types/ext)))
-             (mk-U- #`(#,@is/i #,@pat-types/int))
-             (mk-U- #`(τ-k ... #;rlz #;... #,@os/i #,@(map pattern-sub-type pat-types/int)))
-             (mk-U- ss))]))
+    [(~or* (~Shares τ-s)
+           (~VarAssert _ [~--> _ τ-s] _ ...))
+     (values bot #'τ-s bot bot bot)]
+    [(~Know τ-k)
+     (values bot bot bot #'τ-k bot)]
+    [(~Reacts τ-if τ-then ...)
+     #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-then ...))
+     (define pat-type (event-desc-type #'τ-if))
+     (define sub-type (pattern-sub-type pat-type))
+     (define-values (i ii)
+       (if (external-evt? #'τ-if)
+           (values (mk-U- #`(τ-i #,pat-type)) #'τ-i/i)
+           (values #'τ-i (mk-U- #`(τ-i/i #,pat-type)))))
+     (define-values (o oi)
+       (if (external-evt? #'τ-if)
+           (values (mk-U- #`(τ-o #,sub-type)) #'τ-o/i)
+           (values #'τ-o (mk-U- #`(τ-o/i #,sub-type)))))
+     (values i o ii oi #'τ-a)]
+    [(~Role+Body (_) EP ...)
+     (apply values (syntax->list (analyze-roles (flatten-effects #'(EP ...)))))]))
 
 ;; EventType -> Bool
 ;; recognize external events (assertions and messages)
@@ -1523,8 +1502,7 @@
       (and (stx-length=? #'(τ-in1 ...) #'(τ-in2 ...))
            (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
            (<: #'τ-out1 #'τ-out2)
-           ;; TODO!
-           (<: (mk-U*- #'(F1 ...)) (mk-U*- #'(F2 ...))))]
+           (check-effects #'(F1 ...) #'(F2 ...)))]
      [(~Discard _)
       #t]
      [(X:id Y:id)
@@ -1563,6 +1541,19 @@
            #t]))]
      [_
       (type=? t1 t2)]))
+
+ ;; subtyping for effect sequences based on their effect on the actors
+ ;; inputs/outputs/spawns
+ (define (check-effects effs1 effs2)
+   (syntax-parse (list (analyze-roles (flatten-effects effs1))
+                       (analyze-roles (flatten-effects effs2)))
+     [((is1 os1 is/i1 os/i1 ss1)
+       (is2 os2 is/i2 os/i2 ss2))
+      (and (<: #'is2 #'is1)
+           (<: #'os1 #'os2)
+           (<: #'is/i2 #'is/i1)
+           (<: #'os/i1 #'os/i2)
+           (<: #'ss1 #'ss2))]))
 
  ;; shortcuts for mapping
  (define ((<:l l) r)
