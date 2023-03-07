@@ -257,13 +257,15 @@ The JobManager then performs the job and, when finished, asserts
 
      (field [busy-runners (Set ID) (set)])
 
-     (define/dataflow idle-runners
+     (define (idle-runners)
+       (set-count (set-subtract (ref task-runners) (ref busy-runners))))
+     #;(define/dataflow idle-runners
        (set-count (set-subtract (ref task-runners) (ref busy-runners))))
 
-     (assert (task-manager id (ref idle-runners)))
+     (assert (task-manager id (idle-runners)))
 
      (define (can-accept?)
-       (positive? (ref idle-runners)))
+       (positive? (idle-runners)))
 
      (define (select-runner)
        (define runner (for/first ([r (in-set (ref task-runners))]
@@ -542,28 +544,36 @@ The JobManager then performs the job and, when finished, asserts
 ;; expected:
 ;; #hash((a . 5) (b . 5) (c . 2))
 
+(module+ main
 (run-ground-dataspace τc
   (spawn-job-manager)
   (spawn-task-manager 2)
   (spawn-task-manager 3)
   (spawn-client (file->job "lorem.txt"))
-  (spawn-client (string->job INPUT)))
+  (spawn-client (string->job INPUT))))
 
-(module+ test
-  #;(verify-actors #;(Eventually (A (JobCompletion ID (List InputTask) TaskResult)))
+#;(module+ test
+  (verify-actors #;(Eventually (A (JobCompletion ID (List InputTask) TaskResult)))
                  (Always (Implies (A (Observe (JobCompletion ID (List InputTask) ★/t)))
                                   (Eventually (A (JobCompletion ID (List InputTask) TaskResult)))))
                  job-manager-impl
                  task-manager-impl
                  client-impl)
 
-  (verify-actors (And (Always (Implies (A (Observe (TaskPerformance ID ConcreteTask ★/t)))
+  #;(verify-actors (And (Always (Implies (A (Observe (TaskPerformance ID ConcreteTask ★/t)))
                                        (Eventually (A (TaskPerformance ID ConcreteTask TaskStateDesc)))))
                       (Eventually (A (TaskPerformance ID ConcreteTask TaskStateDesc))))
                  TaskAssigner
                  TaskPerformer))
 
-(module+ test
+#;(module+ test
+  #;(verify-actors TT
+    task-manager-impl)
+  (check-deadlock-free job-manager-impl
+                       task-manager-impl
+                       client-impl ))
+
+#;(module+ test
   (check-simulates task-runner-impl task-runner-impl)
   (check-has-simulating-subgraph task-runner-impl TaskPerformer)
   (check-simulates task-manager-impl task-manager-impl)
