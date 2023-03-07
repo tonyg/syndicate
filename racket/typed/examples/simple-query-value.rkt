@@ -11,7 +11,7 @@
 (run-ground-dataspace ds-type
   (spawn ds-type
     (start-facet querier
-      (define/query-value key 0 (tuple "key" (bind v Int)) (+ v 1))
+      (define/query-value [key : Int] 0 (tuple "key" (bind v Int)) (+ v 1))
       (assert (tuple "query" (ref key)))))
   (spawn ds-type
     (start-facet client
