@@ -141,6 +141,18 @@
         (elaborate-pattern/with-type pat τ?)
         (elaborate-pattern pat))))
 
+(begin-for-syntax
+  (define bound-facet-names (mutable-set))
+
+  ;; ID Type -> Void
+  (define (lift+define! x ty #:ctx [ctx ty])
+    (define name (syntax-e x))
+    (unless (set-member? bound-facet-names name)
+      (set-add! bound-facet-names name)
+      (syntax-local-lift-module-end-declaration
+       (quasisyntax/loc ctx
+         (define-type-alias #,x #,ty))))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Effect Categories
@@ -231,6 +243,8 @@
                           ;; τ-m ...
                           τ-r ...
                           τ-other ...))
+  #:do [(define x+ (datum->syntax #f (syntax-e #'name)))
+        (lift+define! x+ #'τ #:ctx #'name)]
   --------------------------------------------------------------
   [⊢ (syndicate:react (let- ([#,name-- (#%app- syndicate:current-facet-id)])
                         #,@ep-...))
