@@ -1354,7 +1354,7 @@
    #:with spec- #`(quote- #,(synd->proto #'spec+))
    #:with spec-str (with-output-to-string (lambda () (pretty-display (syntax->datum (datum->syntax #f (resugar-type #'spec+))))))
    (syntax/loc this-syntax
-     (check-equal? (#%app- v spec- spec-str (#%app- list- actor-ty.role ...) #f)
+     (check-equal? (#%app- v spec- 'spec-str (#%app- list- actor-ty.role ...) #f)
                    'counter))])
 
 (define- (v spec spec-str roles pass?)
