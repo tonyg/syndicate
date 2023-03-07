@@ -235,7 +235,10 @@
   [⊢ (syndicate:react (let- ([#,name-- (#%app- syndicate:current-facet-id)])
                         #,@ep-...))
      (⇒ : ★/t)
-     (⇒ ν (τ))]])
+     (⇒ ν (τ))]]
+  [(_ ep ...+) ≫
+   --------------------------------------------------------------
+   [≻ (start-facet _ ep ...)]])
 
 (define-typed-syntax (during/spawn pat bdy ...+) ≫
   #:with pat+ (elaborate-pattern/with-com-ty #'pat)
