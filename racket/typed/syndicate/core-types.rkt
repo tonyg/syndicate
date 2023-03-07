@@ -655,10 +655,12 @@
   (syntax-parser
     [(_ alias:id τ:type)
      #:with serialized-τ (serialize-syntax #'τ.norm)
-     #'(define-syntax- alias
-         (make-variable-like-transformer (deserialize-syntax #'serialized-τ)))]
+     (syntax/loc this-syntax
+       (define-syntax- alias
+         (make-variable-like-transformer (deserialize-syntax #'serialized-τ))))]
     [(_ (f:id x:id ...) ty)
-     #'(define-syntax- f (mk-type-alias-rewriter #'(x ...) #'ty))]))
+     (syntax/loc this-syntax
+       (define-syntax- f (mk-type-alias-rewriter #'(x ...) #'ty)))]))
 
 (define-type-alias ⊥ (U*))
 (define-type-alias Unit (Tuple))
