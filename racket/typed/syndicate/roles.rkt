@@ -243,7 +243,7 @@
                           ;; τ-m ...
                           τ-r ...
                           τ-other ...))
-  #:do [(define x+ (datum->syntax #f (syntax-e #'name)))
+  #:do [(define x+ (syntax-local-introduce (datum->syntax #f (syntax-e #'name))))
         (lift+define! x+ #'τ #:ctx #'name)]
   --------------------------------------------------------------
   [⊢ (syndicate:react (let- ([#,name-- (#%app- syndicate:current-facet-id)])
@@ -792,7 +792,9 @@
 
 (define-typed-syntax (facet-impl x ((~datum facet) impl ...+)) ≫
   [⊢ x ≫ x-]
-  [⊢ (start-facet x impl ...) ≫ impl- (⇒ ν (~effs (~and R (~Role (x--) Body ...))))]
+  #:with x-tmp (generate-temporary #'x)
+  #:with (impl* ...) (subst #'x-tmp #'x #'(impl ...))
+  [⊢ (start-facet x-tmp impl* ...) ≫ impl- (⇒ ν (~effs (~and R (~Role (x-tmp-) Body ...))))]
   ----------------------------------------
   [⊢ (erased (define- (x-) impl-)) (⇒ ν ((FacetImpl x- R)))])
 
