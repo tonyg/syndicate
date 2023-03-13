@@ -146,12 +146,13 @@
 
   ;; ID Type -> Void
   (define (lift+define! x ty #:ctx [ctx ty])
-    (define name (syntax-e x))
-    (unless (set-member? bound-facet-names name)
-      (set-add! bound-facet-names name)
-      (syntax-local-lift-module-end-declaration
-       (quasisyntax/loc ctx
-         (define-type-alias #,x #,ty))))))
+    (when (syntax-transforming-module-expression?)
+      (define name (syntax-e x))
+      (unless (set-member? bound-facet-names name)
+        (set-add! bound-facet-names name)
+        (syntax-local-lift-module-end-declaration
+         (quasisyntax/loc ctx
+           (define-type-alias #,x #,ty)))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
