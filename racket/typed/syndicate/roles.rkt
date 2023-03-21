@@ -4,7 +4,8 @@
          #%app
          (rename-out [typed-quote quote])
          #%top-interaction
-         module+ module*
+         (rename-out [module+/intro-test module+])
+         module*
          ;; require & provides
          require only-in prefix-in except-in rename-in
          provide all-defined-out all-from-out rename-out except-out
@@ -142,6 +143,10 @@
         (elaborate-pattern pat))))
 
 (begin-for-syntax
+  (define LIFT-KEY 'lifted-facet-name)
+  (define LIFTED-INTRODUCER (make-interned-syntax-introducer LIFT-KEY))
+  (define (intro-lifted-facet-context stx) (LIFTED-INTRODUCER stx 'add))
+
   (define bound-facet-names (mutable-set))
 
   ;; ID Type -> Void
@@ -152,8 +157,15 @@
         (set-add! bound-facet-names name)
         (syntax-local-lift-module-end-declaration
          (quasisyntax/loc ctx
-           (define-type-alias #,x #,ty)))))))
+           (define-type-alias #,(intro-lifted-facet-context x) #,ty)))))))
 
+(define-syntax-parser module+/intro-test
+  [(_ (~datum test) . forms)
+   (quasisyntax/loc this-syntax
+     (module+ test . #,(intro-lifted-facet-context #'forms)))]
+  [(_ . forms)
+   (quasisyntax/loc this-syntax
+     (module+ . forms))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Effect Categories
