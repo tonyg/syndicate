@@ -69,7 +69,7 @@
          ;; Behavioral Roles
          export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
          verify-actors verify-actors/fail
-         check-deadlock-free
+         check-deadlock-free check-deadlock-free*
          ;; LTL Syntax
          TT FF Always Eventually Until WeakUntil Release Implies And Or Not A M
          define-ltl
@@ -1417,6 +1417,13 @@
                                       (M ty)
                                       (Not (A obs-ty))))))])
 
+(define-syntax-parser deadlock-free*
+  [(_ obs-ty)
+   #:with (~Observe ty) #'obs-ty
+   #`(Eventually (And (Always (A obs-ty))
+                           (Not (Eventually (Or (A ty)
+                                                (M ty))))))])
+
 ;; recognizes ?τ but not ??τ
 (define-for-syntax (Observe1? ty)
   (syntax-parse ty
@@ -1433,6 +1440,17 @@
    #:with (VA ...) (for/list ([i (in-syntax #'(interest ...))])
                      (quasisyntax/loc this-syntax
                        (verify-actors (deadlock-free #,i)
+                         actor-ty.norm ...)))
+   #'(begin- VA ...)])
+
+(define-syntax-parser check-deadlock-free*
+  [(_ actor-ty:type ...+)
+   #:when (stx-andmap Role? #'(actor-ty.norm ...))
+   #:with (_ (~U* outs ...) _ _ _) (analyze-roles #'(actor-ty.norm ...))
+   #:with (interest ...) (stx-filter Observe1? #'(outs ...))
+   #:with (VA ...) (for/list ([i (in-syntax #'(interest ...))])
+                     (quasisyntax/loc this-syntax
+                       (verify-actors/fail (deadlock-free* #,i)
                          actor-ty.norm ...)))
    #'(begin- VA ...)])
 
