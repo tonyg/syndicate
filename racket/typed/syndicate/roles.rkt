@@ -1352,8 +1352,11 @@
 (begin-for-syntax
   (define-syntax-class type-or-proto
     #:attributes (role)
-    (pattern t:type #:attr role #`(quote- #,(synd->proto #'t.norm)))
-    (pattern x:id #:attr role #'(#%app- ensure-Role! x))
+    (pattern t:type #:attr role (let ([r #`(quote- #,(synd->proto #'t.norm))])
+                                  (if (identifier? #'t)
+                                      (begin (printf "named: ~a\n" (syntax-e #'t)) #`(#%app- proto:named 't #,r))
+                                      (begin (printf "not named: ~a\n" #'t) r))))
+    (pattern x:id #:attr role #'(#%app- proto:named 'x (#%app- ensure-Role! x)))
     #;(pattern ((~literal quote-) r)
              #:do [(define r- (syntax-e ))]
              #:when (proto:Role? r-)

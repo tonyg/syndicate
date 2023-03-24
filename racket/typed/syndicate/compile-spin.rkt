@@ -1,6 +1,9 @@
 #lang racket
 
-(provide run-spin compile+verify print-trace)
+(provide run-spin
+         compile+verify
+         print-trace
+         (struct-out named))
 
 (require "proto.rkt")
 (require "ltl.rkt")
@@ -26,6 +29,12 @@
 ;;          [Setof SName]
 ;;          NameEnvironment)
 (struct sprog [assignment procs spec msg-tabe assertion-tys name-env] #:transparent)
+
+;; a (Named X) is a
+;;   (named SName X)
+(struct named (name v) #:transparent)
+
+;; a RG is (U (Named RoleGraph) RoleGraph)
 
 ;; a SpinProcess is a
 ;;   (sproc SName
@@ -98,11 +107,12 @@
 ;; where τ represents an assertion and (Message τ) a message
 
 
-;; [Sequenceof RoleGraph] SpinLTL -> SpinProgram
+;; [Sequenceof RG] SpinLTL -> SpinProgram
 (define (program->spin rgs [spec #t])
-  (define assertion-tys (all-assertions rgs))
-  (define message-tys (all-messages rgs))
-  (define event-tys (all-events rgs))
+  (define role-graphs (for/list ([rg rgs]) (if (named? rg) (named-v rg) rg)))
+  (define assertion-tys (all-assertions role-graphs))
+  (define message-tys (all-messages role-graphs))
+  (define event-tys (all-events role-graphs))
   (define-values (spec-asserts spec-msgs) (spec-types spec))
   (define-values (message-evts assertion-evts) (set-partition Message? event-tys))
   (define msg-event-tys (list->set (set-map message-evts Message-ty)))
@@ -111,7 +121,13 @@
   (define all-assertion-tys (set-union assertion-tys assertion-evts spec-asserts))
   (define all-mentioned-tys (set-union all-assertion-tys msg-bodies))
   (define name-env (make-name-env all-mentioned-tys))
-  (define procs (for/list ([rg rgs]) (rg->spin rg event-subty# name-env)))
+  (define procs
+    (for/list ([rg rgs])
+      (match rg
+        [(named name graph)
+         (rg->spin graph event-subty# name-env #:name name)]
+        [_
+         (rg->spin rg event-subty# name-env)])))
   (define assertion-vars (initial-assertion-vars-for all-assertion-tys name-env))
   (define assertion-nms (for/set ([τ (in-set all-assertion-tys)]) (hash-ref name-env τ)))
   (define messages-vars (initial-message-vars-for msg-bodies name-env))
@@ -453,7 +469,7 @@
   (parameterize ([tab-level (add1 (tab-level))])
     bdy ...))
 
-(define SPIN_ID_RX #rx"[a-zA-Z][a-zA-Z0-9_]*")
+(define SPIN_ID_RX #rx"^[a-zA-Z][a-zA-Z0-9_]*$")
 (define SPIN_ID_TRAILING_CHAR #rx"[a-zA-Z0-9_]+")
 
 ;; (U Symbol String) -> Bool
@@ -462,15 +478,23 @@
     (set! s (symbol->string s)))
   (regexp-match? SPIN_ID_RX s))
 
+(module+ test
+  (check-not-false (spin-id? "hub"))
+  (check-false (spin-id? "hub-impl")))
+
 (define SPIN-KEYWORDS
   '(active assert atomic bit bool break byte chan d_step D_proctype do
 		else empty enabled fi full goto hidden if init int len mtype nempty
     never nfull od of pc_value printf priority proctype provided run
 		short skip timeout typedef unless unsigned xr xs))
 
+;; Symbol -> Bool
+(define (keyword? s)
+  (member s SPIN-KEYWORDS))
+
 ;; Symbol -> Symbol
 (define (unkeyword s)
-  (if (member s SPIN-KEYWORDS)
+  (if (keyword? s)
       (gensym s)
       s))
 
@@ -978,26 +1002,70 @@
 (define-runtime-path RUN-SPIN.EXE "run-spin.sh")
 (define-runtime-path REPLAY-TRAIL.EXE "replay-trail.sh")
 
-;; [LTL τ] [Listof Role] -> (U #t String SpinTrace)
+;; [LTL τ] [Listof (U (Named Role) Role)] -> (U #t String SpinTrace)
 ;; returns #true if verification succeeds
 ;; returns a string error message if compilation fails
 ;; returns a SpinTrace of a counterexample if verification fails
 (define (compile+verify spec roles)
   (let/ec stop
     (define role-graphs
-      (for/list ([r (in-list roles)])
+      (for/list ([nr? (in-list roles)])
+        (define-values (nm? r)
+          (match nr?
+            [(named nm v)
+             (cond
+               [(keyword? nm)
+                (stop (format "Unable to use SPIN keyword as name: ~a\n" nm))]
+               [(spin-id? nm)
+                (values nm v)]
+               [else
+                (define transformed (rkt-nm->spin-id nm))
+                (unless (spin-id? transformed)
+                  (stop (format "Unable to use SPIN keyword as name: ~a\n" nm)))
+                (values transformed v)])]
+            [_ (values #f nr?)]))
         (define ans (compile/internal-events (compile r)))
         (when (detected-cycle? ans)
           (printf "detected cycle!\n")
           (describe-detected-cycle ans)
           (stop "compilation failed"))
-        ans))
+        (if nm?
+            (named nm? ans)
+            ans)))
     (run-spin (program->spin role-graphs spec))))
+
+;; Symbol -> Symbol
+;; try to convert a racket name to a suitable SPIN identifier by replace illegal
+;; characters with '_'
+(define (rkt-nm->spin-id nm)
+  (define chars
+    (for/list ([ch (in-string (symbol->string nm))])
+      (cond
+        [(char-alphabetic? ch)
+         ch]
+        [(char-numeric? ch)
+         ch]
+        [else
+         #\_])))
+  (string->symbol (list->string chars)))
+
+(module+ test
+  (check-equal? (rkt-nm->spin-id 'basic)
+                'basic)
+  (check-equal? (rkt-nm->spin-id 'ba1337sic)
+                'ba1337sic)
+  (check-equal? (rkt-nm->spin-id 'two-parts)
+                'two_parts)
+  (check-equal? (rkt-nm->spin-id 'two-parts/ext)
+                'two_parts_ext)
+  (check-equal? (rkt-nm->spin-id 'list*)
+                'list_))
 
 ;; SpinThang String -> (U #t String SpinTrace)
 (define (run-spin spin [spec-name "spec"])
   (define tmp (make-temporary-file "typed-syndicate-spin~a.pml"))
   (gen-spin/to-file spin tmp)
+  (copy-file tmp (build-path (current-directory) "model.pml") #t)
   (define-values (script-completed? script-output script-err)
     (run-script RUN-SPIN.EXE (list tmp spec-name)))
   (define trail-file (format "~a.trail" (path->string tmp)))
@@ -1037,7 +1105,7 @@ Examples:
   4:	proc  2 (proc824:1) model.pml:140 (state 2)	[ClubMemberT_String_assertions = (ClubMemberT_String_assertions+1)]
   <<<<<START OF CYCLE>>>>>
 |#
-(define TRAIL-LINE-RX #px"(?m:^\\s*<<<<<START OF CYCLE>>>>>|^\\s*\\d+:\\s*proc\\s*(\\d+)\\s*\\(.*\\) \\S+\\.pml:(\\d+))")
+(define TRAIL-LINE-RX #px"(?m:^\\s*<<<<<START OF CYCLE>>>>>|^\\s*\\d+:\\s*proc\\s*(\\d+)\\s*\\(([^:]*):\\d*\\) \\S+\\.pml:(\\d+))")
 
 ;; Path -> SpinTrace
 ;; assume the trail file exists in the same directory as the spin (model) file
@@ -1092,22 +1160,22 @@ Examples:
   (define maybe-steps
     (for/list ([item (in-list pid/line-trace)])
       (match item
-        ['(#f #f)
+        ['(#f #f #f)
          START-OF-CYCLE]
-        [(list pid-str line-no-str)
+        [(list pid-str proc-name-str line-no-str)
          (define line-no (string->number line-no-str))
-         (extract-trace-step pid-str line-no model-lines)])))
+         (extract-trace-step pid-str proc-name-str line-no model-lines)])))
   (filter values maybe-steps))
 
-;; String Nat (Vectorof String) -> (Maybe TraceEvent)
-(define (extract-trace-step pid-str line-no model-lines)
+;; String String Nat (Vectorof String) -> (Maybe TraceEvent)
+(define (extract-trace-step pid-str proc-name-str line-no model-lines)
   (define line (vector-ref model-lines (sub1 line-no)))
   (define evt (extract-comment-value line))
   (cond
     [(equal? evt DSTEP-EVENT)
-     (extract-trace-step pid-str (add1 line-no) model-lines)]
+     (extract-trace-step pid-str proc-name-str (add1 line-no) model-lines)]
     [evt
-     (trace-step (string->number pid-str) evt)]
+     (trace-step proc-name-str #;(string->number pid-str) evt)]
     [else
      #f]))
 
