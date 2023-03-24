@@ -50,8 +50,8 @@
 
 #;(require (for-syntax "syntax-serializer.rkt"))
 (define-for-syntax (lazy-serialize t) t)
-(define-for-syntax (lazy-deserialize t)
-  (define TYPE (type-eval #'Type))
+(define-for-syntax (lazy-deserialize t [ty #'Type])
+  (define TYPE (type-eval ty))
   (define FN (type-eval #'FacetName))
   (let loop ([t t])
     (syntax-parse t

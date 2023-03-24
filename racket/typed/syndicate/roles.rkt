@@ -1094,6 +1094,7 @@
 (define-type A : Type -> LTL) ;; Assertions
 (define-type M : Type -> LTL) ;; Messages
 
+;; TODO: Deserialize syntax puts the LTL kind on everything, including types inside (A ...) and (M ...)
 (define-syntax define-ltl
   (syntax-parser
     [(_ alias:id ltl)
@@ -1102,7 +1103,7 @@
      #:fail-unless (LTL? #'ltl-) "expected an LTL formula"
      #:with serialized (serialize-syntax #'ltl-)
      #'(define-syntax- alias
-         (make-variable-like-transformer (deserialize-syntax #'serialized)))]
+         (make-variable-like-transformer (deserialize-syntax #'serialized #'LTL)))]
     [(_ (f:id x:id ...) ltl)
      #'(define-syntax- f (mk-type-alias-rewriter #'(x ...) #'ltl))]))
 
