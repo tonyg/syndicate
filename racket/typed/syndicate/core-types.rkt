@@ -1728,12 +1728,19 @@
 ;; Lambdas
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-typed-syntax (lambda ([x:id (~optional (~datum :)) τ:type] ...) body ...+) ≫
-  [[x ≫ x- : τ] ... ⊢ (block body ...) ≫ body-
-                (⇒ : τ-e)
-                (⇒ ν (~effs eff ...))]
-  ----------------------------------------
-  [⊢ (lambda- (x- ...) body-) (⇒ : (→+ τ ... (FnResult τ-e eff ...)))])
+;; TODO: It's annoying that this is here instead of roles.rkt
+(begin-for-syntax
+  (define current-facet-name (make-parameter #f)))
+
+(define-syntax (lambda stx)
+  (parameterize ([current-facet-name #f])
+    (syntax-parse/typecheck stx
+      [(lambda ([x:id (~optional (~datum :)) τ:type] ...) body ...+) ≫
+       [[x ≫ x- : τ] ... ⊢ (block body ...) ≫ body-
+                                            (⇒ : τ-e)
+                                            (⇒ ν (~effs eff ...))]
+                ----------------------------------------
+                [⊢ (lambda- (x- ...) body-) (⇒ : (→+ τ ... (FnResult τ-e eff ...)))]])))
 
 (define-syntax λ (make-variable-like-transformer #'lambda))
 
@@ -1809,7 +1816,7 @@
 
 (define-for-syntax (int-def-ctx-bind-type-rename x x- t ctx)
   (when DEBUG-BINDINGS?
-    (printf "adding to context ~a\n" (syntax-debug-info x)))
+    (printf "adding to context:\n") (pretty-display (syntax-debug-info x)))
   ;; at some point these serialize/deserialze-syntax calls seemed to fix an issue, but
   ;; in principle it doesn't seem like they should be necessary and things seem to be
   ;; working w/o them *shrug*

@@ -23,7 +23,7 @@
          True False Bool
          (all-from-out "sugar.rkt")
          ;; Statements
-         let let* if spawn dataspace start-facet set! := begin block stop begin/dataflow #;unsafe-do
+         let let* if spawn dataspace start-facet this-facet react set! := begin block stop begin/dataflow #;unsafe-do
          when unless send! realize! define during/spawn
          with-facets start WithFacets Start
          ;; Derived Forms
@@ -102,6 +102,7 @@
 (require (postfix-in - racket/list))
 (require (postfix-in - racket/set))
 (require (postfix-in - racket/pretty))
+(require racket/stxparam)
 
 (require (for-syntax (prefix-in proto: "proto.rkt")
                      (prefix-in proto: "ltl.rkt")
@@ -214,6 +215,13 @@
 ;; Core forms
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define-syntax-parser this-facet
+  [_:id
+   (if (current-facet-name)
+       (let ([nm (syntax-local-introduce (current-facet-name))])
+         nm)
+       (raise-syntax-error #f "use of this-facet outside of a facet" this-syntax))])
+
 (define-typed-syntax start-facet
   [(_ name:id #:implements ~! spec:type ep ...+) ≫
    [⊢ (start-facet name ep ...) ≫ e- (⇒ ν (~effs impl-ty))]
@@ -236,7 +244,9 @@
         (define name-- (add-orig (internal-definition-context-introduce ctx #'name- 'add)
                                  #'name))
         (int-def-ctx-bind-type-rename #'name+ #'name- #'facet-name-ty ctx)
-        (define-values (ep-... τ... effects) (walk/bind #'(ep ...) ctx unique))
+        (define-values (ep-... τ... effects)
+          (parameterize ([current-facet-name (internal-definition-context-introduce ctx #'name+ 'add)])
+            (walk/bind #'(ep ...) ctx unique)))
         (ensure-all! endpoint-effects? effects "only endpoint effects allowed")
         #;(unless (andmap endpoint-effect? effects)
           (type-error #:src #'(ep ...) #:msg "only endpoint effects allowed"))]
@@ -266,6 +276,9 @@
   [(_ ep ...+) ≫
    --------------------------------------------------------------
    [≻ (start-facet _ ep ...)]])
+
+(define-simple-macro (react e ...+)
+  (start-facet _ e ...))
 
 (define-typed-syntax (during/spawn pat bdy ...+) ≫
   #:with pat+ (elaborate-pattern/with-com-ty #'pat)
@@ -1354,8 +1367,8 @@
     #:attributes (role)
     (pattern t:type #:attr role (let ([r #`(quote- #,(synd->proto #'t.norm))])
                                   (if (identifier? #'t)
-                                      (begin (printf "named: ~a\n" (syntax-e #'t)) #`(#%app- proto:named 't #,r))
-                                      (begin (printf "not named: ~a\n" #'t) r))))
+                                      #`(#%app- proto:named 't #,r)
+                                      r)))
     (pattern x:id #:attr role #'(#%app- proto:named 'x (#%app- ensure-Role! x)))
     #;(pattern ((~literal quote-) r)
              #:do [(define r- (syntax-e ))]
