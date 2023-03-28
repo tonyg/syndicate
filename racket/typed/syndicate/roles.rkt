@@ -525,6 +525,9 @@
 
 (define-typed-syntax on
   #:datum-literals (start stop)
+  [(on #:when pred-expr D s ...+) ≫
+   -----------------------------------
+   [≻ (on D (when pred-expr s ...))]]
   [(on start s ...+) ≫
    [⊢ (block s ...) ≫ s- (⇒ ν (~effs F ...))]
    #:fail-unless (stx-andmap script-effects? #'(F ...)) "only script effects allowed"
