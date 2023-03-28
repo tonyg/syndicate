@@ -987,12 +987,18 @@
 (define-simple-macro (on-stop e ...)
   (on stop e ...))
 
-(define-typed-syntax (stop-when D e ...) ≫
+(define-typed-syntax (stop-when (~optional (~seq #:when pred-expr))
+                                D
+                                e ...) ≫
   #:fail-unless (current-facet-name) "Not in a context with a known parent facet"
+  #:with (check-stx ...) (if (attribute pred-expr)
+                             #'(when pred-expr)
+                             #'(begin))
   --------------------
   [≻ (on D
-         (stop this-facet)
-         e ...)])
+         (check-stx ...
+           (stop this-facet)
+           e ...))])
 
 (define-typed-syntax define/dataflow
   [(define/dataflow x:id τ:type e) ≫

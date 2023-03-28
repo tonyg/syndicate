@@ -7,6 +7,12 @@
     (stop-when (message (tuple)))))
 
 (lambda ()
+  (start-facet boop
+    (stop-when #:when #t
+               (message (tuple))
+               (+ 1 1))))
+
+(lambda ()
   (react (stop-when (message (tuple)))))
 
 (typecheck-fail (react
