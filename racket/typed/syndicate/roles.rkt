@@ -23,16 +23,18 @@
          True False Bool
          (all-from-out "sugar.rkt")
          ;; Statements
-         let let* if spawn dataspace start-facet this-facet react set! := begin block stop begin/dataflow #;unsafe-do
+         let let* if spawn dataspace start-facet this-facet set! := begin block stop begin/dataflow #;unsafe-do
          when unless send! realize! define during/spawn
          with-facets start WithFacets Start
          ;; Derived Forms
+         react
          during During
          define/query-value
          define/query-set
          define/query-hash
          define/dataflow
          on-start on-stop
+         stop-when
          ;; endpoints
          assert know on field
          ;; expressions
@@ -984,6 +986,13 @@
 
 (define-simple-macro (on-stop e ...)
   (on stop e ...))
+
+(define-typed-syntax (stop-when D e ...) ≫
+  #:fail-unless (current-facet-name) "Not in a context with a known parent facet"
+  --------------------
+  [≻ (on D
+         (stop this-facet)
+         e ...)])
 
 (define-typed-syntax define/dataflow
   [(define/dataflow x:id τ:type e) ≫
