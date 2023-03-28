@@ -1151,6 +1151,13 @@
     (pattern [#:opaque ty-name:id #:arity (~and op (~or* = > >=)) arity:nat]
              #:attr type-definition #'(define-product-type ty-name #:arity op arity)))
 
+  (define-syntax-class alias-require-clause
+    #:attributes (header ty)
+    (pattern [#:alias ty-name:id ty]
+             #:attr header #'ty-name)
+    (pattern [#:alias (ty-name:id fmls:id ...) ty]
+             #:attr header #'(ty-name fmls ...)))
+
   (define-splicing-syntax-class maybe-omit-accs
     #:attributes (omit?)
     (pattern #:omit-accs #:attr omit? #t)
@@ -1166,6 +1173,34 @@
               (~optional (~seq slot:slot-decl ...))
               (~optional (~and omit-accs #:omit-accs))]
              #:attr TyCons #f))
+
+  (define-syntax-class require/typed-clause
+    #:datum-literals (:)
+    #:attributes (expansion rename)
+    (pattern [name:id : ty]
+             #:with name- (format-id #'name "~a-" #'name)
+             #:attr rename #'[name name-]
+             #:attr expansion (lambda (lib)
+                                #'(define-syntax name
+                                    (make-variable-like-transformer
+                                     (add-orig (assign-type #'name- (deserialize-syntax (serialize-syntax (type-eval #'ty)))
+                                                            #:wrap? #f) #'name)))))
+    (pattern struct-clause:struct-require-clause
+             #:attr rename #f
+             #:attr expansion (lambda (lib)
+                                #`(require-struct struct-clause.Cons
+                                                  (~? (~@ #:as struct-clause.TyCons))
+                                                  #:from #,lib
+                                                  (~? (~@ struct-clause.slot ...))
+                                                  (~? struct-clause.omit-accs))))
+    (pattern opaque-clause:opaque-require-clause
+             #:attr rename #f
+             #:attr expansion (lambda (lib)
+                                #'opaque-clause.type-definition))
+    (pattern alias-clause:alias-require-clause
+             #:attr rename #f
+             #:attr expansion (lambda (lib)
+                                #'(define-type-alias alias-clause.header alias-clause.ty))))
   )
 
 ;; Import and ascribe a type from an untyped module
@@ -1173,26 +1208,12 @@
 (define-syntax (require/typed stx)
   (syntax-parse stx
     #:datum-literals (:)
-    [(_ lib
-        (~alt [name:id : ty]
-              struct-clause:struct-require-clause
-              opaque-clause:opaque-require-clause)
-        ...)
-     #:with (name- ...) (format-ids "~a-" #'(name ...))
-     (syntax/loc stx
+    [(_ lib import:require/typed-clause ...)
+     #:with renames (stx-filter values (attribute import.rename))
+     (quasisyntax/loc stx
        (begin-
-         (require-struct struct-clause.Cons
-                         (~? (~@ #:as struct-clause.TyCons))
-                         #:from lib
-                         (~? (~@ struct-clause.slot ...))
-                         (~? struct-clause.omit-accs)) ...
-         opaque-clause.type-definition ...
-         (require (only-in lib [name name-] ...))
-         (define-syntax name
-           (make-variable-like-transformer
-            (add-orig (assign-type #'name- (deserialize-syntax (serialize-syntax (type-eval #'ty)))
-                                   #:wrap? #f) #'name)))
-         ...))]))
+         (require (only-in lib . renames))
+         #,@(stx-map (lambda (e) (e #'lib)) (attribute import.expansion))))]))
 
 ;; Format identifiers in the same way
 ;; FormatString (SyntaxListOf Identifier) -> (Listof Identifier)
