@@ -1005,8 +1005,7 @@
   --------------------
   [≻ (on D
          (check-stx ...
-           (stop this-facet)
-           e ...))])
+           (stop this-facet e ...)))])
 
 (define-typed-syntax define/dataflow
   [(define/dataflow x:id τ:type e) ≫
