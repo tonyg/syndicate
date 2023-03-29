@@ -292,9 +292,9 @@
                 (⇒ ν (~effs F ...))]
   #:fail-unless (stx-andmap endpoint-effects? #'(F ...)) "only endpoint effects allowed"
   #:with pat- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'pat+))
-  #:with τc:type (current-communication-type)
-  #:with τ-facet (type-eval #'(Role (_) F ...))
-  #:with τ-spawn (mk-ActorWithRole- #'(τc.norm τ-facet))
+  #:with τ-facet (type-eval #'(Role (tfn) F ...))
+  #:with τ-c/final (check-actor-roles! #'(τ-facet) this-syntax)
+  #:with τ-spawn (mk-ActorWithRole- #'(τ-c/final τ-facet))
   #:with τ-endpoint (type-eval #'(Reacts (Asserted τp) τ-spawn))
   ------------------------------
   [⊢ (syndicate:during/spawn pat- bdy-)
