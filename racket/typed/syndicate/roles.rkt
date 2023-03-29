@@ -288,8 +288,17 @@
   #:fail-unless (pure? #'pat--) "pattern not allowed to have effects"
   #:fail-unless (allowed-interest? (pattern-sub-type #'τp)) "overly broad interest, ?̱̱★ and ??★ not allowed"
   #:with ([x:id τ:type] ...) (pat-bindings #'pat+)
-  [[x ≫ x- : τ] ... ⊢ (block bdy ...) ≫ bdy-
-                (⇒ ν (~effs F ...))]
+  #:with tfn (format-id #'pat "during/spawn-facet")
+  [[tfn ≫ _ : FacetName] ⊢ tfn ≫ tfn-]
+  #:with ((x- ...) bdy- (F ...)) (parameterize ([current-facet-name (syntax-local-introduce #'tfn-)])
+                                   (syntax-parse/typecheck null
+                                     [_ ≫
+                                        #:cut
+                                        [[x ≫ x- : τ] ... ⊢ (block bdy ...)
+                                                           ≫ bdy-
+                                                           (⇒ ν (~effs F ...))]
+                                           ----------------------------------------
+                                           [≻ ((x- ...) bdy- (F ...))]]))
   #:fail-unless (stx-andmap endpoint-effects? #'(F ...)) "only endpoint effects allowed"
   #:with pat- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'pat+))
   #:with τ-facet (type-eval #'(Role (tfn) F ...))
@@ -297,7 +306,7 @@
   #:with τ-spawn (mk-ActorWithRole- #'(τ-c/final τ-facet))
   #:with τ-endpoint (type-eval #'(Reacts (Asserted τp) τ-spawn))
   ------------------------------
-  [⊢ (syndicate:during/spawn pat- bdy-)
+  [⊢ (syndicate:during/spawn pat- (let- ([tfn- (#%app- syndicate:current-facet-id)]) bdy-))
      (⇒ : ★/t)
      (⇒ ν (τ-endpoint))])
 
