@@ -15,7 +15,7 @@
         (start-facet _
                      (on (asserted (tuple $x:Int))
                          (add1 x))))
- #:with-msg "spawn: Not prepared to handle inputs:\n\\(Tuple String\\)")
+ #:with-msg "Not prepared to handle inputs:\n\\(Tuple String\\)")
 
 (check-type
  (spawn (U)
@@ -32,4 +32,4 @@
                      (know (tuple "hi"))
                      (on (know (tuple $x:Int))
                          (add1 x))))
- #:with-msg "spawn: Not prepared to handle internal events:\n\\(Tuple String\\)")
+ #:with-msg "Not prepared to handle inputs:\n\\(Tuple String\\)")

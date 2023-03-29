@@ -354,6 +354,7 @@
                                    (define specific (type-subst #'τ-U ti #'τ-f))
                                    (syntax-parse/typecheck null
                                      [_ ≫
+                                        #:cut
                                         ;; perhaps I should make sure the result is a subtype of the original?
                                         [[x ≫ _ : (Field #,specific)] ⊢ e ≫ _ (⇒ : τe_i)]
                                         ----------------------------------------
@@ -588,28 +589,18 @@
    #:cut
    #:with τ-c:type #'tc
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
-  ;; TODO: check that each τ-f is a Role
   #:mode (communication-type-mode #'τ-c.norm)
     [
      [⊢ (block s) ≫ s- (⇒ ν (~effs F ...))]
     ]
   ;; TODO: s shouldn't refer to facets or fields!
-    #:do [(ensure! (lambda (Fs) (= 1 (stx-length Fs))) #'(F ...) "expected exactly one Role for body")
-          (ensure-all! TypeStartsFacet? (syntax->list #'(F ...)) "only effects that start a facet allowed")]
-  ;;#:fail-unless (and (stx-andmap TypeStartsFacet? #'(F ...))
-                     ;;(= 1 (length (syntax->list #'(F ...)))))
-                 ;;"expected exactly one Role for body"
-  #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(F ...))
-  #:fail-unless (<: #'τ-o #'τ-c.norm)
-                (format "Outputs ~a not valid in dataspace ~a" (make-output-error-message #'τ-o #'τ-c.norm) (type->strX #'τ-c.norm))
-  #:with τ-final #;(mk-Actor- #'(τ-c.norm)) (mk-ActorWithRole- #'(τ-c.norm F ...))
-  #:fail-unless (<: #'τ-a #'τ-final)
-                "Spawned actors not valid in dataspace"
-  #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c.norm)
-                               #'τ-i)
-                (string-append "Not prepared to handle inputs:\n" (make-actor-error-message #'τ-i #'τ-o #'τ-c.norm))
-  #:fail-unless (project-safe? (∩ (strip-? #'τ-o/i) #'τ-o/i) #'τ-i/i)
-                (string-append "Not prepared to handle internal events:\n" (make-actor-error-message #'τ-i/i #'τ-o/i #'τ-o/i))
+  #:do [(ensure! (lambda (Fs) (= 1 (stx-length Fs))) #'(F ...) "expected exactly one Role for body")
+        (ensure-all! TypeStartsFacet? (syntax->list #'(F ...)) "only effects that start a facet allowed")]
+  #:with τ-c/final (check-actor-roles! #'(F ...) this-syntax #'τ-c.norm)
+  #:fail-unless (<: (type-eval #'(Actor τ-c/final))
+                    (type-eval #'(Actor τ-c.norm)))
+                "Actor not valid in current dataspace context"
+  #:with τ-final (mk-ActorWithRole- #'(τ-c.norm F ...))
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ ν (τ-final))]]
@@ -626,27 +617,32 @@
    #:fail-unless (and (stx-andmap TypeStartsFacet? #'(F ...))
                       (= 1 (length (syntax->list #'(F ...)))))
    "expected exactly one Role for body"
-   #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(F ...))
-   #:do [(ensure-inputs! #'τ-i/i #'τ-o/i #'τ-o/i this-syntax)]
-   ;; #:fail-unless (project-safe? (∩ (strip-? #'τ-o/i) #'τ-o/i) #'τ-i/i)
-                 ;; (string-append "Not prepared to handle internal events:\n" (make-actor-error-message #'τ-i/i #'τ-o/i #'τ-o/i))
-  ;; if there are Discards in pattern types, this will take more specific instances from other patterns
-  #:with τ-i/o (replace-bind-and-discard-with-★ (instantiate-pattern-type #'τ-i))
-  #:with (~U* (~AnyActor τ-c/spawned) ...) #'τ-a
-  #:with τ-c/this-actor (type-eval #'(U τ-i/o τ-o))
-  #:with τ-c/final (type-eval #'(U τ-c/this-actor τ-c/spawned ...))
-  #:do [(ensure-inputs! #'τ-i #'τ-o #'τ-c/final this-syntax)]
-  ;; #:fail-unless (project-safe? (∩ (strip-? #'τ-o) #'τ-c/final)
-                               ;; #'τ-i)
-                ;; (string-append "Not prepared to handle inputs:\n" (make-actor-error-message #'τ-i #'τ-o #'τ-c/final))
-  #:with τ-final (mk-ActorWithRole- #'(τ-c/final F ...))
-  #:do [(for ([t/spawned (in-syntax #'(τ-c/spawned ...))])
-          (ensure-actor-sub! t/spawned #'τ-c/final this-syntax))]
-  ;; #:fail-unless (<: #'τ-a #'τ-final)
-                ;; "Spawned actors not valid in dataspace"
+   #:with τ-c/final (check-actor-roles! #'(F ...) this-syntax)
+   #:with τ-final (mk-ActorWithRole- #'(τ-c/final F ...))
   ----------------------------------------
   [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ ν (τ-final))]])
+
+(define-for-syntax (check-actor-roles! role-types this-syntax [τ-c #f])
+  (syntax-parse null
+    [_
+     #:cut
+     #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles role-types)
+     #:do [(when τ-c
+             (ensure-outputs! #'τ-o τ-c this-syntax))]
+     #:do [(ensure-inputs! #'τ-i/i #'τ-o/i #'τ-o/i this-syntax)]
+     ;; if there are Discards in pattern types, this will take more specific instances from other patterns
+     #:with τ-i/o (replace-bind-and-discard-with-★ (instantiate-pattern-type #'τ-i))
+     #:with (~U* (~AnyActor τ-c/spawned) ...) (if (U*? #'τ-a)
+                                                  #'τ-a
+                                                  (mk-U*- #'(τ-a)))
+     #:with τ-c/this-actor (or τ-c (type-eval #'(U τ-i/o τ-o)))
+     #:with τ-c/final (type-eval #'(U τ-c/this-actor τ-c/spawned ...))
+     #:do [(ensure-inputs! #'τ-i #'τ-o #'τ-c/final this-syntax)]
+     #:do [(for ([t/spawned (in-syntax #'(τ-c/spawned ...))])
+             (ensure-actor-sub! t/spawned #'τ-c/final this-syntax))]
+     #'τ-c/final])
+)
 
 (define-for-syntax (ensure-outputs! τ-o τ-c [loc τ-o])
   (unless (<: τ-o τ-c)
