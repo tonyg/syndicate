@@ -2101,6 +2101,8 @@
          (stx-contains-id? ty X))]
       [(~Base _) #f]
       [X:id #f]
+      [(∀+ Ys τ)
+       (tyvar-under-union? Xs #'τ)]
       [(~or* (~Any/new _ τ ...)
              (~Any/bvs _ _ τ ...))
        (for/or ([ty2 (in-syntax #'(τ ...))])

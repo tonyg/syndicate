@@ -47,3 +47,19 @@
 (check-type ((inst unwrap! Int) (some 5))
             : Int
             -> 5)
+
+(check-type (map add1 (list 0 1 2 3))
+            : (List Int))
+(check-type (map zero? (list 0 1 2 3))
+            : (List Bool))
+
+(define (∀ (X) (id [x : X])) x)
+(typecheck-fail (map id (list))
+                #:with-msg "couldn't unify")
+(check-type (map (inst id ⊥) (list))
+            : (List ⊥))
+
+(define-constructor* (layout-item [size : Int]))
+(check-type (map (inst layout-item-size Int) (list (layout-item 1) (layout-item 2)))
+            : (List Int))
+
