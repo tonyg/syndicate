@@ -1765,7 +1765,7 @@
                 ----------------------------------------
                 [⊢ (lambda- (x- ...) body-) (⇒ : (→+ τ ... (FnResult τ-e eff ...)))]])))
 
-(define-syntax λ (make-variable-like-transformer #'lambda))
+(define-simple-macro (λ args body ...+) (lambda args body ...))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Type Abstraction
