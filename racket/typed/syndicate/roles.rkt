@@ -19,7 +19,7 @@
          Branch Effs
          FacetName Field ★/t
          Observe Inbound Outbound Actor ActorWithRole U ⊥
-         →fn proc
+         -> →fn proc
          True False Bool
          (all-from-out "sugar.rkt")
          ;; Statements
@@ -641,7 +641,9 @@
              (ensure-outputs! #'τ-o τ-c this-syntax))]
      #:do [(ensure-inputs! #'τ-i/i #'τ-o/i #'τ-o/i this-syntax)]
      ;; if there are Discards in pattern types, this will take more specific instances from other patterns
-     #:with τ-i/o (replace-bind-and-discard-with-★ (instantiate-pattern-type #'τ-i))
+     #:with τ-i/o (replace-bind-and-discard-with-★
+                   (try-specifying-discards
+                    (instantiate-pattern-type #'τ-i)))
      #:with (~U* (~AnyActor τ-c/spawned) ...) (if (U*? #'τ-a)
                                                   #'τ-a
                                                   (mk-U*- #'(τ-a)))
@@ -652,6 +654,9 @@
              (ensure-actor-sub! t/spawned #'τ-c/final this-syntax))]
      #'τ-c/final])
 )
+
+(define-for-syntax (try-specifying-discards ty)
+  )
 
 (define-for-syntax (ensure-outputs! τ-o τ-c [loc τ-o])
   (unless (<: τ-o τ-c)

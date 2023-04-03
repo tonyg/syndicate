@@ -703,6 +703,8 @@
 (define-simple-macro (→fn ty-in ... ty-out)
   (→+ ty-in ... (FnResult ty-out)))
 
+(define-simple-macro (-> ty-in ... ty-out) (→fn ty-in ... ty-out))
+
 (begin-for-syntax
   (define-syntax ~Base
     (pattern-expander
