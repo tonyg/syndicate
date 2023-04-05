@@ -249,9 +249,7 @@
         (define-values (ep-... τ... effects)
           (parameterize ([current-facet-name (internal-definition-context-introduce ctx #'name+ 'add)])
             (walk/bind #'(ep ...) ctx unique)))
-        (ensure-all! endpoint-effects? effects "only endpoint effects allowed")
-        #;(unless (andmap endpoint-effect? effects)
-          (type-error #:src #'(ep ...) #:msg "only endpoint effects allowed"))]
+        (ensure-all! endpoint-effects? effects "only endpoint effects allowed" #:src this-syntax)
   #:with ((~or (~and τ-a (~Shares _))
                (~and τ-k (~Know _))
                ;; untyped syndicate might allow this - TODO
@@ -301,7 +299,8 @@
                                                            (⇒ ν (~effs F ...))]
                                            ----------------------------------------
                                            [≻ ((x- ...) bdy- (F ...))]]))
-  #:fail-unless (stx-andmap endpoint-effects? #'(F ...)) "only endpoint effects allowed"
+  #:do [(ensure-all! endpoint-effects? (syntax->list #'(F ...)) "only endpoint effects allowed"
+                     #:src this-syntax)]
   #:with pat- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'pat+))
   #:with τ-facet (type-eval #'(Role (tfn) F ...))
   #:with τ-c/final (check-actor-roles! #'(τ-facet) this-syntax)
@@ -484,8 +483,8 @@
 (define-typed-syntax (stop facet-name:id cont ...) ≫
   [⊢ facet-name ≫ facet-name- (⇐ : FacetName)]
   [⊢ (block #f cont ...) ≫ cont- (⇒ ν (F ...))]
-  #:do [(ensure-all! script-effects? (syntax->list #'(F ...)) "only script effects allowed in stop continuation")]
-  ;; #:fail-unless (stx-andmap script-effects? #'(F ...)) "only script effects allowed"
+  #:do [(ensure-all! script-effects? (syntax->list #'(F ...)) "only script effects allowed in stop continuation"
+                     #:src this-syntax)]
   #:with τ (type-eval #'(Stop facet-name- F ...))
   ---------------------------------------------------------------------------------
   [⊢ (syndicate:stop-facet facet-name- cont-) (⇒ : ★/t)
@@ -605,8 +604,10 @@
      [⊢ (block s) ≫ s- (⇒ ν (~effs F ...))]
     ]
   ;; TODO: s shouldn't refer to facets or fields!
-  #:do [(ensure! (lambda (Fs) (= 1 (stx-length Fs))) #'(F ...) "expected exactly one Role for body")
-        (ensure-all! TypeStartsFacet? (syntax->list #'(F ...)) "only effects that start a facet allowed")]
+  #:do [(ensure! (lambda (Fs) (= 1 (stx-length Fs))) #'(F ...) "expected exactly one Role for body"
+                 #:src this-syntax)
+        (ensure-all! TypeStartsFacet? (syntax->list #'(F ...)) "only effects that start a facet allowed"
+                     #:src this-syntax)]
   #:with τ-c/final (check-actor-roles! #'(F ...) this-syntax #'τ-c.norm)
   #:fail-unless (<: (type-eval #'(Actor τ-c/final))
                     (type-eval #'(Actor τ-c.norm)))

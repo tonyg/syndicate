@@ -1722,14 +1722,14 @@
 
 (begin-for-syntax
   ;; (Syntax -> Bool) Syntax String -> Void
-  (define (ensure! p stx msg)
+  (define (ensure! p stx msg #:src [src stx])
     (unless (p stx)
-      (type-error #:src stx #:msg msg)))
+      (type-error #:src src #:msg (format "~a\nGot:~a\n" msg stx))))
 
   ;; (Syntax -> Bool) (Sequenceof Syntax) String -> Void
-  (define (ensure-all! p stxs msg)
+  (define (ensure-all! p stxs msg #:src [src #f])
     (for ([stx (in-list stxs)])
-      (ensure! p stx msg)))
+      (ensure! p stx msg #:src (or src stx))))
 
   ;; (SyntaxListof EffectType) -> (SyntaxListof EffectType)
   (define (flatten-effects effs)
