@@ -751,7 +751,7 @@
    #:with τ-ds-act (mk-Actor- (list (mk-U- #'(τ-ds-i τ-ds-o τ-relay))))
    -----------------------------------------------------------------------------------
    [⊢ (syndicate:dataspace s- ...) (⇒ : ★/t)
-                                   (⇒ ν-s (τ-ds-act))]]
+                                   (⇒ ν (τ-ds-act))]]
   [(dataspace s ...) ≫
    [⊢ s ≫ s- (⇒ ν (~effs F ...))] ...
    #:cut
@@ -1054,18 +1054,19 @@
 (define-typed-syntax run-ground-dataspace
   ;; TODO : this has the same problem with re-expansion of what's in the τ-c position as spawn
   [(run-ground-dataspace τ-c:type s ...) ≫
+   #:cut
    #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
    #:mode (communication-type-mode #'τ-c.norm)
    [
     [⊢ s ≫ s- (⇒ : t1)] ...
-    [⊢ (dataspace τ-c.norm s- ...) ≫ _ (⇒ : (~AnyActor τ-ds))]
+    [⊢ (dataspace τ-c.norm s- ...) ≫ _ (⇒ ν (~effs (~AnyActor τ-ds)))]
    ]
    -----------------------------------------------------------------------------------
    [⊢ (#%app- syndicate:run-ground (#%app- syndicate:capture-actor-actions (lambda- () (#%app- list- s- ...))))
       (⇒ : (AssertionSet τ-ds))]]
   [(run-ground-dataspace s ...) ≫
    [⊢ s ≫ s- (⇒ : t1)] ...
-   [⊢ (dataspace s- ...) ≫ _ (⇒ : (~AnyActor τ-ds))]
+   [⊢ (dataspace s- ...) ≫ _ (⇒ ν (~effs (~AnyActor τ-ds)))]
    -----------------------------------------------------------------------------------
    [⊢ (#%app- syndicate:run-ground (#%app- syndicate:capture-actor-actions (lambda- () (#%app- list- s- ...))))
       (⇒ : (AssertionSet τ-ds))]
