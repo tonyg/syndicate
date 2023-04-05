@@ -5,15 +5,11 @@
 (define-type-alias AB (U A B))
 (define-constructor* (m [v : AB]))
 
-#;(define (f)
-  )
-
-#;(define (s)
+(define (s)
   (spawn
     (react
       (during/spawn (m _)
-        #;(stop-when (asserted (observe (m (a _))))
-                     #;(react ))
+        (stop-when (asserted (observe (m (a _)))))
         (on (asserted (m (a $v)))
             #f)))))
 
