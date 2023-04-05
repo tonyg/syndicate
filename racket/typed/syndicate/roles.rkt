@@ -279,8 +279,10 @@
    --------------------------------------------------------------
    [≻ (start-facet _ ep ...)]])
 
-(define-simple-macro (react e ...+)
-  (start-facet _ e ...))
+(define-syntax-parser react
+  [(react e ...+)
+   (syntax/loc this-syntax
+     (start-facet _ e ...))])
 
 (define-typed-syntax (during/spawn pat bdy ...+) ≫
   #:with pat+ (elaborate-pattern/with-com-ty #'pat)
