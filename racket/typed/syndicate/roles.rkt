@@ -645,21 +645,40 @@
      #:do [(ensure-inputs! #'τ-i/i #'τ-o/i #'τ-o/i this-syntax)]
      ;; if there are Discards in pattern types, this will take more specific instances from other patterns
      #:with τ-i/o (replace-bind-and-discard-with-★
-                   (try-specifying-discards
-                    (instantiate-pattern-type #'τ-i)))
+                    (instantiate-pattern-type #'τ-i))
      #:with (~U* (~AnyActor τ-c/spawned) ...) (if (U*? #'τ-a)
                                                   #'τ-a
                                                   (mk-U*- #'(τ-a)))
      #:with τ-c/this-actor (or τ-c (type-eval #'(U τ-i/o τ-o)))
-     #:with τ-c/final (type-eval #'(U τ-c/this-actor τ-c/spawned ...))
+     #:with τ-c/final #'τ-c/this-actor
      #:do [(ensure-inputs! #'τ-i #'τ-o #'τ-c/final this-syntax)]
-     #:do [(for ([t/spawned (in-syntax #'(τ-c/spawned ...))])
-             (ensure-actor-sub! t/spawned #'τ-c/final this-syntax))]
      #'τ-c/final])
 )
 
 (define-for-syntax (try-specifying-discards ty)
-  )
+  (let loop ([ty ty]
+             [ctx #f])
+    (syntax-parse ty
+      [~Discard
+       #:when ctx
+       ctx]
+      [(~U* τ ...)
+       (mk-U- (stx-map (λ (t) (loop t ctx)) #'(τ ...)))]
+      [(~Any/new τ-cons τ ...)
+       #:when (user-defined-type? ty)
+       (define field-tys (ctor-ty-field-tys ty))
+       #;(printf "field-tys: ~a\n" field-tys)
+       (define subitems
+         (for/list ([tp (in-syntax #'(τ ...))]
+                    [field-ty? (in-list field-tys)])
+           (loop tp field-ty?)))
+       (reassemble-type #'τ-cons subitems)]
+      [(~Any/new τ-cons τ ...)
+       #:when (reassemblable? #'τ-cons)
+       (define subitems (for/list ([t (in-syntax #'(τ ...))])
+                          (loop t #f)))
+       (reassemble-type #'τ-cons subitems)]
+      [_ ty])))
 
 (define-for-syntax (ensure-outputs! τ-o τ-c [loc τ-o])
   (unless (<: τ-o τ-c)
