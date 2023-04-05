@@ -1058,19 +1058,17 @@
    #:mode (communication-type-mode #'τ-c.norm)
    [
     [⊢ s ≫ s- (⇒ : t1)] ...
-    [⊢ (dataspace τ-c.norm s- ...) ≫ _ (⇒ : t2)]
+    [⊢ (dataspace τ-c.norm s- ...) ≫ _ (⇒ : (~AnyActor τ-ds))]
    ]
-   #:with τ-out (strip-outbound #'τ-c.norm)
    -----------------------------------------------------------------------------------
    [⊢ (#%app- syndicate:run-ground (#%app- syndicate:capture-actor-actions (lambda- () (#%app- list- s- ...))))
-      (⇒ : (AssertionSet τ-out))]]
+      (⇒ : (AssertionSet τ-ds))]]
   [(run-ground-dataspace s ...) ≫
    [⊢ s ≫ s- (⇒ : t1)] ...
-   [⊢ (dataspace s- ...) ≫ _ (⇒ : t2)]
-   #:with τ-out (strip-outbound #'τ-c.norm)
+   [⊢ (dataspace s- ...) ≫ _ (⇒ : (~AnyActor τ-ds))]
    -----------------------------------------------------------------------------------
    [⊢ (#%app- syndicate:run-ground (#%app- syndicate:capture-actor-actions (lambda- () (#%app- list- s- ...))))
-      (⇒ : (AssertionSet τ-out))]
+      (⇒ : (AssertionSet τ-ds))]
    ])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
