@@ -249,7 +249,7 @@
         (define-values (ep-... τ... effects)
           (parameterize ([current-facet-name (internal-definition-context-introduce ctx #'name+ 'add)])
             (walk/bind #'(ep ...) ctx unique)))
-        (ensure-all! endpoint-effects? effects "only endpoint effects allowed" #:src this-syntax)
+        (ensure-all! endpoint-effects? effects "only endpoint effects allowed" #:src this-syntax)]
   #:with ((~or (~and τ-a (~Shares _))
                (~and τ-k (~Know _))
                ;; untyped syndicate might allow this - TODO
