@@ -33,10 +33,9 @@
   ----------------------------------------
   [⊢ (#%app- error- 'bind "escaped") (⇒ : (Bind τ))])
 
-(define-typed-syntax discard
-  [_ ≫
-   --------------------
-   [⊢ (#%app- error- 'discard "escaped") (⇒ : Discard)]])
+(define-typed-syntax (discard τ:type) ≫
+  ----------------------------------------
+  [⊢ (#%app- error- 'discard "escaped") (⇒ : (Discard τ.norm))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Core-ish forms
@@ -207,7 +206,7 @@
              #:when (dollar-variable? #'x)
              #:attr id (un-dollar #'x)))
 
-  ;; match things of the for "$X...:Y..." where X and Y are things without
+  ;; match things of the form "$X:Y" where X and Y are things without
   ;; spaces (i.e. likely but not definitely legal identifiers)
   (define DOLLAR-ANN-RX #px"^\\$(\\S*):(\\S*)$")
 
@@ -224,13 +223,31 @@
              #:attr id (datum->syntax #'x (string->symbol (second match?)))
              #:attr ty (datum->syntax #'x (string->symbol (third match?)))))
 
+  ;; match things of the form "_:Y" where Y is a type without
+  ;; spaces (i.e. likely but not definitely legal identifiers)
+  (define DISCARD-ANN-RX #px"^_:(\\S*)$")
+
+  ;; Any -> RegexpMatchResults
+  (define (discard-ann-variable? x)
+    (and (identifier? x)
+         (regexp-match DISCARD-ANN-RX (symbol->string (syntax-e x)))))
+
+  (define-syntax-class discard-ann-id
+    #:attributes (ty)
+    (pattern x:id
+             #:do [(define match? (discard-ann-variable? #'x))]
+             #:when match?
+             #:attr ty (datum->syntax #'x (string->symbol (second match?)))))
+
   ;; expand uses of $ short-hand
   ;; doesn't handle uses of $id or ($) w/o a type
   (define (elaborate-pattern pat)
     (syntax-parse pat
-      #:datum-literals (tuple _ $)
-      [_
-       #'discard]
+      #:datum-literals (tuple _ $ ★)
+      [x:discard-ann-id
+       (syntax/loc pat (discard x.ty))]
+      [(~or* _ ★)
+       (syntax/loc pat (discard ★/t))]
       [x:dollar-ann-id
        (syntax/loc pat (bind x.id x.ty))]
       [($ x:id ty)
@@ -249,13 +266,19 @@
        (quasisyntax/loc pat
          (ctor #,@sub-pats))]
       [e:expr
-       #'e]))
+       pat]))
 
   (define (elaborate-pattern/with-type pat ty)
     (syntax-parse pat
-      #:datum-literals (tuple $)
+      #:datum-literals (tuple $ ★)
       [(~datum _)
-       #'discard]
+       (when (bot? ty)
+         (raise-syntax-error #f "unable to instantiate pattern with matching part of type" pat))
+       (quasisyntax/loc pat (discard #,ty))]
+      [x:discard-ann-id
+       (syntax/loc pat (discard x.ty))]
+      [★
+       (syntax/loc pat (discard ★/t))]
       [x:dollar-ann-id
        (syntax/loc pat (bind x.id x.ty))]
       [x:dollar-id
@@ -329,12 +352,12 @@
     (define (l-e stx) (local-expand stx 'expression '()))
     (let loop ([pat pat])
       (syntax-parse pat
-        #:datum-literals (tuple discard bind)
+        #:datum-literals (tuple discard bind ★)
         [(tuple p ...)
          #`(#,list-binding 'tuple #,@(stx-map loop #'(p ...)))]
         [(bind x:id τ:type)
          (bind-id-transformer #'x)]
-        [discard
+        [(~or* (discard _) ★)
          #'_]
         [(~constructor-exp ctor p ...)
          (define/with-syntax uctor (untyped-ctor #'ctor))

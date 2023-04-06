@@ -17,6 +17,6 @@
 ;; TODO - but this one seems fine?
 (typecheck-fail (spawn ⊥
                  (start-facet x
-                              (on (asserted _)
+                              (on (asserted _:⊥)
                                   #f)))
                 #:with-msg "overly broad interest")

@@ -296,7 +296,7 @@ The JobManager then performs the job and, when finished, asserts
                [RUNNING #f]
                [OVERLOAD/ts
                 (set! status OVERLOAD/ts)]
-               [(finished discard)
+               [(finished _)
                 (set! status st)]))))))))))
 
 ;; ---------------------------------------------------------------------------------------------------
@@ -407,7 +407,7 @@ The JobManager then performs the job and, when finished, asserts
 
         (know (slots (slots-available)))
 
-        (during (know (observe (slot-assignment (request-id $tid:TaskID $who:ID) _)))
+        (during (know (observe (slot-assignment (request-id $tid:TaskID $who:ID) ★)))
           (on start
            (start-facet assign-manager
             ;; what if one manager gains a slot but another loses one, so n stays the same?

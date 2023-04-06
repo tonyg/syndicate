@@ -67,5 +67,5 @@
     (start-facet monitor
       (on (asserted (cell id (bind value Value)))
           (printf "Cell ~a updated to: ~a\n" id value))
-      (on (retracted (cell id discard))
+      (on (retracted (cell id _))
           (printf "Cell ~a deleted\n" id)))))

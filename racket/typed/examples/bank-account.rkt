@@ -52,7 +52,7 @@
   (spawn ds-type
     (lift+define-role buyer-role
     (start-facet buyer
-      (on (asserted (observe (deposit discard)))
+      (on (asserted (observe (deposit _)))
           (start-facet deposits
             (assert (deposit 100))
             (assert (deposit -30))))))))

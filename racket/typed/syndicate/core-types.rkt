@@ -366,7 +366,8 @@
 (define-simple-macro (define-base-types Name:id ...)
   (begin- (define-base-type Name) ...))
 
-(define-base-types Discard ★/t)
+(define-base-types ★/t)
+(define-type-constructor Discard #:arity = 1)
 
 (define-type FacetName : FacetName)
 
@@ -1438,7 +1439,7 @@
   (syntax-parse t
     [(~Bind _)
      (type-eval #'★/t)]
-    [~Discard
+    [(~Discard τ)
      (type-eval #'★/t)]
     [(~U* τ ...)
      (mk-U- (stx-map replace-bind-and-discard-with-★ #'(τ ...)))]
@@ -1531,8 +1532,8 @@
            (stx-andmap <: #'(τ-in2 ...) #'(τ-in1 ...))
            (<: #'τ-out1 #'τ-out2)
            (check-effects #'(F1 ...) #'(F2 ...)))]
-     [(~Discard _)
-      #t]
+     [((~Discard τ1) _)
+      (<: #'τ1 t2)]
      [(X:id Y:id)
       (if (free-identifier=? #'X #'Y)
           #t
@@ -1645,8 +1646,8 @@
     (syntax-parse #`(#,t1 #,t2)
       [(_ (~Bind τ2))
        (and (finite? t1) (<: t1 #'τ2))]
-      [(_ ~Discard)
-       #t]
+      [(_ (~Discard τ2))
+       (<: t1 #'τ2)]
       [(_ ~★/t)
        #t]
       [((~U* τ1:type ...) _)
@@ -1688,7 +1689,7 @@
   (syntax-parse t
     [(~Bind τ)
      #'τ]
-    [~Discard
+    [(~Discard _)
      (type-eval #'★/t)]
     [(~U* τ ...)
      (mk-U- (stx-map pattern-matching-assertions #'(τ ...)))]

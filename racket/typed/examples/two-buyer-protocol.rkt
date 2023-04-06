@@ -77,9 +77,9 @@
   (start-facet _ ;; #:implements seller-role
     (field [book (Tuple String Int) (tuple "Catch 22" 22)]
            [next-order-id Int 10001483])
-    (on (asserted (observe (quote (bind title String) discard)))
+    (on (asserted (observe (quote (bind title String) _)))
         (start-facet x
-          (on (retracted (observe (quote title discard)))
+          (on (retracted (observe (quote title _)))
               (stop x))
           (define answer
             (match title
@@ -88,9 +88,9 @@
               [_
                (out-of-stock)]))
           (assert (quote title answer))))
-    (on (asserted (observe (order (bind title String) (bind offer Int) discard discard)))
+    (on (asserted (observe (order (bind title String) (bind offer Int) _ _)))
         (start-facet x
-          (on (retracted (observe (order title offer discard discard)))
+          (on (retracted (observe (order title offer _ _)))
               (stop x))
           (let ([asking-price 22])
             (if (and (equal? title "Catch 22") (>= offer asking-price))
@@ -125,18 +125,18 @@
   (lift+define-role buyer-b-impl
   (start-facet buyer-b
     (field [funds Int 5])
-    (on (asserted (observe (split-proposal (bind title String) (bind price Int) (bind their-contribution Int) discard)))
+    (on (asserted (observe (split-proposal (bind title String) (bind price Int) (bind their-contribution Int) _)))
         (let ([my-contribution (- price their-contribution)])
           (cond
             [(> my-contribution (ref funds))
              (start-facet decline
                (assert (split-proposal title price their-contribution #f))
-               (on (retracted (observe (split-proposal title price their-contribution discard)))
+               (on (retracted (observe (split-proposal title price their-contribution _)))
                    (stop decline)))]
             [#t
              (start-facet accept
                (assert (split-proposal title price their-contribution #t))
-               (on (retracted (observe (split-proposal title price their-contribution discard)))
+               (on (retracted (observe (split-proposal title price their-contribution _)))
                    (stop accept))
                (on start
                    (spawn ds-type
@@ -150,7 +150,7 @@
                                      (displayln id)
                                      (displayln date)
                                      (stop purchase))]
-                             [discard
+                             [_
                               (begin (displayln "Order Rejected")
                                      (stop purchase))]))))))]))))))
 )

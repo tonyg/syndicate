@@ -12,7 +12,7 @@
 (define (B)
   (spawn
     (react
-      (during (observe (price _))
+      (during (observe (price ★))
         (assert (price (ann 5 Int)))))))
 
 (define (C)

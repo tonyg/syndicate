@@ -9,7 +9,7 @@
 (msg-out m)
 
 (match m
-  [(msg (bind x Int) discard)
+  [(msg (bind x Int) _)
    (displayln x)])
 
 ;; error: msg/checked: arity mismatch

@@ -55,7 +55,7 @@ balance = 8
           ;; (this print is to make sure only one of these facets is created)
           (printf "JEEPERS\n")
           (know (overdraft))
-          (on (realize (new-transaction _ $new:Int))
+          (on (realize (new-transaction ★ $new:Int))
               (when (not (negative? new))
                 (stop neg))))))
 
