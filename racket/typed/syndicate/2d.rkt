@@ -9,13 +9,11 @@
 (module shim racket
   (provide run-2d run-2d*)
   (require (only-in syndicate-gl/2d 2d-dataspace))
-  (require (only-in (submod syndicate/actor for-module-begin) capture-actor-actions)
-           (only-in syndicate/actor-lang current-ground-dataspace run-ground))
+  (require (only-in (submod syndicate/actor for-module-begin) capture-actor-actions))
   (require syntax/parse/define)
 
   (define (run-2d boot)
-    (parameterize ([current-ground-dataspace (2d-dataspace)])
-      (run-ground (capture-actor-actions (boot)))))
+    ((2d-dataspace) (capture-actor-actions boot)))
 
   (define-simple-macro (run-2d* s ...)
     (run-2d (lambda () (list s ...))))
