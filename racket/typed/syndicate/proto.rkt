@@ -343,7 +343,11 @@
               (for*/list ([(D ts) (in-hash txn#)]
                           #:when (D<:? evt D)
                           #:when (implies (DataflowEvt? D) (DataflowEvt? evt))
-                          [t (in-set ts)])
+                          [t (in-set ts)]
+                          ;; ignore effect-free Dataflow self loops
+                          #:unless (and (DataflowEvt? evt)
+                                        (equal? (transition-dest t) (traversal-step-dest to))
+                                        (empty? (transition-effs t))))
                 (match-define (transition more-effs dest) t)
                 (check-for-cycle! from path/r+ evt dest fail)
                 (define-values (internal-effs external-effs)
