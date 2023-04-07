@@ -1501,6 +1501,51 @@
           (list* ctor vars body)]))
      (paren-join desc)]))
 
+;; Type -> String
+(define-for-syntax (type->datum ty)
+  ;; Identifier -> symbol
+  ;; this won't work for any names with numbers in them :\
+  (define (un-gensym x)
+    (define GENSYMED #px"^(\\D*)\\d*$")
+    (string->symbol (second (regexp-match GENSYMED (symbol->string (syntax-e x))))))
+  ;; (Listof String) -> String
+  (define (paren-join xs)
+    (string-join xs
+                 #:before-first "("
+                 #:after-last ")"))
+  (syntax-parse ty
+    [X:id
+     (un-gensym #'X)]
+    [(~U* τ ...)
+     `(U ,@(stx-map type->datum #'(τ ...)))]
+    [(~Base x)
+     (un-gensym #'x)]
+    [(~Role+Body (x:id) τ ...)
+     (define nm (un-gensym #'x))
+     (define body (stx-map type->datum #'(τ ...)))
+     `(Role (#,nm) . body)]
+    [(~∀+ (X ...) τ)
+     (define vars (stx-map type->datum #'(X ...)))
+     `(∀ ,vars ,(type->datum #'τ))]
+    [(~Any/new τ-cons τ ...)
+     (define ctor (un-gensym #'τ-cons))
+     (define body (stx-map type->datum #'(τ ...)))
+     `(,ctor . body)
+     (cons ctor body)]
+    [(~Any/bvs τ-cons (X ...) τ ...)
+     (define ctor (un-gensym #'τ-cons))
+     (define body (stx-map type->datum #'(τ ...)))
+     (cond
+       [(empty? (syntax->list #'(X ...)))
+        (cons ctor body)]
+       [else
+        (define vars
+          (stx-map type->datum #'(X ...)))
+        (list* ctor vars body)])]))
+
+(define-for-syntax (pretty-type->strX ty)
+  (pretty-format (type->datum ty) #:mode 'display))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Subtyping and Judgments on Types
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -682,7 +682,7 @@
 
 ;; (Listof Type) -> String
 (define-for-syntax (tys->str tys)
-  (string-join (map type->strX tys) ",\n"))
+  (string-join (map pretty-type->strX tys) ",\n"))
 
 ;; Type Type -> String
 (define-for-syntax (make-output-error-message τ-o τ-c)
@@ -757,12 +757,12 @@
   (with-output-to-string
     (lambda ()
       (printf "Not all actors conform to communication type:\n")
-      (pretty-display (type->strX tc))
+      (pretty-display (pretty-type->strX tc))
       (printf "found the following mismatches:\n")
       (for ([err (in-list errs)])
         (syntax-parse err
           [(~AnyActor τ)
-           (printf "Actor with communication type ~a:\n" (type->strX #'τ))
+           (printf "Actor with communication type ~a:\n" (pretty-type->strX #'τ))
            (cond
              [(<: #'τ tc)
               (define mismatches (find-surprising-inputs #'τ #'τ tc (lambda (t1 t2) (not (<: t1 t2)))))
