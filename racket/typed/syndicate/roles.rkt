@@ -282,35 +282,6 @@
    (syntax/loc this-syntax
      (start-facet _ e ...))])
 
-(define-typed-syntax (during/spawn pat bdy ...+) ≫
-  #:with pat+ (elaborate-pattern/with-com-ty #'pat)
-  [⊢ pat+ ≫ pat-- (⇒ : τp)]
-  #:fail-unless (pure? #'pat--) "pattern not allowed to have effects"
-  #:fail-unless (allowed-interest? (pattern-sub-type #'τp)) "overly broad interest, ?̱̱★ and ??★ not allowed"
-  #:with ([x:id τ:type] ...) (pat-bindings #'pat+)
-  #:with tfn (format-id #'pat "during/spawn-facet")
-  [[tfn ≫ _ : FacetName] ⊢ tfn ≫ tfn-]
-  #:with ((x- ...) bdy- (F ...)) (parameterize ([current-facet-name (syntax-local-introduce #'tfn-)])
-                                   (syntax-parse/typecheck null
-                                     [_ ≫
-                                        #:cut
-                                        [[x ≫ x- : τ] ... ⊢ (block bdy ...)
-                                                           ≫ bdy-
-                                                           (⇒ ν (~effs F ...))]
-                                           ----------------------------------------
-                                           [≻ ((x- ...) bdy- (F ...))]]))
-  #:do [(ensure-all! endpoint-effects? (syntax->list #'(F ...)) "only endpoint effects allowed"
-                     #:src this-syntax)]
-  #:with pat- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'pat+))
-  #:with τ-facet (type-eval #'(Role (tfn) F ...))
-  #:with τ-c/final (check-actor-roles! #'(τ-facet) this-syntax)
-  #:with τ-spawn (mk-ActorWithRole- #'(τ-c/final τ-facet))
-  #:with τ-endpoint (type-eval #'(Reacts (Asserted τp) τ-spawn))
-  ------------------------------
-  [⊢ (syndicate:during/spawn pat- (let- ([tfn- (#%app- syndicate:current-facet-id)]) bdy-))
-     (⇒ : ★/t)
-     (⇒ ν (τ-endpoint))])
-
 (define-typed-syntax field
   [(_ [x:id (~optional (~datum :)) τ-f:type e:expr] ...) ≫
    #:cut
@@ -593,8 +564,24 @@
                    (lambda (id) #`($ #,id))
                    identity))
 
+(begin-for-syntax
+  (define (ensure-pure! stx src [msg "expression must be pure"])
+    (ensure! pure? stx msg #:src src))
+
+  (define-splicing-syntax-class opt-name
+    #:attributes (name-)
+    (pattern (~seq #:name name:expr)
+             #:attr name- (syntax-parse/typecheck null
+                            [_ ≫
+                               [⊢ name ≫ name-]
+                               #:do [(ensure-pure! #'name- #'name)]
+                               --------
+                               [≻ name-]]))
+    (pattern (~seq)
+             #:attr name- #f)))
+
 (define-typed-syntax spawn
-  [(spawn tc s) ≫
+  [(spawn on:opt-name tc s) ≫
    ;; this setup is to avoid re-expansion of the tc position :<
    #:cut
    #:with τ-c:type #'tc
@@ -614,15 +601,16 @@
                 "Actor not valid in current dataspace context"
   #:with τ-final (mk-ActorWithRole- #'(τ-c.norm F ...))
   --------------------------------------------------------------------------------------------
-  [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
+  [⊢ (syndicate:spawn (~? (~@ #:name on.name-))
+                      (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ ν (τ-final))]]
-  [(spawn s) ≫
+  [(spawn s ...) ≫
    #:do [(define τc (current-communication-type))]
    #:when τc
    #:cut
    ----------------------------------------
-   [≻ (spawn #,τc s)]]
-  [(spawn s) ≫
+   [≻ (spawn #,τc s ...)]]
+  [(spawn on:opt-name s) ≫
    #:cut
    [⊢ (block s) ≫ s- (⇒ ν (~effs F ...))]
    ;; TODO: s shouldn't refer to facets or fields!
@@ -632,7 +620,8 @@
    #:with τ-c/final (check-actor-roles! #'(F ...) this-syntax)
    #:with τ-final (mk-ActorWithRole- #'(τ-c/final F ...))
   ----------------------------------------
-  [⊢ (syndicate:spawn (syndicate:on-start s-)) (⇒ : ★/t)
+  [⊢ (syndicate:spawn (~? (~@ #:name on.name-))
+                      (syndicate:on-start s-)) (⇒ : ★/t)
                                                (⇒ ν (τ-final))]])
 
 (define-for-syntax (check-actor-roles! role-types this-syntax [τ-c #f])
@@ -904,6 +893,40 @@
                         (instantiate-pattern-type t)))
      (reassemble-type #'τ-cons subitems)]
     [_ ty]))
+
+(define-typed-syntax (during/spawn pat (~optional (~seq (~and name-kw #:name) name:expr)) bdy ...+) ≫
+  #:with pat+ (elaborate-pattern/with-com-ty #'pat)
+  [⊢ pat+ ≫ pat-- (⇒ : τp)]
+  #:fail-unless (pure? #'pat--) "pattern not allowed to have effects"
+  #:fail-unless (allowed-interest? (pattern-sub-type #'τp)) "overly broad interest, ?̱̱★ and ??★ not allowed"
+  #:with ([x:id τ:type] ...) (pat-bindings #'pat+)
+  #:with tfn (format-id #'pat "during/spawn-facet")
+  [[tfn ≫ _ : FacetName] ⊢ tfn ≫ tfn-]
+  #:with ((x- ...) bdy- (F ...)) (parameterize ([current-facet-name (syntax-local-introduce #'tfn-)])
+                                   (syntax-parse/typecheck null
+                                     [_ ≫
+                                        #:cut
+                                        [[x ≫ x- : τ] ... ⊢ (block bdy ...)
+                                                           ≫ bdy-
+                                                           (⇒ ν (~effs F ...))]
+                                           ----------------------------------------
+                                           [≻ ((x- ...) bdy- (F ...))]]))
+  #:do [(ensure-all! endpoint-effects? (syntax->list #'(F ...)) "only endpoint effects allowed"
+                     #:src this-syntax)]
+  [[x ≫ x-- : τ] ... ⊢ (~? name #f) ≫ name-]
+  #:do [(ensure-pure! #'name- (attribute name))]
+  #:with pat- (substs #'(x- ...) #'(x ...) (compile-syndicate-pattern #'pat+))
+  #:with τ-facet (type-eval #'(Role (tfn) F ...))
+  #:with τ-c/final (check-actor-roles! #'(τ-facet) this-syntax)
+  #:with τ-spawn (mk-ActorWithRole- #'(τ-c/final τ-facet))
+  #:with τ-endpoint (type-eval #'(Reacts (Asserted τp) τ-spawn))
+  ------------------------------
+  [⊢ (syndicate:during/spawn pat-
+       (~? (~@ name-kw (let- ([x-- x-] ...) name-)))
+       (let- ([tfn- (#%app- syndicate:current-facet-id)])
+             bdy-))
+     (⇒ : ★/t)
+     (⇒ ν (τ-endpoint))])
 
 (begin-for-syntax
   (define-splicing-syntax-class on-add
