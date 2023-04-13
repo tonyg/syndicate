@@ -839,13 +839,25 @@
      #:with (TyCons Ty) ((current-type-constructor-convention) #'Cons)
      (define provided-tys (attribute slot.type))
      (define all-provided? (andmap values provided-tys))
+     (define any-provided? (ormap values provided-tys))
      (quasisyntax/loc stx
        (define-constructor (Cons slot ...)
          #:type-constructor TyCons
          clause ...
-         #,@(if all-provided?
-                #'(#:with Ty (TyCons slot.type ...))
-                #'())))]))
+         #,@(cond
+              [all-provided?
+               #'(#:with Ty (TyCons slot.type ...))]
+              [any-provided?
+               (define without-provided (for/list ([nm (in-syntax #'(slot.name ...))]
+                                                   [t (in-list provided-tys)]
+                                                   #:unless t)
+                                          nm))
+               (define with-nm-or-ty (for/list ([nm (in-syntax #'(slot.name ...))]
+                                                [t (in-list provided-tys)])
+                                       (or t nm)))
+               #`(#:with (Ty #,@without-provided) (TyCons #,@with-nm-or-ty))]
+              [else
+               #'()])))]))
 
 (begin-for-syntax
   (define ((mk-type-params-fetcher TypeCons) ty)
