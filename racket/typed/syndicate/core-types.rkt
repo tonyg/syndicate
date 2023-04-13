@@ -902,8 +902,8 @@
      #:with (acc-defs ...) (mk-accessors #'(accessor ...) #'(accessor- ...) #'TypeCons #'(slot.name ...))
      #:with (field-ty? ...) (for/list ([ty? (in-list (attribute slot.type))])
                               (if ty?
-                                  (serialize-syntax (type-eval ty?))
-                                  #'#f))
+                                  #`#'#,(serialize-syntax (type-eval ty?))
+                                  #''#f))
      (define arity (stx-length #'(slot ...)))
      #`(begin-
          (struct- StructName (slot.name ...) #:reflection-name 'Cons #:transparent)
@@ -922,7 +922,7 @@
                       'type-tag
                       #'TypeCons
                       (list #'accessor ...)
-                      (list #'field-ty? ...)))
+                      (list field-ty? ...)))
          (define-syntax Cons- (mk-constructor-type-rule #,arity #'StructName #'TypeCons))
          acc-defs ...)]))
 
@@ -982,12 +982,12 @@
      #:with type-tag (generate-temporary #'ucons)
      #:with (field-ty? ...) (for/list ([ty? (in-list (attribute slot.type))])
                               (if ty?
-                                  #`#,(serialize-syntax (type-eval ty?))
-                                  #f))
+                                  #`#'#,(serialize-syntax (type-eval ty?))
+                                  #''#f))
      #:with (field-acc ...) (for/list ([name? (in-list (attribute slot.name))])
                               (if name?
-                                  (format-id #'ucons "~a-~a" #'ucons name?)
-                                  #f))
+                                  #`#'#,(format-id #'ucons "~a-~a" #'ucons name?)
+                                  #''#f))
      (quasisyntax/loc stx
        (begin-
          (require- (only-in- lib [ucons orig-struct-info]))
@@ -1001,14 +1001,14 @@
            (unless (boolean? sup)
              (raise-syntax-error #f "structs with super-type not supported" #'#,stx #'ucons))
            (define arity (length accs/rev))
-           (define field-tys (list #'field-ty? ...))
-           (define field-accs? (list #'field-acc ...))
-           (define slots-given (length field-tys))
+           (define field-tys (list field-ty? ...))
+           (define field-accs? (list field-acc ...))
+           (define slots-given (length (filter values field-accs?)))
            (unless (or (zero? slots-given)
                        (equal? slots-given arity))
              (raise-syntax-error
               #f
-              (format "incorrect number of slots specified, given ~a expected ~a" slots-given arity)
+              (format "incorrect number of slots specified, given ~a expected 0 or ~a" slots-given arity)
               #'#,stx
               #'(slot ...)))
            )
@@ -1023,7 +1023,7 @@
                                           #'accs/rev
                                           arity
                                           #,(and (attribute omit-accs) #t)
-                                          (list #'field-ty? ...)
+                                          (list field-ty? ...)
                                           #'field-tys
                                           #'field-accs?))
          (finish-type-defs ucons TypeCons Ty)))]))
@@ -1045,15 +1045,16 @@
                     stx)
   (syntax-parse stx
     [(_ ucons:id TypeCons:id Ty:id)
-     #:do [(define all-types-given? (and (equal? arity (length field-tys?))
-                                         (andmap values field-tys?)))
+     #:do [(define any-slots-described? (equal? arity (length field-tys?)))
+           (define all-types-given? (and any-slots-described? (andmap values field-tys?)))
+           (define any-types-given? (and any-slots-described? (ormap values field-tys?)))
            (define define-ty-alias?
-             (and all-types-given?
+             (and (or all-types-given? any-types-given?)
                   (not (bound-identifier=? #'TypeCons #'Ty))))]
      #:with field-accs #`(if (empty? #,field-accs?)
                              (cleanup-accs #'ucons #,accs/rev)
                              (format-all #'ucons #,field-accs?))
-     #:with field-tys (if all-types-given?
+     #:with field-tys (if any-slots-described?
                           field-tys-nm
                           #`(list #,@(make-list arity #f)))
      (quasisyntax/loc #'ucons
@@ -1081,7 +1082,19 @@
                    (define-struct-accs #,accs/rev #,field-accs? #'TypeCons #'#,lib))
                  (mk-struct-accs ucons))))
          #,(when define-ty-alias?
-             #`(define-type-alias Ty (TypeCons #,@field-tys?)))))]))
+             (cond
+               [all-types-given?
+                #`(define-type-alias Ty (TypeCons #,@field-tys?))]
+               [else
+                (define tmps (generate-temporaries field-tys?))
+                (define without-provided (for/list ([nm (in-list tmps)]
+                                                    [t (in-list field-tys?)]
+                                                    #:unless t)
+                                           nm))
+                (define with-nm-or-ty (for/list ([nm (in-list tmps)]
+                                                 [t (in-list field-tys?)])
+                                        (or t nm)))
+                #`(define-type-alias (Ty #,@without-provided) (TypeCons #,@with-nm-or-ty))]))))]))
 
 (begin-for-syntax
   (define-syntax ~constructor-extra-info

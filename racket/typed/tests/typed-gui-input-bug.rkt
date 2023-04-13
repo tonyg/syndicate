@@ -9,7 +9,7 @@
   (spawn
     (react
       (during/spawn (m _)
-        (stop-when (asserted (observe (m (a _)))))
+        (stop-when (asserted (observe (m (a ★)))))
         (on (asserted (m (a $v)))
             #f)))))
 
