@@ -23,7 +23,7 @@
          True False Bool
          (all-from-out "sugar.rkt")
          ;; Statements
-         let let* if spawn dataspace start-facet this-facet set! := begin block stop begin/dataflow #;unsafe-do
+         let let* if spawn supervise dataspace start-facet this-facet set! := begin block stop begin/dataflow #;unsafe-do
          when unless send! realize! define during/spawn
          with-facets start WithFacets Start
          ;; Derived Forms
@@ -96,6 +96,7 @@
 (require (prefix-in syndicate: syndicate/actor-lang))
 (require (submod syndicate/actor priorities))
 (require (prefix-in syndicate: (submod syndicate/actor for-module-begin)))
+(require (prefix-in syndicate: syndicate/supervise))
 
 (require (for-meta 2 macrotypes/stx-utils racket/list syntax/stx syntax/parse racket/base))
 (require macrotypes/postfix-in)
@@ -708,6 +709,15 @@
           (list ty)]
          [else
           (list)])])))
+
+(define-typed-syntax (supervise on:opt-name s ...+) ≫
+  [⊢ s ≫ s- (⇒ ν (~effs F ...))] ...
+  #:do [(ensure-all! AnyActor? #'(F ... ...) "only spawn effects allowed" #:src this-syntax)]
+  ------------------------------
+  [⊢ (syndiate:supervise (~? (~@ #:name on.name-)) s- ...)
+     (⇒ : ★/t)
+     (⇒ ν (F ... ...))]
+)
 
 (define-typed-syntax dataspace
   [(dataspace τ-c:type s ...) ≫
