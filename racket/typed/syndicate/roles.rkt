@@ -717,7 +717,7 @@
   [⊢ s ≫ s- (⇒ ν (~effs F ...))] ...
   #:do [(ensure-all! AnyActor? #'(F ... ...) "only spawn effects allowed" #:src this-syntax)]
   ------------------------------
-  [⊢ (syndiate:supervise (~? (~@ #:name on.name-)) s- ...)
+  [⊢ (syndicate:supervise (~? (~@ #:name on.name-)) s- ...)
      (⇒ : ★/t)
      (⇒ ν (F ... ...))]
 )
