@@ -36,6 +36,7 @@
 (define-primop positive? (→fn Int Bool))
 (define-primop negative? (→fn Int Bool))
 (define-primop current-inexact-milliseconds (→fn Int))
+(define-primop current-seconds (→fn Int))
 (define-primop string=? (→fn String String Bool))
 
 (define-primop bytes->string/utf-8 (→fn ByteString String))
@@ -86,11 +87,40 @@
   ---------------
   [⊢ (#%app- displayln- e-) (⇒ : ★/t)])
 
-(define-typed-syntax (printf e ...+) ≫
+(define-typed-syntax (printf fmt e ...) ≫
+  [⊢ fmt ≫ fmt- (⇐ : String)]
   [⊢ e ≫ e- (⇒ : τ)] ...
-  #:fail-unless (stx-andmap pure? #'(e- ...)) "expression not allowed to have effects"
-  ---------------
-  [⊢ (#%app- printf- e- ...) (⇒ : ★/t)])
+  #:do [(ensure-all! pure? #'(fmt- e- ...) "expression not allowed to have effects" #:src this-syntax)]
+  ---------------------------------------------
+  [⊢ (#%app- printf- fmt- e- ...) (⇒ : ★/t)])
+
+(define-typed-syntax (log-info fmt e ...) ≫
+  [⊢ fmt ≫ fmt- (⇐ : String)]
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:do [(ensure-all! pure? #'(fmt- e- ...) "expression not allowed to have effects" #:src this-syntax)]
+  ---------------------------------------------
+  [⊢ (log-info- fmt- e- ...) (⇒ : ★/t)])
+
+(define-typed-syntax (log-warning fmt e ...) ≫
+  [⊢ fmt ≫ fmt- (⇐ : String)]
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:do [(ensure-all! pure? #'(fmt- e- ...) "expression not allowed to have effects" #:src this-syntax)]
+  ---------------------------------------------
+  [⊢ (log-warning- fmt- e- ...) (⇒ : ★/t)])
+
+(define-typed-syntax (log-debug fmt e ...) ≫
+  [⊢ fmt ≫ fmt- (⇐ : String)]
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:do [(ensure-all! pure? #'(fmt- e- ...) "expression not allowed to have effects" #:src this-syntax)]
+  ---------------------------------------------
+  [⊢ (log-debug- fmt- e- ...) (⇒ : ★/t)])
+
+(define-typed-syntax (log-error fmt e ...) ≫
+  [⊢ fmt ≫ fmt- (⇐ : String)]
+  [⊢ e ≫ e- (⇒ : τ)] ...
+  #:do [(ensure-all! pure? #'(fmt- e- ...) "expression not allowed to have effects" #:src this-syntax)]
+  ---------------------------------------------
+  [⊢ (log-error- fmt- e- ...) (⇒ : ★/t)])
 
 (define-typed-syntax (~a e ...) ≫
   [⊢ e ≫ e- (⇒ : τ)] ...
