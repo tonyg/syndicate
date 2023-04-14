@@ -29,9 +29,16 @@
 ;; Patterns
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-typed-syntax (bind x:id τ:type) ≫
+(define-typed-syntax bind
+  [(bind x:id τ:type) ≫
   ----------------------------------------
-  [⊢ (#%app- error- 'bind "escaped") (⇒ : (Bind τ))])
+  [⊢ (#%app- error- 'bind "escaped") (⇒ : (Bind τ))]]
+  [(bind x:id p) ≫
+   [⊢ p ≫ p- (⇒ : τ)]
+   #:with τ-match (pattern-matching-assertions #'τ)
+   #:do [(ensure! finite? #'τ-match "bind could match infinite assertions" #:src this-syntax)]
+   ----------------------------------------
+   [⊢ (#%app- error- 'bind "escaped") (⇒ : τ)]])
 
 (define-typed-syntax (discard τ:type) ≫
   ----------------------------------------
@@ -180,7 +187,13 @@
   (syntax-parse stx
     #:datum-literals (bind tuple)
     [(bind x:id τ:type)
-     #'([x τ])]
+     #'([x τ.norm])]
+    [(bind x:id p)
+     #:cut
+     #:with ([y τ-y] ...) (pat-bindings #'p)
+     #:with (~and _ (~typecheck [⊢ #,stx ≫ _ (⇒ : τ-p)])) '()
+     #:with τ-x (pattern-matching-assertions #'τ-p)
+     #'([x τ-x] [y τ-y] ...)]
     [(tuple p ...)
      #:with (([x:id τ:type] ...) ...) (stx-map pat-bindings #'(p ...))
      #'([x τ] ... ...)]
@@ -250,8 +263,8 @@
        (syntax/loc pat (discard ★/t))]
       [x:dollar-ann-id
        (syntax/loc pat (bind x.id x.ty))]
-      [($ x:id ty)
-       (syntax/loc pat (bind x ty))]
+      [($ x:id ty-or-p)
+       (quasisyntax/loc pat (bind x #,(elaborate-pattern #'ty-or-p)))]
       [(tuple p ...)
        (quasisyntax/loc pat
          (tuple #,@(stx-map elaborate-pattern #'(p ...))))]
@@ -285,8 +298,8 @@
        (when (bot? ty)
          (raise-syntax-error #f "unable to instantiate pattern with matching part of type" pat))
        (quasisyntax/loc pat (bind x.id #,ty))]
-      [($ x:id ty)
-       (syntax/loc pat (bind x ty))]
+      [($ x:id ty-or-p)
+       (quasisyntax/loc pat (bind x #,(elaborate-pattern/with-type #'ty-or-p ty)))]
       [($ x:id)
        (when (bot? ty)
          (raise-syntax-error #f "unable to instantiate pattern with matching part of type" pat))
@@ -348,7 +361,7 @@
        #'e])))
 
 ;; TODO - figure out why this needs different list identifiers
-(define-for-syntax (compile-pattern pat list-binding bind-id-transformer exp-transformer)
+(define-for-syntax (compile-pattern pat list-binding bind-id-transformer complex-bind-transformer exp-transformer)
     (define (l-e stx) (local-expand stx 'expression '()))
     (let loop ([pat pat])
       (syntax-parse pat
@@ -357,11 +370,14 @@
          #`(#,list-binding 'tuple #,@(stx-map loop #'(p ...)))]
         [(bind x:id τ:type)
          (bind-id-transformer #'x)]
+        [(bind x:id p)
+         (define p- (loop #'p))
+         (complex-bind-transformer #'x p-)]
         [(~or* (discard _) ★)
          #'_]
         [(~constructor-exp ctor p ...)
          (define/with-syntax uctor (untyped-ctor #'ctor))
-         #`(uctor #,@(stx-map loop #'(p ...)))]
+         (quasisyntax/loc this-syntax (uctor #,@(stx-map loop #'(p ...))))]
         [_
          ;; local expanding "expression-y" syntax allows variable references to transform
          ;; according to the mappings set up by turnstile.
@@ -371,6 +387,7 @@
   (compile-pattern pat
                    #'list
                    identity
+                   (lambda (id pat) (type-error #:src id #:msg "can't bind complex patterns in match"))
                    (lambda (exp) #`(==- #,exp))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

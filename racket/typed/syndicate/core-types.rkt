@@ -1759,8 +1759,8 @@
   (syntax-parse t
     [(~Bind τ)
      #'τ]
-    [(~Discard _)
-     (type-eval #'★/t)]
+    [(~Discard τ)
+     #'τ]
     [(~U* τ ...)
      (mk-U- (stx-map pattern-matching-assertions #'(τ ...)))]
     [(~Any/new τ-cons τ ...)

@@ -563,6 +563,7 @@
   (compile-pattern pat
                    #'list-
                    (lambda (id) #`($ #,id))
+                   (lambda (id pat) (quasisyntax/loc pat ($ #,id #,pat)))
                    identity))
 
 (begin-for-syntax
@@ -638,8 +639,10 @@
                                                   #'τ-a
                                                   (mk-U*- #'(τ-a)))
      #:with τ-c/this-actor (or τ-c (type-eval #'(U τ-i/o τ-o)))
-     #:with τ-c/final #'τ-c/this-actor
+     #:with τ-c/final #;#'τ-c/this-actor (type-eval #'(U τ-c/this-actor τ-c/spawned ...))
      #:do [(ensure-inputs! #'τ-i #'τ-o #'τ-c/final this-syntax)]
+     #:do [(for ([t/spawned (in-syntax #'(τ-c/spawned ...))])
+             (ensure-actor-sub! t/spawned #'τ-c/final this-syntax))]
      #'τ-c/final]))
 
 (define-for-syntax (ensure-outputs! τ-o τ-c [loc τ-o])
