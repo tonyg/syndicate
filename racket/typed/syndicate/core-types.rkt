@@ -1800,8 +1800,9 @@
     (unless (p stx)
       (type-error #:src src #:msg (format "~a\nGot:~a\n" msg stx))))
 
-  ;; (Syntax -> Bool) (Sequenceof Syntax) String -> Void
+  ;; (Syntax -> Bool) (U (Listof Syntax) (SyntaxListof Syntax)) String -> Void
   (define (ensure-all! p stxs msg #:src [src #f])
+    (when (syntax? stxs) (set! stxs (syntax->list stxs)))
     (for ([stx (in-list stxs)])
       (ensure! p stx msg #:src (or src stx))))
 
