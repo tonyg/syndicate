@@ -36,7 +36,7 @@
          on-start on-stop
          stop-when
          ;; endpoints
-         assert know on field
+         assert know on field ★
          ;; expressions
          tuple select lambda λ ref ! (struct-out observe) (struct-out message) (struct-out inbound) (struct-out outbound)
          Λ inst call/inst
@@ -302,18 +302,23 @@
    --------------------
    [≻ (field flds ... [x τ e-] more-flds ...)]])
 
+;; Assertion pattern
+(define- PLACEHOLDER void-)
+(define-typed-variable-rename ★ ≫ PLACEHOLDER : ★/t)
+
 (define-typed-syntax (assert e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ ν (~effs F ...))]
   #:fail-unless (pure? #'e-) "expression not allowed to have effects"
   #:fail-unless (allowed-interest? #'τ) "overly broad interest, ?̱̱★ and ??★ not allowed"
   #:with τs (mk-Shares- #'(τ))
+  #:with e-/fixed (subst #'syndicate:_ #'PLACEHOLDER #'e-)
   #:with kont (syntax-parse #'(F ...)
                 [(~and ((~and RF (~ReadsField _)))
                        (~parse x:id (get-orig-field-name #'RF))
                        (~typecheck [⊢ x ≫ x- (⇒ : (~Field τ-f))])
                        (~parse (~and τ-U (~U* _ _)) (find-union #'τ-f)))
                  #'(type-varying-assert e e- x x- τ-f τ-U)]
-                [_ #'(just-assert e-)])
+                [_ #'(just-assert e-/fixed)])
   -------------------------------------
   [≻ kont])
 
