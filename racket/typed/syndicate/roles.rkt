@@ -26,6 +26,7 @@
          let let* if spawn supervise dataspace start-facet this-facet set! := begin block stop begin/dataflow #;unsafe-do
          when unless send! realize! define during/spawn
          with-facets start WithFacets Start
+         ?
          ;; Derived Forms
          react
          during During
@@ -439,6 +440,9 @@
   -------------------------------------
   [⊢ (syndicate:know e-) (⇒ : ★/t)
      (⇒ ν (τs))])
+
+;; only allowed in messages
+(define-typed-variable-rename ? ≫ syndicate:? : ★/t)
 
 (define-typed-syntax (send! e:expr) ≫
   [⊢ e ≫ e- (⇒ : τ)]
