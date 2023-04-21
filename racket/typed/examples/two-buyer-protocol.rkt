@@ -72,7 +72,7 @@
 (run-ground-dataspace ds-type
 
 ;; seller
-(spawn ds-type
+(spawn #:type ds-type
   (lift+define-role seller-impl
   (start-facet _ ;; #:implements seller-role
     (field [book (Tuple String Int) (tuple "Catch 22" 22)]
@@ -100,7 +100,7 @@
                 (assert (order title offer #f #f)))))))))
 
 ;; buyer A
-(spawn ds-type
+(spawn #:type ds-type
   (lift+define-role buyer-a-impl
   (start-facet buyer
     (field [title String "Catch 22"]
@@ -121,7 +121,7 @@
                                (+ (ref contribution) (/ (- amount (ref contribution)) 2)))))))])))))
 
 ;; buyer B
-(spawn ds-type
+(spawn #:type ds-type
   (lift+define-role buyer-b-impl
   (start-facet buyer-b
     (field [funds Int 5])
@@ -139,7 +139,7 @@
                (on (retracted (observe (split-proposal title price their-contribution _)))
                    (stop accept))
                (on start
-                   (spawn ds-type
+                   (spawn #:type ds-type
                      (start-facet purchase
                        (on (asserted (order title price (bind order-id? (Maybe OrderId)) (bind delivery-date? (Maybe DeliveryDate))))
                            (match (tuple order-id? delivery-date?)

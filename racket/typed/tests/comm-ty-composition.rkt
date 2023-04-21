@@ -19,8 +19,8 @@
 (define-type-alias FlipFlop (U Flipper Flopper))
 
 (run-ground-dataspace (U PingPong FlipFlop)
-  (spawn Pinger (start-facet _ (assert (ping 5))))
-  (spawn Ponger (start-facet _ (during (ping $v) (assert (pong v)))))
+  (spawn #:type Pinger (start-facet _ (assert (ping 5))))
+  (spawn #:type Ponger (start-facet _ (during (ping $v) (assert (pong v)))))
 
-  (spawn Flipper (start-facet _ (assert (flip 8))))
-  (spawn Flopper (start-facet _ (during (flip $v) (assert (flop v))))))
+  (spawn #:type Flipper (start-facet _ (assert (flip 8))))
+  (spawn #:type Flopper (start-facet _ (during (flip $v) (assert (flop v))))))

@@ -2,6 +2,6 @@
 
 (require rackunit/turnstile)
 
-(typecheck-fail (spawn (U)
+(typecheck-fail (spawn #:type (U)
                        (start-facet x
                                     (assert 42))))

@@ -24,7 +24,7 @@
 (run-ground-dataspace chat-ds
   (activate!)
 
-  (spawn chat-ds
+  (spawn #:type chat-ds
    (start-facet chat-server
      (during/spawn (tcp-connection (bind id Symbol) (tcp-listener 5999))
              (assert (tcp-accepted id))

@@ -13,7 +13,7 @@
      (Observe (Tuple ★/t))))
 
 (run-ground-dataspace ds-type
-  (spawn ds-type
+  (spawn #:type ds-type
    (print-role
    (start-facet doomed
      (assert (tuple 18))
@@ -22,7 +22,7 @@
                 (start-facet the-afterlife
                   (assert (tuple 88))))))))
 
-  (spawn ds-type
+  (spawn #:type ds-type
     (start-facet obs
       (assert (tuple 42))
       (on (asserted (tuple (bind x Int)))
@@ -31,7 +31,7 @@
           (printf "-~v\n" x))))
 
   ;; null-ary stop
-  (spawn ds-type
+  (spawn #:type ds-type
     (start-facet meep
       (assert (tuple 9))
       (on (asserted (tuple 88))

@@ -49,10 +49,10 @@
   id)
 
 (define (spawn-cell-factory)
-  (spawn ds-type
+  (spawn #:type ds-type
    (start-facet cell-factory
      (on (message (create-cell (bind id ID) (bind init Value)))
-         (spawn ds-type
+         (spawn #:type ds-type
            (start-facet the-cell
              (field [value Value init])
              (assert (cell id (ref value)))
@@ -63,7 +63,7 @@
 
 
 (define (spawn-cell-monitor [id : ID])
-  (spawn ds-type
+  (spawn #:type ds-type
     (start-facet monitor
       (on (asserted (cell id (bind value Value)))
           (printf "Cell ~a updated to: ~a\n" id value))

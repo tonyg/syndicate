@@ -35,7 +35,7 @@
 
 (run-ground-dataspace ds-type
 
-  (spawn ds-type
+  (spawn #:type ds-type
     (lift+define-role acct-mngr-role
     (start-facet account-manager
       (field [balance Int 0])
@@ -43,13 +43,13 @@
       (on (asserted (deposit (bind amount Int)))
           (set! balance (+ (ref balance) amount))))))
 
-  (spawn ds-type
+  (spawn #:type ds-type
     (lift+define-role obs-role
     (start-facet observer
       (on (asserted (account (bind amount Int)))
           (displayln amount)))))
 
-  (spawn ds-type
+  (spawn #:type ds-type
     (lift+define-role buyer-role
     (start-facet buyer
       (on (asserted (observe (deposit _)))

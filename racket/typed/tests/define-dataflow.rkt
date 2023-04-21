@@ -1,7 +1,7 @@
 #lang typed/syndicate
 
 (run-ground-dataspace (U)
-(spawn (U)
+(spawn #:type (U)
        (start-facet x
                     (field [y Int 0])
                     (define/dataflow x (add1 (ref y)))

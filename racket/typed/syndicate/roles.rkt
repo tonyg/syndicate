@@ -590,51 +590,89 @@
                                --------
                                [≻ name-]]))
     (pattern (~seq)
-             #:attr name- #f)))
+             #:attr name- #f))
+
+  (define-splicing-syntax-class opt-type
+    #:attributes (τ-c)
+    (pattern (~seq #:type τ-c:type))
+    (pattern (~seq)
+             #:attr τ-c #f)))
 
 (define-typed-syntax spawn
-  [(spawn on:opt-name tc s) ≫
+  [(spawn on:opt-name
+          ot:opt-type
+          s:expr ...+) ≫
    ;; this setup is to avoid re-expansion of the tc position :<
+   #:when (attribute ot.τ-c)
    #:cut
-   #:with τ-c:type #'tc
+   #:with τ-c:type #'ot.τ-c
   #:fail-unless (flat-type? #'τ-c.norm) "Communication type must be first-order"
   #:mode (communication-type-mode #'τ-c.norm)
     [
-     [⊢ (block s) ≫ s- (⇒ ν (~effs F ...))]
+     #:with (boot-e facet-ty) (analyze-actor-body #'(s ...))
+     ;; [⊢ (block s) ≫ s- (⇒ ν (~effs F ...))]
     ]
   ;; TODO: s shouldn't refer to facets or fields!
-  #:do [(ensure! (lambda (Fs) (= 1 (stx-length Fs))) #'(F ...) "expected exactly one Role for body"
-                 #:src this-syntax)
-        (ensure-all! TypeStartsFacet? #'(F ...) "only effects that start a facet allowed"
-                     #:src this-syntax)]
-  #:with τ-c/final (check-actor-roles! #'(F ...) this-syntax #'τ-c.norm)
+  ;; #:do [(ensure! (lambda (Fs) (= 1 (stx-length Fs))) #'(F ...) "expected exactly one Role for body"
+  ;;                #:src this-syntax)
+  ;;       (ensure-all! TypeStartsFacet? #'(F ...) "only effects that start a facet allowed"
+  ;;                    #:src this-syntax)]
+  #:with τ-c/final (check-actor-roles! #'(facet-ty) this-syntax #'τ-c.norm)
   #:fail-unless (<: (type-eval #'(Actor τ-c/final))
                     (type-eval #'(Actor τ-c.norm)))
                 "Actor not valid in current dataspace context"
-  #:with τ-final (mk-ActorWithRole- #'(τ-c.norm F ...))
+  #:with τ-final (mk-ActorWithRole- #'(τ-c.norm facet-ty))
   --------------------------------------------------------------------------------------------
   [⊢ (syndicate:spawn (~? (~@ #:name on.name-))
-                      (syndicate:on-start s-)) (⇒ : ★/t)
-                                               (⇒ ν (τ-final))]]
-  [(spawn s ...) ≫
+                      boot-e)
+     (⇒ : ★/t)
+     (⇒ ν (τ-final))]]
+  [(spawn on:opt-name s:expr ...+) ≫
    #:do [(define τc (current-communication-type))]
    #:when τc
    #:cut
    ----------------------------------------
-   [≻ (spawn #,τc s ...)]]
-  [(spawn on:opt-name s) ≫
+   [≻ (spawn (~? (~@ #:name on.name-))
+             #:type #,τc
+             s ...)]]
+  [(spawn on:opt-name s:expr ...+) ≫
    #:cut
-   [⊢ (block s) ≫ s- (⇒ ν (~effs F ...))]
+   #:with (boot-e facet-ty) (analyze-actor-body #'(s ...))
    ;; TODO: s shouldn't refer to facets or fields!
-   #:fail-unless (and (stx-andmap TypeStartsFacet? #'(F ...))
-                      (= 1 (length (syntax->list #'(F ...)))))
-   "expected exactly one Role for body"
-   #:with τ-c/final (check-actor-roles! #'(F ...) this-syntax)
-   #:with τ-final (mk-ActorWithRole- #'(τ-c/final F ...))
+   ;; #:fail-unless (and (stx-andmap TypeStartsFacet? #'(F ...))
+                      ;; (= 1 (length (syntax->list #'(F ...)))))
+   ;; "expected exactly one Role for body"
+   #:with τ-c/final (check-actor-roles! #'(facet-ty) this-syntax)
+   #:with τ-final (mk-ActorWithRole- #'(τ-c/final facet-ty))
   ----------------------------------------
   [⊢ (syndicate:spawn (~? (~@ #:name on.name-))
-                      (syndicate:on-start s-)) (⇒ : ★/t)
-                                               (⇒ ν (τ-final))]])
+                      boot-e)
+     (⇒ : ★/t)
+     (⇒ ν (τ-final))]])
+
+(define-for-syntax (analyze-actor-body s*)
+  (syntax-parse/typecheck null
+    [_ ≫
+       #:with tfn (format-id (first (syntax->list s*)) "root")
+       [[tfn ≫ _ : FacetName] ⊢ tfn ≫ tfn-]
+       #:with (s- (F ...)) (parameterize ([current-facet-name (syntax-local-introduce #'tfn-)])
+                             (syntax-parse/typecheck null
+                               [_ ≫
+                                  [⊢ (block #,@s*) ≫ s- (⇒ ν (~effs F ...))]
+                                  ------------------------------
+                                  [≻ (s- (F ...))]]))
+       #:with (boot-e facet-ty) (cond
+                                  [(and (stx-andmap TypeStartsFacet? #'(F ...))
+                                        (= 1 (length (syntax->list #'(F ...)))))
+                                   (list #'(syndicate:on-start s-)
+                                         (first (syntax->list #'(F ...))))]
+                                  [(stx-andmap endpoint-effect? #'(F ...))
+                                   (list
+                                    #`(let- ([tfn- (#%app- syndicate:current-facet-id)])
+                                            s-)
+                                    (type-eval #'(Role (tfn) F ...)))])
+       ----------------------------------------
+       [≻ (boot-e facet-ty)]]))
 
 (define-for-syntax (check-actor-roles! role-types this-syntax [τ-c #f])
   (syntax-parse null
@@ -1550,20 +1588,20 @@
 
 (module+ test
   (check-type
-    (spawn (U (Observe (Tuple Int ★/t)))
+    (spawn #:type (U (Observe (Tuple Int ★/t)))
            (start-facet echo
                         (on (message (tuple 1 $x:Int))
                             #f)))
     : ★/t)
-  (check-type (spawn (U (Message (Tuple String Int))
-                        (Observe (Tuple String ★/t)))
+  (check-type (spawn #:type (U (Message (Tuple String Int))
+                               (Observe (Tuple String ★/t)))
                      (start-facet echo
                                   (on (message (tuple "ping" $x))
                                       (send! (tuple "pong" x)))))
               : ★/t)
-  (typecheck-fail (spawn (U (Message (Tuple String Int))
-                            (Message (Tuple String String))
-                            (Observe (Tuple String ★/t)))
+  (typecheck-fail (spawn #:type (U (Message (Tuple String Int))
+                                   (Message (Tuple String String))
+                                   (Observe (Tuple String ★/t)))
                          (start-facet echo
                                       (on (message (tuple "ping" (bind x Int)))
                                           (send! (tuple "pong" x)))))))

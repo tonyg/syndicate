@@ -62,7 +62,7 @@
 (export-type "seller-role.rktd" seller-role)
 
 (define (spawn-seller [inventory : Inventory])
-  (spawn τc
+  (spawn #:type τc
     (export-roles "seller-impl.rktd"
     (lift+define-role seller-impl
     (start-facet seller
@@ -103,7 +103,7 @@
         (Reacts (Asserted (ClubMemberT (Bind String))))))
 
 (define (spawn-leader [titles : (List String)])
-  (spawn τc
+  (spawn #:type τc
    (export-roles "leader-impl.rktd"
    (lift+define-role leader-impl
    (start-facet get-quotes
@@ -169,7 +169,7 @@
 
 (define (spawn-club-member [name : String]
                            [titles : (List String)])
-  (spawn τc
+  (spawn #:type τc
    (export-roles "member-impl.rktd"
    (lift+define-role member-impl
    (start-facet member

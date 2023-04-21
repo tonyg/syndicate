@@ -10,7 +10,7 @@
 ;; that will still be checked by `project-safe?`
 
 (lambda ()
-  (spawn τc
+  (spawn #:type τc
          (begin
            (define (on!)
              (on (asserted (tuple $x))

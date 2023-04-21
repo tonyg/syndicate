@@ -203,7 +203,7 @@ The JobManager then performs the job and, when finished, asserts
   [string->words : (→fn String (List String))])
 
 (define (spawn-task-runner [id : ID] [tm-id : ID])
-  (spawn τc
+  (spawn #:type τc
    (export-roles "task-runner-impl.rktd"
    (lift+define-role task-runner-impl
    (start-facet runner ;; #:includes-behavior TaskPerformer
@@ -231,7 +231,7 @@ The JobManager then performs the job and, when finished, asserts
 
 (define (spawn-task-manager [num-task-runners : Int])
   (define id (gensym 'task-manager))
-  (spawn τc
+  (spawn #:type τc
    (export-roles "task-manager-impl.rktd"
    (#;begin  lift+define-role task-manager-impl
    (start-facet tm ;; #:includes-behavior TaskAssigner
@@ -258,7 +258,7 @@ The JobManager then performs the job and, when finished, asserts
      (field [busy-runners (Set ID) (set)])
 
      (define (idle-runners)
-       (set-count (set-subtract (ref task-runners) (ref busy-runners))))
+       (set-count (set-subtract (! task-runners) (! busy-runners))))
      #;(define/dataflow idle-runners
        (set-count (set-subtract (ref task-runners) (ref busy-runners))))
 
@@ -372,7 +372,7 @@ The JobManager then performs the job and, when finished, asserts
 (message-struct task-is-ready : TaskIsReady (job-id task))
 
 (define (spawn-job-manager)
-  (spawn τc
+  (spawn #:type τc
     (lift+define-role job-manager-impl ;; export-roles "job-manager-impl.rktd"
     (start-facet jm ;; #:includes-behavior TaskAssigner
     (assert (job-manager-alive))
@@ -525,7 +525,7 @@ The JobManager then performs the job and, when finished, asserts
 
 ;; Job -> Void
 (define (spawn-client [j : JobDesc])
-  (spawn τc
+  (spawn #:type τc
    (export-roles "client-impl.rktd"
    (lift+define-role client-impl
    (start-facet _
@@ -566,12 +566,12 @@ The JobManager then performs the job and, when finished, asserts
                  TaskAssigner
                  TaskPerformer))
 
-#;(module+ test
+(module+ test
   #;(verify-actors TT
     task-manager-impl)
-  (check-deadlock-free job-manager-impl
-                       task-manager-impl
-                       client-impl ))
+  (check-deadlock-free* job-manager-impl
+                        task-manager-impl
+                        client-impl ))
 
 #;(module+ test
   (check-simulates task-runner-impl task-runner-impl)
@@ -584,3 +584,14 @@ The JobManager then performs the job and, when finished, asserts
 ;; infinite loop?
 #;(module+ test
   (check-simulates job-manager-impl job-manager-impl))
+#;(TaskPerformance Symbol
+                 (Task (Tuple (U NonZero Zero) Symbol)
+                       (U (MapWork String)
+                          (ReduceWork (Hash String (U NonZero Zero)) (Hash String (U NonZero Zero)))))
+                 ⋆)
+#;(TaskPerformance Symbol
+                 (Task (Tuple (U NonZero Zero) Symbol)
+                       (U (MapWork String)
+                          (ReduceWork (Hash String (U NonZero Zero)) (Hash String (U NonZero Zero)))))
+                 (U (Finished (Hash String (U NonZero Zero)))
+                    Symbol))
