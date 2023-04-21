@@ -36,6 +36,7 @@
          define/dataflow
          on-start on-stop
          stop-when
+         stop-current-facet
          ;; endpoints
          assert know on field ★
          ;; expressions
@@ -1052,6 +1053,10 @@
   [≻ (on D
          (check-stx ...
            (stop this-facet e ...)))])
+
+(define-typed-syntax (stop-current-facet) ≫
+  ----------------------------------------
+  [≻ (stop this-facet)])
 
 (define-typed-syntax define/dataflow
   [(define/dataflow x:id τ:type e) ≫
