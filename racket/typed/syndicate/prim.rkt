@@ -38,6 +38,9 @@
 (define-primop current-inexact-milliseconds (→fn Int))
 (define-primop current-seconds (→fn Int))
 (define-primop string=? (→fn String String Bool))
+(define-primop string<? (→fn String String Bool))
+(define-primop string>? (→fn String String Bool))
+(define-primop string<=? (→fn String String Bool))
 
 (define-primop bytes->string/utf-8 (→fn ByteString String))
 (define-primop string->bytes/utf-8 (→fn String ByteString))
