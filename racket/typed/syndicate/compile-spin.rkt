@@ -24,11 +24,12 @@
 ;; a SpinProgram is a
 ;;   (sprog Assignment
 ;;          [Listof SpinProcess]
-;;          MessageTable
+;;          IOSpec
 ;;          SpinLTL
+;;          MessageTable
 ;;          [Setof SName]
 ;;          NameEnvironment)
-(struct sprog [assignment procs spec msg-tabe assertion-tys name-env] #:transparent)
+(struct sprog [assignment procs io spec msg-tabe assertion-tys name-env] #:transparent)
 
 ;; a (Named X) is a
 ;;   (named SName X)
@@ -44,6 +45,9 @@
 ;;          [Listof SAction]
 ;;          [Setof SpinState])
 (struct sproc [name state-names st0 locals init-actions states] #:transparent)
+
+;; an IOSpec is a (spin-io (Setof SType) (Setof SType))
+(struct spin-io (msgs asserts) #:transparent)
 
 ;; an Assignment is a [Hashof SVar SValue]
 
@@ -107,18 +111,20 @@
 ;; where τ represents an assertion and (Message τ) a message
 
 
-;; [Sequenceof RG] SpinLTL -> SpinProgram
-(define (program->spin rgs [spec #t])
+;; [Sequenceof RG] SpinLTL (Setof τ) -> SpinProgram
+(define (program->spin rgs [spec #t] [io (set)])
   (define role-graphs (for/list ([rg rgs]) (if (named? rg) (named-v rg) rg)))
   (define assertion-tys (all-assertions role-graphs))
   (define message-tys (all-messages role-graphs))
   (define event-tys (all-events role-graphs))
   (define-values (spec-asserts spec-msgs) (spec-types spec))
-  (define-values (message-evts assertion-evts) (set-partition Message? event-tys))
-  (define msg-event-tys (list->set (set-map message-evts Message-ty)))
-  (define msg-bodies (set-union message-tys msg-event-tys spec-msgs))
-  (define event-subty# (make-event-map assertion-tys (set-union assertion-evts spec-asserts)))
-  (define all-assertion-tys (set-union assertion-tys assertion-evts spec-asserts))
+  (define-values (msg-event-tys assertion-evts) (partition-messages event-tys))
+  (define-values (io-msgs io-assertions) (partition-messages io))
+  (define msg-bodies (set-union message-tys msg-event-tys spec-msgs io-msgs))
+  (define made-assertions (set-union assertion-tys io-assertions))
+  (define read-assertions (set-union assertion-evts spec-asserts))
+  (define event-subty# (make-event-map made-assertions read-assertions))
+  (define all-assertion-tys (set-union made-assertions read-assertions))
   (define all-mentioned-tys (set-union all-assertion-tys msg-bodies))
   (define name-env (make-name-env all-mentioned-tys))
   (define procs
@@ -134,8 +140,9 @@
   (define mailbox-vars (initial-mailbox-vars msg-bodies (map sproc-name procs) name-env))
   (define msg-table (make-message-table message-tys msg-event-tys name-env))
   (define globals (hash-union assertion-vars messages-vars mailbox-vars))
+  (define sio (spin-io (rename-all name-env io-msgs) (rename-all name-env io-assertions)))
   (define spec-spin (rename-ltl spec name-env))
-  (sprog globals procs spec-spin msg-table assertion-nms name-env))
+  (sprog globals procs sio spec-spin msg-table assertion-nms name-env))
 
 ;; [Setof τ] [Setof τ] NameEnvironment -> MessageTable
 (define (make-message-table message-tys msg-event-tys name-env)
@@ -359,6 +366,14 @@
           (loop more-ltls (set-add asserts τ) msgs)]
          [_
           (loop more-ltls asserts msgs)])])))
+
+;; (Setof τ) -> (Values (Setof τ) (Setof τ))
+;; partition the Message and non-Message types in a set,
+;; returning the body of message types
+(define (partition-messages tys)
+  (define-values (msgs non-msgs) (set-partition Message? tys))
+  (define msg-bodies (list->set (set-map msgs Message-ty)))
+  (values msg-bodies non-msgs))
 
 ;; SName [Setof [U τ D+] NameEnvironment -> Assignment
 (define (local-variables-for st0 all-events name-env)
@@ -614,7 +629,7 @@
 ;; SpinProgram -> Void
 (define (gen-spin prog)
   (match prog
-    [(sprog assignment procs spec msg-table assertion-tys name-env)
+    [(sprog assignment procs io spec msg-table assertion-tys name-env)
      (display SPIN-PRELUDE)
      (gen-assignment assignment)
      (newline)
@@ -624,9 +639,21 @@
        (newline))
      (gen-clock-ticker (map sproc-name procs) msg-table assertion-tys)
      (newline)
+     (gen-io io name-env)
+     (newline)
      (gen-spec "spec" (lambda () (gen-ltl spec)))
      (newline)
      (gen-sanity-ltl assignment)]))
+
+;; SName (-> Void) -> Void
+(define (gen-spin-active-proctype nm gen-bdy)
+  (indent) (printf "active proctype ~a() {\n" nm)
+  (with-indent (gen-bdy))
+  (indent) (displayln "}"))
+
+(define-syntax-parse-rule (with-spin-active-proctype nm bdy ...+)
+  (gen-spin-active-proctype nm (lambda () bdy ...)))
+
 
 ;; (-> Void) -> Void
 ;; generate the prelude for spin atomic sequences, call `gen-bdy`,
@@ -800,6 +827,40 @@
       (indent) (printf ":: ~a > 0 -> ~a++\n" interest-nm mailbox-nm))
     (indent) (displayln ":: else -> skip;"))
   (indent) (displayln "fi;"))
+
+(define IO-PROC-NAME 'io)
+(define (gen-io io name-env)
+  (match-define (spin-io msgs asserts) io)
+  (unless (and (set-empty? msgs)
+               (set-empty? asserts))
+    (define assert-locals (for/hash ([asrt (in-set asserts)])
+                            (values (svar (io-assert-var-name asrt)
+                                          SBool)
+                                    #f)))
+    (with-spin-active-proctype (~a IO-PROC-NAME)
+      (gen-assignment assert-locals)
+      (with-spin-do
+        (with-spin-branch "timeout"
+          (with-spin-if
+            (for ([msg (in-set msgs)])
+              (with-spin-branch "true"
+                (gen-spin-form (send msg) name-env IO-PROC-NAME)))
+            (for ([asrt (in-set asserts)])
+              (define local-nm (io-assert-var-name asrt))
+              (with-spin-branch local-nm
+                (gen-spin-form (assert asrt) name-env IO-PROC-NAME)
+                (indent) (printf "~a = !~a\n" local-nm))
+              (with-spin-branch (format "!~a" local-nm)
+                (gen-spin-form (retract asrt) name-env IO-PROC-NAME)
+                (indent) (printf "~a = !~a\n" local-nm)))
+            (gen-spin-branch "true" gen-spin-skip))
+          ;; get the clock-ticker moving again
+          (update-clock GLOBAL-CLOCK-VAR (format-as-comment TURN-BEGIN-EVENT))
+)))))
+
+;; SName -> SName
+(define (io-assert-var-name s)
+  (string->symbol (format "asserting_~a" s)))
 
 ;; [Setof SName] -> Void
 (define (declare-mtype state-names)
@@ -1002,11 +1063,11 @@
 (define-runtime-path RUN-SPIN.EXE "run-spin.sh")
 (define-runtime-path REPLAY-TRAIL.EXE "replay-trail.sh")
 
-;; [LTL τ] [Listof (U (Named Role) Role)] -> (U #t String SpinTrace)
+;; [LTL τ] [Listof (U (Named Role) Role)] τ -> (U #t String SpinTrace)
 ;; returns #true if verification succeeds
 ;; returns a string error message if compilation fails
 ;; returns a SpinTrace of a counterexample if verification fails
-(define (compile+verify spec roles)
+(define (compile+verify spec roles io)
   (let/ec stop
     (define role-graphs
       (for/list ([nr? (in-list roles)])
@@ -1032,7 +1093,15 @@
         (if nm?
             (named nm? ans)
             ans)))
-    (run-spin (program->spin role-graphs spec))))
+    (define io* (ty->set io))
+    (run-spin (program->spin role-graphs spec io*))))
+
+(define (ty->set ty)
+  (match ty
+    [(U tys)
+     (list->set tys)]
+    [_
+     (set ty)]))
 
 ;; Symbol -> Symbol
 ;; try to convert a racket name to a suitable SPIN identifier by replace illegal

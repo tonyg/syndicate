@@ -1498,24 +1498,58 @@
    (syntax/loc this-syntax
      (check-not-false (#%app- proto:find-simulating-subgraph/report-error τ-impl.role τ-spec.role)))])
 
+(begin-for-syntax
+  (define-splicing-syntax-class opt-io
+    #:attributes (ty)
+    (pattern (~seq #:IO τ:type)
+             #:attr ty (explode-unions #'τ.norm))
+    (pattern (~seq)
+             #:attr ty (mk-U*- '())))
+
+  ;; τ -> τ
+  (define (explode-unions ty)
+    (mk-U- (explode-unions* ty)))
+
+  ;; τ -> (Listof τ)
+  (define (explode-unions* ty)
+    (syntax-parse ty
+      [(~U* τ ...)
+       (apply append (stx-map explode-unions* #'(τ ...)))]
+      [(~Any/new τ-cons τ ...)
+       #:when (reassemblable? #'τ-cons)
+       (define τ* (stx-map explode-unions* #'(τ ...)))
+       ;; (Listof τ) -> (Listof (Listof τ))
+       (define (all-combinations tys)
+         (match tys
+           ['()
+            '(())]
+           [(cons tys* tys**)
+            (for*/list ([t (in-list tys*)]
+                        [rest-ts (in-list (all-combinations tys**))])
+              (cons t rest-ts))]))
+       (for/list ([tys (in-list (apply cartesian-product τ*) #;(all-combinations τ*))])
+         (reassemble-type #'τ-cons tys))]
+      [_
+       (list ty)])))
+
 (define-syntax-parser verify-actors
-  [(_ spec actor-ty:type-or-proto ...)
-   (verify-actors-helper #t #''pass #'spec #'(actor-ty.role ...) this-syntax)])
+  [(_ spec io:opt-io actor-ty:type-or-proto ...)
+   (verify-actors-helper #t #''pass #'spec #'(actor-ty.role ...) (synd->proto (attribute io.ty)) this-syntax)])
 
 (define-syntax-parser verify-actors/fail
-  [(_ spec actor-ty:type-or-proto ...)
-   (verify-actors-helper #f #''counter #'spec #'(actor-ty.role ...) this-syntax)])
+  [(_ spec io:opt-io actor-ty:type-or-proto ...)
+   (verify-actors-helper #f #''counter #'spec #'(actor-ty.role ...) (synd->proto (attribute io.ty)) this-syntax)])
 
-(define-for-syntax (verify-actors-helper pass? expected spec role-tys ctx)
+(define-for-syntax (verify-actors-helper pass? expected spec role-tys io ctx)
   (define spec+ (type-eval spec))
   (define spec- #`(quote- #,(synd->proto spec+)))
   (define spec-str (with-output-to-string (lambda () (pretty-display (syntax->datum (datum->syntax #f (resugar-type spec+)))))))
   (quasisyntax/loc ctx
-    (check-equal? (#%app- v #,spec- '#,spec-str (#%app- list- #,@role-tys) #,pass?)
+    (check-equal? (#%app- v #,spec- '#,spec-str (#%app- list- #,@role-tys) #,pass? (quote- #,io))
                   #,expected)))
 
-(define- (v spec spec-str roles pass?)
-  (define- ans (#%app- proto:compile+verify spec roles))
+(define- (v spec spec-str roles pass? io)
+  (define- ans (#%app- proto:compile+verify spec roles io))
   (cond-
    [(#%app- string?- ans)
     (#%app- displayln- ans)
