@@ -1500,22 +1500,19 @@
 
 (define-syntax-parser verify-actors
   [(_ spec actor-ty:type-or-proto ...)
-   #:with spec+ (type-eval #'spec)
-   #:with spec- #`(quote- #,(synd->proto #'spec+))
-   #:with spec-str (with-output-to-string (lambda () (pretty-display (syntax->datum (datum->syntax #f (resugar-type #'spec+))))))
-   (syntax/loc this-syntax
-     (check-equal? (#%app- v spec- 'spec-str (#%app- list- actor-ty.role ...) #t)
-                   'pass
-                   #;(#%app- proto:compile+verify spec- (#%app- list- actor-ty.role ...))))])
+   (verify-actors-helper #t #''pass #'spec #'(actor-ty.role ...) this-syntax)])
 
 (define-syntax-parser verify-actors/fail
   [(_ spec actor-ty:type-or-proto ...)
-   #:with spec+ (type-eval #'spec)
-   #:with spec- #`(quote- #,(synd->proto #'spec+))
-   #:with spec-str (with-output-to-string (lambda () (pretty-display (syntax->datum (datum->syntax #f (resugar-type #'spec+))))))
-   (syntax/loc this-syntax
-     (check-equal? (#%app- v spec- 'spec-str (#%app- list- actor-ty.role ...) #f)
-                   'counter))])
+   (verify-actors-helper #f #''counter #'spec #'(actor-ty.role ...) this-syntax)])
+
+(define-for-syntax (verify-actors-helper pass? expected spec role-tys ctx)
+  (define spec+ (type-eval spec))
+  (define spec- #`(quote- #,(synd->proto spec+)))
+  (define spec-str (with-output-to-string (lambda () (pretty-display (syntax->datum (datum->syntax #f (resugar-type spec+)))))))
+  (quasisyntax/loc ctx
+    (check-equal? (#%app- v #,spec- '#,spec-str (#%app- list- #,@role-tys) #,pass?)
+                  #,expected)))
 
 (define- (v spec spec-str roles pass?)
   (define- ans (#%app- proto:compile+verify spec roles))
