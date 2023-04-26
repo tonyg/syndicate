@@ -74,6 +74,7 @@
          export-roles export-type check-simulates check-has-simulating-subgraph lift+define-role
          verify-actors verify-actors/fail
          check-deadlock-free check-deadlock-free*
+         check-not-deadlock-free check-not-deadlock-free*
          ;; LTL Syntax
          TT FF Always Eventually Until WeakUntil Release Implies And Or Not A M
          define-ltl
@@ -1594,24 +1595,33 @@
 (define-syntax-parser check-deadlock-free
   [(_ actor-ty:type ...+)
    #:when (stx-andmap Role? #'(actor-ty.norm ...))
-   #:with (_ (~U* outs ...) _ _ _) (analyze-roles #'(actor-ty.norm ...))
-   #:with (interest ...) (stx-filter Observe1? #'(outs ...))
-   #:with (VA ...) (for/list ([i (in-syntax #'(interest ...))])
-                     (quasisyntax/loc this-syntax
-                       (verify-actors (deadlock-free #,i)
-                         actor-ty.norm ...)))
-   #'(begin- VA ...)])
+   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors #'deadlock-free this-syntax)])
+
+(define-syntax-parser check-not-deadlock-free
+  [(_ actor-ty:type ...+)
+   #:when (stx-andmap Role? #'(actor-ty.norm ...))
+   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors/fail #'deadlock-free this-syntax)])
 
 (define-syntax-parser check-deadlock-free*
   [(_ actor-ty:type ...+)
    #:when (stx-andmap Role? #'(actor-ty.norm ...))
-   #:with (_ (~U* outs ...) _ _ _) (analyze-roles #'(actor-ty.norm ...))
-   #:with (interest ...) (stx-filter Observe1? #'(outs ...))
-   #:with (VA ...) (for/list ([i (in-syntax #'(interest ...))])
-                     (quasisyntax/loc this-syntax
-                       (verify-actors/fail (deadlock-free* #,i)
-                         actor-ty.norm ...)))
-   #'(begin- VA ...)])
+   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors/fail #'deadlock-free* this-syntax)])
+
+(define-syntax-parser check-not-deadlock-free*
+  [(_ actor-ty:type ...+)
+   #:when (stx-andmap Role? #'(actor-ty.norm ...))
+   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors #'deadlock-free* this-syntax)])
+
+(define-for-syntax (deadlock-free-helper actor-tys va dlf ctx)
+  (syntax-parse null
+    [_
+     #:with (_ (~U* outs ...) _ _ _) (analyze-roles actor-tys)
+     #:with (interest ...) (stx-filter Observe1? #'(outs ...))
+     #:with (VA ...) (for/list ([i (in-syntax #'(interest ...))])
+                       (quasisyntax/loc ctx
+                         (#,va (#,dlf #,i)
+                           #,@actor-tys)))
+     #'(begin- VA ...)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
