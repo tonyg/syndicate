@@ -1534,11 +1534,11 @@
        (list ty)])))
 
 (define-syntax-parser verify-actors
-  [(_ spec io:opt-io actor-ty:type-or-proto ...)
+  [(_ spec io:opt-io actor-ty:type-or-proto ...+)
    (verify-actors-helper #t #''pass #'spec #'(actor-ty.role ...) (synd->proto (attribute io.ty)) this-syntax)])
 
 (define-syntax-parser verify-actors/fail
-  [(_ spec io:opt-io actor-ty:type-or-proto ...)
+  [(_ spec io:opt-io actor-ty:type-or-proto ...+)
    (verify-actors-helper #f #''counter #'spec #'(actor-ty.role ...) (synd->proto (attribute io.ty)) this-syntax)])
 
 (define-for-syntax (verify-actors-helper pass? expected spec role-tys io ctx)
