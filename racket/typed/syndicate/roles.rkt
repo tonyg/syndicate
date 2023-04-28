@@ -1197,13 +1197,6 @@
 ;; LTL Syntax
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-type LTL : LTL)
-
-(define-for-syntax (LTL? stx)
-  (syntax-parse (detach stx KIND-TAG)
-    [~LTL #t]
-    [_ #f]))
-
 (define-type TT : LTL)
 (define-type FF : LTL)
 (define-type Always : LTL -> LTL)
@@ -1249,6 +1242,15 @@
   (define (mk-proto:Branch . args)
     (proto:Branch args))
 
+  (define (insert-atomic ps)
+    (for/list ([p (in-list ps)])
+      (if (proto:ltl? p)
+          p
+          (proto:atomic p))))
+
+  (define ((normalize-ltl ctor) . args)
+    (apply ctor (insert-atomic args)))
+
   (define TRANSLATION#
     (build-id-table Sends proto:Sends
                     Realizes proto:Realizes
@@ -1275,15 +1277,15 @@
                     ;; LTL
                     TT #t
                     FF #f
-                    Always proto:always
-                    Eventually proto:eventually
-                    Until proto:strong-until
-                    WeakUntil proto:weak-until
-                    Release proto:release
-                    Implies proto:ltl-implies
-                    And proto:&&
-                    Or proto:||
-                    Not proto:ltl-not
+                    Always (normalize-ltl proto:always)
+                    Eventually (normalize-ltl proto:eventually)
+                    Until (normalize-ltl proto:strong-until)
+                    WeakUntil (normalize-ltl proto:weak-until)
+                    Release (normalize-ltl proto:release)
+                    Implies (normalize-ltl proto:ltl-implies)
+                    And (normalize-ltl proto:&&)
+                    Or (normalize-ltl proto:||)
+                    Not (normalize-ltl proto:ltl-not)
                     A proto:atomic
                     M (compose proto:atomic proto:Message)))
 

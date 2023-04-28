@@ -56,6 +56,21 @@
       [#f
        #f])))
 
+;; Any -> Bool
+(define (ltl? v)
+  (for/or ([p (in-list (list always?
+                             eventually?
+                             atomic?
+                             weak-until?
+                             strong-until?
+                             release?
+                             ltl-implies?
+                             ltl-and?
+                             ltl-or?
+                             ltl-not?
+                             boolean?))])
+    (p v)))
+
 (define (&& . args)
   (fold-bin-op ltl-and args #t))
 

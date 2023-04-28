@@ -291,6 +291,13 @@
 
 (define-type Type : Type)
 
+(define-type LTL : LTL)
+
+(define-for-syntax (LTL? stx)
+  (syntax-parse (detach stx KIND-TAG)
+    [~LTL #t]
+    [_ #f]))
+
 (begin-for-syntax
 
   (define (Type? stx)
@@ -1587,6 +1594,8 @@
                [_ #f])
        (printf "~a\n<:\n~a\n" t1 t2)))
    (syntax-parse #`(#,t1 #,t2)
+     [(~Type ~LTL)
+      #t]
      [(_ ~★/t)
       (flat-type? t1)]
      [((~U* τ1 ...) _)
