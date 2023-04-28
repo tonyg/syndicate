@@ -1484,6 +1484,15 @@
                                       #`(#%app- proto:named 't #,r)
                                       r)))
     (pattern x:id #:attr role #'(#%app- proto:named 'x (#%app- ensure-Role! x)))
+    (pattern (~and e:expr
+                   ;; should probably support expressions that spawn multiple actors
+                   (~typecheck [⊢ e ≫ e- (⇒ ν (~effs F))]))
+             #:fail-unless (or (ActorWithRole? #'F)
+                               (Role? #'F))
+                           "Expression must have Role or ActorWithRole type"
+             #:with (~or* (~ActorWithRole _ R) R) #'F
+             #:attr role (let ([r #`(quote- #,(synd->proto #'R))])
+                           r))
     #;(pattern ((~literal quote-) r)
              #:do [(define r- (syntax-e ))]
              #:when (proto:Role? r-)
