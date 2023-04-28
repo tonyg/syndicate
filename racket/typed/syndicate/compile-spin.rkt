@@ -138,7 +138,9 @@
   (define assertion-nms (for/set ([τ (in-set all-assertion-tys)]) (hash-ref name-env τ)))
   (define messages-vars (initial-message-vars-for msg-bodies name-env))
   (define mailbox-vars (initial-mailbox-vars msg-bodies (map sproc-name procs) name-env))
-  (define msg-table (make-message-table message-tys msg-event-tys name-env))
+  (define all-sent-messages (set-union message-tys io-msgs))
+  (define all-read-messages (set-union msg-event-tys spec-msgs))
+  (define msg-table (make-message-table all-sent-messages all-read-messages name-env))
   (define globals (hash-union assertion-vars messages-vars mailbox-vars))
   (define sio (spin-io (rename-all name-env io-msgs) (rename-all name-env io-assertions)))
   (define spec-spin (rename-ltl spec name-env))
@@ -780,7 +782,7 @@
     [(transition-to dest)
      (indent) (printf "~a = ~a;\n" (svar-name CURRENT-STATE) dest)]))
 
-;; [Listof SName] MessageTable -> Void
+;; [Listof SName] MessageTable [Setof SName] -> Void
 (define (gen-clock-ticker proc-names msg-table assertion-tys)
   (define clock-names (for/list ([pn (in-list proc-names)])
                         (svar-name (proc-clock-var pn))))
@@ -788,7 +790,8 @@
   (with-indent
     (indent) (displayln "end_clock_ticker:")
     (with-spin-do
-      (with-spin-branch (all-procs-ready-predicate clock-names)
+      (with-spin-branch (spin-&& (all-procs-ready-predicate clock-names)
+                                 (any-activity-predicate assertion-tys msg-table))
         (with-spin-dstep
           (indent) (update-clock GLOBAL-CLOCK-VAR (format-as-comment TURN-BEGIN-EVENT))
           (update-all-assertion-vars assertion-tys)
@@ -828,20 +831,22 @@
     (indent) (displayln ":: else -> skip;"))
   (indent) (displayln "fi;"))
 
-(define IO-PROC-NAME 'io)
+(define IO-PROC-NAME 'IO)
 (define (gen-io io name-env)
   (match-define (spin-io msgs asserts) io)
-  (unless (and (set-empty? msgs)
-               (set-empty? asserts))
-    (define assert-locals (for/hash ([asrt (in-set asserts)])
-                            (values (svar (io-assert-var-name asrt)
-                                          SBool)
-                                    #f)))
-    (with-spin-active-proctype (~a IO-PROC-NAME)
-      (gen-assignment assert-locals)
-      (with-spin-do
-        (with-spin-branch "timeout"
+  ;; in order for deadlock checking to work, it seems like there needs to be
+  ;; some way for the clock to keep ticking
+  (define assert-locals (for/hash ([asrt (in-set asserts)])
+                          (values (svar (io-assert-var-name asrt)
+                                        SBool)
+                                  #f)))
+  (with-spin-active-proctype (~a IO-PROC-NAME)
+    (gen-assignment assert-locals)
+    (with-spin-do
+      (with-spin-branch "timeout"
+        (with-spin-atomic
           (with-spin-if
+            (gen-spin-branch "else" gen-spin-skip)
             (for ([msg (in-set msgs)])
               (with-spin-branch "true"
                 (gen-spin-form (send msg) name-env IO-PROC-NAME)))
@@ -849,14 +854,13 @@
               (define local-nm (io-assert-var-name asrt))
               (with-spin-branch local-nm
                 (gen-spin-form (assert asrt) name-env IO-PROC-NAME)
-                (indent) (printf "~a = !~a\n" local-nm))
+                (indent) (printf "~a = !~a\n" local-nm local-nm))
               (with-spin-branch (format "!~a" local-nm)
                 (gen-spin-form (retract asrt) name-env IO-PROC-NAME)
-                (indent) (printf "~a = !~a\n" local-nm)))
-            (gen-spin-branch "true" gen-spin-skip))
+                (indent) (printf "~a = !~a\n" local-nm local-nm)))
+            #;(gen-spin-branch "true" gen-spin-break))
           ;; get the clock-ticker moving again
-          (update-clock GLOBAL-CLOCK-VAR (format-as-comment TURN-BEGIN-EVENT))
-)))))
+          (indent) (update-clock GLOBAL-CLOCK-VAR))))))
 
 ;; SName -> SName
 (define (io-assert-var-name s)
@@ -980,7 +984,40 @@
   (define global-name (svar-name GLOBAL-CLOCK-VAR))
   (define preds (for/list ([cn (in-list clock-names)])
                   (format "(~a != ~a)" global-name cn)))
-  (string-join preds " && "))
+  (spin-&&* preds))
+
+;; [Setof SName] MessageTable -> String
+(define (any-activity-predicate assertion-tys msg-table)
+  (define global-name (svar-name GLOBAL-CLOCK-VAR))
+  (define assertion-nms (set-map assertion-tys assertions-update-var-name))
+  (define msg-nms (map messages-var-name (hash-keys msg-table)))
+  (spin-||* (append assertion-nms msg-nms)))
+
+(define (spin-&& a b)
+  (format "(~a && ~a)" a b))
+
+(define (spin-&&* ps)
+  (fold-bin-op spin-&& ps))
+
+(define (spin-|| a b)
+  (format "(~a || ~a)" a b))
+
+(define (spin-||* ps)
+  (fold-bin-op spin-|| ps))
+
+(define (fold-bin-op op args)
+  (let loop ([args args])
+    (match args
+      [(list x)
+       x]
+      [(list x y)
+       (op x y)]
+      [(cons fst rst)
+       (op fst (loop rst))])))
+
+(module+ test
+  (check-equal? (spin-||* '(1 2 3))
+                "1 || 2 || 3"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LTL

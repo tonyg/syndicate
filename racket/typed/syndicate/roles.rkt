@@ -1593,34 +1593,36 @@
      #f]))
 
 (define-syntax-parser check-deadlock-free
-  [(_ actor-ty:type ...+)
+  [(_ io:opt-io actor-ty:type ...+)
    #:when (stx-andmap Role? #'(actor-ty.norm ...))
-   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors #'deadlock-free this-syntax)])
+   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors #'deadlock-free (attribute io.ty) this-syntax)])
 
 (define-syntax-parser check-not-deadlock-free
-  [(_ actor-ty:type ...+)
+  [(_ io:opt-io actor-ty:type ...+)
    #:when (stx-andmap Role? #'(actor-ty.norm ...))
-   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors/fail #'deadlock-free this-syntax)])
+   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors/fail #'deadlock-free (attribute io.ty) this-syntax)])
 
 (define-syntax-parser check-deadlock-free*
-  [(_ actor-ty:type ...+)
+  [(_ io:opt-io actor-ty:type ...+)
    #:when (stx-andmap Role? #'(actor-ty.norm ...))
-   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors/fail #'deadlock-free* this-syntax)])
+   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors/fail #'deadlock-free* (attribute io.ty) this-syntax)])
 
 (define-syntax-parser check-not-deadlock-free*
-  [(_ actor-ty:type ...+)
+  [(_ io:opt-io actor-ty:type ...+)
    #:when (stx-andmap Role? #'(actor-ty.norm ...))
-   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors #'deadlock-free* this-syntax)])
+   (deadlock-free-helper #'(actor-ty.norm ...) #'verify-actors #'deadlock-free* (attribute io.ty) this-syntax)])
 
-(define-for-syntax (deadlock-free-helper actor-tys va dlf ctx)
+(define-for-syntax (deadlock-free-helper actor-tys va dlf io ctx)
   (syntax-parse null
     [_
-     #:with (_ (~U* outs ...) _ _ _) (analyze-roles actor-tys)
+     #:cut
+     #:with (_ (~or* (~U* outs ...) (~and ty (~parse (outs ...) #'(ty)))) _ _ _) (analyze-roles actor-tys)
      #:with (interest ...) (stx-filter Observe1? #'(outs ...))
      #:with (VA ...) (for/list ([i (in-syntax #'(interest ...))])
                        (quasisyntax/loc ctx
                          (#,va (#,dlf #,i)
-                           #,@actor-tys)))
+                          #:IO #,io
+                          #,@actor-tys)))
      #'(begin- VA ...)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

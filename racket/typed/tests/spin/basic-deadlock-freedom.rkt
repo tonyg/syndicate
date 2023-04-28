@@ -28,6 +28,10 @@
                         (time 1)))))))))
 
 #;(run-ground-dataspace (friend1) (friend2))
+(module+ test
+  ;; these two should fail
+  (check-not-deadlock-free F1 F2)
+  (check-not-deadlock-free* F1 F2))
 
 (module+ test
   (define-type-alias (DeadlockLTL T)
@@ -66,16 +70,10 @@
       (during (observe (boat _))
         (assert (boat 5000)))))))
 
-#;(module+ test
-  
-
-  (verify-actors/fail (DeadlockLTL House) RR)
-  (verify-actors (DeadlockLTL House) RR HS)
-  (verify-actors (DeadlockLTL House) RR BS))
-
 (module+ test
-  ;; these two should fail
-  (check-not-deadlock-free F1 F2)
-  (check-not-deadlock-free* F1 F2)
   ;; this one should pass
-  (check-deadlock-free RR HS))
+  (check-deadlock-free RR HS)
+  (check-deadlock-free* RR HS)
+  ;; sanity check
+  (check-not-deadlock-free RR)
+  (check-not-deadlock-free* RR))
