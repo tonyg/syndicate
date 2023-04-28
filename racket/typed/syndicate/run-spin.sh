@@ -14,8 +14,9 @@ gcc -o $EXE -D NFAIR=3 pan.c
 
 # -a to analyze, -f for (weak) fairness
 # -n to elide report of unreached states
+# -I to search for (approximate) shorter error paths
 # -N spec-name to verify a particular specification
-$EXE -a -f -n -N $2
+$EXE -a -f -n -I -N $2
 rm $EXE pan.*
 
 popd > /dev/null
