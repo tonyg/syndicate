@@ -766,7 +766,7 @@
      (newline)
      (gen-spec "spec" (lambda () (gen-ltl spec)))
      (newline)
-     (gen-sanity-ltl assignment)]))
+     (gen-sanity-ltl assertion-tys)]))
 
 ;; SName (-> Void) -> Void
 (define (gen-spin-active-proctype nm gen-bdy)
@@ -1199,19 +1199,19 @@
   (newline)
   (indent) (display "(") (gen-ltl q) (displayln ")"))
 
-;; Assignment -> Void
+;; [Setof SName] -> Void
 ;; SPIN sometimes errors (seemingly in the front end) if this is "too big." What
 ;; constitutes too big seems to change. At first setting the limit to 33 worked,
 ;; but then I lowered it again, so IDK. It gives an error message like:
 ;;   tl_spin: expected ')', saw 'predicate'
-(define (gen-sanity-ltl assignment)
+(define (gen-sanity-ltl assertion-tys)
   (gen-spec "sanity"
             (lambda ()
               (indent) (displayln "[](")
               (with-indent
-                (for ([assertion-var (in-hash-keys assignment)]
+                (for ([assertion-ty (in-set assertion-tys)]
                       [i (in-range 14)])
-                  (indent) (printf "~a >= 0 &&\n" (svar-name assertion-var)))
+                  (indent) (printf "~a >= 0 &&\n" (assertions-var-name assertion-ty)))
                 (indent) (displayln "true"))
               (indent) (displayln ")"))))
 
