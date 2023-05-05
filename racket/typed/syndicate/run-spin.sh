@@ -10,7 +10,7 @@ if [[ $? -ne 0 ]]; then
     exit 1
 fi
 
-gcc -o $EXE -D NFAIR=3 pan.c
+gcc -O3 -o $EXE -D NFAIR=3 pan.c
 
 # -a to analyze, -f for (weak) fairness
 # -n to elide report of unreached states
