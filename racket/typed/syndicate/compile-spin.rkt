@@ -846,9 +846,10 @@
   (with-indent
     (gen-assign CURRENT-STATE st0 #:declare #t)
     (gen-assignment locals)
-    (with-spin-atomic
-      (for ([a init-actions])
-        (gen-spin-form a name-env name)))
+    (unless (empty? init-actions)
+      (with-spin-atomic
+        (for ([a init-actions])
+          (gen-spin-form a name-env name))))
     (indent) (printf "~a: do\n" (format-end-label name))
     (with-indent
       (with-spin-branch "true"
