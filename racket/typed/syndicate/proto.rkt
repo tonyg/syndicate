@@ -256,7 +256,7 @@
 ;; representing a state transition along an edge matching D to a destination state
 (struct traversal-step (evt dest) #:transparent)
 
-;; RoleGraph Role -> (U RoleGraph DetectedCycle)
+;; RoleGraph -> (U RoleGraph DetectedCycle)
 ;; "Optimize" the given role graph with respect to internal events.
 ;; The resulting graph will have transitions of only external events.
 (define (compile/internal-events rg)
@@ -295,8 +295,6 @@
              (define old-assertions (state-assertions (hash-ref orig-st#+ sn)))
              (define new-assertions (external-assertions old-assertions))
              (values sn (state sn txns new-assertions))))
-         (when (set-empty? new-st0)
-           (error 'compile-internal-events "not able to remove initial start event"))
          (when (target-of-transition? (set) st#)
            ;; get rid of the empty state unless some other state transitions to it
            (set! states (hash-set states (set) (state (set) (hash) (set)))))
@@ -624,7 +622,8 @@
 (define (update-path st# from to by effs)
   (cond
     [(and (equal? from to)
-          (empty? effs))
+          (empty? effs)
+          (hash-has-key? st# from))
      st#]
     [else
      (define txn (transition effs to))
@@ -3362,3 +3361,12 @@
                   '#s(Observe #s(Observe #s(Struct BookQuoteT (#s(Base String) #s(Mk⋆)))))
                   '#s(Struct BookQuoteT (#s(Base String) #s(Base Int))))))))
     (check-true (run/timeout (thunk (simulates?/rg a b))))))
+
+(module+ test
+  (test-case "stop on start regression"
+    (define R (Role 'root (list (Reacts StartEvt (Stop 'root '())))))
+    (define/timeout RG (compile R))
+    (check-true (role-graph? RG))
+    (define/timeout RGi (compile/internal-events RG))
+    (check-true (role-graph? RGi))))
+  )
