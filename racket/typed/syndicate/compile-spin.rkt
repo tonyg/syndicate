@@ -1119,17 +1119,19 @@
   (format "(~a && ~a)" a b))
 
 (define (spin-&&* ps)
-  (fold-bin-op spin-&& ps))
+  (fold-bin-op spin-&& ps "true"))
 
 (define (spin-|| a b)
   (format "(~a || ~a)" a b))
 
 (define (spin-||* ps)
-  (fold-bin-op spin-|| ps))
+  (fold-bin-op spin-|| ps "false"))
 
-(define (fold-bin-op op args)
+(define (fold-bin-op op args base)
   (let loop ([args args])
     (match args
+      ['()
+       base]
       [(list x)
        x]
       [(list x y)
@@ -1139,7 +1141,7 @@
 
 (module+ test
   (check-equal? (spin-||* '(1 2 3))
-                "1 || 2 || 3"))
+                "(1 || (2 || 3))"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; LTL
