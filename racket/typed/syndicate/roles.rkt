@@ -366,6 +366,10 @@
     (syntax-parse t
       [(~U* _ ...)
        t]
+      ;; Containers, like Lists, can also show up with an empty union, which the
+      ;; rest of the code for var-asserts does not handle
+      [(~List _)
+       #f]
       [(~Any/new tycons tsub ...)
        (stx-ormap find-union #'(tsub ...))]
       [_
