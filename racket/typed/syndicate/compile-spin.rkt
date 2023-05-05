@@ -113,7 +113,8 @@
 
 ;; [Sequenceof RG] SpinLTL (Setof τ) -> SpinProgram
 (define (program->spin rgs [spec #t] [io (set)])
-  (define role-graphs (for/list ([rg rgs]) (if (named? rg) (named-v rg) rg)))
+  (define-values (distinct-rgs state-rename) (ensure-distinct-facet-names rgs))
+  (define role-graphs (map RG->rg distinct-rgs))
   (define assertion-tys (all-assertions role-graphs))
   (define message-tys (all-messages role-graphs))
   (define event-tys (all-events role-graphs))
@@ -128,12 +129,12 @@
   (define all-mentioned-tys (set-union all-assertion-tys msg-bodies))
   (define name-env (make-name-env all-mentioned-tys))
   (define procs
-    (for/list ([rg rgs])
+    (for/list ([rg distinct-rgs])
       (match rg
         [(named name graph)
-         (rg->spin graph event-subty# name-env #:name name)]
+         (rg->spin graph state-rename event-subty# name-env #:name name)]
         [_
-         (rg->spin rg event-subty# name-env)])))
+         (rg->spin rg state-rename event-subty# name-env)])))
   (define assertion-vars (initial-assertion-vars-for all-assertion-tys name-env))
   (define assertion-nms (for/set ([τ (in-set all-assertion-tys)]) (hash-ref name-env τ)))
   (define messages-vars (initial-message-vars-for msg-bodies name-env))
@@ -164,13 +165,15 @@
         (values (set-add yays x) nays)
         (values yays (set-add nays x)))))
 
-;; RoleGraph [Hashof τ [Setof τ]] NameEnvironment -> SpinProcess
-(define (rg->spin rg event-subty# name-env #:name [name (gensym 'proc)])
+;; RoleGraph [Hashof StateName SName] [Hashof τ [Setof τ]] NameEnvironment -> SpinProcess
+(define (rg->spin rg state-renaming* event-subty# name-env #:name [name (gensym 'proc)])
   (match-define (role-graph st0 states) rg)
+  ;; need to make sure the empty state is distinct between each process
+  (define state-renaming (hash-set state-renaming* (set) (gensym 'inert)))
   (define all-events (all-event-types (in-hash-values states)))
-  (define state-renaming (make-state-rename (hash-keys states)))
   (define states- (for/list ([st (in-hash-values states)])
                     (state->spin st states all-events event-subty# name-env state-renaming)))
+  (define state-names (list->set (map sstate-name states-)))
   (define st0- (hash-ref state-renaming st0))
   ;; ergh the invariant for when I tack on _assertions to a name is getting tricksy
   (define st0-asserts (state-assertions (hash-ref states st0)))
@@ -182,7 +185,7 @@
   (define relevant-assertions (for/set ([evt (in-set all-events)]
                                          #:unless (Message? evt))
                                 (hash-ref name-env evt)))
-  (sproc name (hash-values-set state-renaming) st0- relevant-assertions init-acts (list->set states-)))
+  (sproc name state-names st0- relevant-assertions init-acts (list->set states-)))
 
 ;; State [Sequenceof State] [Setof [U τ (Message τ)]] [Hashof τ [Setof τ]] NameEnvironment [Hashof StateName SName] -> SpinState
 (define (state->spin st states all-events event-subty# name-env state-env)
@@ -472,7 +475,9 @@
                     (set)
                     (Struct 'BookQuoteT (list (Base 'String) (U (list (Base 'Int) (Base 'Int)))))
                     (set)))
-    (define/timeout seller-spin (rg->spin seller-rg event# name-env))
+    (define renaming (hash (set 'seller27) 'sel
+                           (set 'seller27 'during-inner29) 'sel_dur))
+    (define/timeout seller-spin (rg->spin seller-rg renaming event# name-env))
     (check-true (sproc? seller-spin))))
 
 (define tab-level (make-parameter 0))
@@ -536,10 +541,110 @@
   (define rough-name (string-join (map symbol->string ctors) "_"))
   (make-spin-id rough-name))
 
-;; [Listof StateName] -> [Hashof StateName SName]
-(define (make-state-rename state-names)
+;; [Listof RG] -> [Listof RoleGraph]
+;; rename duplicate facet names such that each one is globally unique
+(define (ensure-distinct-facet-names rgs)
+  (for/fold ([seen-names (set)]
+             [renamed-rgs '()]
+             #:result (values (reverse renamed-rgs)
+                              (make-state-rename renamed-rgs)))
+            ([rg* (in-list rgs)])
+    (define rg (RG->rg rg*))
+    (define facet-names (role-graph-facet-names rg))
+    (define subst (for/hash ([fn (in-set facet-names)]
+                             #:when (set-member? seen-names fn))
+                    (values fn (gensym fn))))
+    (define renamed-rg (rg-subst-facet-names rg subst))
+    (define with-nm (if (named? rg*)
+                        (struct-copy named rg* [v renamed-rg])
+                        renamed-rg))
+    (values (set-union seen-names facet-names)
+            (cons with-nm renamed-rgs))))
+
+;; RG -> RoleGraph
+(define (RG->rg rg*)
+  (if (named? rg*) (named-v rg*) rg*))
+
+;; RoleGraph -> [Setof FacetName]
+;; all FacetNames in a role graph
+(define (role-graph-facet-names rg)
+  (for*/set ([state-nm (in-hash-keys (role-graph-states rg))]
+             [facet-nm (in-set state-nm)])
+    facet-nm))
+
+;; RoleGraph [Hashof FacetName FacetName] -> RoleGraph
+(define (rg-subst-facet-names rg subst)
+  (define st0 (role-graph-st0 rg))
+  (define state# (role-graph-states rg))
+  (role-graph (set-subst st0 subst)
+              (for/hash ([(state-nm state) (in-hash state#)])
+                (values (set-subst state-nm subst)
+                        (state-subst state subst)))))
+
+;; State [Hashof FacetName FacetName] -> State
+;; rename facet names mentioned in a State according to a substitution
+(define (state-subst st subst)
+  (define state-nm (state-name st))
+  (define txn# (state-transitions st))
+  (define assertions (state-assertions st))
+  (state (set-subst state-nm subst)
+         (for/hash ([(D txns) (in-hash txn#)])
+           (values D
+                   (for/set ([txn (in-set txns)])
+                     (transition-subst txn subst))))
+         assertions))
+
+;; Transition [Hashof FacetName FacetName] -> State
+;; rename facet names mentioned in a State according to a substitution
+(define (transition-subst txn subst)
+  (define dest (transition-dest txn))
+  (struct-copy transition txn [dest (set-subst dest subst)]))
+
+;; [Setof FacetName] [Hashof FacetName FacetName] -> State
+;; rename facet names mentioned in a State according to a substitution
+(define (set-subst st subst)
+  (for/set ([fn (in-set st)])
+    (hash-ref subst fn fn)))
+
+(module+ test
+  (test-case "distinct names sanity"
+    (define rg (role-graph (set 'root)
+                           (hash (set 'root) (state (set 'root)
+                                                    (hash)
+                                                    (set)))))
+    (check-equal? (role-graph-facet-names rg) (set 'root))
+    (check-equal? (set-subst (set 'root 'loot 'foot) (hash 'root 'toot))
+                  (set 'toot 'loot 'foot))
+    (check-equal? (state-subst (state (set 'root) (hash) (set)) (hash 'root 'toot))
+                  (state (set 'toot) (hash) (set)))
+    (check-equal? (rg-subst-facet-names rg (hash 'root 'toot))
+                  (role-graph (set 'toot)
+                              (hash (set 'toot) (state (set 'toot)
+                                                       (hash)
+                                                       (set)))))
+    (define-values (rg+ _renaming) (ensure-distinct-facet-names (list rg)))
+    (check-equal? rg+
+                  (list rg)))
+
+  (test-case "distinct names actually distinct"
+    (define rg (role-graph (set 'root)
+                           (hash (set 'root) (state (set 'root)
+                                                    (hash)
+                                                    (set)))))
+    (define-values (rgs _renaming) (ensure-distinct-facet-names (list rg rg)))
+    (define fns (apply set-union (map role-graph-facet-names rgs)))
+    (check-equal? (set-count fns)
+                  2)
+    ))
+
+;; [Listof RG] -> [Hashof StateName SName]
+(define (make-state-rename rgs)
+  (define state-names (for*/set ([rg* (in-list rgs)]
+                                 [rg (in-value (RG->rg rg*))]
+                                 [state (in-hash-keys (role-graph-states rg))])
+                        state))
   (let loop ([prefix 3])
-    (define renaming (for/hash ([nm (in-list state-names)])
+    (define renaming (for/hash ([nm (in-set state-names)])
                        (values nm
                                (state-name->spin-id nm #:prefix prefix))))
     (define distinct-names (hash-values-set renaming))
@@ -550,6 +655,22 @@
        (raise-argument-error 'make-state-rename "able to make renaming" state-names)]
       [else
        (loop (add1 prefix))])))
+
+(module+ test
+  (test-case "make-state-rename sanity"
+    (define rg (role-graph (set 'root)
+                           (hash (set 'root) (state (set 'root)
+                                                    (hash)
+                                                    (set)))))
+    (check-equal? (make-state-rename (list rg))
+                  (hash (set 'root) 'roo)))
+
+  (test-case "make-state-rename inert distinct"
+    (define rg (role-graph (set)
+                           (hash (set) (state (set) (hash) (set)))))
+    (define renaming (make-state-rename (list rg rg)))
+    (check-equal? (set-count (hash-values-set renaming))
+                  2)))
 
 ;; StateName -> SName
 (define (state-name->spin-id nm #:prefix [prefix 3])
