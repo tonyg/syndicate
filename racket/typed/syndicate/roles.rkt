@@ -21,6 +21,7 @@
          Observe Inbound Outbound Actor ActorWithRole U ⊥
          -> →fn proc
          True False Bool
+         ExplodeUnions
          (all-from-out "sugar.rkt")
          ;; Statements
          let let* if spawn supervise dataspace start-facet this-facet set! := begin block stop begin/dataflow #;unsafe-do
@@ -1518,7 +1519,7 @@
   (define-splicing-syntax-class opt-io
     #:attributes (ty)
     (pattern (~seq #:IO τ:type)
-             #:attr ty (explode-unions #'τ.norm))
+             #:attr ty #'τ.norm)
     (pattern (~seq)
              #:attr ty (mk-U*- '())))
 
@@ -1547,6 +1548,10 @@
          (reassemble-type #'τ-cons tys))]
       [_
        (list ty)])))
+
+(define-syntax-parser ExplodeUnions
+  [(_ τ:type)
+  (explode-unions #'τ.norm)])
 
 (define-syntax-parser verify-actors
   [(_ spec io:opt-io actor-ty:type-or-proto ...+)
