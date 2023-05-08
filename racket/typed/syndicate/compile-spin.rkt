@@ -46,7 +46,7 @@
 ;;          [Setof SpinState])
 (struct sproc [name state-names st0 locals init-actions states] #:transparent)
 
-;; an IOSpec is a (spin-io (Setof SType) (Setof SType))
+;; an IOSpec is a (spin-io (Setof SName) (Hashof SName [Setof SName]))
 (struct spin-io (msgs asserts) #:transparent)
 
 ;; an Assignment is a [Hashof SVar SValue]
@@ -143,9 +143,15 @@
   (define all-read-messages (set-union msg-event-tys spec-msgs))
   (define msg-table (make-message-table all-sent-messages all-read-messages name-env))
   (define globals (hash-union assertion-vars messages-vars mailbox-vars))
-  (define sio (spin-io (rename-all name-env io-msgs) (rename-all name-env io-assertions)))
+  (define sio (io->spin-io io-msgs io-assertions name-env event-subty#))
   (define spec-spin (rename-ltl spec name-env))
   (sprog globals procs sio spec-spin msg-table assertion-nms name-env))
+
+(define (io->spin-io io-msgs io-assertions name-env event-subty#)
+  (spin-io (rename-all name-env io-msgs)
+           (for/hash ([asrt (in-set io-assertions)])
+             (values (hash-ref name-env asrt)
+                     (rename-all name-env (super-type-closure (set asrt) event-subty#))))))
 
 ;; [Setof τ] [Setof τ] NameEnvironment -> MessageTable
 (define (make-message-table message-tys msg-event-tys name-env)
@@ -958,7 +964,7 @@
   (match-define (spin-io msgs asserts) io)
   ;; in order for deadlock checking to work, it seems like there needs to be
   ;; some way for the clock to keep ticking
-  (define assert-locals (for/hash ([asrt (in-set asserts)])
+  (define assert-locals (for/hash ([asrt (in-hash-keys asserts)])
                           (values (svar (io-assert-var-name asrt)
                                         SBool)
                                   #f)))
@@ -972,13 +978,15 @@
             (for ([msg (in-set msgs)])
               (with-spin-branch "true"
                 (gen-spin-form (send msg) name-env IO-PROC-NAME)))
-            (for ([asrt (in-set asserts)])
+            (for ([(asrt supers) (in-hash asserts)])
               (define local-nm (io-assert-var-name asrt))
-              (with-spin-branch local-nm
-                (gen-spin-form (assert asrt) name-env IO-PROC-NAME)
-                (indent) (printf "~a = !~a\n" local-nm local-nm))
               (with-spin-branch (format "!~a" local-nm)
-                (gen-spin-form (retract asrt) name-env IO-PROC-NAME)
+                (for ([a (in-set supers)])
+                  (gen-spin-form (assert a) name-env IO-PROC-NAME))
+                (indent) (printf "~a = !~a\n" local-nm local-nm))
+              (with-spin-branch local-nm
+                (for ([a (in-set supers)])
+                  (gen-spin-form (retract a) name-env IO-PROC-NAME))
                 (indent) (printf "~a = !~a\n" local-nm local-nm)))
             #;(gen-spin-branch "true" gen-spin-break))
           ;; get the clock-ticker moving again
