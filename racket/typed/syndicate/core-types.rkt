@@ -1394,9 +1394,6 @@
     [(~Stop name:id τ-r ...)
      #:with (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-roles #'(τ-r ...))
      (values #'τ-i #'τ-o #'τ-i/i #'τ-o/i #'τ-a)]
-    [(~ActorWithRole _ τ-r)
-     (define-values (τ-i τ-o τ-i/i τ-o/i τ-a) (analyze-role-input/output #'τ-r))
-     (values τ-i τ-o bot bot (mk-U- (list t τ-a)))]
     [(~AnyActor τc)
      (values bot bot bot bot t)]
     [(~Sends τ-m)
