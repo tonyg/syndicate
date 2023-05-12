@@ -3369,4 +3369,3 @@
     (check-true (role-graph? RG))
     (define/timeout RGi (compile/internal-events RG))
     (check-true (role-graph? RGi))))
-  )
