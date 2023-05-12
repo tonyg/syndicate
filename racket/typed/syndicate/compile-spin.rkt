@@ -968,23 +968,30 @@
                           (values (svar (io-assert-var-name asrt)
                                         SBool)
                                   #f)))
+  (define fuel-nm 'fuel)
+  (define fuel-nonzero #;"true" (format "~a > 0" fuel-nm))
   (with-spin-active-proctype (~a IO-PROC-NAME)
     (gen-assignment assert-locals)
+    (gen-assignment (hash (svar fuel-nm SInt) 100))
     (with-spin-do
       (with-spin-branch "timeout"
         (with-spin-atomic
           (with-spin-if
             (gen-spin-branch "else" gen-spin-skip)
+            #;(with-spin-branch fuel-nonzero
+              (printf "~a--\n" fuel-nm)))
+          (with-spin-if
+            (gen-spin-branch "else" gen-spin-skip)
             (for ([msg (in-set msgs)])
-              (with-spin-branch "true"
+              (with-spin-branch fuel-nonzero
                 (gen-spin-form (send msg) name-env IO-PROC-NAME)))
             (for ([(asrt supers) (in-hash asserts)])
               (define local-nm (io-assert-var-name asrt))
-              (with-spin-branch (format "!~a" local-nm)
+              (with-spin-branch (spin-&& (format "!~a" local-nm) fuel-nonzero)
                 (for ([a (in-set supers)])
                   (gen-spin-form (assert a) name-env IO-PROC-NAME))
                 (indent) (printf "~a = !~a\n" local-nm local-nm))
-              (with-spin-branch local-nm
+              (with-spin-branch (spin-&& local-nm fuel-nonzero)
                 (for ([a (in-set supers)])
                   (gen-spin-form (retract a) name-env IO-PROC-NAME))
                 (indent) (printf "~a = !~a\n" local-nm local-nm)))
