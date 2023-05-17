@@ -566,12 +566,18 @@ The JobManager then performs the job and, when finished, asserts
                  TaskAssigner
                  TaskPerformer))
 
-(module+ test
-  #;(verify-actors TT
-    task-manager-impl)
+#;(module+ test
   (check-deadlock-free* job-manager-impl
                         task-manager-impl
                         client-impl ))
+
+(module+ test
+  (verify-actors (And (Always (Implies (A (Observe (TaskPerformance ID ConcreteTask ★/t)))
+                                       (Eventually (A (TaskPerformance ID ConcreteTask TaskStateDesc)))))
+                      (Eventually (A (TaskPerformance ID ConcreteTask TaskStateDesc))))
+    job-manager-impl
+    task-manager-impl
+    client-impl))
 
 #;(module+ test
   (check-simulates task-runner-impl task-runner-impl)
