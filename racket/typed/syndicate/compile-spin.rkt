@@ -28,8 +28,10 @@
 ;;          SpinLTL
 ;;          MessageTable
 ;;          [Setof SName]
+;;          EventMap
+;;          EventMap
 ;;          NameEnvironment)
-(struct sprog [assignment procs io spec msg-tabe assertion-tys name-env] #:transparent)
+(struct sprog [assignment procs io spec msg-tabe assertion-tys event-upcast# event-downcast# name-env] #:transparent)
 
 ;; a (Named X) is a
 ;;   (named SName X)
@@ -43,10 +45,11 @@
 ;;          SName
 ;;          Assignment
 ;;          [Listof SAction]
+;;          [Setof τ]
 ;;          [Setof SpinState])
-(struct sproc [name state-names st0 locals init-actions states] #:transparent)
+(struct sproc [name state-names st0 locals init-actions down-asserts states] #:transparent)
 
-;; an IOSpec is a (spin-io (Setof SName) (Hashof SName [Setof SName]))
+;; an IOSpec is a (spin-io (Setof τ) (Setof τ))
 (struct spin-io (msgs asserts) #:transparent)
 
 ;; an Assignment is a [Hashof SVar SValue]
@@ -80,10 +83,10 @@
 (struct sbranch [event dest actions] #:transparent)
 
 ;; a SAction is one of
-;;   - (assert ?)
-;;   - (retract ?)
+;;   - (assert τ)
+;;   - (retract τ)
 ;;   - (unlearn ?)
-;;   - (send ?)
+;;   - (send τ)
 ;;   - (incorporate D+)
 ;;   - (add-message-interest ?)
 ;;   - (remove-message-interest ?)
@@ -102,9 +105,12 @@
 
 ;; a NameEnvironment is a [Hashof τ SName]
 
-;; a MessageTable is a [Hashof SName [Setof SName]]
-;; mapping each possible message that can be sent to the names of each event
-;; that message can match
+;; an EventMap is a [Hashof τ [Setof τ]]
+;; mapping a type to either its relevant subtypes or supertypes
+
+;; a MessageTable is a (message-table EventMap EventMap)
+;; mapping each possible message to its relevant super and subtypes
+(struct message-table (up# down#) #:transparent)
 
 
 ;; a SpinLTL is a [LTL [U τ (Message τ)]]
@@ -124,17 +130,20 @@
   (define msg-bodies (set-union message-tys msg-event-tys spec-msgs io-msgs))
   (define made-assertions (set-union assertion-tys io-assertions))
   (define read-assertions (set-union assertion-evts spec-asserts))
-  (define event-subty# (make-event-map made-assertions read-assertions))
-  (define all-assertion-tys (set-union made-assertions read-assertions))
+  (define event-downcast# (make-event-downcast-map made-assertions read-assertions))
+  (define extra-downcasted-asserts (apply set-union (set) (hash-values event-downcast#)))
+  (define all-made-assertions (set-union made-assertions extra-downcasted-asserts))
+  (define event-upcast# (make-event-upcast-map all-made-assertions read-assertions))
+  (define all-assertion-tys (set-union all-made-assertions read-assertions))
   (define all-mentioned-tys (set-union all-assertion-tys msg-bodies))
   (define name-env (make-name-env all-mentioned-tys))
   (define procs
     (for/list ([rg distinct-rgs])
       (match rg
         [(named name graph)
-         (rg->spin graph state-rename event-subty# name-env #:name name)]
+         (rg->spin graph state-rename event-upcast# event-downcast# name-env #:name name)]
         [_
-         (rg->spin rg state-rename event-subty# name-env)])))
+         (rg->spin rg state-rename event-upcast# event-downcast# name-env)])))
   (define assertion-vars (initial-assertion-vars-for all-assertion-tys name-env))
   (define assertion-nms (for/set ([τ (in-set all-assertion-tys)]) (hash-ref name-env τ)))
   (define messages-vars (initial-message-vars-for msg-bodies name-env))
@@ -143,23 +152,21 @@
   (define all-read-messages (set-union msg-event-tys spec-msgs))
   (define msg-table (make-message-table all-sent-messages all-read-messages name-env))
   (define globals (hash-union assertion-vars messages-vars mailbox-vars))
-  (define sio (io->spin-io io-msgs io-assertions name-env event-subty#))
+  (define sio (io->spin-io io-msgs io-assertions name-env event-upcast#))
   (define spec-spin (rename-ltl spec name-env))
-  (sprog globals procs sio spec-spin msg-table assertion-nms name-env))
+  (sprog globals procs sio spec-spin msg-table assertion-nms event-upcast# event-downcast# name-env))
 
-(define (io->spin-io io-msgs io-assertions name-env event-subty#)
-  (spin-io (rename-all name-env io-msgs)
-           (for/hash ([asrt (in-set io-assertions)])
-             (values (hash-ref name-env asrt)
-                     (rename-all name-env (super-type-closure (set asrt) event-subty#))))))
+(define (io->spin-io io-msgs io-assertions name-env event-upcast#)
+  (spin-io io-msgs
+           io-assertions))
 
 ;; [Setof τ] [Setof τ] NameEnvironment -> MessageTable
 (define (make-message-table message-tys msg-event-tys name-env)
-  (define msg-subty# (make-event-map message-tys msg-event-tys))
-  (define (lookup nm) (hash-ref name-env nm))
-  (for/hash ([m (in-set message-tys)])
-    (values (lookup m)
-            (rename-all name-env (set-add (hash-ref msg-subty# m) m)))))
+  (define msg-downcast# (make-event-downcast-map message-tys msg-event-tys))
+  (define extra-downcasted-msgs (apply set-union (set) (hash-values msg-downcast#)))
+  (define all-sent-msgs (set-union message-tys extra-downcasted-msgs))
+  (define msg-upcast# (make-event-upcast-map all-sent-msgs msg-event-tys))
+  (message-table msg-upcast# msg-downcast#))
 
 ;; [Setof X] [Pred X] -> (Values [Setof X] [Setof X])
 ;; like partition on lists but for sets
@@ -171,30 +178,35 @@
         (values (set-add yays x) nays)
         (values yays (set-add nays x)))))
 
-;; RoleGraph [Hashof StateName SName] [Hashof τ [Setof τ]] NameEnvironment -> SpinProcess
-(define (rg->spin rg state-renaming* event-subty# name-env #:name [name (gensym 'proc)])
+;; RoleGraph [Hashof StateName SName] EventMap EventMap NameEnvironment -> SpinProcess
+(define (rg->spin rg state-renaming* event-upcast# event-downcast# name-env #:name [name (gensym 'proc)])
   (match-define (role-graph st0 states) rg)
   ;; need to make sure the empty state is distinct between each process
   (define state-renaming (hash-set state-renaming* (set) (gensym 'inert)))
   (define all-events (all-event-types (in-hash-values states)))
   (define states- (for/list ([st (in-hash-values states)])
-                    (state->spin st states all-events event-subty# name-env state-renaming)))
+                    (state->spin st states all-events event-upcast# name-env state-renaming)))
   (define state-names (list->set (map sstate-name states-)))
   (define st0- (hash-ref state-renaming st0))
   ;; ergh the invariant for when I tack on _assertions to a name is getting tricksy
   (define st0-asserts (state-assertions (hash-ref states st0)))
   (define st0-msg-interests (message-transitions (state-transitions (hash-ref states st0))))
-  (define initial-asserts (transition-assertions (set) st0-asserts all-events event-subty# name-env))
-  (define initial-msg-interests (transition-msg-interests (set) st0-msg-interests event-subty# name-env))
+  (define initial-asserts (transition-assertions (set) st0-asserts all-events event-upcast# name-env))
+  (define initial-msg-interests (transition-msg-interests (set) st0-msg-interests event-upcast# name-env))
   (define init-acts (append initial-asserts initial-msg-interests))
   (define assignment (local-variables-for st0- all-events name-env))
+  (define made-assertions (all-assertions (list rg)))
+  (define downcastable-asserts (for*/set ([asrt (in-set made-assertions)]
+                                          [subtypes (in-value (hash-ref event-downcast# asrt))]
+                                          #:unless (set-empty? (set-remove subtypes asrt)))
+                                 asrt))
   (define relevant-assertions (for/set ([evt (in-set all-events)]
                                          #:unless (Message? evt))
                                 (hash-ref name-env evt)))
-  (sproc name state-names st0- relevant-assertions init-acts (list->set states-)))
+  (sproc name state-names st0- relevant-assertions init-acts downcastable-asserts (list->set states-)))
 
 ;; State [Sequenceof State] [Setof [U τ (Message τ)]] [Hashof τ [Setof τ]] NameEnvironment [Hashof StateName SName] -> SpinState
-(define (state->spin st states all-events event-subty# name-env state-env)
+(define (state->spin st states all-events event-upcast# name-env state-env)
   (match-define (state name transitions assertions) st)
   (define name- (hash-ref state-env name))
   (define msg-txns (message-transitions transitions))
@@ -204,7 +216,7 @@
                      (match-define (state _ dest-txns dest-assertions) (hash-ref states dest))
                      (define dest- (hash-ref state-env dest))
                      (define dest-msg-txns (message-transitions dest-txns))
-                     (branch-on D+ assertions msg-txns dest- dest-assertions dest-msg-txns effs all-events event-subty# name-env)))
+                     (branch-on D+ assertions msg-txns dest- dest-assertions dest-msg-txns effs all-events event-upcast# name-env)))
   (sstate name- branches))
 
 ;; (Hashof D+ _) -> (Setof τ)
@@ -254,7 +266,8 @@
   (string->symbol (format "~a_~a_interest" proc-name msg-ty)))
 
 ;; [Setof τ] [Setof τ] -> [Hashof τ [Setof τ]]
-(define (make-event-map assertion-tys event-tys)
+;; map each type to all of its assertion super types
+(define (make-event-upcast-map assertion-tys event-tys)
   ;; TODO - potentially use non-empty intersection
   (for/hash ([a (in-set assertion-tys)])
     (values a
@@ -262,16 +275,50 @@
 
 ;; τ [Setof τ] -> [Setof τ]
 (define (all-supertypes-of τ tys)
-  (for*/set ([ty (in-set tys)]
-             #:when (<:? τ ty))
+  (for/set ([ty (in-set tys)]
+            #:when (<:? τ ty))
     ty))
 
 ;; [Setof τ] [Hashof τ [Setof τ]]
-(define (super-type-closure asserts event-subty#)
+(define (super-type-closure asserts event-upcast#)
   (for*/set ([a (in-set asserts)]
-             [supers (in-value (hash-ref event-subty# a))]
+             [supers (in-value (hash-ref event-upcast# a))]
              [τ (in-set (set-add supers a))])
     τ))
+
+;; [Setof τ] [Setof τ] -> [Hashof τ [Setof τ]]
+;; map each made {assertion,message} type the set of event types that are its
+;; subtypes
+(define (make-event-downcast-map assertion-tys event-tys)
+  ;; TODO - potentially use non-empty intersection
+  (for/hash ([a (in-set assertion-tys)])
+    (define subs (all-subtypes-of a event-tys))
+    (define a* (explode-unions a))
+    (values a
+            (if (<:? (U a*) (U (set->list subs)))
+                subs
+                (set-add subs a)))))
+
+;; τ -> [Listof τ]
+(define (explode-unions ty)
+  (match ty
+    [(U tys)
+     (apply append (map explode-unions tys))]
+    [(Struct nm tys)
+     (define τ* (map explode-unions tys))
+     ;; (Listof τ) -> (Listof (Listof τ))
+     (for/list ([tys (in-list (apply cartesian-product τ*))])
+       (Struct nm tys))]
+    [(Observe ty)
+     (for/list ([ty* (in-list (explode-unions ty))])
+       (Observe ty*))]
+    [_ (list ty)]))
+
+;; τ [Setof τ] -> [Setof τ]
+(define (all-subtypes-of τ tys)
+  (for/set ([ty (in-set tys)]
+            #:when (<:? ty τ))
+    ty))
 
 ;; [Setof τ] NameEnvironment -> Assignment
 (define (initial-assertion-vars-for assertion-tys name-env)
@@ -404,9 +451,9 @@
     (indent) (printf "~a = (~a -> ASSERTED(~a) : ~a);\n" know-nm know-nm assert-nm know-nm)))
 
 ;; D+ [Setof τ] [Setof τ] SName [Setof τ] [Setof τ] [Listof TransitionEffect] [Setof [U τ (Message τ)]] [Hashof τ [Setof τ]] NameEnvironment -> SBranch
-(define (branch-on D+ curr-assertions curr-msg-txns dest dest-assertions dest-msg-txns effs all-events event-subty# name-env)
-  (define assertion-updates (transition-assertions curr-assertions dest-assertions all-events event-subty# name-env))
-  (define msg-interest-updates (transition-msg-interests curr-msg-txns dest-msg-txns event-subty# name-env))
+(define (branch-on D+ curr-assertions curr-msg-txns dest dest-assertions dest-msg-txns effs all-events event-upcast# name-env)
+  (define assertion-updates (transition-assertions curr-assertions dest-assertions all-events event-upcast# name-env))
+  (define msg-interest-updates (transition-msg-interests curr-msg-txns dest-msg-txns event-upcast# name-env))
   (define effs- (rename-effects effs name-env))
   (define renamed-evt (rename-event D+ name-env))
   (sbranch renamed-evt dest (list* (transition-to dest)
@@ -416,12 +463,12 @@
                                            effs-))))
 
 ;; [Setof τ] [Setof τ] [Setof [U τ (Message τ)]] [Hashof τ [Setof τ]] NameEnvironment -> [Listof SAction]
-(define (transition-assertions curr-assertions dest-assertions all-events event-subty# name-env)
-  (define new-assertions (super-type-closure (set-subtract dest-assertions curr-assertions) event-subty#))
-  (define retractions (super-type-closure (set-subtract curr-assertions dest-assertions) event-subty#))
+(define (transition-assertions curr-assertions dest-assertions all-events event-upcast# name-env)
+  (define new-assertions (set-subtract dest-assertions curr-assertions))
+  (define retractions (set-subtract curr-assertions dest-assertions))
   (define (lookup ty) (hash-ref name-env ty))
-  (define asserts (set-map new-assertions (compose assert lookup)))
-  (define retracts (set-map retractions (compose retract lookup)))
+  (define asserts (set-map new-assertions assert))
+  (define retracts (set-map retractions retract))
   (define unlearns (for/list ([τ (in-set retractions)]
                               #:when (and (Observe? τ)
                                           (set-member? all-events (Observe-ty τ))))
@@ -429,7 +476,7 @@
   (append asserts retracts unlearns))
 
 ;; [Setof τ] [Setof τ] [Hashof τ [Setof τ]] NameEnvironment -> [Listof SAction]
-(define (transition-msg-interests curr-msg-txns dest-msg-txns event-subty# name-env)
+(define (transition-msg-interests curr-msg-txns dest-msg-txns event-upcast# name-env)
   ;; TODO - not sure if super-type-closure needed here
   (define new-interests (set-subtract dest-msg-txns curr-msg-txns))
   (define lost-interests (set-subtract curr-msg-txns dest-msg-txns))
@@ -443,7 +490,7 @@
   (for/list ([eff (in-list effs)])
     (match eff
       [(send ty)
-       (send (hash-ref name-env ty))]
+       (send ty)]
       [_
        (raise-argument-error 'rename-effects "only send effects supported" eff)])))
 
@@ -758,21 +805,34 @@
 ;; SpinProgram -> Void
 (define (gen-spin prog)
   (match prog
-    [(sprog assignment procs io spec msg-table assertion-tys name-env)
+    [(sprog assignment procs io spec msg-table assertion-tys event-upcast# event-downcast# name-env)
      (display SPIN-PRELUDE)
      (gen-assignment assignment)
      (newline)
      (gen-assign GLOBAL-CLOCK-VAR GLOBAL-CLOCK-INIT-VAL #:declare #t)
-     (for ([p procs])
-       (gen-spin-proc p name-env)
-       (newline))
-     (gen-clock-ticker (map sproc-name procs) msg-table assertion-tys)
      (newline)
-     (gen-io io name-env)
+     (gen-downcast-mtype event-downcast# name-env)
+     (newline)
+     (for ([p procs])
+       (gen-spin-proc p name-env event-upcast# event-downcast# msg-table)
+       (newline))
+     (gen-clock-ticker (map sproc-name procs) msg-table assertion-tys name-env)
+     (newline)
+     (gen-io io event-upcast# event-downcast# msg-table name-env)
      (newline)
      (gen-spec "spec" (lambda () (gen-ltl spec)))
      (newline)
      (gen-sanity-ltl assertion-tys)]))
+
+(define DOWNCAST-NONE '__none__)
+
+;; EventMap NameEnv -> Void
+(define (gen-downcast-mtype event-downcast# name-env)
+  (define ty-nms (for*/set ([(ty subs) (in-hash event-downcast#)]
+                            #:unless (set-empty? (set-remove subs ty))
+                            [sub (in-set subs)])
+                   (hash-ref name-env sub)))
+  (declare-mtype (set-add ty-nms DOWNCAST-NONE)))
 
 ;; SName (-> Void) -> Void
 (define (gen-spin-active-proctype nm gen-bdy)
@@ -838,24 +898,28 @@
 (define (gen-spin-skip)
   (indent) (displayln "skip;"))
 
-;; SpinProcess NameEnvironment -> Void
-(define (gen-spin-proc proc name-env)
-  (match-define (sproc name state-names st0 relevant-assertions init-actions states) proc)
+;; SpinProcess NameEnvironment EventMap EventMap MessageTable -> Void
+(define (gen-spin-proc proc name-env event-upcast# event-downcast# msg-table)
+  (match-define (sproc name state-names st0 relevant-assertions init-actions down-asserts states) proc)
   (define my-clock (proc-clock-var name))
   (define locals (for/hash ([evt (in-set relevant-assertions)])
                    (values (svar (active-var-name evt)
                                  SBool)
                            #f)))
+  (define down-assert-locals (for/hash ([ty (in-set down-asserts)])
+                               (values (svar (assertion-downcast-local-nm ty name-env) mtype)
+                                       DOWNCAST-NONE)))
   (indent) (declare-mtype state-names)
   (indent) (gen-assign my-clock GLOBAL-CLOCK-INIT-VAL #:declare #t)
   (indent) (printf "active proctype ~a() {\n" name)
   (with-indent
     (gen-assign CURRENT-STATE st0 #:declare #t)
     (gen-assignment locals)
+    (gen-assignment down-assert-locals)
     (unless (empty? init-actions)
       (with-spin-atomic
         (for ([a init-actions])
-          (gen-spin-form a name-env name))))
+          (gen-spin-form a name-env event-upcast# event-downcast# msg-table name))))
     (indent) (printf "~a: do\n" (format-end-label name))
     (with-indent
       (with-spin-branch "true"
@@ -864,13 +928,13 @@
           (indent) (update-clock my-clock)
           (with-spin-do
             (for ([st states])
-              (gen-spin-form st name-env name)))
+              (gen-spin-form st name-env event-upcast# event-downcast# msg-table name)))
           (update-knowledge relevant-assertions))))
     (indent) (displayln "od;"))
   (indent) (displayln "}"))
 
-;; SpinThang NameEnvironment SName -> Void
-(define (gen-spin-form spin name-env proc-name)
+;; SpinThang NameEnvironment EventMap EventMap MessageTable SName -> Void
+(define (gen-spin-form spin name-env event-upcast# event-downcast# msg-table proc-name)
   (match spin
     [(sstate name branches)
      (indent) (printf ":: ~a == ~a ->\n" (svar-name CURRENT-STATE) name)
@@ -883,22 +947,34 @@
         (with-indent
           (with-spin-if
             (for ([branch branches])
-              (gen-spin-form branch name-env proc-name))
+              (gen-spin-form branch name-env event-upcast# event-downcast# msg-table proc-name))
             (gen-spin-branch "else" #;gen-spin-skip gen-spin-break)))])]
     [(sbranch event dest actions)
      (indent) (printf ":: ~a -> ~a\n" (predicate-for event proc-name) (embed-event-as-comment event name-env))
      (with-indent
        (with-indent
          (for ([act actions])
-           (gen-spin-form act name-env proc-name))))]
-    [(assert x)
-     (indent) (printf "ASSERT(~a); ~a\n" x (embed-value-as-comment assert x name-env))]
-    [(retract x)
-     (indent) (printf "RETRACT(~a); ~a\n" x (embed-value-as-comment retract x name-env))]
+           (gen-spin-form act name-env event-upcast# event-downcast# msg-table proc-name))))]
+    [(assert ty)
+     (define subs (hash-ref event-downcast# ty))
+     (define supers (hash-ref event-upcast# ty))
+     (cond
+       [(set-empty? (set-remove subs ty))
+        (assert-all ty supers name-env)]
+       [else
+        (assert-one-of ty subs event-upcast# name-env)])]
+    [(retract ty)
+     (define subs (hash-ref event-downcast# ty))
+     (define supers (hash-ref event-upcast# ty))
+     (cond
+       [(set-empty? (set-remove subs ty))
+        (retract-all ty supers name-env)]
+       [else
+        (retract-one-of ty subs event-upcast# name-env)])]
     [(unlearn x)
      (indent) (printf "~a = false;\n" (active-var-name x))]
-    [(send x)
-     (indent) (printf "SEND(~a); ~a\n" x (embed-value-as-comment send x name-env))]
+    [(send ty)
+     (gen-spin-send! ty msg-table name-env)]
     [(add-message-interest x)
      (define interest-var-nm (msg-interest-var-name x proc-name))
      (indent) (printf "~a = true;\n" interest-var-nm)]
@@ -910,8 +986,81 @@
     [(transition-to dest)
      (indent) (printf "~a = ~a;\n" (svar-name CURRENT-STATE) dest)]))
 
-;; [Listof SName] MessageTable [Setof SName] -> Void
-(define (gen-clock-ticker proc-names msg-table assertion-tys)
+;; τ [Setof τ] NameEnv -> Void
+;; assert ty and all of its super types
+(define (assert-all ty supers name-env)
+  (spin-assert! ty name-env)
+  (for ([super (in-set (set-remove supers ty))])
+    (spin-assert! super name-env)))
+
+;; τ [Setof τ] EventMap NameEnv
+;; assert one of ty's subtypes, and all of that subtypes supertypes.
+;; Incorporates the choice of subtypes into a local variable whose name is based
+;; on ty.
+(define (assert-one-of ty subs event-upcast# name-env)
+  (define local-nm (assertion-downcast-local-nm ty name-env))
+  (with-spin-if
+    (for ([sub (in-set subs)])
+      (define supers (hash-ref event-upcast# sub))
+      (with-spin-branch "true"
+        (assert-all sub supers name-env)
+        (indent) (printf "~a = ~a;\n" local-nm (hash-ref name-env sub))))))
+
+;; τ NameEnv -> SName
+(define (assertion-downcast-local-nm ty name-env)
+  (format "~a_choice" (hash-ref name-env ty)))
+
+(define (spin-assert! ty name-env)
+  (define nm (hash-ref name-env ty))
+  (indent) (printf "ASSERT(~a); ~a\n" nm (format-as-comment (assert ty))))
+
+;; τ [Setof τ] NameEnv -> Void
+;; retract ty and all of its super types
+(define (retract-all ty supers name-env)
+  (spin-retract! ty name-env)
+  (for ([super (in-set (set-remove supers ty))])
+    (spin-retract! super name-env)))
+
+;; τ [Setof τ] EventMap NameEnv
+;; retract the subtype of ty being asserted, based on the local variable for ty,
+;; and all of that subtypes supertypes.
+(define (retract-one-of ty subs event-upcast# name-env)
+  (define local-nm (assertion-downcast-local-nm ty name-env))
+  (with-spin-if
+    (for ([sub (in-set subs)])
+      (define sub-nm (hash-ref name-env sub))
+      (define supers (hash-ref event-upcast# sub))
+      (with-spin-branch (format "~a == ~a" local-nm sub-nm)
+        (retract-all sub supers name-env)
+        (indent) (printf "~a = ~a;\n" local-nm DOWNCAST-NONE)))))
+
+(define (spin-retract! ty name-env)
+  (define nm (hash-ref name-env ty))
+  (indent) (printf "RETRACT(~a); ~a\n" nm (format-as-comment (retract ty))))
+
+;; τ MessageTable NameEnv -> Void
+(define (gen-spin-send! ty msg-table name-env)
+  (define subtys (hash-ref (message-table-down# msg-table) ty))
+  (cond
+    [(set-empty? (set-remove subtys ty))
+     (spin-send! ty name-env)]
+    [else
+     (send-one-of (set-remove subtys ty) name-env)]))
+
+;; [Setof τ] NameEnvironment -> Void
+(define (send-one-of tys name-env)
+  (with-spin-if
+    (for ([msg (in-set tys)])
+      (with-spin-branch "true"
+        (spin-send! msg name-env)))))
+
+;; τ NameEnvironment -> Void
+(define (spin-send! ty name-env)
+  (define nm (hash-ref name-env ty))
+  (indent) (printf "SEND(~a); ~a\n" nm (format-as-comment (send ty))))
+
+;; [Listof SName] MessageTable [Setof SName] NameEnvironent -> Void
+(define (gen-clock-ticker proc-names msg-table assertion-tys name-env)
   (define clock-names (for/list ([pn (in-list proc-names)])
                         (svar-name (proc-clock-var pn))))
   (indent) (displayln "active proctype __clock_ticker__() {")
@@ -919,16 +1068,20 @@
     (indent) (displayln "end_clock_ticker:")
     (with-spin-do
       (with-spin-branch (spin-&& (all-procs-ready-predicate clock-names)
-                                 (any-activity-predicate assertion-tys msg-table))
+                                 (any-activity-predicate assertion-tys msg-table name-env))
         (with-spin-dstep
           (indent) (update-clock GLOBAL-CLOCK-VAR (format-as-comment TURN-BEGIN-EVENT))
           (update-all-assertion-vars assertion-tys)
-          (unless (hash-empty? msg-table)
+          (unless (message-table-empty? msg-table)
             (with-spin-do
               (gen-spin-branch "else" gen-spin-break)
-              (for ([(sent-msg matching-evts) (in-hash msg-table)])
-                (gen-msg-dispatch sent-msg matching-evts proc-names))))))))
+              (for ([(sent-msg matching-evts) (in-hash (message-table-up# msg-table))])
+                (gen-msg-dispatch sent-msg matching-evts proc-names name-env))))))))
   (indent) (displayln "}"))
+
+;; MessageTable -> Bool
+(define (message-table-empty? mt)
+  (hash-empty? (message-table-up# mt)))
 
 ;; (Setof SName) -> Void
 ;; update the assertion bucket variables based on the update variables
@@ -939,14 +1092,16 @@
     (indent) (printf "~a = ~a + ~a;\n" bucket bucket update)
     (indent) (printf "~a = 0;\n" update)))
 
-;; SName (Setof SName) [Listof SName] -> Void
-(define (gen-msg-dispatch sent-msg matching-evts proc-names)
-  (define mailbox-nm (messages-var-name sent-msg))
+;; τ (Setof τ) [Listof SName] NameEnv -> Void
+(define (gen-msg-dispatch sent-msg matching-evts proc-names name-env)
+  (define sent-nm (hash-ref name-env sent-msg))
+  (define matching-nms (rename-all name-env matching-evts))
+  (define mailbox-nm (messages-var-name sent-nm))
   (indent) (printf ":: ~a > 0 ->\n" mailbox-nm)
   (with-indent
     (indent) (printf "~a--;\n" mailbox-nm)
     (for ([proc (in-list proc-names)])
-      (dispatch-to matching-evts proc))))
+      (dispatch-to matching-nms proc))))
 
 ;; [Setof SName] SName -> Void
 (define (dispatch-to matching-evts proc)
@@ -960,18 +1115,26 @@
   (indent) (displayln "fi;"))
 
 (define IO-PROC-NAME 'IO)
-(define (gen-io io name-env)
+(define (gen-io io event-upcast# event-downcast# msg-table name-env)
   (match-define (spin-io msgs asserts) io)
   ;; in order for deadlock checking to work, it seems like there needs to be
   ;; some way for the clock to keep ticking
-  (define assert-locals (for/hash ([asrt (in-hash-keys asserts)])
-                          (values (svar (io-assert-var-name asrt)
+  (define down-asserts (for*/set ([asrt (in-set asserts)]
+                                  [subtypes (in-value (hash-ref event-downcast# asrt))]
+                                  #:when (> (set-count subtypes) 1))
+                                 asrt))
+  (define down-assert-locals (for/hash ([ty (in-set down-asserts)])
+                               (values (svar (assertion-downcast-local-nm ty name-env) mtype)
+                                       DOWNCAST-NONE)))
+  (define assert-locals (for/hash ([asrt (in-set asserts)])
+                          (values (svar (io-assert-var-name (hash-ref name-env asrt))
                                         SBool)
                                   #f)))
   (define fuel-nm 'fuel)
   (define fuel-nonzero #;"true" (format "~a > 0" fuel-nm))
   (with-spin-active-proctype (~a IO-PROC-NAME)
     (gen-assignment assert-locals)
+    (gen-assignment down-assert-locals)
     (gen-assignment (hash (svar fuel-nm SInt) 100))
     (with-spin-do
       (with-spin-branch "timeout"
@@ -984,16 +1147,14 @@
             (gen-spin-branch "else" gen-spin-skip)
             (for ([msg (in-set msgs)])
               (with-spin-branch fuel-nonzero
-                (gen-spin-form (send msg) name-env IO-PROC-NAME)))
-            (for ([(asrt supers) (in-hash asserts)])
-              (define local-nm (io-assert-var-name asrt))
+                (gen-spin-form (send msg) name-env event-upcast# event-downcast# msg-table IO-PROC-NAME)))
+            (for ([asrt (in-set asserts)])
+              (define local-nm (io-assert-var-name (hash-ref name-env asrt)))
               (with-spin-branch (spin-&& (format "!~a" local-nm) fuel-nonzero)
-                (for ([a (in-set supers)])
-                  (gen-spin-form (assert a) name-env IO-PROC-NAME))
+                (gen-spin-form (assert asrt) name-env event-upcast# event-downcast# msg-table IO-PROC-NAME)
                 (indent) (printf "~a = !~a\n" local-nm local-nm))
               (with-spin-branch (spin-&& local-nm fuel-nonzero)
-                (for ([a (in-set supers)])
-                  (gen-spin-form (retract a) name-env IO-PROC-NAME))
+                (gen-spin-form (retract asrt) name-env event-upcast# event-downcast# msg-table IO-PROC-NAME)
                 (indent) (printf "~a = !~a\n" local-nm local-nm)))
             #;(gen-spin-branch "true" gen-spin-break))
           ;; get the clock-ticker moving again
@@ -1123,11 +1284,12 @@
                   (format "(~a != ~a)" global-name cn)))
   (spin-&&* preds))
 
-;; [Setof SName] MessageTable -> String
-(define (any-activity-predicate assertion-tys msg-table)
+;; [Setof SName] MessageTable NameEnv -> String
+(define (any-activity-predicate assertion-tys msg-table name-env)
   (define global-name (svar-name GLOBAL-CLOCK-VAR))
   (define assertion-nms (set-map assertion-tys assertions-update-var-name))
-  (define msg-nms (map messages-var-name (hash-keys msg-table)))
+  (define msg-nms (set-map (rename-all name-env (list->set (hash-keys (message-table-up# msg-table))))
+                           messages-var-name ))
   (spin-||* (append assertion-nms msg-nms)))
 
 (define (spin-&& a b)
