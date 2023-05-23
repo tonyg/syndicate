@@ -14,7 +14,8 @@
 
 (define-type-alias TimeStateDriver
   (U LaterThan
-     (Observe (LaterThanT ★/t))))
+     (Observe (LaterThanT Int))
+     (Observe (Observe (LaterThanT ★/t)))))
 
 ;; TODO ignoring other driver underneath it
 
