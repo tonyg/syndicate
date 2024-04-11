@@ -5,7 +5,7 @@
          list
          (typed-out [[empty- : (List ⊥)] empty]
                     [[empty?- : (∀ (X) (→fn (List X) Bool))] empty?]
-                    [[cons- : (∀ (X) (→fn X (List X) (List X)))] cons]
+                    [[cons- : (∀ (X Y) (→fn X (List Y) (List (U X Y))))] cons]
                     [[cons?- : (∀ (X) (→fn X (List X) Bool))] cons?]
                     [[first- : (∀ (X) (→fn (List X) X))] first]
                     [[second- : (∀ (X) (→fn (List X) X))] second]

@@ -97,18 +97,18 @@ to that task,
 (task-performance ID Task TaskStateDesc)
 
 A TaskStateDesc is one of
-  - ACCEPTED, when the TP has the resources to perform the task. (TODO - not sure if this is ever visible, currently)
+  - ACCEPTED, when the TP has the resources to perform the task.
   - OVERLOAD/ts, when the TP does not have the resources to perform the task.
-  - RUNNING, indicating that the task is being performed
   - (finished TaskResult), describing the results
 |#
+(define-constructor* (accepted))
+(define-constructor* (overload))
 (define-constructor* (finished : Finished data))
 (define-type-alias TaskStateDesc
-  (U Symbol (Finished TaskResult)))
-(define ACCEPTED : TaskStateDesc 'accepted)
-(define RUNNING : TaskStateDesc 'running)
+  (U Accepted Overload (Finished TaskResult)))
+(define ACCEPTED : TaskStateDesc (accepted))
 ;; this is gross, it's needed in part because equal? requires two of args of the same type
-(define OVERLOAD/ts : TaskStateDesc 'overload)
+(define OVERLOAD/ts : TaskStateDesc (overload))
 #|
 Two instances of the Task Delegation Protocol take place: one between the
 JobManager and the TaskManager, and one between the TaskManager and its
@@ -202,28 +202,52 @@ The JobManager then performs the job and, when finished, asserts
 (require/typed "flink-support.rkt"
   [string->words : (→fn String (List String))])
 
+(define-constructor* (go-busy [t : ConcreteTask]))
+(define-constructor* (go-idle))
+
 (define (spawn-task-runner [id : ID] [tm-id : ID])
   (spawn #:type τc
-   (export-roles "task-runner-impl.rktd"
    (lift+define-role task-runner-impl
    (start-facet runner ;; #:includes-behavior TaskPerformer
     (assert (task-runner id))
     (on (retracted (task-manager tm-id _))
         (stop runner))
-    (during (observe (task-performance id $t _))
-      (match-define (task $task-id $desc) t)
-      (field [state TaskStateDesc ACCEPTED])
-      (assert (task-performance id t (ref state)))
-      ;; since we currently finish everything in one turn, these changes to status aren't
-      ;; actually visible.
-      (set! state RUNNING)
-      (match desc
-        [(map-work $data)
-         (define wc (count-new-words (ann (hash) WordCount) (string->words data)))
-         (set! state (finished wc))]
-        [(reduce-work $left $right)
-         (define wc (hash-union/combine left right +))
-         (set! state (finished wc))])))))))
+
+    (define (busy-state [t : ConcreteTask])
+      (start-facet work-on-task
+        (stop-when (retracted (observe (task-performance id t ★)))
+                   (realize! (go-idle)))
+        (during (observe (task-performance id $t2 _))
+          (assert (task-performance id t2 OVERLOAD/ts)))
+        (match-define (task $task-id $desc) t)
+        (define ans (match desc
+                      [(map-work $data)
+                       (define wc (count-new-words (ann (hash) WordCount) (string->words data)))
+                       (finished wc)]
+                      [(reduce-work $left $right)
+                       (define wc (hash-union/combine left right +))
+                       (finished wc)]))
+        (assert (task-performance id t ans #;(ref state)))
+        #;(match desc
+          [(map-work $data)
+           (define wc (count-new-words (ann (hash) WordCount) (string->words data)))
+           (set! state (finished wc))]
+          [(reduce-work $left $right)
+           (define wc (hash-union/combine left right +))
+           (set! state (finished wc))])
+        ))
+
+    (define (idle-state)
+      (start-facet await-task
+        (on (asserted (observe (task-performance id $t _)))
+            (realize! (go-busy t)))))
+
+    (on-start (idle-state))
+
+    (on (realize (go-busy $t:ConcreteTask))
+        (busy-state t))
+    (on (realize (go-idle))
+        (idle-state))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; TaskManager
@@ -282,22 +306,33 @@ The JobManager then performs the job and, when finished, asserts
        (match-define (task $task-id $desc) t)
        (define status0 : TaskStateDesc
          (if (can-accept?)
-             RUNNING
+             ACCEPTED
              OVERLOAD/ts))
-       (field [status TaskStateDesc status0])
-       (assert (task-performance id t (ref status)))
-       (when (can-accept?)
-         (define runner (select-runner))
-         (log "TM ~a assigns task ~a to runner ~a" id task-id runner)
-         (on stop (set! busy-runners (set-remove (ref busy-runners) runner)))
-         (on (asserted (task-performance runner t $st))
-             (match st
-               [ACCEPTED #f]
-               [RUNNING #f]
-               [OVERLOAD/ts
-                (set! status OVERLOAD/ts)]
-               [(finished _)
-                (set! status st)]))))))))))
+       #;(field [status TaskStateDesc status0])
+       (on-start
+        (react
+          #;(assert (task-performance id t status0))
+          (when (can-accept?)
+            (define runner (select-runner))
+            (log "TM ~a assigns task ~a to runner ~a" id task-id runner)
+            (on stop (set! busy-runners (set-remove (ref busy-runners) runner)))
+            (on (asserted (task-performance runner t OVERLOAD/ts))
+                (stop this-facet (react (assert (task-performance id t OVERLOAD/ts)))))
+            (on (asserted (task-performance runner t (finished $r)))
+                (stop this-facet (react (assert (task-performance id t (finished r))))))
+            #;(on (asserted (task-performance runner t $st))
+                (define ans (match st
+                              [ACCEPTED #f]
+                              [OVERLOAD/ts
+                               (set! status OVERLOAD/ts)]
+                              [(finished _)
+                               (set! status st)]))
+                #;(match st
+                    [ACCEPTED #f]
+                    [OVERLOAD/ts
+                     (set! status OVERLOAD/ts)]
+                    [(finished _)
+                     (set! status st)]))))))))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; JobManager
@@ -457,20 +492,27 @@ The JobManager then performs the job and, when finished, asserts
            (realize! (tasks-finished job-id data))]
           [else
            ;; TODO - in MapReduce, there should be either 1 waiting task, or 0, meaning the job is done.
-           (define still-waiting
-             (for/fold ([ts : (List PendingTask) (list)])
+           (define-tuple (still-waiting readys)
+             (for/fold ([ts : (List PendingTask) (list)]
+                        [rs : (List (Task (Tuple Int Symbol)
+                                          (U (MapWork String)
+                                             (ReduceWork (Hash String Int)
+                                                         (Hash String Int))))) (list)])
                        ([t (ref waiting-tasks)])
                (define t+ (task+data t (select 0 task-id) data))
                (match (task-ready? t+)
                  [(some $ready)
-                  (add-ready-task! ready)
-                  ts]
+                  (tuple ts (cons ready rs))
+                  #;(add-ready-task! ready)
+                  #;ts]
                  [_
-                  (cons t+ ts)])))
-           (set! waiting-tasks still-waiting)]))
+                  (tuple (cons t+ ts) rs)])))
+           (set! waiting-tasks still-waiting)
+           (for ([r (in-list readys)])
+             (add-ready-task! r))]))
 
       ;; Task (ID TaskResult -> Void) -> Void
-      ;; Requires (task-ready? t)
+    ;; Requires (task-ready? t)
       (define (∀ (ρ) (perform-task [t : ConcreteTask]
                                    [k : (proc TaskID TaskResult -> ★/t
                                               #:effects (ρ))]))
@@ -487,10 +529,18 @@ The JobManager then performs the job and, when finished, asserts
             (on (retracted (task-manager mngr _))
                 ;; our task manager has crashed
                 (stop assign (request-again!)))
-            (on (asserted (task-performance mngr t $status))
-                (match status
+            (on (asserted (task-performance mngr t ACCEPTED)) #f)
+            (on (asserted (task-performance mngr t OVERLOAD/ts))
+                ;; need to find a new task manager
+                ;; don't think we need a release-slot! here, because if we've heard back from a task manager,
+                ;; they should have told us a different slot count since we tried to give them work
+                (log "JM overloaded manager ~a with task ~a" mngr this-id)
+                (stop assign (request-again!)))
+            (on (asserted (task-performance mngr t (finished $results)))
+                (log "JM receives the results of task ~a" this-id)
+                (stop perform (k this-id results))
+                #;(match status
                   [ACCEPTED #f]
-                  [RUNNING #f]
                   [OVERLOAD/ts
                    ;; need to find a new task manager
                    ;; don't think we need a release-slot! here, because if we've heard back from a task manager,
@@ -552,10 +602,11 @@ The JobManager then performs the job and, when finished, asserts
   (spawn-client (file->job "lorem.txt"))
   (spawn-client (string->job INPUT))))
 
-#;(module+ test
+(module+ test
   (verify-actors #;(Eventually (A (JobCompletion ID (List InputTask) TaskResult)))
                  (Always (Implies (A (Observe (JobCompletion ID (List InputTask) ★/t)))
-                                  (Eventually (A (JobCompletion ID (List InputTask) TaskResult)))))
+                                  (Or (Eventually (A (JobCompletion ID (List InputTask) TaskResult)))
+                                      (Always (Eventually (Observe (TaskPerformance ID ConcreteTask ★/t)))))))
                  job-manager-impl
                  task-manager-impl
                  client-impl)
@@ -571,13 +622,28 @@ The JobManager then performs the job and, when finished, asserts
                         task-manager-impl
                         client-impl ))
 
-(module+ test
+#;(module+ test
   (verify-actors (And (Always (Implies (A (Observe (TaskPerformance ID ConcreteTask ★/t)))
                                        (Eventually (A (TaskPerformance ID ConcreteTask TaskStateDesc)))))
                       (Eventually (A (TaskPerformance ID ConcreteTask TaskStateDesc))))
     job-manager-impl
     task-manager-impl
     client-impl))
+
+;; Load Balancing
+#;(module+ test
+  (define-type-alias MapTask
+    (Task TaskID (MapWork String)))
+  (define-type-alias ReduceTask
+    (Task TaskID (ReduceWork TaskResult TaskResult)))
+  (define-ltl LoadBalanceSpec (Always (And (Implies (Observe (TaskPerformance ID MapTask ★/t))
+                                                    (Not (Observe (TaskPerformance ID ReduceTask ★/t))))
+                                           (Implies (Observe (TaskPerformance ID ReduceTask ★/t))
+                                                    (Not (Observe (TaskPerformance ID MapTask ★/t)))))))
+    (verify-actors LoadBalanceSpec
+      job-manager-impl
+      task-manager-impl
+      client-impl))
 
 #;(module+ test
   (check-simulates task-runner-impl task-runner-impl)
@@ -601,3 +667,14 @@ The JobManager then performs the job and, when finished, asserts
                           (ReduceWork (Hash String (U NonZero Zero)) (Hash String (U NonZero Zero)))))
                  (U (Finished (Hash String (U NonZero Zero)))
                     Symbol))
+
+#|
+(List (U* (Task (Tuple (U* NonZero Zero) Symbol) (MapWork String))
+          (Task (Tuple (U* NonZero Zero) Symbol) (ReduceWork (Hash String (U* NonZero Zero))
+                                                             (Hash String (U* NonZero Zero))))))
+
+(List (Task (Tuple (U* NonZero Zero) Symbol)
+            (U* (MapWork String)
+                (ReduceWork (Hash String (U* NonZero Zero))
+                            (Hash String (U* NonZero Zero))))))
+|#

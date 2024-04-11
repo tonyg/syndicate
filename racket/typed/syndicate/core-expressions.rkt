@@ -256,7 +256,7 @@
   ;; doesn't handle uses of $id or ($) w/o a type
   (define (elaborate-pattern pat)
     (syntax-parse pat
-      #:datum-literals (tuple _ $ ★)
+      #:datum-literals (tuple realize _ $ ★)
       [x:discard-ann-id
        (syntax/loc pat (discard x.ty))]
       [(~or* _ ★)
@@ -268,6 +268,9 @@
       [(tuple p ...)
        (quasisyntax/loc pat
          (tuple #,@(stx-map elaborate-pattern #'(p ...))))]
+      [(realize p)
+       (quasisyntax/loc pat
+         (realize #,(elaborate-pattern #'p)))]
       [(~constructor-exp ctor p ...)
        (define field-tys (ctor-field-tys #'ctor))
        (define sub-pats
@@ -283,7 +286,7 @@
 
   (define (elaborate-pattern/with-type pat ty)
     (syntax-parse pat
-      #:datum-literals (tuple $ ★)
+      #:datum-literals (tuple realize $ ★)
       [(~datum _)
        (when (bot? ty)
          (raise-syntax-error #f "unable to instantiate pattern with matching part of type" pat))
@@ -329,6 +332,9 @@
            (elaborate-pattern/with-type pat (proj selected i))))
        (quasisyntax/loc pat
          (tuple #,@sub-pats))]
+      [(realize p)
+       (quasisyntax/loc pat
+         (realize #,(elaborate-pattern #'p)))]
       [(~constructor-exp ctor p ...)
        (define tag (ctor-type-tag #'ctor))
        (define (matching? t)

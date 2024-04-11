@@ -1092,9 +1092,9 @@
          (check-stx ...
            (stop this-facet e ...)))])
 
-(define-typed-syntax (stop-current-facet) ≫
+(define-typed-syntax (stop-current-facet cont ...) ≫
   ----------------------------------------
-  [≻ (stop this-facet)])
+  [≻ (stop this-facet cont ...)])
 
 (define-typed-syntax define/dataflow
   [(define/dataflow x:id τ:type e) ≫
@@ -1632,12 +1632,19 @@
      #:cut
      #:with (_ (~or* (~U* outs ...) (~and ty (~parse (outs ...) #'(ty)))) _ _ _) (analyze-roles actor-tys)
      #:with (interest ...) (stx-filter Observe1? #'(outs ...))
+     #:with (spec ...) (for/list ([i (in-syntax #'(interest ...))])
+                         (quasisyntax/loc ctx
+                           (#,dlf #,i)))
      #:with (VA ...) (for/list ([i (in-syntax #'(interest ...))])
                        (quasisyntax/loc ctx
                          (#,va (#,dlf #,i)
                           #:IO #,io
                           #,@actor-tys)))
-     #'(begin- VA ...)]))
+     #'(begin- VA ...)
+     #;(quasisyntax/loc ctx
+       (#,va (And spec ...)
+        #:IO #,io
+        #,@actor-tys))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
