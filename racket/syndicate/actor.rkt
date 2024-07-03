@@ -1260,7 +1260,9 @@
                (current-pending-scripts (make-empty-pending-scripts))
                (current-action-transformer values)]
     (with-current-facet '() #f
-      (schedule-action! (core:retract ?))
+      ;; Sam: I don't really understand the rationale below; removing this line
+      ;; to experiment with the supervision implementation in supervisor.rkt
+      #;(schedule-action! (core:retract ?))
       ;; Retract any initial-assertions we might have been given. We
       ;; must ensure that we explicitly maintain them: retracting them
       ;; here prevents us from accidentally relying on their
