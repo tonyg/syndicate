@@ -1389,6 +1389,11 @@
            suspend-script
            suspend-script*
 
+           flush-pending-patch!
+           current-pending-actions
+           current-pending-patch
+           check-spawn-actions!
+           call-with-syndicate-effects
            capture-actor-actions))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1461,6 +1466,14 @@
 (define (ensure-in-script! who)
   (when (not (in-script?))
     (error who "Attempt to perform action outside script; are you missing an (on ...)?")))
+
+(define (check-spawn-actions! acts on-error!)
+  (define cleaned-acts (core:clean-actions acts))
+  (for/first ([act (in-list cleaned-acts)]
+        #:unless (core:actor? act))
+    (on-error! act))
+  cleaned-acts)
+
 
 (define (send! M)
   (ensure-in-script! 'send!)

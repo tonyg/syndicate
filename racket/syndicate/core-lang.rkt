@@ -7,6 +7,7 @@
 (require racket/match)
 (require "main.rkt")
 (require (submod "actor.rkt" for-module-begin))
+(require (only-in (submod "actor.rkt" implementation-details) check-spawn-actions!))
 (require "store.rkt")
 (require (only-in "core.rkt" clean-actions))
 
@@ -73,11 +74,10 @@
                           begin-for-declarations))))
 
 (define (ensure-spawn-actions! acts)
-  (define cleaned-acts (clean-actions acts))
-  (for ([act (in-list cleaned-acts)]
-        #:unless (actor? act))
-    (raise-argument-error 'syndicate-module "top-level actor creation action" act))
-  cleaned-acts)
+  (check-spawn-actions! acts
+                        (lambda (act) (raise-argument-error 'syndicate-module
+                                                            "top-level actor creation action"
+                                                            act))))
 
 (define-syntax (syndicate-module stx)
   (syntax-parse stx
