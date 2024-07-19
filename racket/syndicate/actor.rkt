@@ -1122,7 +1122,7 @@
 ;; Endpoint Creation
 
 (define (ensure-in-endpoint-context! who)
-  (when (or (in-script?) (null? (current-facet-id)))
+  (when (or #;(in-script?) (null? (current-facet-id)))
     (error who "Attempt to add endpoint out of installation context; are you missing a (react ...)?")))
 
 (define (add-endpoint! where internal? patch-fn handler-fn)
@@ -1155,7 +1155,7 @@
 
 (define next-fid-uid 0)
 (define (add-facet! where setup-proc)
-  (when (not (in-script?))
+  #;(when (not (in-script?))
     (error 'add-facet!
            "~a: Cannot add facet outside script; are you missing an (on ...)?"
            where))
