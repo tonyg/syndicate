@@ -11,6 +11,7 @@
          "store.rkt"
          (only-in "trie.rkt" trie-union trie-union-all pattern->trie)
          (submod "actor.rkt" implementation-details)
+         "util.rkt"
          syntax/parse/define)
 
 (require/activate "drivers/timestate.rkt")
@@ -160,24 +161,9 @@
        (supervisor children #,@#'opts.call)))])
 
 (define (determine-initial-children boot)
-  (define spawn-acts (capture-spawn-actions boot))
+  (define spawn-acts (capture-spawn-actions 'spawn-supervisor-with boot))
   (for/list ([act spawn-acts])
     ;; unfortunately I don't see a good way to get the actor's name without calling its boot procedure
     (child-spec (gensym 'supervised-actor)
                 (lambda () (perform-actions! (list act))))))
-
-(define (ensure-spawn-actions! acts)
-  (check-spawn-actions! acts
-                        (lambda (act) (raise-argument-error 'spawn-supervisor-with
-                                                            "actor creation action"
-                                                            act))))
-(define (capture-spawn-actions thunk)
-  (call-with-syndicate-effects
-   (lambda ()
-     (with-store [(current-pending-actions '())
-                  (current-pending-patch patch-empty)
-                  (current-action-transformer values)]
-       (call-with-values thunk
-                         (lambda results
-                           (ensure-spawn-actions! (cons results (current-pending-actions)))))))))
 
