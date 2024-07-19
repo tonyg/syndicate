@@ -6,18 +6,23 @@
          do-send
          do-spawn
          do-query
+         do-receive
          do-together
-         do-quit/async
+         do-query/set
+         do-query/value
 
+         do-quit/async
          do-assert/async
          do-retract/async
          do-send/async
          do-spawn/async
          do-query/async
+         do-receive/async
          do-together/async
+         do-query/set/async
+         do-query/value/async
 
-
-         QUIT
+         instr:quit
          instr:assert
          instr:retract
          instr:send
@@ -29,27 +34,25 @@
          )
 
 (require (prefix-in core: syndicate/core)
-         syndicate/supervisor)
-(require racket/async-channel)
+         syndicate/trie
+         syndicate/supervisor
+         syndicate/pattern)
+(require racket/async-channel
+         syntax/parse/define
+         (for-syntax racket/syntax)
+         racket/set)
 
 #|
 An Instruction is one of:
-- 'quit
+- instr:quit
 - (instr:assert Pattern)
 - (instr:retract Pattern)
 - (instr:send Any)
 - (instr:spawn (Sealof (-> Spawn)))
 - (instr:query Pattern)
+- (instr:receive Pattern)
 - (instr:together (Listof Instruction))
 |#
-
-(define QUIT 'quit)
-(message-struct instr:assert (pat))
-(message-struct instr:retract (pat))
-(message-struct instr:send (v))
-(message-struct instr:spawn (boot))
-(message-struct instr:query (p))
-(message-struct instr:together (instrs))
 
 #|
 A Command is (command ID Instruction)
@@ -72,34 +75,68 @@ where ID is any value that uniquely identifies this command
   (send-ground-message (command resp-channel instr))
   resp-channel)
 
-(define (do-quit) (do QUIT))
-(define (do-assert pat) (do (instr:assert pat)))
-(define (do-retract pat) (do (instr:retract pat)))
-(define (do-send pat) (do (instr:send pat)))
-(define (do-spawn boot) (do (instr:spawn boot)))
-(define (do-query pat) (do (instr:query pat)))
-(define (do-together . instrs) (do (instr:together instrs)))
+(define-syntax-parser define-instruction
+  [(_ name)
+   #:with instr-name (format-id #'name "instr:~a" #'name)
+   #:with do-name (format-id #'name "do-~a" #'name)
+   #:with do/async-name (format-id #'name "do-~a/async" #'name)
+   #'(begin
+       (define instr-name 'name)
+       (define (do-name) (do instr-name))
+       (define (do/async-name) (do/async instr-name)))]
+  [(_ name (args ...))
+   #:with instr-name (format-id #'name "instr:~a" #'name)
+   #:with do-name (format-id #'name "do-~a" #'name)
+   #:with do/async-name (format-id #'name "do-~a/async" #'name)
+   #'(begin
+       (message-struct instr-name (args ...))
+       (define (do-name args ...) (do (instr-name args ...)))
+       (define (do/async-name args ...) (do/async (instr-name args ...))))])
 
-(define (do-quit/async) (do/async QUIT))
-(define (do-assert/async pat) (do/async (instr:assert pat)))
-(define (do-retract/async pat) (do/async (instr:retract pat)))
-(define (do-send/async pat) (do/async (instr:send pat)))
-(define (do-spawn/async boot) (do/async (instr:spawn boot)))
-(define (do-query/async pat) (do/async (instr:query pat)))
-(define (do-together/async . instrs) (do/async (instr:together instrs)))
+(define-instruction quit)
+(define-instruction assert (pat))
+(define-instruction retract (pat))
+(define-instruction send (v))
+(define-instruction spawn (boot))
+(define-instruction query (pat))
+(define-instruction receive (pat))
+(define-instruction together (instrs))
+
+(define (do-query/set proj)
+  (sync (do-query/set/async proj)))
+
+(define (do-query/set/async proj)
+  (define pat (projection->pattern proj))
+  (define query-chan (do-query/async pat))
+  (handle-evt query-chan
+              (lambda (query-result) (trie-project/set/single query-result proj))))
+
+(define (do-query/value proj [default #f])
+  (sync (do-query/value/async proj default)))
+
+(define (do-query/value/async proj [default #f])
+  (define query-chan (do-query/set/async proj))
+  (handle-evt query-chan
+              (lambda (query-result)
+                (if (set-empty? query-result)
+                    default
+                    (set-first query-result)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Driver Actors
 
-(define (spawn-command-handler)
+(define (spawn-command-handler ready-chan)
+  (define instance (gensym 'instance))
+  (log-repl-info "repl ~a created" instance)
   (spawn
+    (on-start (async-channel-put ready-chan #t))
     (on (message (inbound (command $resp-channel $instr)))
-        (log-repl-info "repl received instruction: ~a" instr)
+        (log-repl-info "repl ~a received instruction: ~a" instance instr)
         (perform! resp-channel instr))))
 
 (define (perform! resp-channel instr)
   (match instr
-    [(== QUIT)
+    [(== instr:quit)
      (async-channel-put resp-channel 'ok)
      (quit-dataspace!)]
     [(instr:send v)
@@ -116,6 +153,8 @@ where ID is any value that uniquely identifies this command
      (async-channel-put resp-channel 'ok)]
     [(instr:query pat)
      (spawn-querier resp-channel pat)]
+    [(instr:receive pat)
+     (spawn-querier resp-channel pat #:message? #t)]
     [(instr:together instrs)
      (define dummy-channel (make-async-channel))
      (for ([instr instrs])
@@ -126,30 +165,34 @@ where ID is any value that uniquely identifies this command
   (log-repl-info "delegating instruction: ~a" instr)
   (send! (delegated-instruction resp-channel instr)))
 
-(define (spawn-querier resp-channel pat)
-  (perform-actions! (list (make-querier resp-channel pat))))
+(define (spawn-querier resp-channel pat #:message? [m? #f])
+  (perform-actions! (list (make-querier resp-channel pat m?))))
 
-(define (make-querier resp-channel pat)
+(define (make-querier resp-channel pat m?)
+  (define token (gensym 'query-token))
   (define (query-behavior e boot?)
     (log-repl-info "querier receives event: ~a" e)
     (cond
-      [(patch? e)
-       (async-channel-put resp-channel (patch-added e))
+      [(and (patch? e) (not m?))
+       (define added (patch-added e))
+       (define token-trie (trie-project added (?! token)))
+       (define without-token (trie-subtract added token-trie))
+       (async-channel-put resp-channel without-token)
        (core:quit)]
-      [(and (not e) boot?)
-       (transition #f '())]
-      [(not boot?)
-       (async-channel-put resp-channel trie-empty)
+      [(and (message? e) m?)
+       (async-channel-put resp-channel (message-body e))
        (core:quit)]
       [else
        #f]))
-  (core:actor query-behavior #t (sub pat)))
+  (core:actor query-behavior #t (list (core:sub pat)
+                                      (core:assert token)
+                                      (core:sub token))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Driver Instantiation
 
-(define (boot-repl)
-  (supervisor (list (child-spec 'command-handler spawn-command-handler))
+(define (boot-repl #:when-ready [ready-chan (make-async-channel)])
+  (supervisor (list (child-spec 'command-handler (lambda () (spawn-command-handler ready-chan))))
               #:strategy ONE-FOR-ONE
               #:name 'repl-supervisor))
 
