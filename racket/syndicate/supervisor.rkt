@@ -14,8 +14,6 @@
          "util.rkt"
          syntax/parse/define)
 
-(require/activate "drivers/timestate.rkt")
-
 (assertion-struct up (name))
 (assertion-struct stay-up (name))
 
