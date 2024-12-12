@@ -102,7 +102,6 @@
 (define ((wrap-supervise-actor supervisor-name actor-name previous-action-transformer) ac)
   (match (previous-action-transformer ac)
     [(<actor> boot initial-assertions)
-     (printf "wrapping spawned actor with supervision\n")
      (define boot* (lambda ()
                      (match-define (list inner-behavior txn name) (boot))
                      (list (supervised-actor-behavior supervisor-name actor-name inner-behavior)
