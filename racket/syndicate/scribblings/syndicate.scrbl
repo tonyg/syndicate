@@ -1,7 +1,9 @@
 #lang scribble/manual
 
 @(require (for-label (except-in racket process field)
-            syndicate/actor))
+            racket/async-channel
+            syndicate/actor
+            syndicate/drivers/repl))
 
 @title{Dataspace Programming with Syndicate}
 
@@ -566,88 +568,72 @@ launches a syndicate program with two initial actors, one the result of the
 The initial dataspace is referred to as the @emph{ground} dataspace, and it
 plays a special role in Syndicate programming; see below.
 
-@section{Interacting with the Outside World}
+@section{Interactive Programming}
 
-ground dataspace, drivers, etc.
+@defmodule[syndicate/drivers/repl]
 
-@section{Actors with an Agenda}
+The @hash-lang[] @racket[syndicate/interactive] language provides an interface
+to running dataspace programs. The interface allows events and actors to be
+introduced externally and for querying the contents of the dataspace.
 
-Here we talk about @racket[spawn*] and @racket[react/suspend].
+@subsection{Synchronous Interactions}
 
-@section{Odds and Ends}
+The following procedures communicate synchronously with a driver actor running
+in the dataspace.
 
-@defproc[(assert! [v any/c]
-                  [#:meta-level level natural-number/c 0])
-         void?]{
-Asserts the value of @racket[v] until either explicitly retracted via
-@racket[retract!] or the immediately enclosing actor exits. @racket[level]
-specifies which dataspace the assertion should be made, in terms of relative
-distance from the dataspace containing the enclosing actor.}
+@defproc[(do-quit) void?]{
+Terminates the dataspace.
+}
 
-@defproc[(retract! [v any/c]
-                   [#:meta-level level natural-number/c 0])
-         void?]{
-Retracts any assertions made by the immediately enclosing actor at
-@racket[level] dataspaces above the enclosing dataspace of the form @racket[v].}
+@deftogether[(@defproc[(do-assert [pat pattern]) void?]
+              @defproc[(do-retract [pat pattern]) void?])]{
+Introduce or withdraw an assertion in the dataspace based on the supplied
+pattern. Note that only assertions made through the REPL interface may be
+retracted in this manner.
+}
 
-@defform[(state maybe-init (maybe-bindings O ...) ([E I ...] ...))
-         #:grammar
-         [(maybe-init (code:line)
-                      (code:line #:init [I ...]))
-          (maybe-bindings (code:line)
-                          (code:line #:collect ([id init] ...)))]
-         #:contracts ([id identifier?])]{
-Spawns a new actor with ongoing behaviors @racket[O ...] that runs until a
-termination event is detected.
+@defproc[(do-send [val any/c]) void?]{
+Broadcasts a message in the dataspace.
+}
 
-The optional @racket[#:init [I ...]] provides a sequence of initialization
-actions. The initial actions are executed before the ongoing behaviors begin but
-after the interests of the state actor are established.
+@defproc[(do-spawn [boot (-> any/c)]) void?]{
+Spawn an actor in the dataspace via the @racket[boot] procedure. The procedure
+should use @racket[spawn] to specify the spawned actor, as in:
+@codeblock|{
+(do-spawn (lambda () (spawn (assert 'hello))))
+}|
+}
 
-The optional @racket[#:collect [(id init) ...]] clause introduces bindings that
-are visible within the body of the state actor. Each binding @racket[id] is
-initialized to the corresponding @racket[init] expression. The bindings are
-updated when an ongoing behavior executes an instantaneous event, such as the
-result of an @racket[on] behavior. The new bindings are in the form of a
-@racket[values] form, with the new values in the same order and number as in the
-@racket[#:collect].
+@deftogether[(@defproc[(do-query [proj projection]) trie?]
+              @defproc[(do-query/value [proj projection] [default any/c #f]) any/c]
+              @defproc[(do-query/set [proj projection]) set?])]{
+Query the contents of the dataspace via a projection.
+}
 
-The ongoing behaviors @racket[O ...] are run simultaneously until the state
-actor exits.
+@racketgrammar[#:literals (? ?!) projection
+               (code:line ?)
+               (code:line (?!))
+               (code:line (ctor projection ...))]
+              
+@defproc[(do-receive [pat pattern]) any/c]{
+Wait for a message broadcast in the dataspace matching the supplied pattern.
+Returns the body of the first such matching message.
+}
 
-Each @racket[[E I ...]] specifies a termination event @racket[E] of the actor.
-When a termination event @racket[E] activates, the corresponding @racket[I]s are
-executed. The state actor then exits, with the same result of the final
-@racket[I] action.}
+@subsection{Asynchronous Interactions}
+The following forms provide an asynchronous interface to running dataspace
+programs. Each procedure returns an asynchronous channel that is ready when the
+request has been performed and yields the result, if any.
 
-@defform[(until E
-                maybe-init
-                maybe-bindings
-                maybe-done
-                O ...)
-         #:grammar
-         [(maybe-init (code:line)
-                      (code:line #:init [I ...]))
-          (maybe-bindings (code:line)
-                          (code:line #:collect ([id init] ...)))
-          (maybe-done (code:line)
-                      (code:line #:done [I ...]))]
-         #:contracts ([id identifier?])]{
-An @racket[until] behavior corresponds to a @racket[state] behavior with only
-one termination event, given by @racket[E]. The final result of the
-@racket[until] behavior is the values of the @racket[#:collect] bindings in
-scope from any parent actors followed by the final values of the @racket[until]
-actor's bindings. The actions in a @racket[#:done] clause are executed after the
-termination event but before the @racket[until] actor exits.}
-
-@defform[(forever maybe-init
-           maybe-bindings
-           O ...)
-         #:grammar
-         [(maybe-init (code:line)
-                      (code:line #:init [I ...]))
-          (maybe-bindings (code:line)
-                          (code:line #:collect ([id init] ...)))]
-         #:contracts ([id identifier?])]{
-The @racket[forever] behavior is analogous to a @racket[state] form with no
-termination events.}
+@deftogether[(@defproc[(do-quit/async) async-channel?]
+              @defproc[(do-assert/async [pat pattern]) async-channel?]
+              @defproc[(do-retract/async [pat pattern]) async-channel?]
+              @defproc[(do-send/async [val any/c]) async-channel?]
+              @defproc[(do-spawn/async [boot (-> any/c)]) async-channel?]
+              @defproc[(do-query/async [proj projection]) async-channel?]
+              @defproc[(do-query/value/async [proj projection] [default any/c #f]) async-channel?]
+              @defproc[(do-query/set/async [proj projection]) async-channel?]
+              @defproc[(do-receive/async [pat pattern]) async-channel?]
+              )]{
+Asynchronous commands.
+}
