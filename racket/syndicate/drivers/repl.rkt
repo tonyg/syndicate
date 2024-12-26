@@ -22,6 +22,9 @@
          do-query/set/async
          do-query/value/async
 
+         repl-assert
+         repl-spawn
+
          instr:quit
          instr:assert
          instr:retract
@@ -65,7 +68,7 @@ where ID is any value that uniquely identifies this command
 (message-struct delegated-instruction (resp-channel instr))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Client Interface
+;; REPL Instructions
 
 (define (do instr)
   (async-channel-get (do/async instr)))
@@ -121,6 +124,20 @@ where ID is any value that uniquely identifies this command
                 (if (set-empty? query-result)
                     default
                     (set-first query-result)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Convenience Wrappers
+
+(define (repl-assert v)
+  (if (pair? (current-facet-id))
+      (assert v)
+      (do-assert v)))
+
+(define-syntax-parse-rule (repl-spawn e ...+)
+  #:with boot-expr #'(spawn e ...)
+  (if (syndicate-effects-available?)
+      boot-expr
+      (do-spawn (lambda () boot-expr))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Driver Actors
