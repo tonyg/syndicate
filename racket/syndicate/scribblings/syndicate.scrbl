@@ -3,10 +3,13 @@
 @(require (for-label (except-in racket process field)
             racket/async-channel
             syndicate/actor
-            syndicate/drivers/repl))
+            ))
 
 @title{Dataspace Programming with Syndicate}
 
+@author["Sam Caldwell"]
+
+@table-of-contents[]
 
 @defmodule[syndicate/actor]
 
@@ -568,72 +571,6 @@ launches a syndicate program with two initial actors, one the result of the
 The initial dataspace is referred to as the @emph{ground} dataspace, and it
 plays a special role in Syndicate programming; see below.
 
-@section{Interactive Programming}
+@; -----------------------------------------------------------------------
 
-@defmodule[syndicate/drivers/repl]
-
-The @hash-lang[] @racket[syndicate/interactive] language provides an interface
-to running dataspace programs. The interface allows events and actors to be
-introduced externally and for querying the contents of the dataspace.
-
-@subsection{Synchronous Interactions}
-
-The following procedures communicate synchronously with a driver actor running
-in the dataspace.
-
-@defproc[(do-quit) void?]{
-Terminates the dataspace.
-}
-
-@deftogether[(@defproc[(do-assert [pat pattern]) void?]
-              @defproc[(do-retract [pat pattern]) void?])]{
-Introduce or withdraw an assertion in the dataspace based on the supplied
-pattern. Note that only assertions made through the REPL interface may be
-retracted in this manner.
-}
-
-@defproc[(do-send [val any/c]) void?]{
-Broadcasts a message in the dataspace.
-}
-
-@defproc[(do-spawn [boot (-> any/c)]) void?]{
-Spawn an actor in the dataspace via the @racket[boot] procedure. The procedure
-should use @racket[spawn] to specify the spawned actor, as in:
-@codeblock|{
-(do-spawn (lambda () (spawn (assert 'hello))))
-}|
-}
-
-@deftogether[(@defproc[(do-query [proj projection]) trie?]
-              @defproc[(do-query/value [proj projection] [default any/c #f]) any/c]
-              @defproc[(do-query/set [proj projection]) set?])]{
-Query the contents of the dataspace via a projection.
-}
-
-@racketgrammar[#:literals (? ?!) projection
-               (code:line ?)
-               (code:line (?!))
-               (code:line (ctor projection ...))]
-              
-@defproc[(do-receive [pat pattern]) any/c]{
-Wait for a message broadcast in the dataspace matching the supplied pattern.
-Returns the body of the first such matching message.
-}
-
-@subsection{Asynchronous Interactions}
-The following forms provide an asynchronous interface to running dataspace
-programs. Each procedure returns an asynchronous channel that is ready when the
-request has been performed and yields the result, if any.
-
-@deftogether[(@defproc[(do-quit/async) async-channel?]
-              @defproc[(do-assert/async [pat pattern]) async-channel?]
-              @defproc[(do-retract/async [pat pattern]) async-channel?]
-              @defproc[(do-send/async [val any/c]) async-channel?]
-              @defproc[(do-spawn/async [boot (-> any/c)]) async-channel?]
-              @defproc[(do-query/async [proj projection]) async-channel?]
-              @defproc[(do-query/value/async [proj projection] [default any/c #f]) async-channel?]
-              @defproc[(do-query/set/async [proj projection]) async-channel?]
-              @defproc[(do-receive/async [pat pattern]) async-channel?]
-              )]{
-Asynchronous commands.
-}
+@include-section["interactive.scrbl"]
