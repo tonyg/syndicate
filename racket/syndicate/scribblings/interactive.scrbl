@@ -46,6 +46,12 @@ Broadcasts a message in the dataspace.
 Spawn an actor in the dataspace.
 }
 
+@defform[(query/set pattern body-expr)]{
+Builds a set based on the value of the given expression evaluated on each
+assertion matching the given @racket[pattern]. Patterns use the same syntax as
+@racket[on].
+}
+
 @deftogether[(@defproc[(do-query [proj projection]) trie?]
               @defproc[(do-query/value [proj projection] [default any/c #f]) any/c]
               @defproc[(do-query/set [proj projection]) set?])]{

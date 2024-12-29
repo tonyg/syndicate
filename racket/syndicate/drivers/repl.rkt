@@ -10,6 +10,7 @@
          do-together
          do-query/set
          do-query/value
+         query/set
 
          do-quit/async
          do-assert/async
@@ -43,6 +44,7 @@
 (require racket/async-channel
          syntax/parse/define
          (for-syntax racket/syntax)
+         (for-template racket/base)
          racket/set)
 
 #|
@@ -124,6 +126,20 @@ where ID is any value that uniquely identifies this command
                 (if (set-empty? query-result)
                     default
                     (set-first query-result)))))
+
+(define-syntax-parse-rule (query/set pat body-exp)
+  #:do [(define-values (proj-stx* pattern* bindings* _instantiated) (analyze-pattern this-syntax #'pat))]
+  #:with (proj-stx pattern-stx (bindings ...)) #`(#,proj-stx* #,pattern* #,bindings*)
+  (let* ([proj proj-stx]
+         [arity (projection-arity proj)]
+         [the-trie (do-query pattern-stx)]
+         [entry-set (trie-project/set #:take arity the-trie proj)])
+    (unless entry-set
+      (error 'query* "Wildcard interest discovered while projecting by ~v" proj))
+    (for/set ([entry (in-set entry-set)])
+      (let ((instantiated (instantiate-projection proj entry)))
+        (match-define (list bindings ...) entry)
+        body-exp))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Convenience Wrappers
