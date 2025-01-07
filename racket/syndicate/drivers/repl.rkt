@@ -160,10 +160,11 @@ where ID is any value that uniquely identifies this command
 
 (define (spawn-command-handler ready-chan)
   (define instance (gensym 'instance))
-  (log-repl-info "repl ~a created" instance)
+  (log-syndicate-repl-info "~a created" instance)
   (spawn
     (on-start (async-channel-put ready-chan #t))
     (on (message (inbound (command $resp-channel $instr)))
+        (log-syndicate-repl-info "~a received ~a instruction" instance (instr-label instr))
         (perform! resp-channel instr))))
 
 (define (perform! resp-channel instr)
@@ -231,6 +232,16 @@ where ID is any value that uniquely identifies this command
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Logging
 
-(define (log-repl-info fmt . args)
-  (apply printf fmt args)
-  (newline))
+(define-logger syndicate-repl)
+
+(define (instr-label instr)
+  (match instr
+    [(== instr:quit) 'quit]
+    [(instr:send _) 'send]
+    [(instr:spawn boot) 'spawn]
+    [(instr:assert pat) 'assert]
+    [(instr:retract pat) 'retract]
+    [(instr:query pat) 'query]
+    [(instr:receive pat) 'receive]
+    [(instr:together instrs) (cons 'together (map instr-label instrs))]
+    [_ 'unknown]))
