@@ -164,7 +164,6 @@ where ID is any value that uniquely identifies this command
   (spawn
     (on-start (async-channel-put ready-chan #t))
     (on (message (inbound (command $resp-channel $instr)))
-        (log-repl-info "repl ~a received instruction: ~a" instance instr)
         (perform! resp-channel instr))))
 
 (define (perform! resp-channel instr)
@@ -195,7 +194,6 @@ where ID is any value that uniquely identifies this command
      (async-channel-put resp-channel 'ok)]))
 
 (define (delegate! resp-channel instr)
-  (log-repl-info "delegating instruction: ~a" instr)
   (send! (delegated-instruction resp-channel instr)))
 
 (define (spawn-querier resp-channel pat #:message? [m? #f])
@@ -204,7 +202,6 @@ where ID is any value that uniquely identifies this command
 (define (make-querier resp-channel pat m?)
   (define token (gensym 'query-token))
   (define (query-behavior e boot?)
-    (log-repl-info "querier receives event: ~a" e)
     (cond
       [(and (patch? e) (not m?))
        (define added (patch-added e))
