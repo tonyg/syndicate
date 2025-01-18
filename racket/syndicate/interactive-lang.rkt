@@ -4,10 +4,17 @@
 (require "drivers/repl.rkt")
 (require syntax/parse/define)
 
-(provide (except-out (all-from-out "actor-lang.rkt") #%module-begin assert spawn quit retract)
+(provide (except-out (all-from-out "actor-lang.rkt")
+                     #%module-begin
+                     assert
+                     spawn
+                     spawn*
+                     quit
+                     retract)
          (rename-out [interactive-module-begin #%module-begin]
                      [repl-assert assert]
                      [repl-spawn spawn]
+                     [repl-spawn* spawn*]
                      [do-quit quit]
                      [do-retract retract]
                      [do-send send]

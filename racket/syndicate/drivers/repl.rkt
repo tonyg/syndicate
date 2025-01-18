@@ -25,6 +25,7 @@
 
          repl-assert
          repl-spawn
+         repl-spawn*
 
          instr:quit
          instr:assert
@@ -151,6 +152,12 @@ where ID is any value that uniquely identifies this command
 
 (define-syntax-parse-rule (repl-spawn e ...+)
   #:with boot-expr #'(spawn e ...)
+  (if (syndicate-effects-available?)
+      boot-expr
+      (do-spawn (lambda () boot-expr))))
+
+(define-syntax-parse-rule (repl-spawn* e ...+)
+  #:with boot-expr #'(spawn* e ...)
   (if (syndicate-effects-available?)
       boot-expr
       (do-spawn (lambda () boot-expr))))
