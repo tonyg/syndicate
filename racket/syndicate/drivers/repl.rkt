@@ -145,10 +145,14 @@ where ID is any value that uniquely identifies this command
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Convenience Wrappers
 
-(define (repl-assert v)
+(define-syntax-parse-rule (repl-assert e:expr)
+  #:with mk-value #'(lambda () e)
+  (assert/context mk-value))
+
+(define (assert/context mk-value)
   (if (pair? (current-facet-id))
-      (assert v)
-      (do-assert v)))
+      (assert (mk-value))
+      (do-assert (mk-value))))
 
 (define-syntax-parse-rule (repl-spawn e ...+)
   #:with boot-expr #'(spawn e ...)
