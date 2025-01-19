@@ -6,6 +6,7 @@
 
 (provide (except-out (all-from-out "actor-lang.rkt")
                      #%module-begin
+                     require/activate
                      assert
                      spawn
                      spawn*
@@ -15,6 +16,7 @@
                      [repl-assert assert]
                      [repl-spawn spawn]
                      [repl-spawn* spawn*]
+                     [repl-require/activate require/activate]
                      [do-quit quit]
                      [do-retract retract]
                      [do-send send]

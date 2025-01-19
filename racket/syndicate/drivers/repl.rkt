@@ -26,6 +26,8 @@
          repl-assert
          repl-spawn
          repl-spawn*
+         repl-require/activate
+         repl-activate
 
          instr:quit
          instr:assert
@@ -46,6 +48,7 @@
          syntax/parse/define
          (for-syntax racket/syntax)
          (for-template racket/base)
+         racket/list
          racket/set)
 
 #|
@@ -107,6 +110,7 @@ where ID is any value that uniquely identifies this command
 (define-instruction query (pat))
 (define-instruction receive (pat))
 (define-instruction together (instrs))
+(define-instruction perform-actions (label actions))
 
 (define (do-query/set proj)
   (sync (do-query/set/async proj)))
@@ -166,6 +170,21 @@ where ID is any value that uniquely identifies this command
       boot-expr
       (do-spawn (lambda () boot-expr))))
 
+(define-syntax-parse-rule (repl-require/activate mod ...)
+  (begin
+    (require mod) ...
+    (repl-activate mod) ...))
+
+(define-syntax-parse-rule (repl-activate mod)
+  (begin
+    (let ()
+      (local-require (submod mod syndicate-main))
+      (void (activate (activate!))))))
+
+(define (activate acts)
+  (when acts
+    (void (do-perform-actions/async 'activate (flatten acts)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Driver Actors
 
@@ -199,6 +218,8 @@ where ID is any value that uniquely identifies this command
      (spawn-querier resp-channel pat)]
     [(instr:receive pat)
      (spawn-querier resp-channel pat #:message? #t)]
+    [(instr:perform-actions _ acts)
+     (perform-actions! acts)]
     [(instr:together instrs)
      (define dummy-channel (make-async-channel))
      (for ([instr instrs])
@@ -255,4 +276,5 @@ where ID is any value that uniquely identifies this command
     [(instr:query pat) 'query]
     [(instr:receive pat) 'receive]
     [(instr:together instrs) (cons 'together (map instr-label instrs))]
+    [(instr:perform-actions label _) label]
     [_ 'unknown]))
