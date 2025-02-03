@@ -72,6 +72,7 @@
          trie->abstract-graph
          abstract-graph->dot
          trie->dot
+         trie->patterns
 
          trie->jsexpr
          jsexpr->trie)
