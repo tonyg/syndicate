@@ -33,7 +33,7 @@
                     #:intensity [intensity 3]
                     #:period [period 5000] ;; milliseconds
                     #:name [my-name (gensym 'supervisor)])
-  (spawn
+  (spawn #:name my-name
     (define supervisor-root (current-facet-id))
     (assert (up my-name))
     (field [restarts '()])

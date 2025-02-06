@@ -194,7 +194,7 @@ where ID is any value that uniquely identifies this command
 (define (spawn-command-handler ready-chan)
   (define instance (gensym 'instance))
   (log-syndicate-repl-info "~a created" instance)
-  (spawn
+  (spawn #:name 'drivers/repl
     (on-start (async-channel-put ready-chan #t))
     (on (message (inbound (command $resp-channel $instr)))
         (log-syndicate-repl-info "~a received ~a instruction" instance (instr-label instr))
