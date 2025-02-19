@@ -15,7 +15,7 @@
 
 (define-syntax-parse-rule (with-test-dataspace (boot ...)
                             body ...)
-  (do-with-test-dataspace (lambda () boot ...) (lambda () body ...)))
+  (do-with-test-dataspace (lambda () boot ...) (lambda () (void) body ...)))
 
 (define (do-with-test-dataspace boot-thunk body-thunk)
   (define ready-chan (make-async-channel))
