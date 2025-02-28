@@ -463,4 +463,13 @@
     (check-equal? (limit-patch p2 m1) (patch trie-empty (set->trie (tset 'a) (set 2))))
     (check-equal? (limit-patch p2 m2) (patch trie-empty (set->trie (tset 'a) (set 2))))
     )
-  )
+
+  (test-case "compose-patch retract then assert"
+    (define p1 (patch trie-empty
+                      (set->trie #t (set 2))))
+    (define p2 (patch (set->trie #t (set 2))
+                      trie-empty))
+    ;; Sam: I find this behavior a bit odd but not sure if it's intentional or not
+    (check-equal? (compose-patch p2 p1)
+                  (patch (set->trie #t (set 2))
+                         trie-empty))))
