@@ -1392,6 +1392,7 @@
            suspend-script*
 
            flush-pending-patch!
+           current-actor-state
            current-pending-actions
            current-pending-patch
            check-spawn-actions!
