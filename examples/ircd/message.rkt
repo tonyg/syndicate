@@ -73,6 +73,35 @@
 ;; "nick!user@host" - specifically, it will crash if "!" doesn't
 ;; appear in the prefix.
 ;;
+;; 2025-12-18 11:44:24 Fixed in libpurple in May 2022:
+;;
+;;     changeset:   41415:31b24663dd5f
+;;     branch:      release-2.x.y
+;;     parent:      41412:1912d331d78c
+;;     user:        Belgin Știrbu <belginstirbu@hotmail.com>
+;;     date:        Mon May 30 20:52:30 2022 -0500
+;;     summary:     Fix segmentation fault on IRC server reply
+;;
+;;     diff --git a/libpurple/protocols/irc/msgs.c b/libpurple/protocols/irc/msgs.c
+;;     --- a/libpurple/protocols/irc/msgs.c
+;;     +++ b/libpurple/protocols/irc/msgs.c
+;;     @@ -71,7 +71,14 @@ static char *irc_mask_nick(const char *m
+;;
+;;      static char *irc_mask_userhost(const char *mask)
+;;      {
+;;     -       return g_strdup(strchr(mask, '!') + 1);
+;;     +       char *sep = strchr(mask, '!');
+;;     +       char *host = "";
+;;     +
+;;     +       if(sep) {
+;;     +               host = sep + 1;
+;;     +       }
+;;     +
+;;     +       return g_strdup(host);
+;;      }
+;;
+;;      static void irc_chat_remove_buddy(PurpleConversation *convo, char *data[2])
+;;
 (define (render-irc-message m)
   (match-define (irc-message prefix command params trailing) m)
   (string-append (render-prefix prefix)
